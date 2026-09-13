@@ -611,7 +611,7 @@ pub fn validate_tss_profile_report(report: &TssProfileReport) -> Result<(), Engi
 
 fn validate_options(request: &ExportTssProfilesRequest) -> Result<(), EngineError> {
     if request.formats.is_empty()
-        || request.formats.len() > 4
+        || request.formats.len() > 5
         || request
             .formats
             .iter()
@@ -621,7 +621,7 @@ fn validate_options(request: &ExportTssProfilesRequest) -> Result<(), EngineErro
         || request.rendering.panels_per_page > 32
     {
         return Err(invalid(
-            "choose unique SVG/PNG/PDF/GenBank formats and 1..=32 panels per page",
+            "choose unique SVG/PNG/PDF/GenBank/EMBL formats and 1..=32 panels per page",
         ));
     }
     Ok(())
@@ -789,6 +789,9 @@ struct GeneIndex {
     /// Promoter ID to one complete, annotated GenBank record.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     genbank: BTreeMap<String, String>,
+    /// Equivalent annotated records serialized in EMBL format.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    embl: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1706,7 +1709,7 @@ index.json lists genes, TSS memberships, pages and data-file SHA-256 values. Gen
 follow the supplied report; filenames combine safe symbol/ID fragments and a full identity digest.\n\
 The index repeats named source provenance and selected-panel descriptions for cross-gene inspection.\n\
 comparisons.tsv is the cross-gene table; each gene also has its own comparison TSV.\n\n\
-When genbank is requested, index.json maps promoter IDs to annotated .gb records.\n\
+When genbank or embl is requested, index.json maps promoter IDs to annotated .gb or .embl records.\n\
 These contain verified transcript-oriented genomic windows, not spliced cDNA or reporter constructs.\n\
 Partial limits, source intervals, raw signal scores and stored motif peaks retain provenance;\n\
 CDS segments do not assert coding phase, and motif predictions are not measured binding.\n\n\
@@ -1857,12 +1860,21 @@ pub fn export_tss_profiles_with_cancel(
         })?;
         let mut gene_pages = Vec::new();
         let mut genbank_files = BTreeMap::new();
+        let mut embl_files = BTreeMap::new();
         if request.formats.contains(&TssExportFormat::Genbank) {
             for (index, window) in gene.windows.iter().enumerate() {
                 checkpoint(should_continue)?;
                 let name = format!("{}.tss-{:04}.gb", gene.stem, index + 1);
                 inventory.bytes(&name, &genbank::bytes(report, window)?)?;
                 genbank_files.insert(window.record.promoter_id.clone(), name);
+            }
+        }
+        if request.formats.contains(&TssExportFormat::Embl) {
+            for (index, window) in gene.windows.iter().enumerate() {
+                checkpoint(should_continue)?;
+                let name = format!("{}.tss-{:04}.embl", gene.stem, index + 1);
+                inventory.bytes(&name, &genbank::embl_bytes(report, window)?)?;
+                embl_files.insert(window.record.promoter_id.clone(), name);
             }
         }
         for page in pages.iter().filter(|page| page.gene_id == gene.id) {
@@ -1889,6 +1901,7 @@ pub fn export_tss_profiles_with_cancel(
             comparisons: comparisons_file,
             pages: gene_pages,
             genbank: genbank_files,
+            embl: embl_files,
         });
     }
     checkpoint(should_continue)?;
@@ -1954,6 +1967,14 @@ pub fn export_tss_profiles_with_cancel(
 /// Validate receipt structure without touching the filesystem. Empty inventories
 /// and self-hashes are invalid; a receipt must bind a complete nonempty export.
 pub fn validate_tss_profile_receipt(receipt: &TssProfileReceipt) -> Result<(), EngineError> {
+    let annotated_only = receipt
+        .outputs
+        .keys()
+        .any(|name| name.ends_with(".gb") || name.ends_with(".embl"))
+        && !receipt
+            .outputs
+            .keys()
+            .any(|name| name.ends_with(".svg") || name.ends_with(".png") || name.ends_with(".pdf"));
     if receipt.schema != RECEIPT_SCHEMA
         || receipt.non_claims != NON_CLAIMS
         || receipt.outputs.len() > MAX_OUTPUT_FILES
@@ -1963,7 +1984,7 @@ pub fn validate_tss_profile_receipt(receipt: &TssProfileReceipt) -> Result<(), E
         || receipt.page_count == 0
         || receipt.page_count > MAX_OUTPUT_FILES / 3
         || receipt.inputs.is_empty()
-        || receipt.render_metadata.is_empty()
+        || (receipt.render_metadata.is_empty() && !annotated_only)
         || receipt.render_metadata.len() > MAX_OUTPUT_FILES
     {
         return Err(invalid(
@@ -2197,6 +2218,24 @@ pub fn verify_tss_profile_receipt(
         }
         if entry.genbank != expected_genbank {
             return Err(invalid("GenBank index membership mismatch"));
+        }
+        let mut expected_embl = BTreeMap::new();
+        if request.formats.contains(&TssExportFormat::Embl) {
+            for (index, window) in gene.windows.iter().enumerate() {
+                let name = format!("{}.tss-{:04}.embl", gene.stem, index + 1);
+                if fs::read(output.join(&name)).map_err(|e| io_error("read EMBL", e))?
+                    != genbank::embl_bytes(&report, window)?
+                {
+                    return Err(invalid(
+                        "EMBL is not the exact annotated projection of its TSS report",
+                    ));
+                }
+                expected.insert(name.clone());
+                expected_embl.insert(window.record.promoter_id.clone(), name);
+            }
+        }
+        if entry.embl != expected_embl {
+            return Err(invalid("EMBL index membership mismatch"));
         }
         let subset: TssProfileReport = read_json(&output.join(&entry.report), MAX_REPORT_BYTES)?;
         if !same_json(&subset, &GeneReport::new(&report, gene))? {

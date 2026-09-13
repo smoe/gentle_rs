@@ -7541,7 +7541,11 @@ impl GentleEngine {
                 .iter()
                 .map(|name| (*name).to_string())
                 .collect(),
-            supported_export_formats: vec!["GenBank".to_string(), "Fasta".to_string()],
+            supported_export_formats: vec![
+                "GenBank".to_string(),
+                "Embl".to_string(),
+                "Fasta".to_string(),
+            ],
             deterministic_operation_log: true,
             capability_registry: gentle_protocol::capability_registry().to_vec(),
         }

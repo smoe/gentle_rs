@@ -19,7 +19,7 @@ Both accept `--context-manifest FILE` for sequence-verified CUT&RUN/chromatin,
 exon/CDS/translation-marker and TATA rows on detailed pages, without rescoring.
 See the [context example and input contract](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
 Both commands accept `--scale-mode independent|shared|shared_across_tss`.
-`--formats svg,genbank` additionally exports annotated, sequence-verified TSS
+`--formats svg,genbank,embl` additionally exports annotated, sequence-verified TSS
 windows; [requirements and legacy replay](tss_tfbs_profiles.md#annotated-tss-sequences).
 The last mode shares one accession's range across all supplied TSSs and both
 strands, without cross-matrix calibration. See [scores, scaling and required
@@ -1981,6 +1981,10 @@ Use generated adapter snippets to stay synchronized with canonical workflow JSON
 - `docs/examples/generated/tp73_isoform_protein_2d_gel_offline.md`
 
 ## File format expectations
+
+GenBank and EMBL are peer annotated nucleotide exports through shared `SaveFile`;
+FASTA deliberately omits the feature table. See [format parity, exact commands
+and limitations](sequence_format_parity.md).
 
 Current CLI workflows rely on sequence files supported by internal loaders:
 

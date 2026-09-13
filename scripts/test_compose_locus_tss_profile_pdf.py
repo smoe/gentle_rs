@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compositor regressions using only hand-crafted temporary JSON/SVG/FASTA.
+"""Compositor regressions using hand-crafted temporary JSON/SVG/FASTA/GenBank/EMBL.
 
 The synthetic MA9991.1 identity is not a JASPAR measurement. Recreate the
 fixtures by running this module. Rendering is mocked to exercise joins and
@@ -170,6 +170,9 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
                 **{name: digest(self.root / name)
                    for page in json.loads(self.index.read_text())["genes"][0]["pages"]
                    for name in page["files"]},
+                **{name: digest(self.root / name)
+                   for kind in ("genbank", "embl")
+                   for name in json.loads(self.index.read_text())["genes"][0].get(kind, {}).values()},
             },
         }))
 
@@ -202,8 +205,12 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
                        "font_identities": []} for _ in command[3:]],
         }), stderr="")
 
-    def assert_no_outputs(self):
-        for path in (self.args().output_pdf, self.args().output_fasta, self.args().output_receipt):
+    def assert_no_outputs(self, args=None):
+        args = args or self.args()
+        for path in (args.output_pdf, args.output_fasta, args.output_receipt,
+                     getattr(args, "output_genbank", None), getattr(args, "output_embl", None)):
+            if path is None:
+                continue
             self.assertFalse(path.exists(), path)
             self.assertFalse(path.with_name(path.name + ".partial").exists(), path)
 
@@ -253,9 +260,29 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
         index["genes"][0]["genbank"] = files
         self.index.write_text(json.dumps(index))
         self.write_tss_receipt()
-        receipt = json.loads(self.tss_receipt.read_text())
-        receipt["outputs"].update({name: digest(self.root / name) for name in files.values()})
-        self.tss_receipt.write_text(json.dumps(receipt))
+
+    def embl_fixture(self):
+        index = json.loads(self.index.read_text())
+        files = {}
+        for promoter, bases in self.sequences.items():
+            file = self.root / f"{promoter}.embl"
+            sequence_lines = []
+            for offset in range(0, len(bases), 60):
+                groups = " ".join(bases[i:i + 10].lower()
+                                  for i in range(offset, min(offset + 60, len(bases)), 10))
+                sequence_lines.append(f"     {groups:<65} {min(offset + 60, len(bases))}\n")
+            file.write_text(
+                f"ID   {promoter}; SV 1; linear; DNA; STD; SYN; 701 BP.\n"
+                "XX\nFH   Key             Location/Qualifiers\nFH\n"
+                "FT   misc_feature    501\nFT                   /label=\"Synthetic TSS\"\nXX\n"
+                f"SQ   Sequence 701 BP; {bases.count('A')} A; {bases.count('C')} C; "
+                f"{bases.count('G')} G; {bases.count('T')} T; {bases.count('N')} other;\n"
+                + "".join(sequence_lines) + "//\n"
+            )
+            files[promoter] = file.name
+        index["genes"][0]["embl"] = files
+        self.index.write_text(json.dumps(index))
+        self.write_tss_receipt()
 
     def test_genbank_selected_records_are_copied_and_receipt_bound(self):
         self.genbank_fixture()
@@ -299,6 +326,248 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
                 target.compose(args)
         self.assert_no_outputs()
         self.assertFalse(args.output_genbank.exists())
+
+    def test_embl_selected_record_is_copied_and_receipt_bound_without_genbank(self):
+        self.embl_fixture()
+        path = self.root / "selected.embl"
+        # Preserve source bytes, including CRLF and annotations; ignore unselected files.
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        self.write_tss_receipt()
+        (self.root / "other.embl").unlink()
+        args = self.args()
+        args.output_embl = self.root / "annotated.embl"
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run):
+            receipt = target.compose(args)
+        self.assertEqual(args.output_embl.read_bytes(), path.read_bytes())
+        self.assertEqual(receipt["inputs"]["selected_tss_embl"], [{
+            "promoter_id": "selected", "path": str(path.resolve()), "sha256": digest(path),
+        }])
+        self.assertEqual(receipt["output"]["selected_tss_embl"], str(args.output_embl.resolve()))
+        self.assertEqual(receipt["output"]["selected_tss_embl_sha256"], digest(args.output_embl))
+        self.assertEqual(receipt["output"]["selected_tss_embl_bytes"], args.output_embl.stat().st_size)
+        self.assertNotIn("selected_tss_genbank", receipt["inputs"])
+        self.assertNotIn("selected_tss_genbank", receipt["output"])
+
+    def test_embl_missing_tampered_or_wrong_bases_fail_before_publication(self):
+        args = self.args()
+        args.output_embl = self.root / "annotated.embl"
+        with mock.patch.object(target.subprocess, "run") as renderer:
+            with self.assertRaisesRegex(ValueError, "lacks indexed EMBL"):
+                target.compose(args)
+            self.embl_fixture()
+            path = self.root / "selected.embl"
+            original = path.read_bytes()
+            path.unlink()
+            with self.assertRaisesRegex(ValueError, "EMBL must be a direct regular file"):
+                target.compose(args)
+            path.write_bytes(original)
+            receipt = json.loads(self.tss_receipt.read_text())
+            del receipt["outputs"][path.name]
+            self.tss_receipt.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(ValueError, "receipt does not bind output selected.embl"):
+                target.compose(args)
+            self.write_tss_receipt()
+            path.write_bytes(original.replace(b"a", b"t"))
+            with self.assertRaisesRegex(ValueError, "output hash mismatch"):
+                target.compose(args)
+            self.write_tss_receipt()
+            with self.assertRaisesRegex(ValueError, "EMBL bases differ"):
+                target.compose(args)
+            renderer.assert_not_called()
+        self.assert_no_outputs(args)
+
+    def test_embl_requires_exactly_one_complete_record_and_sequence_below_sq(self):
+        self.embl_fixture()
+        path = self.root / "selected.embl"
+        original = path.read_text()
+        sq = original.index("SQ   ")
+        sequence_start = original.index("\n", sq) + 1
+        invalid = {
+            "missing_id": original.replace("ID   ", "XX   ", 1),
+            "duplicate_id": original.replace("XX\n", "ID   duplicate\n", 1),
+            "missing_sq": original.replace("SQ   ", "XX   "),
+            "duplicate_sq": original.replace("SQ   ", "SQ   duplicate\nSQ   "),
+            "two_records": original + original,
+            "missing_terminator": original.removesuffix("//\n"),
+            "early_terminator": original.replace("XX\n", "//\n", 1),
+            "trailing_record_text": original + "XX\n",
+            "no_bases": original[:sequence_start] + "//\n",
+            "invalid_base": original[:sequence_start] + "     Z 1\n//\n",
+        }
+        args = self.args()
+        args.output_embl = self.root / "annotated.embl"
+        for label, value in invalid.items():
+            with self.subTest(label=label), mock.patch.object(target.subprocess, "run") as renderer:
+                path.write_text(value)
+                self.write_tss_receipt()
+                with self.assertRaisesRegex(ValueError, "complete engine-exported EMBL record|EMBL bases differ"):
+                    target.compose(args)
+                renderer.assert_not_called()
+                self.assert_no_outputs(args)
+
+    def test_embl_hash_covers_the_exact_copied_bytes_not_an_earlier_read(self):
+        self.embl_fixture()
+        args = self.args()
+        args.output_embl = self.root / "annotated.embl"
+        read = Path.read_bytes
+        def changed_annotations(path):
+            raw = read(path)
+            if path == (self.root / "selected.embl").resolve():
+                return raw.replace(b"Synthetic TSS", b"Changed TSS label")
+            return raw
+        with mock.patch.object(target.subprocess, "run") as renderer, \
+             mock.patch.object(Path, "read_bytes", new=changed_annotations):
+            with self.assertRaisesRegex(ValueError, "output hash mismatch"):
+                target.compose(args)
+            renderer.assert_not_called()
+        self.assert_no_outputs(args)
+
+    def test_embl_source_paths_must_be_direct_regular_files(self):
+        self.embl_fixture()
+        index = json.loads(self.index.read_text())
+        args = self.args()
+        args.output_embl = self.root / "annotated.embl"
+        for name in ("../selected.embl", str(self.root / "selected.embl"), "selected.gb"):
+            with self.subTest(name=name):
+                index["genes"][0]["embl"]["selected"] = name
+                self.index.write_text(json.dumps(index))
+                receipt = json.loads(self.tss_receipt.read_text())
+                receipt["outputs"][self.index.name] = digest(self.index)
+                self.tss_receipt.write_text(json.dumps(receipt))
+                with self.assertRaisesRegex(ValueError, "lacks indexed EMBL"):
+                    target.compose(args)
+                self.assert_no_outputs(args)
+        self.embl_fixture()
+        path = self.root / "selected.embl"
+        path.unlink()
+        path.symlink_to(self.root / "other.embl")
+        with self.assertRaisesRegex(ValueError, "EMBL must be a direct regular file"):
+            target.compose(args)
+        self.assert_no_outputs(args)
+
+    def test_both_annotated_formats_follow_selected_report_order_and_publish_receipt_last(self):
+        report = json.loads(self.report.read_text())
+        report["windows"] = [self.window("other", 1050, True), self.window("selected", 1000, True)]
+        self.report.write_text(json.dumps(report))
+        self.rebind()
+        self.genbank_fixture()
+        self.embl_fixture()
+        args = self.args()
+        args.output_genbank = self.root / "annotated.gb"
+        args.output_embl = self.root / "annotated.embl"
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run), \
+             mock.patch.object(target.os, "link", wraps=target.os.link) as publish:
+            receipt = target.compose(args)
+        self.assertEqual([call.args[1] for call in publish.call_args_list], [path.resolve() for path in (
+            args.output_pdf, args.output_fasta, args.output_genbank, args.output_embl, args.output_receipt,
+        )])
+        for kind, suffix in (("genbank", ".gb"), ("embl", ".embl")):
+            output = getattr(args, f"output_{kind}")
+            self.assertEqual(output.read_bytes(), b"".join(
+                (self.root / (promoter + suffix)).read_bytes() for promoter in ("other", "selected")))
+            self.assertEqual([row["promoter_id"] for row in receipt["inputs"][f"selected_tss_{kind}"]],
+                             ["other", "selected"])
+            self.assertEqual(receipt["output"][f"selected_tss_{kind}_sha256"], digest(output))
+        self.assertEqual(json.loads(args.output_receipt.read_text()), receipt)
+
+    def test_embl_and_both_formats_roll_back_at_each_publication_step(self):
+        self.genbank_fixture()
+        self.embl_fixture()
+        link = target.os.link
+        for both in (False, True):
+            args = self.args()
+            args.output_embl = self.root / "annotated.embl"
+            if both:
+                args.output_genbank = self.root / "annotated.gb"
+            for failure in range(1, 6 if both else 5):
+                calls = 0
+                def fail_link(src, dst):
+                    nonlocal calls
+                    calls += 1
+                    if calls == failure:
+                        raise OSError("synthetic annotated promotion failure")
+                    return link(src, dst)
+                with self.subTest(both=both, failure=failure), \
+                     mock.patch.object(target.subprocess, "run", side_effect=self.fake_run), \
+                     mock.patch.object(target.os, "link", side_effect=fail_link):
+                    with self.assertRaisesRegex(OSError, "annotated promotion failure"):
+                        target.compose(args)
+                    self.assert_no_outputs(args)
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run):
+            target.compose(args)
+
+    def test_embl_write_failure_rolls_back_all_staged_outputs(self):
+        self.genbank_fixture()
+        self.embl_fixture()
+        args = self.args()
+        args.output_genbank = self.root / "annotated.gb"
+        args.output_embl = self.root / "annotated.embl"
+        write = Path.write_bytes
+        def fail_write(path, data):
+            if path.name == "annotated.embl.partial":
+                raise OSError("synthetic EMBL write failure")
+            return write(path, data)
+        with mock.patch.object(target.subprocess, "run") as renderer, \
+             mock.patch.object(Path, "write_bytes", new=fail_write):
+            with self.assertRaisesRegex(OSError, "EMBL write failure"):
+                target.compose(args)
+            renderer.assert_not_called()
+        self.assert_no_outputs(args)
+
+    def test_embl_output_collisions_and_stale_partials_are_not_overwritten(self):
+        self.genbank_fixture()
+        self.embl_fixture()
+        args = self.args()
+        args.output_genbank = self.root / "annotated.gb"
+        for path in (args.output_pdf, args.output_fasta, args.output_receipt, args.output_genbank):
+            with self.subTest(path=path), mock.patch.object(target.subprocess, "run") as renderer:
+                args.output_embl = path
+                with self.assertRaisesRegex(ValueError, "output paths must be distinct"):
+                    target.compose(args)
+                renderer.assert_not_called()
+                self.assert_no_outputs(args)
+        args.output_embl = self.root / "annotated.embl"
+        for path in (args.output_embl, args.output_embl.with_suffix(".embl.partial")):
+            with self.subTest(path=path), mock.patch.object(target.subprocess, "run") as renderer:
+                path.write_text("existing unrelated output")
+                with self.assertRaisesRegex(ValueError, "output or stale partial"):
+                    target.compose(args)
+                renderer.assert_not_called()
+                self.assertEqual(path.read_text(), "existing unrelated output")
+                path.unlink()
+                self.assert_no_outputs(args)
+
+    def test_cli_accepts_either_or_both_annotated_outputs(self):
+        base = ["compose_locus_tss_profile_pdf.py"]
+        for name, value in vars(self.args()).items():
+            base.extend(["--" + name.replace("_", "-"), str(value)])
+        for kinds in (("embl",), ("genbank",), ("genbank", "embl")):
+            with self.subTest(kinds=kinds):
+                argv = base + [arg for kind in kinds for arg in (f"--output-{kind}", f"output.{kind}")]
+                with mock.patch.object(sys, "argv", argv):
+                    parsed = target.parse_args()
+                for kind in ("genbank", "embl"):
+                    self.assertEqual(getattr(parsed, f"output_{kind}"),
+                                     Path(f"output.{kind}") if kind in kinds else None)
+
+    def test_racing_embl_output_is_preserved_while_other_outputs_roll_back(self):
+        self.genbank_fixture()
+        self.embl_fixture()
+        args = self.args()
+        args.output_genbank = self.root / "annotated.gb"
+        args.output_embl = self.root / "annotated.embl"
+        link = target.os.link
+        def race(src, dst):
+            if dst == args.output_embl.resolve():
+                dst.write_bytes(b"another producer's EMBL output")
+            return link(src, dst)
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run), \
+             mock.patch.object(target.os, "link", side_effect=race):
+            with self.assertRaises(FileExistsError):
+                target.compose(args)
+        self.assertEqual(args.output_embl.read_bytes(), b"another producer's EMBL output")
+        args.output_embl.unlink()
+        self.assert_no_outputs(args)
 
     def test_rejects_selected_tss_outside_bound_locus_bands(self):
         value = json.loads(self.report.read_text())

@@ -6696,7 +6696,7 @@ impl MainAreaDna {
             }
             if ui
                 .button(Self::tr("sequence.export_seq"))
-                .on_hover_text("Export active sequence as GenBank or FASTA via engine SaveFile")
+                .on_hover_text("Export active sequence as GenBank, EMBL or FASTA via engine SaveFile")
                 .clicked()
             {
                 self.export_active_sequence();
@@ -22227,6 +22227,8 @@ impl MainAreaDna {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".fa") || lower.ends_with(".fasta") {
             ExportFormat::Fasta
+        } else if lower.ends_with(".embl") || lower.ends_with(".emb") {
+            ExportFormat::Embl
         } else {
             ExportFormat::GenBank
         }
@@ -22246,6 +22248,7 @@ impl MainAreaDna {
         let path = rfd::FileDialog::new()
             .set_file_name(&default_name)
             .add_filter("GenBank", &["gb", "gbk", "genbank"])
+            .add_filter("EMBL", &["embl", "emb"])
             .add_filter("FASTA", &["fa", "fasta"])
             .save_file();
         let Some(path) = path else {

@@ -40,16 +40,17 @@ the transcript-oriented -500/+200 records shown on the detailed pages, in the
 same order and with their original bound headers. It is a filtered projection of
 the verified input bundle, not a new genome extraction.
 
-An optional `--output-genbank /fresh/output/GENE_selected_TSS.gb` adds the same
-selected windows as annotated records. First export the TSS report with
-`--formats svg,genbank` and [verified context](tss_tfbs_profiles.md#annotated-tss-sequences).
+Optional `--output-genbank /fresh/output/GENE_selected_TSS.gb` and/or
+`--output-embl /fresh/output/GENE_selected_TSS.embl` add the same selected windows
+as annotated records. First export the TSS report with `--formats svg,genbank,embl`
+(or just the requested formats) and [verified context](tss_tfbs_profiles.md#annotated-tss-sequences).
 The compositor concatenates the already engine-exported records without
 reconstructing annotations. It verifies source file hashes and checks the
-actual GenBank bases against each selected TSS digest. Missing annotated
+actual GenBank/EMBL bases against each selected TSS digest. Missing annotated
 records fail explicitly, rather than silently falling back to unannotated DNA.
 The output and its per-record source files are bound in the composite receipt;
-GenBank participates in the same receipt-last staging and rollback as PDF/FASTA.
-Publication pages should offer this `.gb` alongside FASTA, not replace the
+Both annotated formats participate in the same receipt-last staging and rollback as PDF/FASTA.
+Publication pages may offer `.gb` and `.embl` alongside FASTA, not replace the
 historical bundle or advertise it before regeneration.
 
 The composer fails before publication unless:

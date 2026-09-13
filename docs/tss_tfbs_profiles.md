@@ -99,11 +99,12 @@ their genomic motif-window start beside their TSS-relative position.
 
 ## Annotated TSS Sequences
 
-Add `genbank` to `--formats` to export one annotated `.gb` record per TSS, indexed
-by promoter ID in `index.json` and hash-bound in the normal receipt. This is
-GenBank, not a renamed FASTA or an EMBL serializer. GENtle can reopen it through
-its normal sequence-file import. The same option works in GUI Shell and typed
-`ExportTssTfbsProfiles` requests (`formats: ["svg", "genbank"]`).
+Add `genbank`, `embl`, or both to `--formats` to export annotated `.gb`/`.embl`
+records per TSS, indexed by promoter ID in `index.json` and hash-bound in the
+normal receipt. Both formats serialize the same annotated record, not a renamed
+FASTA. GENtle can reopen either through its normal sequence-file import. The
+same options work in GUI Shell and typed `ExportTssTfbsProfiles` requests
+(`formats: ["svg", "genbank", "embl"]`). See [format parity and limits](sequence_format_parity.md).
 
 TSS exports use fixed GenBank `LOCUS` columns for linear DNA. The deterministic
 `01-JAN-1970` date is a missing-date placeholder, not an experiment or annotation
@@ -116,13 +117,13 @@ annotations or stored scores, and requires no rescoring.
 gentle_cli features tss-tfbs-profiles-export \
   --report /path/to/original-score-only/report.json \
   --context-manifest /path/to/all-genes.context.json \
-  --output-dir /fresh/tss-annotated --formats svg,genbank
+  --output-dir /fresh/tss-annotated --formats svg,genbank,embl
 ```
 
 Every exported window requires context with exact, verified transcript-oriented
 bases. New contexts retain those bases, so subsequent report-only replay needs
 no source FASTA. Older contexts without bases remain readable but cannot export
-GenBank; enrich the original score-only report, rather than replacing attached
+GenBank or EMBL; enrich the original score-only report, rather than replacing attached
 evidence. Missing or hash-mismatched DNA fails before publication.
 
 Records retain the TSS, annotated exon ordinals, genomic/source provenance,
@@ -130,11 +131,12 @@ clipped feature limits (`<` / `>`), individual supplied signal intervals and
 their raw scores, TATA evidence classes, and already-stored motif peaks on both
 strands. No new peak calling, threshold selection or scoring occurs. CDS
 segments are labelled `misc_feature`, not asserted to be complete coding
-sequences: this context does not bind their coding phase. GenBank sequence is
+sequences: this context does not bind their coding phase. The exported sequence is
 the genomic TSS window, not spliced cDNA or a materialized reporter construct.
 Null signal values, missing lanes, and prediction non-claims remain explicit.
 
-For the integrated report, use the compositor's `--output-genbank` option as
+For the integrated report, use the compositor's `--output-genbank` and/or
+`--output-embl` options as
 described [here](integrated_locus_tss_profiles.md). Its selected records match
 the selected FASTA windows, not the full set of scored promoters.
 

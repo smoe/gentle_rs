@@ -40,9 +40,9 @@ omits the resolved manifest path. Context provenance, missing states and clipped
 genomic-to-local geometry are shared across adapters, not computed in Python or
 the SVG renderer. See [context inputs and validation](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
 
-`TssExportFormat` also accepts `genbank`. New contexts optionally retain
+`TssExportFormat` also accepts `genbank` and `embl`. New contexts optionally retain
 `window_sequence`, bound to the existing SHA-256 and geometry; old contexts
-remain readable. GenBank requires verified stored bases for every window,
+remain readable. Both formats require verified stored bases for every window,
 exports one annotated record per promoter through the shared engine, and binds
 the files and promoter-to-file index in the receipt. No scoring or biological
 inference is performed during export. See [annotated TSS sequences](tss_tfbs_profiles.md#annotated-tss-sequences).
@@ -4238,6 +4238,13 @@ Isoform-panel operation semantics (current):
   notes import through the shared loader
 - XML scope: `GBSet/GBSeq` and `INSDSet/INSDSeq` are supported
 - other unsupported XML dialects return explicit schema/dialect diagnostics
+
+`SaveFile { seq_id, path, format }` accepts `GenBank`, `Embl`, and `Fasta`;
+`EMBL`/`embl` alias `Embl`. These are advertised by `supported_export_formats`.
+GenBank/EMBL use the same annotated record and shared INSDC feature serializer;
+FASTA is sequence-only. TSS `index.json` has optional per-gene `genbank`/`embl`
+promoter-to-file maps. Old indices without either map remain readable. See
+[format fidelity, metadata crosswalk and limitations](sequence_format_parity.md).
 
 `ExtendGenomeAnchor` side semantics:
 

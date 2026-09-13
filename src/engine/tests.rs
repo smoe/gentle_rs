@@ -27014,6 +27014,62 @@ fn test_render_rna_structure_svg_requires_rna_biotype() {
 }
 
 #[test]
+fn annotated_format_parity_save_file_through_shared_shell() {
+    // Synthetic annotated circular sequence; no external fixture or network dependency.
+    let mut sequence = gb_io::seq::Seq::empty();
+    sequence.seq = b"ATGCCA".to_vec();
+    sequence.topology = gb_io::seq::Topology::Circular;
+    sequence.name = Some("SYNTHETIC".into());
+    sequence
+        .comments
+        .push("Synthetic provenance, not experimental evidence".into());
+    sequence.features.push(gb_io::seq::Feature {
+        kind: "misc_feature".into(),
+        location: gb_io::seq::Location::from_gb_format("complement(2..5)").unwrap(),
+        qualifiers: vec![(
+            "note".into(),
+            Some("raw_score=4; not binding probability".into()),
+        )],
+    });
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("s".into(), DNAsequence::from_genbank_seq(sequence));
+    let mut engine = GentleEngine::from_state(state);
+    let temp = tempfile::tempdir().unwrap();
+    let mut records = Vec::new();
+    for (format, extension) in [(ExportFormat::GenBank, "gb"), (ExportFormat::Embl, "embl")] {
+        let path = temp.path().join(format!("test.{extension}"));
+        let op = Operation::SaveFile {
+            seq_id: "s".into(),
+            path: path.display().to_string(),
+            format,
+        };
+        let command = crate::engine_shell::parse_shell_line(&format!(
+            "op '{}'",
+            serde_json::to_string(&op).unwrap()
+        ))
+        .unwrap();
+        execute_shell_command(&mut engine, &command).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        records.push(if extension == "gb" {
+            gb_io::reader::SeqReader::new(text.as_bytes())
+                .next()
+                .unwrap()
+                .unwrap()
+        } else {
+            crate::dna_sequence::parse_embl_records(&text)
+                .unwrap()
+                .remove(0)
+        });
+    }
+    assert_eq!(records[0].seq.to_ascii_uppercase(), records[1].seq);
+    assert_eq!(records[0].features, records[1].features);
+    assert_eq!(records[0].topology, records[1].topology);
+    assert_eq!(records[0].comments, records[1].comments);
+}
+
+#[test]
 fn test_save_file_operation_genbank() {
     let mut state = ProjectState::default();
     state.sequences.insert("s".to_string(), seq("ATGCCA"));

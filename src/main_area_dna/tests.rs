@@ -1,3 +1,22 @@
+#[test]
+fn annotated_format_parity_gui_export_extension_selection() {
+    use crate::engine::ExportFormat;
+    for path in ["sequence.embl", "sequence.emb", "sequence.EMBL"] {
+        assert!(matches!(
+            MainAreaDna::infer_export_format(path),
+            ExportFormat::Embl
+        ));
+    }
+    assert!(matches!(
+        MainAreaDna::infer_export_format("sequence.gb"),
+        ExportFormat::GenBank
+    ));
+    assert!(matches!(
+        MainAreaDna::infer_export_format("sequence.fasta"),
+        ExportFormat::Fasta
+    ));
+}
+
 use super::{
     CrypticSplicingStrand, DnaPresentationMode, FEATURE_TREE_DEFERRED_AUTO_LOAD_MAX_FEATURES,
     FeatureCopyPayloadKind, LINEAR_TOPOLOGY_SWITCH_MAX_INITIAL_SPAN_BP, MainAreaDna,

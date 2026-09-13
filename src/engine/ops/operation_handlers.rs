@@ -40569,6 +40569,13 @@ impl GentleEngine {
                                 cause_chain: vec![],
                             })?;
                         }
+                        ExportFormat::Embl => {
+                            dna.write_embl_file(&path).map_err(|e| EngineError {
+                                code: ErrorCode::Io,
+                                message: format!("Could not write EMBL file '{path}': {e}"),
+                                cause_chain: vec![],
+                            })?;
+                        }
                         ExportFormat::Fasta => Self::save_as_fasta(&seq_id, dna, &path)?,
                     }
 

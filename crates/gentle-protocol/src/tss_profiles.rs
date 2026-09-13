@@ -471,6 +471,7 @@ pub enum TssExportFormat {
     Png,
     Pdf,
     Genbank,
+    Embl,
 }
 
 fn one_panel() -> usize {

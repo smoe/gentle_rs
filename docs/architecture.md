@@ -311,10 +311,13 @@ Test-data provenance rule:
 - New fixture files are not considered done until this provenance note exists
   in a nearby README or equivalent fixture manifest.
 
-Import-format policy (GenBank-first, XML additive):
+Sequence-format policy (shared annotated records, XML additive):
 
-- GenBank remains the canonical annotation import format in current production
-  paths.
+- GenBank and EMBL are peer annotated nucleotide interchange formats over the
+  same internal record. Format-specific adapters must not duplicate annotation
+  biology; both exporters share INSDC location/qualifier serialization. FASTA
+  is deliberately sequence-only, not an equivalent annotation export. See
+  [parity scope and metadata limitations](sequence_format_parity.md).
 - XML support is additive and must normalize to the same internal structures
   used by GenBank import before touching business logic.
 - The first XML scope is sequence + feature/annotation import only (no
@@ -322,7 +325,7 @@ Import-format policy (GenBank-first, XML additive):
 - XML parser adapters should target explicit NCBI dialects (`GBSet/GBSeq`,
   `INSDSet/INSDSeq`) and reject unknown dialects with clear diagnostics.
 - Cross-format fixtures must remain small and paired (same biological content
-  across `.fa`, `.gb`, `.xml`) so parity tests can detect semantic drift.
+  across `.fa`, `.gb`, `.embl`, `.xml`) so parity tests can detect semantic drift.
 - Proprietary or binary parser logic that has value beyond GENtle itself
   should live in a headless reusable crate whenever practical.
 - GENtle should then depend on that crate only through a thin adapter boundary

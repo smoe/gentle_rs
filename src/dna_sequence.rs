@@ -311,12 +311,11 @@ impl DNAsequence {
                 )
             })?;
         }
-        gb_io::writer::write(&mut buffer, &seq)?;
+        buffer.extend_from_slice(&crate::annotated_sequence_io::genbank_bytes(&seq)?);
         Ok(String::from_utf8(buffer)?)
     }
 
     pub fn write_genbank_file(&self, filename: &str) -> Result<()> {
-        let file = File::create(filename)?;
         let mut seq = self.seq.clone();
         for feature in &mut seq.features {
             let location_text = feature.location.to_gb_format();
@@ -326,7 +325,20 @@ impl DNAsequence {
                 )
             })?;
         }
-        gb_io::writer::write(file, &seq)?;
+        std::fs::write(filename, crate::annotated_sequence_io::genbank_bytes(&seq)?)?;
+        Ok(())
+    }
+
+    /// Export the same annotated record as EMBL, without projecting away features.
+    pub fn to_embl_string(&self) -> Result<String> {
+        Ok(String::from_utf8(
+            crate::annotated_sequence_io::embl_bytes(&self.seq)?,
+        )?)
+    }
+
+    /// Serialize before opening the destination so invalid data cannot truncate it.
+    pub fn write_embl_file(&self, filename: &str) -> Result<()> {
+        std::fs::write(filename, self.to_embl_string()?)?;
         Ok(())
     }
 
@@ -1054,7 +1066,7 @@ impl DNAsequence {
     }
 }
 
-fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
+pub(crate) fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
     let mut records: Vec<Seq> = vec![];
     let mut current_lines: Vec<String> = vec![];
     for line in text.lines() {
@@ -1065,7 +1077,9 @@ fn parse_embl_records(text: &str) -> Result<Vec<Seq>> {
             }
             continue;
         }
-        current_lines.push(line.to_string());
+        if !current_lines.is_empty() || !line.trim().is_empty() {
+            current_lines.push(line.to_string());
+        }
     }
     if !current_lines.is_empty() {
         records.push(parse_embl_record(&current_lines)?);
@@ -1089,7 +1103,14 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
 
     impl PendingEmblFeature {
         fn push_qualifier_line(&mut self, trimmed: &str) {
-            if let Some(raw_qualifier) = trimmed.strip_prefix('/') {
+            let quoted_continuation = self
+                .last_qualifier_index
+                .and_then(|i| self.qualifiers[i].1.as_ref())
+                .is_some_and(|v| {
+                    v.starts_with('"') && v.bytes().filter(|b| *b == b'"').count() % 2 == 1
+                });
+            if let Some(raw_qualifier) = trimmed.strip_prefix('/').filter(|_| !quoted_continuation)
+            {
                 let (qk, qv) = if let Some((key, value)) = raw_qualifier.split_once('=') {
                     (key.trim(), Some(value.trim().to_string()))
                 } else {
@@ -1236,9 +1257,12 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
         seq.features.push(feature.into_feature()?);
     }
     for feature in &mut seq.features {
-        for (_, value) in &mut feature.qualifiers {
+        for (key, value) in &mut feature.qualifiers {
             if let Some(raw) = value.as_mut() {
                 *raw = normalize_embl_qualifier_value(raw);
+                if key == "translation" {
+                    raw.retain(|c| !c.is_ascii_whitespace());
+                }
             }
         }
     }
@@ -1254,6 +1278,7 @@ fn parse_embl_record(lines: &[String]) -> Result<Seq> {
         _ => None,
     };
     seq.len = Some(seq.seq.len());
+    crate::annotated_sequence_io::read_embl_metadata(lines, &mut seq)?;
     if seq.seq.is_empty() {
         return Err(anyhow::anyhow!(
             "Could not parse EMBL record '{}': missing sequence data",

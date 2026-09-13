@@ -73,7 +73,8 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
             "png" => Ok(TssExportFormat::Png),
             "pdf" => Ok(TssExportFormat::Pdf),
             "genbank" => Ok(TssExportFormat::Genbank),
-            _ => Err("--formats accepts svg,png,pdf,genbank".to_string()),
+            "embl" => Ok(TssExportFormat::Embl),
+            _ => Err("--formats accepts svg,png,pdf,genbank,embl".to_string()),
         })
         .collect::<Result<Vec<_>, _>>()?;
     for (i, format) in formats.iter().enumerate() {
@@ -250,7 +251,7 @@ mod tests {
             "--context-manifest",
             "context with spaces.json",
             "--formats",
-            "svg,genbank",
+            "svg,genbank,embl",
         ]
         .map(str::to_string);
         let ShellCommand::Op { payload } = parse_tss_profiles_command(&tokens).unwrap() else {
@@ -267,7 +268,11 @@ mod tests {
         );
         assert_eq!(
             request.formats,
-            vec![TssExportFormat::Svg, TssExportFormat::Genbank]
+            vec![
+                TssExportFormat::Svg,
+                TssExportFormat::Genbank,
+                TssExportFormat::Embl
+            ]
         );
         assert!(
             parse("features tss-tfbs-profiles --context-manifest a --context-manifest b")

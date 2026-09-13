@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-09-13 - Peer GenBank and EMBL Annotated Exports
+
+- Added EMBL to shared `SaveFile`, capability discovery and the viewer export
+  dialog. Both annotated serializers use one record and INSDC feature writer;
+  the corrected GenBank LOCUS formatting also applies to ordinary sequence saves.
+  A missing molecule type uses GENtle's DNA default rather than allowing a
+  reader to mistake circular topology for a molecule-type token.
+- EMBL import now retains supported record metadata and provenance comments,
+  repeated/valueless qualifiers and wrapped translations. Ambiguous native
+  header crosswalks stay labelled comments rather than invented taxonomy.
+- TSS exports accept `embl` alone or beside `genbank`, with promoter membership,
+  exact report projection and file hashes checked by the receipt verifier.
+  Annotated-only bundles no longer incorrectly require image metadata; graphical
+  exports still require complete image audits.
+  The compositor accepts selected EMBL records with the same staged publication
+  and rollback guarantees as GenBank/PDF/FASTA.
+- Added synthetic round-trip, shared-shell/GUI, plus/minus TSS and tampering
+  regressions. Existing scientific bundles remain untouched; no scores are
+  recomputed. Real-bundle and external-reader acceptance remain separate gates.
+
 ## 2026-09-13 - Correct annotated TSS GenBank LOCUS columns
 
 - Integrated Glen's `d37bd427` unchanged on its exact `d978b0c4` base. The TSS

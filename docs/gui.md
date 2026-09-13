@@ -22,7 +22,7 @@ exon/CDS structure, annotated translation boundaries and TATA evidence above the
 detail-page scores. No new wizard is required; see the
 [offline context example](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
 SVG hover details remain available alongside printable coordinate summaries.
-`--formats svg,genbank` also exports [annotated TSS windows](tss_tfbs_profiles.md#annotated-tss-sequences)
+`--formats svg,genbank,embl` also exports [annotated TSS windows](tss_tfbs_profiles.md#annotated-tss-sequences)
 for the normal sequence-file importer; this does not claim a new native TSS viewer.
 Use `--scale-mode shared_across_tss` for the same accession's common Y range
 across all supplied TSSs and both strands. Each page states its scale policy;
@@ -2937,7 +2937,9 @@ Controls:
      explicit apply action (0-based, end-exclusive).
 21. Export Seq
    - Exports the active sequence via engine `SaveFile`.
-   - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.fa/.fasta` => FASTA).
+   - Output format is inferred from filename extension (`.gb/.gbk` => GenBank, `.embl/.emb` => EMBL, `.fa/.fasta` => FASTA).
+   - GenBank and EMBL preserve the same annotated nucleotide record; FASTA is
+     sequence-only. See [format parity and limits](sequence_format_parity.md).
 22. Export SVG
    - Exports the active sequence map via engine `RenderSequenceSvg`.
    - In linear mode, the SVG now honors the active bp viewport/crop instead of

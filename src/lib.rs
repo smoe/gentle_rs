@@ -25,6 +25,8 @@ pub mod agent_transport;
 pub mod allele_hash_screen;
 /// Amino-acid lookup tables and codon translation helpers.
 pub mod amino_acids;
+/// Shared annotated nucleotide serialization for GenBank and EMBL.
+pub mod annotated_sequence_io;
 /// Top-level GUI application wiring and event loop state.
 #[cfg(feature = "desktop-gui")]
 pub mod app;

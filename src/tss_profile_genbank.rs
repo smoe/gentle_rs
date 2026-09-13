@@ -46,24 +46,12 @@ fn span_note(span: &TssContextSpan) -> String {
     )
 }
 
-fn canonical_locus_line(name: &str, length: usize) -> Result<String, EngineError> {
-    if !name.is_ascii() || name.len() > 16 {
-        return Err(invalid(
-            "GenBank LOCUS name must be ASCII and no longer than 16 characters",
-        ));
-    }
-    Ok(format!(
-        "LOCUS       {name:<16} {length:>11} bp    {:<7} {:<8} {:>3} {}\n",
-        "DNA", "linear", "UNK", "01-JAN-1970"
-    ))
-}
-
-pub(super) fn bytes(
+fn annotated_record(
     report: &TssProfileReport,
     window: &TssProfileWindow,
-) -> Result<Vec<u8>, EngineError> {
-    let context = window.detail_context.as_ref().ok_or_else(|| invalid("GenBank export requires verified TSS context; supply --context-manifest for every gene"))?;
-    let bases = context.window_sequence.as_deref().ok_or_else(|| invalid("Legacy context has no stored bases; enrich the original score-only report with --context-manifest before GenBank export"))?;
+) -> Result<Seq, EngineError> {
+    let context = window.detail_context.as_ref().ok_or_else(|| invalid("Annotated sequence export requires verified TSS context; supply --context-manifest for every gene"))?;
+    let bases = context.window_sequence.as_deref().ok_or_else(|| invalid("Legacy context has no stored bases; enrich the original score-only report with --context-manifest before annotated sequence export"))?;
     let r = &window.record;
     let g = &r.geometry;
     if Some(bases.len()) != g.length()
@@ -73,7 +61,7 @@ pub(super) fn bytes(
         || context.geometry != *g
     {
         return Err(invalid(
-            "GenBank bases or context do not match the exact TSS sequence binding",
+            "Annotated sequence bases or context do not match the exact TSS sequence binding",
         ));
     }
     let mut seq = Seq::empty();
@@ -216,16 +204,23 @@ pub(super) fn bytes(
             }
         }
     }
-    let mut bytes = Vec::new();
-    gb_io::writer::write(&mut bytes, &seq)
-        .map_err(|e| io_error("write annotated TSS GenBank", e))?;
-    let first_newline = bytes
-        .iter()
-        .position(|byte| *byte == b'\n')
-        .ok_or_else(|| invalid("GenBank writer omitted the LOCUS line terminator"))?;
-    let locus = canonical_locus_line(seq.name.as_deref().unwrap_or("UNTITLED"), bases.len())?;
-    bytes.splice(..=first_newline, locus.bytes());
-    Ok(bytes)
+    Ok(seq)
+}
+
+pub(super) fn bytes(
+    report: &TssProfileReport,
+    window: &TssProfileWindow,
+) -> Result<Vec<u8>, EngineError> {
+    crate::annotated_sequence_io::genbank_bytes(&annotated_record(report, window)?)
+        .map_err(|e| invalid(&format!("Could not serialize annotated GenBank: {e}")))
+}
+
+pub(super) fn embl_bytes(
+    report: &TssProfileReport,
+    window: &TssProfileWindow,
+) -> Result<Vec<u8>, EngineError> {
+    crate::annotated_sequence_io::embl_bytes(&annotated_record(report, window)?)
+        .map_err(|e| invalid(&format!("Could not serialize annotated EMBL: {e}")))
 }
 
 #[cfg(test)]
@@ -277,6 +272,167 @@ mod tests {
             });
         }
         report
+    }
+
+    #[test]
+    #[ignore = "explicit temporary TSS bundle for optional independent-reader verification"]
+    fn write_annotated_format_parity_tss_interop_example() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        let output = root.join("export");
+        let request = ExportTssProfilesRequest {
+            output_dir: output.to_str().unwrap().into(),
+            context_manifest: None,
+            rendering: Default::default(),
+            formats: vec![
+                TssExportFormat::Svg,
+                TssExportFormat::Genbank,
+                TssExportFormat::Embl,
+            ],
+        };
+        export_tss_profiles(&fixture(), &request).unwrap();
+        read_and_verify_tss_profile_receipt(&output).unwrap();
+        let _ = temp.keep();
+        println!(
+            "Synthetic TSS interoperability bundle: {}",
+            output.display()
+        );
+    }
+
+    #[test]
+    fn annotated_format_parity_tss_preserves_bound_features_on_both_strands() {
+        let report = fixture();
+        let before = serde_json::to_vec(&report).unwrap();
+        for window in &report.windows {
+            let gb = bytes(&report, window).unwrap();
+            let gb = gb_io::reader::SeqReader::new(gb.as_slice())
+                .next()
+                .unwrap()
+                .unwrap();
+            let embl = embl_bytes(&report, window).unwrap();
+            assert_eq!(embl, embl_bytes(&report, window).unwrap());
+            let parsed =
+                crate::dna_sequence::parse_embl_records(std::str::from_utf8(&embl).unwrap())
+                    .unwrap()
+                    .remove(0);
+            assert_eq!(parsed.seq, gb.seq.to_ascii_uppercase());
+            assert_eq!(parsed.name, gb.name);
+            assert_eq!(parsed.topology, gb.topology);
+            assert_eq!(
+                parsed.comments,
+                annotated_record(&report, window).unwrap().comments
+            );
+            // gb-io retains presentation newlines, even inside long digest tokens.
+            let unwrapped = |comments: &[String]| {
+                comments
+                    .iter()
+                    .map(|s| s.chars().filter(|c| !c.is_whitespace()).collect::<String>())
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(unwrapped(&parsed.comments), unwrapped(&gb.comments));
+            assert_eq!(parsed.features.len(), gb.features.len());
+            for (embl, genbank) in parsed.features.iter().zip(&gb.features) {
+                assert_eq!(embl.kind, genbank.kind);
+                assert_eq!(embl.location, genbank.location);
+                let qualifier_values = |feature: &Feature| {
+                    feature
+                        .qualifiers
+                        .iter()
+                        .map(|(key, value)| {
+                            (
+                                key.clone(),
+                                value.as_ref().map(|s| {
+                                    s.chars().filter(|c| !c.is_whitespace()).collect::<String>()
+                                }),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(qualifier_values(embl), qualifier_values(genbank));
+            }
+        }
+        assert_eq!(before, serde_json::to_vec(&report).unwrap());
+    }
+
+    #[test]
+    fn annotated_format_parity_tss_export_receipt_rejects_rehashed_edits() {
+        let report = fixture();
+        let temp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(temp.path()).unwrap();
+        for (case, formats) in [
+            vec![TssExportFormat::Genbank],
+            vec![TssExportFormat::Embl],
+            vec![TssExportFormat::Genbank, TssExportFormat::Embl],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let output = root.join(format!("formats-{case}"));
+            let request = ExportTssProfilesRequest {
+                output_dir: output.to_str().unwrap().into(),
+                context_manifest: None,
+                rendering: Default::default(),
+                formats,
+            };
+            let receipt = export_tss_profiles(&report, &request).unwrap();
+            assert_eq!(
+                receipt
+                    .outputs
+                    .keys()
+                    .filter(|n| n.ends_with(".embl"))
+                    .count(),
+                if request.formats.contains(&TssExportFormat::Embl) {
+                    report.windows.len()
+                } else {
+                    0
+                }
+            );
+            assert!(receipt.render_metadata.is_empty());
+            read_and_verify_tss_profile_receipt(&output).unwrap();
+            let file = receipt
+                .outputs
+                .keys()
+                .find(|n| n.ends_with(".embl") || n.ends_with(".gb"))
+                .unwrap();
+            let content = fs::read_to_string(output.join(file))
+                .unwrap()
+                .replace("raw_score=4", "raw_score=9");
+            assert_ne!(content.as_bytes(), fs::read(output.join(file)).unwrap());
+            fs::write(output.join(file), &content).unwrap();
+            assert!(read_and_verify_tss_profile_receipt(&output).is_err());
+            // A matching file hash alone cannot bless changed scientific annotations.
+            let mut rebound: serde_json::Value =
+                serde_json::from_slice(&fs::read(output.join("receipt.json")).unwrap()).unwrap();
+            let mut index: serde_json::Value =
+                serde_json::from_slice(&fs::read(output.join("index.json")).unwrap()).unwrap();
+            index["outputs"][file] = serde_json::json!(sha256_hex_bytes(content.as_bytes()));
+            let index = serde_json::to_vec(&index).unwrap();
+            fs::write(output.join("index.json"), &index).unwrap();
+            rebound["outputs"][file] = serde_json::json!(sha256_hex_bytes(content.as_bytes()));
+            rebound["outputs"]["index.json"] = serde_json::json!(sha256_hex_bytes(&index));
+            fs::write(
+                output.join("receipt.json"),
+                serde_json::to_vec_pretty(&rebound).unwrap(),
+            )
+            .unwrap();
+            let error = read_and_verify_tss_profile_receipt(&output).unwrap_err();
+            assert!(
+                error.message.contains("exact annotated projection"),
+                "{error:?}"
+            );
+            let mut missing = report.clone();
+            missing.windows[0]
+                .detail_context
+                .as_mut()
+                .unwrap()
+                .window_sequence = None;
+            let invalid = ExportTssProfilesRequest {
+                output_dir: output.with_extension("invalid").to_str().unwrap().into(),
+                ..request
+            };
+            assert!(export_tss_profiles(&missing, &invalid).is_err());
+            assert!(!Path::new(&invalid.output_dir).exists());
+        }
     }
 
     #[test]

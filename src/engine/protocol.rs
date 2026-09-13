@@ -6645,6 +6645,8 @@ pub enum LigationProtocol {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExportFormat {
     GenBank,
+    #[serde(alias = "EMBL", alias = "embl")]
+    Embl,
     Fasta,
 }
 

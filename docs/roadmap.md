@@ -70,7 +70,7 @@ Release cut line:
 - Packaging needs CI proof; [tag reconciliation](release.md#candidate-approval) needs explicit owner authorization.
 
 Pre-release finishing scope:
-- Glen reports five-gene export QC at `d978b0c4` with LOCUS-column fix `d37bd427`; recheck the corrected [selected GenBank downloads](integrated_locus_tss_profiles.md), receipts and raw signal/motif provenance at the final candidate. Do not replace his September 13 acceptance with synthetic-only evidence.
+- Glen reports five-gene export QC at `d978b0c4` with LOCUS-column fix `d37bd427`; recheck the [selected annotated downloads](integrated_locus_tss_profiles.md), receipts and raw signal/motif provenance at the final candidate. Before offering EMBL, re-export into fresh directories and independently compare GenBank/EMBL/FASTA sequences and annotations. [Synthetic format-parity coverage](sequence_format_parity.md) does not replace his September 13 real-data acceptance.
 - Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation; obtain canonical
   CD44/TGFB1/SERPINE1 region sets before real-candidate analysis; verify individual overlapping TSS bands, zero-position peaks and supplied detail context, never infer missing ROIs.
 - Repeat the copied-state IRF9/Q00978 acceptance and require the one-assay panel
