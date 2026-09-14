@@ -13090,34 +13090,45 @@ where
         let is_transcript_row = feature_kind == "transcript" || feature_kind == "mrna";
         let row_gene_id = pick_transcript_gene_id(&attrs, is_transcript_row);
         let row_gene_name = pick_transcript_gene_name(&attrs);
-        let transcript_id =
-            pick_annotation_attribute(&attrs, &["transcript_id", "transcript", "id", "name"])
-                .map(|v| normalize_transcript_id(&v))
-                .filter(|v| !v.is_empty())
-                .or_else(|| {
-                    if feature_kind == "transcript" || feature_kind == "mrna" {
-                        Some(format!(
-                            "{}:{}-{}",
-                            row_gene_id
-                                .as_deref()
-                                .or(row_gene_name.as_deref())
-                                .unwrap_or("transcript"),
-                            row_start,
-                            row_end
-                        ))
-                    } else {
-                        None
-                    }
-                });
-        let Some(transcript_id) = transcript_id else {
+        let transcript_group_id = if is_transcript_row {
+            pick_annotation_attribute(&attrs, &["id", "transcript_id", "transcript", "name"])
+        } else {
+            pick_annotation_attribute(&attrs, &["parent", "transcript_id", "transcript"])
+        }
+        .map(|value| normalize_transcript_id(&value))
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            is_transcript_row.then(|| {
+                format!(
+                    "{}:{}-{}",
+                    row_gene_id
+                        .as_deref()
+                        .or(row_gene_name.as_deref())
+                        .unwrap_or("transcript"),
+                    row_start,
+                    row_end
+                )
+            })
+        });
+        let Some(transcript_group_id) = transcript_group_id else {
             continue;
         };
+        let transcript_id =
+            pick_annotation_attribute(&attrs, &["transcript_id", "transcript", "name", "id"])
+                .map(|value| normalize_transcript_id(&value))
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| transcript_group_id.clone());
         let strand = cols[6].chars().next().and_then(|c| match c {
             '+' | '-' => Some(c),
             _ => None,
         });
+        // GFF3 transcript IDs are relationship identifiers, while
+        // transcript_id/Name carry the public accession. NCBI may align the
+        // same accession to multiple genomic sequences, so neither accession
+        // nor relationship ID is globally unique without the sequence name.
+        let transcript_key = format!("{chromosome}\u{1f}{transcript_group_id}");
         let entry = transcripts
-            .entry(transcript_id.clone())
+            .entry(transcript_key)
             .or_insert_with(|| TranscriptAccum {
                 chromosome: chromosome.to_string(),
                 transcript_id: transcript_id.clone(),
@@ -13139,6 +13150,7 @@ where
             entry.strand = strand;
         }
         if feature_kind == "transcript" || feature_kind == "mrna" {
+            entry.transcript_id = transcript_id;
             entry.transcript_start_1based = Some(row_start);
             entry.transcript_end_1based = Some(row_end);
         } else if feature_kind == "exon" {
@@ -15426,6 +15438,9 @@ mod tests {
                 "##gff-version 3\n",
                 "NC_000011.10\tBestRefSeq\tmRNA\t35139171\t35232402\t.\t+\t.\tID=rna-NM_001440324.1;Parent=gene-CD44;Dbxref=GeneID:960,GenBank:NM_001440324.1;Name=NM_001440324.1;gene=CD44;transcript_id=NM_001440324.1\n",
                 "NC_000011.10\tBestRefSeq\texon\t35139171\t35139370\t.\t+\t.\tID=exon-NM_001440324.1-1;Parent=rna-NM_001440324.1;Dbxref=GeneID:960,GenBank:NM_001440324.1;gene=CD44;transcript_id=NM_001440324.1\n",
+                "NC_000011.10\tBestRefSeq\tCDS\t35139200\t35139300\t.\t+\t0\tID=cds-NP_TEST.1;Parent=rna-NM_001440324.1;Dbxref=GeneID:960,GenBank:NP_TEST.1;gene=CD44\n",
+                "NW_999999999.1\tBestRefSeq\tmRNA\t1\t150\t.\t+\t.\tID=rna-NM_001440324.1-2;Parent=gene-CD44-2;Dbxref=GeneID:960,GenBank:NM_001440324.1;Name=NM_001440324.1;gene=CD44;transcript_id=NM_001440324.1\n",
+                "NW_999999999.1\tBestRefSeq\texon\t1\t150\t.\t+\t.\tID=exon-NM_001440324.1-2-1;Parent=rna-NM_001440324.1-2;Dbxref=GeneID:960,GenBank:NM_001440324.1;gene=CD44;transcript_id=NM_001440324.1\n",
             ),
         )
         .unwrap();
@@ -15435,11 +15450,15 @@ mod tests {
             |_done, _total| true,
         )
         .unwrap();
-        assert_eq!(records.len(), 1);
+        assert_eq!(records.len(), 2);
         assert_eq!(records[0].transcript_id, "NM_001440324.1");
         assert_eq!(records[0].gene_id.as_deref(), Some("gene-CD44"));
         assert_eq!(records[0].gene_name.as_deref(), Some("CD44"));
         assert_eq!(records[0].exons_1based, vec![(35139171, 35139370)]);
+        assert_eq!(records[0].cds_1based, vec![(35139200, 35139300)]);
+        assert_eq!(records[1].chromosome, "NW_999999999.1");
+        assert_eq!(records[1].transcript_id, "NM_001440324.1");
+        assert_eq!(records[1].exons_1based, vec![(1, 150)]);
     }
 
     #[test]
