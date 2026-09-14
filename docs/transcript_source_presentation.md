@@ -128,3 +128,19 @@ are not overwritten; failed publication leaves no success receipt.
 
 Real-data regeneration and scientific acceptance remain Glen's task. Tests use
 hand-crafted plus/minus records and temporary annotation files, not private data.
+
+## Standalone Comparison Review
+
+The integrated engine-owned presentation above remains the supported route.
+The separate nearest-start comparison producer/page proposed in Glen's
+`38d95881` branch is not integrated: its numeric `NC_` accession conversion
+equates different accession versions without an annotation-bound mapping, and
+its transcript-index hash does not verify that the index derives from the
+declared annotation. A future standalone page should consume the shared
+presentation rather than recompute the biological comparison in Python, retain
+exact source identities, and verify any derived-index binding before publication.
+
+The branch's independent prepared-genome parser/progress corrections are
+integrated separately. Existing prepared transcript indexes require explicit
+`Reindex Using Cached Files` to receive the parser corrections; old reports and
+public bundles are not automatically regenerated.

@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-09-14 - Prepared NCBI Transcript Joins And Indexing Progress
+
+- Integrate Glen's independent `edc776bc`, `f66aff41` and `a6916702` fixes:
+  distinguish NCBI gene symbols from transcript names, group exon/CDS records
+  by genomic sequence plus GFF3 relationship ID, and retain separate alignments
+  of the same public accession. FASTA and tabular annotation indexing now
+  updates progress at start/end and 8 MiB line-boundary checkpoints rather than
+  every short line; cancellation uses those same byte-based checkpoints.
+- Harden the imported joins for shared GFF3 `Parent` lists and child-before-mRNA
+  input, retaining each parent's exon/CDS geometry and authoritative transcript
+  identity. Child feature IDs/names and RNA parent IDs are not gene/accession
+  substitutes. Add synthetic order, shared-parent, identity and cancellation
+  regressions alongside the existing prepared-index tests.
+- Existing prepared indexes require explicit `Reindex Using Cached Files`;
+  reference files, retained reports and public scientific bundles are not
+  silently refreshed. Keep the integrated source-coherent presentation; defer
+  Glen's standalone comparison/page commits pending shared-engine reuse and
+  stronger accession/index provenance. See the
+  [integration decision](transcript_source_presentation.md#standalone-comparison-review).
+
 ## 2026-09-14 - Genome Discovery And Progress Ownership
 
 - Correct Ensembl vertebrate discovery to use `pub/current/fasta/` and

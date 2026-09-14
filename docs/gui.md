@@ -5385,6 +5385,10 @@ Recommended flow:
    - the confirmation dialog for prepared genomes offers two explicit actions:
      - `Reindex Using Cached Files`
      - `Remove Cached Files + Re-download`
+   - after updating GENtle for NCBI GFF3 transcript-identity/parent-join fixes,
+     use `Reindex Using Cached Files` for affected prepared references. An
+     ordinary prepare can reuse the old transcript index; the application
+     update does not silently rebuild it or rewrite retained scientific reports
    - when `Reindex Selected...` is launched from the floating prepare window,
      that confirmation prompt stays in the same window stack instead of opening
      behind the specialist window
@@ -5404,6 +5408,10 @@ Recommended flow:
      launch reindex/refresh
    - byte-based active steps now show `bytes: X / Y • ETA ...` once enough
      progress has been observed to make a stable estimate
+   - FASTA and tabular gene/transcript indexing report progress and check
+     cancellation at start, completion, and line boundaries after at least
+     another 8 MiB of input. This avoids a progress update for every short line;
+     it is a byte-based checkpoint, not a wall-clock cancellation guarantee
    - completed rows stay checked until you close the prepare window or start a
      new prepare/reindex/refresh run
    - after a successful prepare/reindex/refresh, the full checklist remains

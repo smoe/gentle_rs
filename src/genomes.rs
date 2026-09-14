@@ -19,6 +19,8 @@
 //! - Optionally build BLAST databases and record executable/index metadata.
 //! - Persist install manifest fields (sources, checksums, paths, timestamps,
 //!   source types) so provenance and reuse decisions are auditable.
+//! - FASTA/tabular index progress and cancellation use start/end callbacks and
+//!   line-boundary checkpoints every 8 MiB, not per-line or wall-clock updates.
 //!
 //! Annotation parsing behavior:
 //! - GenBank remains the canonical annotation import path.
@@ -27,6 +29,8 @@
 //!   consumed by engine operations.
 //! - Malformed annotation lines are skipped with bounded warning summaries
 //!   (including capped file/line context) rather than causing silent drift.
+//! - GFF3 transcript joins use sequence + relationship ID, not public accession;
+//!   shared child Parent lists attach geometry to each transcript independently.
 //!
 //! Extraction and BLAST contracts:
 //! - Region/gene extraction is coordinate-driven and deterministic by prepared
@@ -13113,11 +13117,15 @@ where
         let Some(transcript_group_id) = transcript_group_id else {
             continue;
         };
-        let transcript_id =
-            pick_annotation_attribute(&attrs, &["transcript_id", "transcript", "name", "id"])
-                .map(|value| normalize_transcript_id(&value))
-                .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| transcript_group_id.clone());
+        let accession_keys: &[&str] = if is_transcript_row {
+            &["transcript_id", "transcript", "name", "id"]
+        } else {
+            // Name/ID on an exon or CDS identifies that child, not its transcript.
+            &["transcript_id", "transcript"]
+        };
+        let transcript_id = pick_annotation_attribute(&attrs, accession_keys)
+            .map(|value| normalize_transcript_id(&value))
+            .filter(|value| !value.is_empty());
         let strand = cols[6].chars().next().and_then(|c| match c {
             '+' | '-' => Some(c),
             _ => None,
@@ -13126,37 +13134,57 @@ where
         // transcript_id/Name carry the public accession. NCBI may align the
         // same accession to multiple genomic sequences, so neither accession
         // nor relationship ID is globally unique without the sequence name.
-        let transcript_key = format!("{chromosome}\u{1f}{transcript_group_id}");
-        let entry = transcripts
-            .entry(transcript_key)
-            .or_insert_with(|| TranscriptAccum {
-                chromosome: chromosome.to_string(),
-                transcript_id: transcript_id.clone(),
-                gene_id: row_gene_id.clone(),
-                gene_name: row_gene_name.clone(),
-                strand,
-                transcript_start_1based: None,
-                transcript_end_1based: None,
-                exons_1based: vec![],
-                cds_1based: vec![],
-            });
-        if entry.gene_id.is_none() {
-            entry.gene_id = row_gene_id.clone();
-        }
-        if entry.gene_name.is_none() {
-            entry.gene_name = row_gene_name.clone();
-        }
-        if entry.strand.is_none() {
-            entry.strand = strand;
-        }
-        if feature_kind == "transcript" || feature_kind == "mrna" {
-            entry.transcript_id = transcript_id;
-            entry.transcript_start_1based = Some(row_start);
-            entry.transcript_end_1based = Some(row_end);
-        } else if feature_kind == "exon" {
-            entry.exons_1based.push((row_start, row_end));
+        let mut attach_to_transcript = |group_id: &str| {
+            let transcript_key = format!("{chromosome}\u{1f}{group_id}");
+            let transcript_id = transcript_id.as_deref().unwrap_or(group_id);
+            let entry = transcripts
+                .entry(transcript_key)
+                .or_insert_with(|| TranscriptAccum {
+                    chromosome: chromosome.to_string(),
+                    transcript_id: transcript_id.to_string(),
+                    gene_id: row_gene_id.clone(),
+                    gene_name: row_gene_name.clone(),
+                    strand,
+                    transcript_start_1based: None,
+                    transcript_end_1based: None,
+                    exons_1based: vec![],
+                    cds_1based: vec![],
+                });
+            // Prefer the transcript's own metadata regardless of whether its
+            // children appeared first and supplied a less specific fallback.
+            if entry.gene_id.is_none() || (is_transcript_row && row_gene_id.is_some()) {
+                entry.gene_id = row_gene_id.clone();
+            }
+            if entry.gene_name.is_none() || (is_transcript_row && row_gene_name.is_some()) {
+                entry.gene_name = row_gene_name.clone();
+            }
+            if entry.strand.is_none() {
+                entry.strand = strand;
+            }
+            if is_transcript_row {
+                entry.transcript_id = transcript_id.to_string();
+                entry.transcript_start_1based = Some(row_start);
+                entry.transcript_end_1based = Some(row_end);
+            } else if feature_kind == "exon" {
+                entry.exons_1based.push((row_start, row_end));
+            } else {
+                entry.cds_1based.push((row_start, row_end));
+            }
+        };
+        if !is_transcript_row
+            && attrs
+                .get("parent")
+                .is_some_and(|value| !value.trim().is_empty())
+        {
+            for parent in transcript_group_id
+                .split(',')
+                .map(str::trim)
+                .filter(|parent| !parent.is_empty())
+            {
+                attach_to_transcript(parent);
+            }
         } else {
-            entry.cds_1based.push((row_start, row_end));
+            attach_to_transcript(&transcript_group_id);
         }
     }
     if !on_progress(total_bytes.unwrap_or(bytes_read_total), total_bytes) {
@@ -14016,11 +14044,11 @@ fn pick_transcript_gene_id(
     is_transcript_row: bool,
 ) -> Option<String> {
     // A top-level NCBI mRNA points at gene-* through Parent. Child exon/CDS
-    // rows instead point at rna-* and must prefer their explicit gene field.
+    // rows instead point at rna-*; those relationship IDs are never gene IDs.
     let keys: &[&str] = if is_transcript_row {
         &["gene_id", "parent", "gene", "geneid", "locus_tag"]
     } else {
-        &["gene_id", "gene", "geneid", "locus_tag", "parent"]
+        &["gene_id", "gene", "geneid", "locus_tag"]
     };
     pick_annotation_attribute(attrs, keys)
         .or_else(|| pick_gene_id_from_dbxref(attrs))
@@ -15429,7 +15457,121 @@ mod tests {
     }
 
     #[test]
+    fn test_ncbi_gff_children_before_mrna_keep_parent_gene_identity() {
+        // Synthetic NCBI-style relationships; record order must not change identity.
+        let td = tempdir().unwrap();
+        let annotation = td.path().join("child-first.gff3");
+        let parent =
+            "chr1\tsrc\tmRNA\t1\t20\t.\t+\t.\tID=rna-A;Parent=gene-42;Name=NM_SYN.1;gene=SYN\n";
+        let exon = "chr1\tsrc\texon\t1\t20\t.\t+\t.\tID=exon-A;Parent=rna-A;gene=SYN\n";
+        for lines in [[parent, exon], [exon, parent]] {
+            fs::write(&annotation, lines.concat()).unwrap();
+            let records =
+                parse_tabular_annotation_transcript_records_with_progress(&annotation, |_, _| true)
+                    .unwrap();
+            assert_eq!(records.len(), 1);
+            assert_eq!(records[0].transcript_id, "NM_SYN.1");
+            assert_eq!(records[0].gene_id.as_deref(), Some("gene-42"));
+            assert_eq!(records[0].gene_name.as_deref(), Some("SYN"));
+        }
+    }
+
+    #[test]
+    fn test_gff_shared_children_join_each_parent_without_phantom_transcripts() {
+        // Hand-crafted GFF3 shared exon/CDS rows, with transcript accessions
+        // intentionally different from the relationship IDs and child IDs.
+        let td = tempdir().unwrap();
+        let annotation = td.path().join("shared.gff3");
+        let parents = concat!(
+            "chr1\tsrc\tmRNA\t1\t20\t.\t-\t.\tID=rna-A;Parent=gene-42;Name=NM_A.1;gene=SYN\n",
+            "chr1\tsrc\tmRNA\t1\t20\t.\t-\t.\tID=rna-B;Parent=gene-42;Name=NM_B.1;gene=SYN\n",
+        );
+        let children = concat!(
+            "chr1\tsrc\texon\t1\t5\t.\t-\t.\tID=exon-shared-1;Parent=rna-A,rna-B;gene=SYN\n",
+            "chr1\tsrc\texon\t12\t20\t.\t-\t.\tID=exon-shared-2;Parent=rna-A,rna-B;gene=SYN\n",
+            "chr1\tsrc\tCDS\t12\t18\t.\t-\t0\tID=cds-shared;Parent=rna-A,rna-B;gene=SYN\n",
+        );
+        for lines in [[parents, children], [children, parents]] {
+            fs::write(&annotation, lines.concat()).unwrap();
+            let records =
+                parse_tabular_annotation_transcript_records_with_progress(&annotation, |_, _| true)
+                    .unwrap();
+            assert_eq!(records.len(), 2, "Parent lists are not transcript IDs");
+            for (record, id) in records.iter().zip(["NM_A.1", "NM_B.1"]) {
+                assert_eq!(record.transcript_id, id);
+                assert_eq!(record.gene_id.as_deref(), Some("gene-42"));
+                assert_eq!(record.exons_1based, vec![(1, 5), (12, 20)]);
+                assert_eq!(record.cds_1based, vec![(12, 18)]);
+                assert_eq!(record.strand, Some('-'));
+            }
+        }
+    }
+
+    #[test]
+    fn test_ncbi_gff_child_ids_do_not_replace_missing_transcript_or_gene_metadata() {
+        // Synthetic partial annotation: the parent mRNA row is unavailable.
+        let td = tempdir().unwrap();
+        let annotation = td.path().join("children-only.gff3");
+        fs::write(
+            &annotation,
+            concat!(
+                "chr1\tsrc\texon\t1\t5\t.\t+\t.\tID=exon-A;Name=child-name;Parent=rna-A;Dbxref=GeneID:42\n",
+                "chr1\tsrc\texon\t12\t20\t.\t+\t.\tID=exon-B;Parent=rna-A;Dbxref=GeneID:42\n",
+                "chr1\tsrc\texon\t1\t5\t.\t+\t.\tID=exon-C;Parent=rna-C\n",
+            ),
+        )
+        .unwrap();
+        let records =
+            parse_tabular_annotation_transcript_records_with_progress(&annotation, |_, _| true)
+                .unwrap();
+        assert_eq!(records.len(), 2);
+        let record = records
+            .iter()
+            .find(|record| record.transcript_id == "rna-A")
+            .unwrap();
+        assert_eq!(record.gene_id.as_deref(), Some("42"));
+        assert!(record.gene_name.is_none());
+        assert_eq!(record.exons_1based, vec![(1, 5), (12, 20)]);
+        let unknown = records
+            .iter()
+            .find(|record| record.transcript_id == "rna-C")
+            .unwrap();
+        assert!(unknown.gene_id.is_none());
+        assert!(unknown.gene_name.is_none());
+    }
+
+    #[test]
+    fn test_ncbi_gff_repeated_accession_alignments_remain_distinct_on_same_sequence() {
+        // Hand-crafted NCBI-style alternative alignments, not biological evidence.
+        let td = tempdir().unwrap();
+        let annotation = td.path().join("repeated.gff3");
+        fs::write(
+            &annotation,
+            concat!(
+                "chr1\tsrc\tmRNA\t1\t10\t.\t+\t.\tID=rna-A;Parent=gene-SYN;Name=NM_SYN.1;gene=SYN\n",
+                "chr1\tsrc\texon\t2\t8\t.\t+\t.\tParent=rna-A\n",
+                "chr1\tsrc\tmRNA\t31\t40\t.\t+\t.\tID=rna-A-2;Parent=gene-SYN;Name=NM_SYN.1;gene=SYN\n",
+                "chr1\tsrc\texon\t32\t38\t.\t+\t.\tParent=rna-A-2\n",
+            ),
+        )
+        .unwrap();
+        let records =
+            parse_tabular_annotation_transcript_records_with_progress(&annotation, |_, _| true)
+                .unwrap();
+        assert_eq!(records.len(), 2);
+        for record in &records {
+            assert_eq!(record.transcript_id, "NM_SYN.1");
+            assert_eq!(record.gene_id.as_deref(), Some("gene-SYN"));
+            assert_eq!(record.gene_name.as_deref(), Some("SYN"));
+        }
+        assert_eq!(records[0].exons_1based, vec![(2, 8)]);
+        assert_eq!(records[1].exons_1based, vec![(32, 38)]);
+    }
+
+    #[test]
     fn test_ncbi_gff_transcript_uses_gene_symbol_not_transcript_name() {
+        // Synthetic NCBI-style fixture: CD44-like fields plus a fictitious
+        // alternate-sequence alignment. It is recreated here for parser tests.
         let td = tempdir().unwrap();
         let annotation = td.path().join("ncbi.gff");
         fs::write(
@@ -17068,6 +17210,55 @@ mod tests {
             attrs.get("dbxref").map(String::as_str),
             Some("GeneID:12345,HGNC:HGNC:5")
         );
+    }
+
+    #[test]
+    fn preparation_index_progress_cancels_at_start_checkpoint_and_completion() {
+        // Synthetic input slightly above 8 MiB: exercise a real bounded callback,
+        // not only the start/completion callbacks used by the small-file fixture.
+        let td = tempdir().unwrap();
+        let fasta = td.path().join("bounded.fa");
+        let fai = td.path().join("bounded.fa.fai");
+        let mut bytes = b">chr1\n".to_vec();
+        bytes.extend_from_slice("ACGTACGTACGTACGT\n".repeat(500_000).as_bytes());
+        fs::write(&fasta, &bytes).unwrap();
+        let annotation = td.path().join("bounded.gff3");
+        let mut annotation_bytes = b"##gff-version 3\n".to_vec();
+        annotation_bytes.extend_from_slice("# synthetic padding\n".repeat(450_000).as_bytes());
+        annotation_bytes.extend_from_slice(b"chr1\tsrc\tgene\t1\t10\t.\t+\t.\tID=gene-42;Name=SYN\nchr1\tsrc\tmRNA\t1\t10\t.\t+\t.\tID=rna-A;Parent=gene-42;Name=NM_SYN.1;gene=SYN\n");
+        fs::write(&annotation, &annotation_bytes).unwrap();
+        for cancel_call in 1..=3 {
+            for kind in ["fasta", "genes", "transcripts"] {
+                let mut observed = Vec::new();
+                let mut callback = |done, total| {
+                    observed.push((done, total));
+                    observed.len() < cancel_call
+                };
+                let result = match kind {
+                    "fasta" => build_fasta_index_with_progress(&fasta, &fai, &mut callback),
+                    "genes" => parse_tabular_annotation_gene_records_with_progress(
+                        &annotation,
+                        &mut callback,
+                    )
+                    .map(|_| ()),
+                    _ => parse_tabular_annotation_transcript_records_with_progress(
+                        &annotation,
+                        &mut callback,
+                    )
+                    .map(|_| ()),
+                };
+                assert!(result.unwrap_err().contains("cancelled"), "{kind}");
+                assert_eq!(observed.len(), cancel_call, "{kind}");
+                assert_eq!(observed[0].0, 0);
+                if cancel_call >= 2 {
+                    assert!(observed[1].0 >= 8 * 1024 * 1024);
+                    assert!(observed[1].0 < observed[1].1.unwrap());
+                }
+                if cancel_call == 3 {
+                    assert_eq!(Some(observed[2].0), observed[2].1);
+                }
+            }
+        }
     }
 
     #[test]
