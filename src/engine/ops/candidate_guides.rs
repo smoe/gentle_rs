@@ -265,6 +265,42 @@ impl GentleEngine {
         Ok(())
     }
 
+    /// Shared cheap anchor validation for candidate execution and routine preflight.
+    pub(crate) fn candidate_anchor_positions(
+        dna: &DNAsequence,
+        anchor_a: &SequenceAnchor,
+        anchor_b: &SequenceAnchor,
+        length_bp: usize,
+    ) -> Result<(usize, usize), EngineError> {
+        let anchor_a_pos = Self::resolve_sequence_anchor_position(dna, anchor_a, "anchor_a")?;
+        let anchor_b_pos = Self::resolve_sequence_anchor_position(dna, anchor_b, "anchor_b")?;
+        if anchor_a_pos == anchor_b_pos {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "GenerateCandidateSetBetweenAnchors requires distinct anchor positions"
+                    .to_string(),
+
+                cause_chain: vec![],
+            });
+        }
+
+        let left = anchor_a_pos.min(anchor_b_pos);
+        let right = anchor_a_pos.max(anchor_b_pos);
+        let span = right.saturating_sub(left);
+        if span < length_bp {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: format!(
+                    "Anchor span {} bp is shorter than requested candidate length {} bp",
+                    span, length_bp
+                ),
+
+                cause_chain: vec![],
+            });
+        }
+        Ok((anchor_a_pos, anchor_b_pos))
+    }
+
     pub(super) fn op_generate_candidate_set_between_anchors(
         &mut self,
         set_name: String,
@@ -315,32 +351,11 @@ impl GentleEngine {
             })?;
         let is_circular = dna.is_circular();
 
-        let anchor_a_pos = Self::resolve_sequence_anchor_position(dna, &anchor_a, "anchor_a")?;
-        let anchor_b_pos = Self::resolve_sequence_anchor_position(dna, &anchor_b, "anchor_b")?;
-        if anchor_a_pos == anchor_b_pos {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: "GenerateCandidateSetBetweenAnchors requires distinct anchor positions"
-                    .to_string(),
-
-                cause_chain: vec![],
-            });
-        }
-
+        let (anchor_a_pos, anchor_b_pos) =
+            Self::candidate_anchor_positions(dna, &anchor_a, &anchor_b, length_bp)?;
         let left = anchor_a_pos.min(anchor_b_pos);
         let right = anchor_a_pos.max(anchor_b_pos);
         let span = right.saturating_sub(left);
-        if span < length_bp {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Anchor span {} bp is shorter than requested candidate length {} bp",
-                    span, length_bp
-                ),
-
-                cause_chain: vec![],
-            });
-        }
 
         let mut candidates = vec![];
         let mut considered = 0usize;

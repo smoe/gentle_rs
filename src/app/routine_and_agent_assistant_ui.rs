@@ -4385,6 +4385,12 @@ impl GENtleApp {
                 }
                 self.render_routine_assistant_macro_suggestions(ui);
                 self.render_routine_assistant_gibson_linearization_notice(ui, &routine);
+                if grna_routine_ui::GrnaRoutine::ALL
+                    .iter()
+                    .any(|r| r.template() == routine.template_name)
+                {
+                    ui.small("Candidate scans are generic preselection, not PAM-aware design or specificity confirmation. Anchor positions are zero-based boundaries (0..sequence length); the right boundary is excluded.");
+                }
                 ui.separator();
                 egui::Grid::new("routine_assistant_bindings_grid")
                     .striped(true)
@@ -4425,8 +4431,28 @@ impl GENtleApp {
                                 .get(port_id)
                                 .cloned()
                                 .unwrap_or_default();
-                            let edit_resp = ui.text_edit_singleline(&mut entry);
-                            if edit_resp.changed() {
+                            let before = entry.clone();
+                            if kind == "guide_set" {
+                                let ids = self
+                                    .engine
+                                    .try_read()
+                                    .map(|engine| engine.guide_set_input_ids())
+                                    .unwrap_or_default();
+                                egui::ComboBox::from_id_salt(("routine-guide-set", port_id))
+                                    .selected_text(if entry.is_empty() {
+                                        "Choose guide set"
+                                    } else {
+                                        &entry
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        for id in ids {
+                                            ui.selectable_value(&mut entry, id.clone(), id);
+                                        }
+                                    });
+                            } else {
+                                ui.text_edit_singleline(&mut entry);
+                            }
+                            if entry != before {
                                 self.routine_assistant_bindings
                                     .insert(port_id.to_string(), entry.clone());
                                 self.routine_assistant_preflight_output = None;
@@ -4476,6 +4502,10 @@ impl GENtleApp {
                         }
                     });
                 ui.separator();
+                let readiness = self.grna_form_readiness();
+                if let Some(detail) = readiness.detail() {
+                    ui.small(detail);
+                }
                 ui.horizontal(|ui| {
                     if ui
                         .button("Back to Compare")
@@ -4484,8 +4514,8 @@ impl GENtleApp {
                     {
                         self.routine_assistant_stage = RoutineAssistantStage::Compare;
                     }
-                    if ui
-                        .button("Run Preflight")
+                    if readiness
+                        .button(ui, "Run Preflight")
                         .on_hover_text(
                             "Run macros template-run --validate-only through shared shell executor",
                         )
@@ -4507,7 +4537,9 @@ impl GENtleApp {
                         .unwrap_or(false);
                     ui.strong(format!(
                         "Preflight status: {}",
-                        if can_execute {
+                        if can_execute && !self.grna_preflight_current() {
+                            "stale; return to Parameters and run preflight again"
+                        } else if can_execute {
                             "can execute"
                         } else {
                             "blocking errors"
@@ -4557,6 +4589,9 @@ impl GENtleApp {
                         egui::Button::new("Run Transactional"),
                     );
                     if exec_resp
+                        .on_disabled_hover_text(
+                            "Run a successful preflight for the current project and bindings first",
+                        )
                         .on_hover_text(
                             "Execute macros template-run --transactional using current bindings",
                         )
@@ -7968,6 +8003,11 @@ impl GENtleApp {
     }
 
     pub(super) fn routine_assistant_bindings_compact(&self) -> HashMap<String, String> {
+        let routine = self.routine_assistant_selected_routine();
+        let template = routine
+            .as_ref()
+            .map(|row| row.template_name.as_str())
+            .unwrap_or_default();
         self.routine_assistant_bindings
             .iter()
             .filter_map(|(key, value)| {
@@ -7975,7 +8015,13 @@ impl GENtleApp {
                 if compact.is_empty() {
                     None
                 } else {
-                    Some((key.clone(), compact.to_string()))
+                    Some((
+                        crate::engine_shell::routine_bindings::routine_parameter_name(
+                            template, key,
+                        )
+                        .to_string(),
+                        compact.to_string(),
+                    ))
                 }
             })
             .collect::<HashMap<_, _>>()
@@ -8133,6 +8179,13 @@ impl GENtleApp {
     }
 
     pub(super) fn run_routine_assistant_preflight(&mut self) {
+        self.grna_preflight_token = None;
+        let readiness = self.grna_form_readiness();
+        if !readiness.is_ready() {
+            self.routine_assistant_preflight_output = None;
+            self.routine_assistant_status = readiness.detail().unwrap_or_default().into();
+            return;
+        }
         let Some(routine) = self.routine_assistant_selected_routine() else {
             self.routine_assistant_status =
                 "Routine Assistant: select a routine before preflight".to_string();
@@ -8224,9 +8277,15 @@ impl GENtleApp {
                 });
             }
         }
+        self.capture_grna_preflight();
     }
 
     pub(super) fn run_routine_assistant_execute(&mut self) {
+        if !self.grna_preflight_current() {
+            self.routine_assistant_status =
+                "Bindings or project changed; run preflight again before execution".into();
+            return;
+        }
         let Some(routine) = self.routine_assistant_selected_routine() else {
             self.routine_assistant_status =
                 "Routine Assistant: select a routine before execution".to_string();
@@ -8370,10 +8429,12 @@ impl GENtleApp {
     }
 
     pub(super) fn routine_assistant_can_execute(&self) -> bool {
-        self.routine_assistant_preflight_output
-            .as_ref()
-            .and_then(|value| value.get("can_execute"))
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false)
+        self.grna_preflight_current()
+            && self
+                .routine_assistant_preflight_output
+                .as_ref()
+                .and_then(|value| value.get("can_execute"))
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false)
     }
 }

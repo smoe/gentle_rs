@@ -261,7 +261,7 @@ editing, feature editing, contextual interpretation links, visual regression
 fixtures, and scroll/zoom hardening when they fit the selected release story. Useful
 work here improves inspection clarity, deterministic exports, contextual links
 to evidence records, and manual-smoke reliability; defer large visual redesigns
-unrelated to the next release aim; next [contextual action availability](contextual_action_availability_plan.md) slice: shared readiness, disabled menu/palette presentation and gRNA bindings.
+unrelated to the next release aim; next [contextual availability](contextual_action_availability_plan.md): Glen's live macOS check, then further action families; native-menu and agent/host-probe integration remain deferred.
 - Evidence-viewer follow-up: keep the Splicing Expert evidence ledger readable
   on large real loci and add direct report-store selectors if probe/expression
   reports become persisted project objects.

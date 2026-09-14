@@ -2136,6 +2136,30 @@ Patterns menu:
   and errors remain visible without rereading directories or evaluating project
   planning on each menu frame. Shipped catalogs resolve from the checkout or
   packaged application; user-selected import paths remain explicit.
+- `Patterns -> Use gRNA routines` opens **setup**, separately from template import.
+  Candidate scans require explicitly selected DNA (project graph or focused
+  viewer). Anchor scan setup asks for two zero-based sequence boundaries;
+  `0` and sequence length are valid endpoints, the right boundary is excluded,
+  and the span must fit the candidate length (20 bp by default). Reversed
+  boundary order is accepted. Run Preflight remains disabled until valid.
+  These are generic candidate preselection scans, not PAM-aware guide design
+  or off-target confirmation. Practical Filter and Oligos requires a stored
+  guide set, selected explicitly in the form; DNA or a candidate set is not a
+  substitute. No guide set is silently selected by alphabetical order.
+  Existing macro preflight and transactional execution remain authoritative.
+- Pilot availability is shared between egui menus and Command Palette rows:
+  PCR Design, Sequencing Confirmation, Saved Genomic Regions, the three gRNA
+  setup actions, and palette-only TATA, cryptic-splicing, conservation, and
+  feature-location actions. Already-open PCR/confirmation windows can still be
+  focused; empty-project conservation setup still offers reference retrieval.
+  Disabled rows retain their reason (hover or selected palette row). Enter and
+  click cannot invoke them, and dispatch rechecks state. The gRNA submenu is
+  available when any of its children is available; imports, help and configuration
+  remain reachable. This is not application-wide or native-macOS-menu coverage.
+- gRNA preflight is bound to its project revision, template and bindings.
+  Editing bindings, switching/replacing a project, or changing project state
+  requires another preflight before Run. Catalog checks run outside menu paint
+  and refresh explicitly; availability does not grant execution permission.
 - `Patterns -> Routine Assistant...`
   - opens a dedicated staged workflow window for routine application:
     1. goal + candidate search

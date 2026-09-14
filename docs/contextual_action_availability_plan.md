@@ -1,8 +1,9 @@
 # Contextual Menu And Action Availability
 
-Status: slices 0 and 1 are implemented and covered by deterministic tests.
-Shared readiness and gRNA binding remain
-follow-up slices, not completed application-wide availability.
+Status: slices 0 and 1 are committed as `89050bac`. Slices 2 and 3 now have
+the shared readiness/menu/palette implementation and explicit gRNA bindings;
+verification results are recorded below. This is a closed pilot, not completed
+application-wide availability.
 Claude's user-forwarded review inspected `98f74ee8`, 2026-09-14. Codex checked
 the feedback against that source and rechecked the relevant app paths after
 HEAD advanced to `a5b7028157493d44c1812fc8e1f39e1ccbea6f6a`.
@@ -395,3 +396,54 @@ This is headless egui/dispatch coverage, not live macOS focus acceptance or a
 GUI performance measurement. Full workspace/release gates were not rerun.
 The beta toolchain also reported the existing nightly-only `lints.cargo`
 manifest warning and a large debug-test unwind-table linker warning.
+
+## Readiness And Binding Slices
+
+- `src/app/action_readiness.rs` lifts the collection readiness presentation
+  without changing its typed rejection reasons. One bounded context per surface
+  supplies DNA/sequence/guide-set readiness; project and viewer locks are
+  nonblocking. The pilot never calls whole-project introspection or host probes
+  from paint. The broader agent/introspection host-probe path is not rewritten.
+- Menus aggregate children bottom-up; imports remain separate. Both palette
+  paths use the same disabled-row/Enter policy and a fresh dispatch guard.
+  `docs/gui.md` enumerates migrated actions and the already-open-window and
+  empty-project retrieval exceptions.
+- `src/app/grna_routine_ui.rs` opens the existing Routine Assistant with the
+  explicitly selected DNA or a guide-set chooser. Catalog port/template checks
+  run in the background snapshot and again on explicit invocation. Missing
+  anchors block preflight, not setup. A previous gRNA preflight cannot authorize
+  execution after its project revision or bound parameters change.
+- `src/engine_shell/routine_bindings.rs` explicitly maps anchor port names,
+  validates through the engine's existing anchor geometry, and is reused by
+  macro preflight. No new PAM/off-target or guide-design algorithm is implied.
+  Static descriptor lookup now uses `OnceLock`; it does not cache mutable host
+  availability. Default preflight catalog lookup also uses packaged asset
+  resolution, required for the same workflow outside the checkout directory.
+- Existing collection launchers, engine validation, confirmation and non-pilot
+  actions retain their prior contracts. Native menus, broader capability
+  migration and agent-expression unification remain deferred. Glen's live GUI
+  and timing acceptance remains separate from headless regression tests.
+
+Verification on 2026-09-14: 634 app/runtime/macro/guide-design tests passed,
+followed by 79 introspection, guide-shell and anchor-operation regressions.
+The two commands below cover 713 tests, with no failures or ignored tests.
+Initial focused testing caught a cache semantic regression (duplicate descriptor
+IDs must keep the former first-match behavior) and an incorrect test assumption:
+rejected shell macro execution intentionally preserves a failed lineage receipt,
+whereas a disabled GUI launch and `--validate-only` do not mutate the project.
+The fixes preserve both existing contracts rather than suppressing failure audit.
+
+```sh
+cargo test --lib --locked -j 1 -- app:: runtime_assets::tests engine_shell::routine_bindings::tests engine_shell::tests::execute_macros engine_shell::tests::parse_macros engine_shell::tests::execute_introspection engine::tests::test_guide_design --test-threads=2 --quiet
+cargo test --lib --locked -j 1 -- engine_shell::tests::execute_introspect engine::tests::test_generate_candidate_set_between_two_sequence_anchors engine_shell::tests::execute_guides --test-threads=2 --quiet
+```
+
+The first command's `execute_introspection` filter matches no current test names;
+the second deliberately covers the actual `execute_introspect` names.
+No full-workspace, release packaging or measured latency claim is made.
+
+Final `cargo check -q --locked -j 1`, `cargo fmt --all --check` and
+`git diff --check` passed. Session-close hygiene reported 4 OK, 2 warnings,
+0 failures before commit: intentional edits and the manual plan-fidelity
+reminder. The small subject-lock, preflight asset-resolution and stale-status
+changes above are dependencies of the pilot, not unrelated refactoring.
