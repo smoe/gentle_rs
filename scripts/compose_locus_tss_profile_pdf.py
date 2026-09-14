@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import html
+import io
+import zipfile
 import hashlib
 import json
 import os
@@ -349,6 +352,9 @@ def validate_locus_join(
     selected_ids = {row["promoter_id"] for row in bindings}
     for window in report.get("windows", []):
         context = window.get("detail_context")
+        if window.get("record", {}).get("promoter_id") in selected_ids:
+            require(locus.get("transcript_presentation") == (context or {}).get("transcript_presentation"),
+                    "overview/detail transcript presentations differ; use the same enriched locus report")
         if context is not None and window.get("record", {}).get("promoter_id") in selected_ids:
             require(context.get("schema") == "gentle.tss_detail_context.v1"
                     and normalized_digest(context.get("locus_report_sha256")) == locus_sha256,
@@ -368,6 +374,21 @@ def validate_locus_join(
                 "regenerate it with accession-preserving scoring")
         matrix_bindings.append({"source_id": source, "locus_track_id": matches[0]["track_id"]})
     return matrix_bindings
+
+
+def validate_transcript_svg_pages(locus: dict[str, Any], pages: list[Path]) -> str | None:
+    presentation = locus.get("transcript_presentation")
+    if presentation is None:
+        return None
+    require(isinstance(presentation, dict) and presentation.get("schema") == "gentle.transcript_structure_presentation.v1",
+            "unexpected transcript presentation schema")
+    expected = normalized_digest(presentation.get("content_sha256"))
+    for page in pages:
+        markers = [node for node in ET.fromstring(page.read_bytes()).iter()
+                   if node.get("data-role") == "source-coherent-transcripts"]
+        require(len(markers) == 1 and markers[0].get("data-content-sha256") == expected,
+                "SVG page does not bind the shared transcript presentation")
+    return expected
 
 
 def selected_genbank(index: dict[str, Any], receipt: dict[str, Any],
@@ -430,26 +451,92 @@ def selected_annotated(index: dict[str, Any], receipt: dict[str, Any],
     return b"".join(records), sources
 
 
+def svg_sequence_bundle(receipt: dict[str, Any], page_paths: list[Path], fasta_text: str,
+                        directory: Path, output_zip: Path | None) -> list[tuple[str, bytes, Path]]:
+    """Preserve original SVG bytes/title hover and PDF order, with no scientific joins."""
+    files: dict[str, bytes] = {}
+    pages = []
+    for ordinal, path in enumerate(page_paths, 1):
+        raw = path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        require(digest == normalized_digest(receipt["inputs"]["pages"][ordinal - 1]["sha256"]),
+                "SVG page changed after receipt validation")
+        name = f"page_{ordinal:04d}.svg"
+        files[name] = raw
+        pages.append({"ordinal": ordinal, "file": name, "sha256": digest,
+                      "role": receipt["page_order"][ordinal - 1]})
+    manifest = {"schema": "gentle.ordered_svg_pages.v1", "pages": pages,
+                "gene_symbol": receipt["gene_symbol"], "reference": receipt.get("reference"),
+                "locus_report_sha256": receipt["inputs"]["locus_report"]["sha256"],
+                "tss_report_sha256": receipt["inputs"]["tss_report"]["sha256"],
+                "sequence_file": "selected_tss.fasta",
+                "non_claims": receipt.get("non_claims")}
+    if receipt["inputs"].get("transcript_presentation_sha256"):
+        manifest["transcript_presentation_sha256"] = receipt["inputs"]["transcript_presentation_sha256"]
+    files["pages.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+    files["selected_tss.fasta"] = fasta_text.encode("ascii")
+    title = html.escape(receipt["gene_symbol"] + " - locus and TSS annotations")
+    navigation = "".join(f'<li><a href="#page-{p["ordinal"]}">Page {p["ordinal"]}: {html.escape(p["role"])}</a></li>' for p in pages)
+    content = "".join(f'<section id="page-{p["ordinal"]}"><h2>Page {p["ordinal"]}: {html.escape(p["role"])}</h2>'
+                      f'<a href="{p["file"]}">Open SVG</a><object type="image/svg+xml" data="{p["file"]}" '
+                      f'aria-label="Page {p["ordinal"]}"></object></section>' for p in pages)
+    files["index.html"] = (f'<!doctype html><html lang="en"><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; object-src \'self\'; style-src \'unsafe-inline\'; script-src \'none\'">'
+        f'<title>{title}</title><style>body{{font:16px sans-serif;margin:24px}}object{{display:block;width:100%;height:90vh}}'
+        'section{break-after:page}h2{font-size:18px}@media print{nav{display:none}}</style>'
+        f'<h1>{title}</h1><nav><ol>{navigation}</ol><a href="selected_tss.fasta">Selected sequences (FASTA)</a> | '
+        f'<a href="pages.json">Page manifest</a></nav>{content}</html>\n').encode()
+    bundle = {"schema": "gentle.ordered_svg_pages.v1", "directory": str(directory),
+              "index": "index.html", "pages": pages,
+              "files": {name: hashlib.sha256(raw).hexdigest() for name, raw in sorted(files.items())},
+              "policy": "Original SVG bytes in exact PDF page order; title hover retained. This is a sequence of SVG files, not a multipage SVG. The outer receipt binds these files; it is not included recursively."}
+    outputs = [("svg_bundle", raw, directory / name) for name, raw in sorted(files.items())]
+    if output_zip:
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for name, raw in sorted(files.items()):
+                info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                info.external_attr = 0o100644 << 16
+                archive.writestr(info, raw)
+        raw = stream.getvalue()
+        bundle["zip"] = {"path": str(output_zip), "sha256": hashlib.sha256(raw).hexdigest()}
+        outputs.append(("svg_bundle_zip", raw, output_zip))
+    receipt["output"]["svg_bundle"] = bundle
+    return outputs
+
+
 def publish_composite(
     receipt: dict[str, Any], page_paths: list[Path], fasta_text: str,
     gentle_cli: Path, output_pdf: Path, output_fasta: Path, output_receipt: Path,
     genbank_bytes: bytes | None = None, output_genbank: Path | None = None,
     embl_bytes: bytes | None = None, output_embl: Path | None = None,
+    output_svg_directory: Path | None = None, output_svg_zip: Path | None = None,
 ) -> dict[str, Any]:
     require((genbank_bytes is None) == (output_genbank is None), "GenBank content/path must be supplied together")
     require((embl_bytes is None) == (output_embl is None), "EMBL content/path must be supplied together")
     annotated = [(kind, content, path) for kind, content, path in (
         ("genbank", genbank_bytes, output_genbank), ("embl", embl_bytes, output_embl),
     ) if path is not None]
-    outputs = (output_pdf, output_fasta, *(path for _, _, path in annotated), output_receipt)
+    require(output_svg_zip is None or output_svg_directory is not None, "SVG ZIP requires --output-svg-directory")
+    if output_svg_directory:
+        require(not os.path.lexists(output_svg_directory), "SVG output directory already exists")
+    bundled = (svg_sequence_bundle(receipt, page_paths, fasta_text, output_svg_directory, output_svg_zip)
+               if output_svg_directory else [])
+    artifacts = annotated + bundled
+    outputs = (output_pdf, output_fasta, *(path for _, _, path in artifacts), output_receipt)
     require(len(set(outputs)) == len(outputs), "output paths must be distinct")
     partials = tuple(path.with_name(path.name + ".partial") for path in outputs)
     require(not any(os.path.lexists(path) for path in (*outputs, *partials)),
             "output or stale partial output/receipt exists")
+    if output_svg_directory:
+        output_svg_directory.mkdir(parents=True, exist_ok=False)
     for path in outputs:
         path.parent.mkdir(parents=True, exist_ok=True)
     owned_partials: list[Path] = []
     published: list[Path] = []
+    committed = False
     try:
         for path in partials:
             with path.open("xb"):
@@ -457,11 +544,15 @@ def publish_composite(
             owned_partials.append(path)
         partial_pdf, partial_fasta, partial_receipt = partials[0], partials[1], partials[-1]
         partial_fasta.write_text(fasta_text, encoding="ascii")
-        for (_, content, _), partial in zip(annotated, partials[2:-1]):
+        for (_, content, _), partial in zip(artifacts, partials[2:-1]):
             require(bool(content), "empty annotated sequence export")
             partial.write_bytes(content)
+        # PDF and interactive SVG use the same staged bytes when a bundle is requested.
+        staged_by_path = dict(zip(outputs, partials))
+        render_pages = ([staged_by_path[output_svg_directory / p["file"]]
+                         for p in receipt["output"]["svg_bundle"]["pages"]] if bundled else page_paths)
         command = [str(gentle_cli), "svg-pdf-set", str(partial_pdf),
-                   *[str(path) for path in page_paths]]
+                   *[str(path) for path in render_pages]]
         result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=900)
         summary = json.loads(result.stdout)
         require(summary.get("page_count") == len(page_paths)
@@ -499,6 +590,7 @@ def publish_composite(
         for partial, output in zip(partials, outputs):
             os.link(partial, output)
             published.append(output)
+        committed = True
     except BaseException:
         for output in reversed(published):
             output.unlink(missing_ok=True)
@@ -506,6 +598,11 @@ def publish_composite(
     finally:
         for path in owned_partials:
             path.unlink(missing_ok=True)
+        if output_svg_directory and not committed:
+            try:
+                output_svg_directory.rmdir()
+            except OSError:
+                pass  # Do not remove another writer's content.
     return receipt
 
 
@@ -571,6 +668,7 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
     embl_bytes, embl_sources = (selected_embl(tss_index, tss_receipt, tss_dir, args.gene, bindings)
                               if output_embl else (None, []))
     page_paths = [locus_svg, *detail_pages]
+    transcript_presentation_sha256 = validate_transcript_svg_pages(locus_report, page_paths)
     receipt = {
         "schema": OUTPUT_SCHEMA,
         "gene_symbol": args.gene,
@@ -618,9 +716,13 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
         receipt["inputs"]["selected_tss_genbank"] = genbank_sources
     if output_embl:
         receipt["inputs"]["selected_tss_embl"] = embl_sources
+    if transcript_presentation_sha256:
+        receipt["inputs"]["transcript_presentation_sha256"] = transcript_presentation_sha256
     return publish_composite(receipt, page_paths, fasta_text, gentle_cli,
                              output_pdf, output_fasta, output_receipt, genbank_bytes, output_genbank,
-                             embl_bytes, output_embl)
+                             embl_bytes, output_embl,
+                             args.output_svg_directory.resolve() if getattr(args, "output_svg_directory", None) else None,
+                             args.output_svg_zip.resolve() if getattr(args, "output_svg_zip", None) else None)
 
 
 def parse_args() -> argparse.Namespace:
@@ -640,6 +742,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-genbank", type=Path, help="Optional annotated selected windows from indexed, receipt-bound GenBank exports")
     parser.add_argument("--output-embl", type=Path, help="Optional annotated selected windows from indexed, receipt-bound EMBL exports")
     parser.add_argument("--output-receipt", type=Path, required=True)
+    parser.add_argument("--output-svg-directory", type=Path, help="New directory for ordered SVG pages, hover-preserving HTML index, sequences and page manifest")
+    parser.add_argument("--output-svg-zip", type=Path, help="Optional deterministic ZIP of --output-svg-directory; hash bound by the composite receipt")
     return parser.parse_args()
 
 

@@ -520,6 +520,10 @@ fn default_locus_motif_top_hit_count() -> usize {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GeneLocusEvidenceDisplayRequest {
+    /// Optional local source annotations; no network access or TSS selection.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_annotation_sources:
+        Vec<crate::transcript_presentation::TranscriptAnnotationSource>,
     pub isoform_evidence: GeneIsoformEvidenceRequest,
     pub upstream_bp: usize,
     pub downstream_bp: usize,
@@ -558,6 +562,7 @@ impl Default for GeneLocusEvidenceDisplayRequest {
     fn default() -> Self {
         Self {
             isoform_evidence: GeneIsoformEvidenceRequest::default(),
+            transcript_annotation_sources: vec![],
             upstream_bp: default_locus_upstream_bp(),
             downstream_bp: default_locus_downstream_bp(),
             probe_effect_table_paths: vec![],
@@ -1431,6 +1436,9 @@ pub struct GeneLocusGenomeAnchorBinding {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct GeneLocusEvidenceDisplayReport {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_presentation:
+        Option<crate::transcript_presentation::TranscriptStructurePresentation>,
     pub schema: String,
     pub seq_id: String,
     /// Absent in legacy reports, which remain viewable as historical evidence.

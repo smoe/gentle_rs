@@ -2,6 +2,14 @@
 
 This page documents the current graphical interface of GENtle.
 
+Source-enriched locus SVGs and detailed TSS figures can show shared physical
+exons/CDS, separate structure-reference rows and colour-labelled Ensembl/RefSeq
+annotated starts. Hover retains all source identifiers without crowding print.
+`=` is exact coordinate agreement, not biological preference. Source inputs are
+configured through existing JSON requests, not a new GUI import wizard; the
+native annotated-flat-file viewer is unchanged. See
+[source-coherent presentation and interactive page export](transcript_source_presentation.md).
+
 ### Promoter Cofactors
 
 **File > Promoter Cofactors...** and the matching command-palette entry open a

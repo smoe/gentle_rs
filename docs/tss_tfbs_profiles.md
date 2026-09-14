@@ -121,6 +121,11 @@ plots, not automatically materialized as sequence annotations.
 
 ## CUT&RUN, Gene Structure And TATA Context
 
+The optional [source-coherent transcript layer](transcript_source_presentation.md)
+shares Ensembl/RefSeq exon/CDS structures and source-labelled TSS ticks without
+choosing a preferred start. The same guide covers ordered interactive SVG/HTML/ZIP
+pages alongside the receipt-bound PDF.
+
 Add `--context-manifest FILE` to either command above to put context on each
 matching gene's **detailed TSS pages**, immediately above its TF scores. This
 is optional: old reports and commands retain their score-only layout. A context

@@ -2434,6 +2434,18 @@ Interaction and export semantics:
   - render splicing view SVG from the same payload
     (`render-feature-expert-svg ... splicing ...`).
 
+### Source-coherent locus transcript presentation
+
+The optional `gentle.transcript_structure_presentation.v1` layer is separate
+from `SplicingExpertView` and PCR mature-cDNA equivalence. Physical exon IDs bind
+assembly/chromosome/strand/exact intervals; structure groups bind full ordered
+exon chains and independently keyed CDS geometry/availability. Source records,
+designations, releases and hashes never become a consensus or preferred TSS.
+Clipping cannot determine equivalence; wire identities are rebuilt at ingestion.
+Locus and detailed TSS SVGs use one shared projection. Payload omissions are
+typed unassessed coverage, not per-transcript absence warnings. See
+[source mappings and export contract](transcript_source_presentation.md).
+
 ### RNA-seq evidence direction for cloning-candidate regions (planned)
 
 Primary near-term scope is small genomic region interpretation for cloning

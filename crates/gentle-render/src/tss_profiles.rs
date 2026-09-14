@@ -2169,6 +2169,8 @@ mod tests {
         missing.role = GeneLocusOccupancyLaneRole::InputControl;
         missing.intervals.clear();
         window.detail_context = Some(TssDetailContext {
+            transcript_presentation: None,
+            transcript_payload_coverage: None,
             window_sequence: None,
             schema: CONTEXT_SCHEMA.into(),
             promoter_id: window.record.promoter_id.clone(),

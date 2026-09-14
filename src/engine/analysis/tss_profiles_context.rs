@@ -253,6 +253,8 @@ fn project(
         )));
     }
     let mut context = TssDetailContext {
+        transcript_presentation: locus.transcript_presentation.clone(),
+        transcript_payload_coverage: None,
         window_sequence: Some(window_sequence),
         schema: CONTEXT_SCHEMA.into(),
         promoter_id: record.promoter_id.clone(),
@@ -366,17 +368,6 @@ fn project(
             }
             context.transcripts.push(row);
         }
-        for id in &record.transcripts {
-            if !seen.contains(id) {
-                context.warnings.push(format!(
-                    "{id}: transcript geometry unavailable in supplied locus report"
-                ));
-            }
-        }
-    } else {
-        context
-            .warnings
-            .push("Transcript geometry unavailable in supplied locus report".into());
     }
     context
         .transcripts
@@ -489,9 +480,21 @@ fn project(
             warnings: report.warnings.clone(),
         });
     }
-    if context.transcripts.len() != record.transcripts.len() {
-        context.warnings.push(format!("{}/{} TSS-linked transcript models supplied in locus context; remaining exact transcript identities are unassessed, not absent", context.transcripts.len(), record.transcripts.len()));
-    }
+    let included: Vec<String> = if let Some(p) = &context.transcript_presentation {
+        p.records
+            .iter()
+            .map(|r| r.structure.transcript_id.clone())
+            .collect()
+    } else {
+        context
+            .transcripts
+            .iter()
+            .map(|t| t.transcript_id.clone())
+            .collect()
+    };
+    context.transcript_payload_coverage = Some(
+        gentle_engine::transcript_presentation::payload_coverage(&record.transcripts, &included),
+    );
     context.warnings.sort();
     context.warnings.dedup();
     Ok(context)
@@ -535,7 +538,29 @@ pub(super) fn attach(
         }
         let locus_bytes = bound_file(base, &source.locus_report)?;
         let document = LocusDocument::from_json(&locus_bytes).map_err(invalid)?;
-        let locus = document.locus();
+        let mut enriched_locus = document.locus().clone();
+        if !source.transcript_annotation_sources.is_empty() {
+            if enriched_locus.transcript_presentation.is_some() {
+                return Err(invalid(
+                    "Source-coherent presentation already attached; do not replace bound evidence",
+                ));
+            }
+            let evidence = &enriched_locus.isoform_evidence;
+            let binding = enriched_locus
+                .sequence_binding
+                .as_ref()
+                .ok_or_else(|| invalid("Locus sequence binding unavailable"))?;
+            enriched_locus.transcript_presentation = crate::transcript_presentation::load(
+                &source.transcript_annotation_sources,
+                base,
+                &evidence.assembly,
+                evidence.chromosome.as_deref().unwrap_or(""),
+                &binding.sequence_sha256,
+            )
+            .map_err(invalid)?;
+        }
+        crate::transcript_presentation::validate_locus(&enriched_locus).map_err(invalid)?;
+        let locus = &enriched_locus;
         let binding = locus
             .sequence_binding
             .as_ref()
@@ -560,6 +585,20 @@ pub(super) fn attach(
             name: format!("context-{}.json", sha256_hex_bytes(&bytes)),
             sha256: sha256_hex_bytes(&bytes),
         }];
+        if let Some(p) = &locus.transcript_presentation {
+            bindings.push(TssInputBinding {
+                role: "transcript_structure_presentation".into(),
+                name: p.schema.clone(),
+                sha256: p.content_sha256.clone(),
+            });
+            for s in &p.sources {
+                bindings.push(TssInputBinding {
+                    role: "transcript_annotation".into(),
+                    name: s.source_id.clone(),
+                    sha256: s.annotation_sha256.clone(),
+                });
+            }
+        }
         for (role, input) in [
             ("locus_report", Some(&source.locus_report)),
             ("locus_fasta", Some(&source.locus_fasta)),

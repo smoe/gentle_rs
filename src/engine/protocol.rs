@@ -4872,6 +4872,9 @@ pub struct GeneLocusEvidenceTrackSource {
 #[serde(default)]
 /// One typed end-to-end preparation request for an arbitrary Ensembl locus.
 pub struct GeneLocusEvidencePreparationRequest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_annotation_sources:
+        Vec<gentle_protocol::transcript_presentation::TranscriptAnnotationSource>,
     pub schema: String,
     pub gene_query: String,
     pub species: String,
@@ -4921,6 +4924,7 @@ impl Default for GeneLocusEvidencePreparationRequest {
     fn default() -> Self {
         Self {
             schema: GENE_LOCUS_EVIDENCE_PREPARATION_REQUEST_SCHEMA.to_string(),
+            transcript_annotation_sources: vec![],
             gene_query: String::new(),
             species: String::new(),
             assembly: String::new(),

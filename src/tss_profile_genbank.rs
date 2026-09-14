@@ -244,6 +244,8 @@ mod tests {
                 clipped: true,
             };
             w.detail_context = Some(TssDetailContext {
+                transcript_presentation: None,
+                transcript_payload_coverage: None,
                 schema: CONTEXT_SCHEMA.into(),
                 window_sequence: Some("ACGTA".into()),
                 promoter_id: w.record.promoter_id.clone(),

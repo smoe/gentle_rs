@@ -224,6 +224,8 @@ pub mod tf_motifs;
 pub mod tfbs_track_panel;
 /// Process-local tool-path override registry.
 pub mod tool_overrides;
+/// Bound local Ensembl/GFF3 adapters for source-coherent transcript presentation.
+pub mod transcript_presentation;
 /// Strict, digest-bound TSS FASTA bundle validation.
 pub mod tss_fasta_bundle;
 /// Atomic, report-driven TSS profile exports and receipts.

@@ -1,5 +1,19 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Source-Coherent Transcript Presentation
+
+Locus display/preparation requests and `TssContextSource` accept optional
+`transcript_annotation_sources`. Bound local inputs produce
+`gentle.transcript_structure_presentation.v1`, attached as
+`GeneLocusEvidenceDisplayReport.transcript_presentation` and copied into
+`TssDetailContext.transcript_presentation`. Exact physical-exon identities,
+full exon-chain/CDS groups, member records and source TSS deltas are engine-owned.
+`TssDetailContext.transcript_payload_coverage` separately records payload omissions
+as unassessed. These optional/default-safe fields preserve legacy payloads and
+empty-field operation serialization. No new selection, preferred TSS, command
+route or readiness policy is introduced. See the
+[source mapping, binding and export contract](transcript_source_presentation.md).
+
 ## Reduced Promoter-Cofactor Packages
 
 `QueryPromoterCofactors {request}` returns optional `OpResult.promoter_cofactors`

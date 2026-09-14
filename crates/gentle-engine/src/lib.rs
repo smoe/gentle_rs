@@ -4,5 +4,7 @@
 //! helpers. Further engine modules will move here in subsequent PRs.
 
 pub mod iupac_code;
+/// Deterministic source-coherent structure grouping and binding validation.
+pub mod transcript_presentation;
 /// Pure identity, panel-policy and coordinate checks for portable TSS profiles.
 pub mod tss_profiles;

@@ -13,6 +13,8 @@ pub mod protein_gel;
 pub mod protocol_cartoon;
 mod region_homology;
 mod regulatory_partners;
+/// One source-coherent geometry projection used in locus and detailed TSS pages.
+pub mod transcript_presentation;
 /// Paginated, report-only TSS profiles with matrix-specific scales and PFM logos.
 pub mod tss_profiles;
 

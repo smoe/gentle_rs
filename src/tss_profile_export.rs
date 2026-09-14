@@ -398,6 +398,29 @@ pub fn validate_tss_profile_report(report: &TssProfileReport) -> Result<(), Engi
     }
     validate_reference(&report.reference)?;
     for window in &report.windows {
+        if let Some(context) = &window.detail_context {
+            if let Some(p) = &context.transcript_presentation {
+                gentle_engine::transcript_presentation::validate(p).map_err(invalid)?;
+                if p.assembly != report.reference.assembly
+                    || p.locus_sequence_sha256 != context.locus_sequence_sha256
+                    || p.chromosome.strip_prefix("chr").unwrap_or(&p.chromosome)
+                        != window
+                            .record
+                            .geometry
+                            .chromosome
+                            .strip_prefix("chr")
+                            .unwrap_or(&window.record.geometry.chromosome)
+                    || !context.bindings.iter().any(|b| {
+                        b.role == "transcript_structure_presentation"
+                            && b.sha256 == p.content_sha256
+                    })
+                {
+                    return Err(invalid(
+                        "Transcript presentation/reference binding mismatch",
+                    ));
+                }
+            }
+        }
         if let Some(bases) = window
             .detail_context
             .as_ref()
