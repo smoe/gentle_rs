@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-14 - Explicit Template Imports And Sequence Launch Subjects
+
+- Patterns uses a refreshable background snapshot for both its directory tree
+  and routine-import browser, reusing shared catalog validation without
+  project-dependent planning during paint. Reuse startup asset resolution for
+  checkout/macOS/Linux catalog lookup; explicit file/folder imports stay explicit.
+- Use catalog titles, correct gRNA/CRISPR casing, and truthful "Import ...
+  template" labels. Import remains available without selected DNA.
+- Remove arbitrary sequence defaults from DNA-specialist launches and Gibson
+  prefill. Explicit subject selection uses the engine's existing molecule-kind
+  classification; generic sequence tools retain their broader input contract.
+  The palette preserves its initiating subject across focus changes and rejects
+  a closed origin or replaced project. Shared UI-intent summaries retain the
+  launcher's missing-input explanation as well as the command identity.
+  General disabled-row/submenu readiness
+  and gRNA binding remain follow-up work, not part of this slice.
+- Add synthetic catalog-cache/refresh, packaged-path and subject-selection
+  regressions. No assay scoring, saved workflow identifiers or release gate changed.
+
 ## 2026-09-14 - Genome Discovery And Progress Ownership
 
 - Correct Ensembl vertebrate discovery to use `pub/current/fasta/` and

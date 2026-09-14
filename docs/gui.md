@@ -2128,6 +2128,14 @@ Patterns menu:
     `assets/cloning_patterns_catalog`.
 - `Patterns` submenu hierarchy mirrors the directory hierarchy under
   `assets/cloning_patterns_catalog` (one JSON template file per leaf entry).
+  Leaves say **Import ... template**, not run/design; they remain usable in an
+  empty project. Canonical routine titles preserve names such as **gRNA**;
+  directory labels use **CRISPR**, **PCR**, **DNA**, **RNA**, and **TFBS**.
+  The hierarchy and routine-import browser share a background-loaded snapshot.
+  **Refresh template catalog** explicitly reloads it after files change; loading
+  and errors remain visible without rereading directories or evaluating project
+  planning on each menu frame. Shipped catalogs resolve from the checkout or
+  packaged application; user-selected import paths remain explicit.
 - `Patterns -> Routine Assistant...`
   - opens a dedicated staged workflow window for routine application:
     1. goal + candidate search
@@ -4230,6 +4238,20 @@ In `Main window -> Graph` view:
     to resize it against the containers pane
 
 ## Command Palette and History/Jobs Panels
+
+Subject-bound DNA tools use the focused sequence viewer or an explicitly
+selected sequence node in the main project graph, never the first sequence by
+name. PCR Designer, Sequencing Confirmation, TATA evidence, cryptic-splicing and
+saved-region/conservation launches reject protein/RNA targets and explain how to
+select DNA. Feature Location Editor requires an explicit sequence but is not
+restricted to DNA. Gibson keeps its input choosers: the selected DNA may prefill
+the destination, but an insert is never picked automatically.
+
+The palette captures its initiating subject before taking focus. Closing that
+viewer, changing the project or removing the sequence invalidates the subject
+rather than choosing another one. This launch safeguard does not yet make every
+palette/menu row state-aware; dimmed actions, shared readiness presentation and
+broader action coverage remain the next implementation slice.
 
 - Command Palette:
   - open via `Cmd/Ctrl+K` or `Edit -> Command Palette...`

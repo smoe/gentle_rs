@@ -2057,6 +2057,12 @@ impl GentleEngine {
         FactTruth::Unknown
     }
 
+    /// Cheap molecule-kind lookup using the same classification as project facts.
+    /// Legacy sequences without molecule metadata retain their DNA classification.
+    pub fn sequence_kind(&self, seq_id: &str) -> Option<&'static str> {
+        self.state.sequences.get(seq_id).map(project_sequence_kind)
+    }
+
     pub(super) fn canonical_fasta_molecule(raw: Option<&str>) -> &'static str {
         let normalized = raw
             .unwrap_or("dsdna")

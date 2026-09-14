@@ -188,6 +188,8 @@ pub mod resource_sync;
 pub mod restriction_enzyme;
 /// RNA structure wrappers and tool integration glue.
 pub mod rna_structure;
+/// Checkout and packaged-desktop lookup for shipped assets.
+pub mod runtime_assets;
 /// Process-local live activity stack and SIGUSR1 runtime diagnostics.
 pub mod runtime_status;
 /// Shared wheel/key/cursor interaction policy for scroll, pan, and zoom.

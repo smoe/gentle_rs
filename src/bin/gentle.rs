@@ -17,7 +17,6 @@ use std::{
     fs::OpenOptions,
     io::Write,
     panic,
-    path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -32,45 +31,9 @@ fn configure_macos_process_name() {
 #[cfg(not(target_os = "macos"))]
 fn configure_macos_process_name() {}
 
-fn resolve_runtime_asset_path_from(
-    path: &str,
-    current_exe: Option<&Path>,
-    manifest_dir: Option<&Path>,
-) -> PathBuf {
-    let direct = PathBuf::from(path);
-    if direct.exists() {
-        return direct;
-    }
-    if let Some(manifest_dir) = manifest_dir {
-        let repo_relative = manifest_dir.join(path);
-        if repo_relative.exists() {
-            return repo_relative;
-        }
-    }
-    if let Some(exe_path) = current_exe
-        && let Some(exe_dir) = exe_path.parent()
-    {
-        let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Some(parent) = exe_dir.parent() {
-            candidates.push(parent.join("Resources").join(path));
-            if let Some(grandparent) = parent.parent() {
-                candidates.push(grandparent.join(path));
-            }
-        }
-        for candidate in candidates {
-            if candidate.exists() {
-                return candidate;
-            }
-        }
-    }
-    PathBuf::from(path)
-}
-
-fn resolve_runtime_asset_path(path: &str) -> PathBuf {
-    let current_exe = env::current_exe().ok();
-    let manifest_dir = option_env!("CARGO_MANIFEST_DIR").map(Path::new);
-    resolve_runtime_asset_path_from(path, current_exe.as_deref(), manifest_dir)
-}
+use gentle::runtime_assets::resolve_runtime_asset_path;
+#[cfg(test)]
+use gentle::runtime_assets::resolve_runtime_asset_path_from;
 
 fn load_icon(path: &str) -> Option<egui::IconData> {
     let icon_path = resolve_runtime_asset_path(path);
