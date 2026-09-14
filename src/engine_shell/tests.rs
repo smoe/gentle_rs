@@ -46272,3 +46272,18 @@ fn splicing_cryptic_screen_and_render_share_the_typed_report() {
         );
     }
 }
+#[test]
+fn tss_view_ui_intent_is_discoverable_and_headless_does_not_claim_display() {
+    assert!(parse_shell_line("ui open tss-view --genome-id wrong").is_err());
+    let mut engine = GentleEngine::default();
+    for verb in ["open", "focus", "close"] {
+        let command = parse_shell_line(&format!("ui {verb} tss-view")).unwrap();
+        let result = execute_shell_command(&mut engine, &command).unwrap();
+        assert!(!result.state_changed);
+        assert_eq!(result.output["ui_intent"]["target"], "tss-view");
+        assert_eq!(result.output["applied"], false);
+    }
+    let target = UiIntentTarget::parse("tss-view").unwrap();
+    assert!(target.arguments().is_empty());
+    assert!(target.detail().contains("No rescoring") || target.detail().contains("no rescoring"));
+}

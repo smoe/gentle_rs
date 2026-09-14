@@ -7054,6 +7054,7 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
             assert!(app.show_configuration_dialog);
         }
         UiIntentTarget::OpenSequence
+        | UiIntentTarget::TssView
         | UiIntentTarget::RecentProject
         | UiIntentTarget::TutorialProject
         | UiIntentTarget::TutorialGuide
@@ -17367,4 +17368,52 @@ fn prepared_reference_catalog_entry_removal_requires_writable_catalog() {
     perms.set_readonly(true);
     fs::set_permissions(&catalog_path, perms).unwrap();
     assert!(!app.selected_genome_catalog_is_writable());
+}
+#[test]
+fn tss_view_ui_intent_targets_active_dna_and_fails_without_context() {
+    let mut app = GENtleApp::default();
+    let open = parse_shell_line("ui open tss-view").unwrap();
+    assert!(
+        app.try_apply_shell_ui_intent(&open)
+            .unwrap()
+            .contains("activate")
+    );
+    let dna = crate::tss_sequence_view::tests::fixture(false);
+    let viewport = egui::ViewportId::from_hash_of("tss_view_test");
+    let key = GENtleApp::native_menu_key_for_viewport(viewport);
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .insert("toy_tss".into(), dna.clone());
+    app.windows.insert(
+        viewport,
+        Arc::new(RwLock::new(Window::new_dna(
+            dna,
+            "toy_tss".into(),
+            app.engine.clone(),
+        ))),
+    );
+    app.native_window_key_to_viewport.insert(key, viewport);
+    app.active_window_menu_key = Some(key);
+    assert!(
+        app.try_apply_shell_ui_intent(&open)
+            .unwrap()
+            .contains("Opened TSS / Regulatory view")
+    );
+    let close = parse_shell_line("ui close tss-view").unwrap();
+    assert!(
+        app.try_apply_shell_ui_intent(&close)
+            .unwrap()
+            .contains("Returned to Standard map")
+    );
+    assert!(
+        app.engine
+            .read()
+            .unwrap()
+            .state()
+            .sequences
+            .contains_key("toy_tss")
+    );
 }

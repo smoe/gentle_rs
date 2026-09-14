@@ -84,6 +84,12 @@ impl Window {
         }
     }
 
+    pub(crate) fn set_tss_view(&mut self, enabled: bool) -> Result<(), String> {
+        match self {
+            Self::Dna(window) => window.set_tss_view(enabled),
+        }
+    }
+
     pub(crate) fn focus_tata_boxes(&mut self) {
         match self {
             Self::Dna(window) => window.focus_tata_boxes(),

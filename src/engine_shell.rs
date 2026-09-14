@@ -40215,8 +40215,15 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     .join(", ");
                 format!("Unknown ui target. Expected one of: {expected}")
             })?;
-            if target == UiIntentTarget::GelImageEditor && tokens.len() != 3 {
-                return Err("ui open|focus|close gel-image-editor takes no options".into());
+            if matches!(
+                target,
+                UiIntentTarget::GelImageEditor | UiIntentTarget::TssView
+            ) && tokens.len() != 3
+            {
+                return Err(format!(
+                    "ui open|focus|close {} takes no options",
+                    target.as_str()
+                ));
             }
             if !target
                 .actions()

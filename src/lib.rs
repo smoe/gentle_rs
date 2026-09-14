@@ -228,6 +228,8 @@ pub mod tool_overrides;
 pub mod tss_fasta_bundle;
 /// Atomic, report-driven TSS profile exports and receipts.
 pub mod tss_profile_export;
+/// Headless, hash-bound inspection of annotated TSS sequence exports.
+pub mod tss_sequence_view;
 /// Closed semantic-control catalog used by typed tutorial GUI acceptance contracts.
 pub mod tutorial_gui_semantics;
 /// UCSC RepeatMasker (`rmsk`) table resource contracts and indexing guidance.

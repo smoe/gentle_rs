@@ -88,7 +88,7 @@ Pre-release finishing scope:
 3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
 4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Have Glen validate the [promoter-cofactor browser](promoter_cofactor_browser.md), live navigation and interpretation; keep raw coverage-block/annotation export separate.
-   Validate DuckDB boundaries/limits, scan filters and selected-package GUI staleness; have Glen re-export and inspect [imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) on both strands. Full-locus/native-viewer triangles remain separate.
+   Validate DuckDB boundaries/limits, scan filters and selected-package GUI staleness; have Glen inspect [imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) on both strands. Native TSS follow-up (not an added `.10` gate): GUI acceptance, full report-bound traces/hits/reporters, direct locus navigation and native export; retain [flat-file limits and readability plan](tss_annotated_sequence_readability_plan.md).
 
 Current non-goals:
 

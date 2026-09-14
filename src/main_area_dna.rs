@@ -73,6 +73,7 @@ mod conservation_request_ui;
 #[path = "main_area_dna/genomic_regions_ui.rs"]
 mod genomic_regions_ui;
 mod locus_inspector;
+mod tss_view;
 
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
@@ -266,6 +267,7 @@ enum PrimaryMapMode {
     Standard,
     Splicing,
     Dotplot,
+    Tss,
 }
 
 impl PrimaryMapMode {
@@ -274,6 +276,7 @@ impl PrimaryMapMode {
             Self::Standard => "Standard map",
             Self::Splicing => "Splicing map",
             Self::Dotplot => "Dotplot map",
+            Self::Tss => "TSS / Regulatory",
         }
     }
 }
@@ -1405,6 +1408,7 @@ pub struct MainAreaDna {
     compact_lane_layout: bool,
     primary_map_mode: PrimaryMapMode,
     dna_presentation_mode: DnaPresentationMode,
+    tss_ui: tss_view::TssUiState,
     show_all_contextual_transcripts: bool,
     dotplot_ui: DotplotOpsUiState,
     dotplot_query_override_seq_id: String,
@@ -2286,6 +2290,7 @@ impl MainAreaDna {
             compact_lane_layout: false,
             primary_map_mode: PrimaryMapMode::Standard,
             dna_presentation_mode: DnaPresentationMode::Region,
+            tss_ui: tss_view::TssUiState::default(),
             show_all_contextual_transcripts: false,
             dotplot_ui: DotplotOpsUiState::default(),
             dotplot_query_override_seq_id: String::new(),
@@ -3199,6 +3204,7 @@ impl MainAreaDna {
             self.log_topology_transition_status("replace_active_dna: begin");
         }
         *self.dna.write().expect("DNA lock poisoned") = dna;
+        self.tss_ui = tss_view::TssUiState::default();
         self.invalidate_engine_display_sync();
         self.map_dna.invalidate_sequence_derived_caches();
         if clear_feature_focus {
@@ -4871,6 +4877,11 @@ impl MainAreaDna {
 
             if !self.is_circular() {
                 let mut next_mode = self.primary_map_mode;
+                if self.tss_view_available() && ui.selectable_label(
+                    matches!(self.primary_map_mode, PrimaryMapMode::Tss), "TSS / Regulatory",
+                ).on_hover_text("Inspect the annotated TSS, transcript structure, CUT&RUN/chromatin intervals and retained motif peaks on a shared coordinate axis. No rescoring.").clicked() {
+                    next_mode = PrimaryMapMode::Tss;
+                }
                 if ui
                     .selectable_label(
                         matches!(self.primary_map_mode, PrimaryMapMode::Standard),
@@ -23023,6 +23034,10 @@ impl MainAreaDna {
     }
 
     fn export_active_view_svg(&mut self, profile: ViewSvgExportProfile) {
+        if matches!(self.primary_map_mode, PrimaryMapMode::Tss) {
+            self.op_status = "Native TSS view export is not yet available. Use the original receipt-bound TSS report export for quantitative SVG/PDF; switch to Standard map to export flat annotations.".into();
+            return;
+        }
         let Some(seq_id) = self.seq_id.clone() else {
             self.op_status = "No active sequence to export".to_string();
             return;
@@ -26246,7 +26261,9 @@ impl MainAreaDna {
     pub fn window_title(&self) -> String {
         let seq_id = self.sequence_id().map(|value| value.to_string());
         let display_name = self
-            .sequence_name()
+            .tss_display_title()
+            .map(str::to_owned)
+            .or_else(|| self.sequence_name())
             .filter(|name| !name.trim().is_empty())
             .or_else(|| seq_id.clone())
             .unwrap_or_else(|| "<Unnamed sequence>".to_string());
@@ -27452,6 +27469,8 @@ impl MainAreaDna {
                 self.render_primary_splicing_map_ui(ui);
             } else if primary_dotplot_mode {
                 self.render_primary_dotplot_map_ui(ui);
+            } else if matches!(self.primary_map_mode, PrimaryMapMode::Tss) {
+                self.render_primary_tss_map_ui(ui);
             } else {
                 let dark_mode = ui.visuals().dark_mode;
                 let response = theme::canvas_frame(dark_mode)

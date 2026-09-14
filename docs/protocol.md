@@ -13362,3 +13362,15 @@ This supports:
   - on-target efficacy model integration hooks
   - guide-design macro/template expansion into deterministic `Workflow` JSON
   - see draft: `docs/rna_guides_spec.md`
+## Annotated TSS Viewer Intent
+
+`ui open|focus|close tss-view` is an argument-free `gentle.ui_intent.v1`
+destination for the active DNA viewer. Open/focus requests native grouped
+inspection of a GENtle annotated TSS EMBL/GenBank window; close returns to
+Standard map. It does not mutate sequence data, score motifs, or materialize
+reporter constructs. No active DNA context or unsupported sequence produces an
+explicit host status, not an implicit choice of the first project sequence.
+The common headless shell returns `state_changed=false` and `applied=false`;
+only a GUI host applies the intent. The shared catalog exposes the destination
+to the inner agent and other adapters. See [display semantics and current
+scope](gui.md#tss--regulatory-dna-display).

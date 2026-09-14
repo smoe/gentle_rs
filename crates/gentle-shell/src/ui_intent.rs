@@ -140,6 +140,7 @@ pub enum UiIntentTarget {
     RetrieveHelperSequence,
     BlastHelperSequence,
     GelImageEditor,
+    TssView,
 }
 
 const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
@@ -162,6 +163,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::RetrieveHelperSequence,
     UiIntentTarget::BlastHelperSequence,
     UiIntentTarget::GelImageEditor,
+    UiIntentTarget::TssView,
 ];
 
 const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
@@ -271,7 +273,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 19;
+    pub const COUNT: usize = 20;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -282,6 +284,7 @@ impl UiIntentTarget {
     pub fn parse(raw: &str) -> Option<Self> {
         match raw.trim().to_ascii_lowercase().as_str() {
             "gel-image-editor" | "gel_image_editor" => Some(Self::GelImageEditor),
+            "tss-view" | "tss_view" => Some(Self::TssView),
             "open-sequence" | "open_sequence" | "sequence-file" | "sequence_file" => {
                 Some(Self::OpenSequence)
             }
@@ -347,6 +350,7 @@ impl UiIntentTarget {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::GelImageEditor => "gel-image-editor",
+            Self::TssView => "tss-view",
             Self::OpenSequence => "open-sequence",
             Self::RecentProject => "recent-project",
             Self::TutorialProject => "tutorial-project",
@@ -372,6 +376,7 @@ impl UiIntentTarget {
     pub fn discoverability_title(self) -> &'static str {
         match self {
             Self::GelImageEditor => "Gel Image Analysis",
+            Self::TssView => "TSS / Regulatory View",
             Self::OpenSequence => "Open Sequence",
             Self::RecentProject => "Open Recent Project",
             Self::TutorialProject => "Open Tutorial Project",
@@ -403,6 +408,9 @@ impl UiIntentTarget {
         match self {
             Self::GelImageEditor => {
                 "Mark imported gel lanes and bands, confirm ladder sizes, and export measured results."
+            }
+            Self::TssView => {
+                "Inspect the active DNA viewer's GENtle annotated TSS EMBL/GenBank window as grouped transcript, signal and stored motif lanes. Close returns to Standard map; no rescoring."
             }
             Self::OpenSequence => "Open a FASTA, GenBank, EMBL, SnapGene, or XML sequence file.",
             Self::RecentProject => {
@@ -448,6 +456,9 @@ impl UiIntentTarget {
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
             Self::GelImageEditor => "gel image agarose western SDS ladder band sizing bp kDa",
+            Self::TssView => {
+                "tss promoter regulatory cutrun chromatin motif annotated sequence viewer"
+            }
             Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
             Self::RecentProject => "open recent previous saved project continue",
             Self::TutorialProject => "open tutorial example demo chapter project",
@@ -482,7 +493,7 @@ impl UiIntentTarget {
         self.discoverability_keywords()
     }
 
-    /// Primary GUI menu location for the target.
+    /// Primary GUI location: application menu or a named, context-only viewer.
     pub fn menu_path(self) -> &'static str {
         match self {
             Self::OpenSequence
@@ -492,6 +503,7 @@ impl UiIntentTarget {
             Self::TutorialGuide => "Help",
             Self::Configuration => "Settings",
             Self::FeatureLocationEditor => "Edit",
+            Self::TssView => "DNA viewer",
             Self::PcrDesign | Self::SequencingConfirmation | Self::GelImageEditor => "Patterns",
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
@@ -512,7 +524,7 @@ impl UiIntentTarget {
             Self::RecentProject | Self::TutorialProject | Self::TutorialGuide => {
                 &UI_INTENT_OPEN_ACTION_NAMES
             }
-            Self::Configuration | Self::GelImageEditor => &UI_INTENT_ACTION_NAMES,
+            Self::Configuration | Self::GelImageEditor | Self::TssView => &UI_INTENT_ACTION_NAMES,
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -538,7 +550,7 @@ impl UiIntentTarget {
             | Self::TutorialProject
             | Self::TutorialGuide
             | Self::GelImageEditor => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
-            Self::FeatureLocationEditor | Self::SavedGenomicRegions => {
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions | Self::TssView => {
                 &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
             }
             _ => &UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT,
@@ -554,9 +566,10 @@ impl UiIntentTarget {
             }
             Self::TutorialGuide => &UI_INTENT_ARGUMENTS_TUTORIAL_ID,
             Self::Configuration => &UI_INTENT_ARGUMENTS_CONFIGURATION,
-            Self::FeatureLocationEditor | Self::SavedGenomicRegions | Self::GelImageEditor => {
-                &UI_INTENT_ARGUMENTS_NONE
-            }
+            Self::FeatureLocationEditor
+            | Self::SavedGenomicRegions
+            | Self::GelImageEditor
+            | Self::TssView => &UI_INTENT_ARGUMENTS_NONE,
             Self::OpenSequence
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -724,6 +737,7 @@ mod tests {
     fn assert_exhaustive_target_match(target: UiIntentTarget) {
         match target {
             UiIntentTarget::GelImageEditor
+            | UiIntentTarget::TssView
             | UiIntentTarget::OpenSequence
             | UiIntentTarget::RecentProject
             | UiIntentTarget::TutorialProject
@@ -782,6 +796,7 @@ mod tests {
             UiIntentTarget::RetrieveHelperSequence,
             UiIntentTarget::BlastHelperSequence,
             UiIntentTarget::GelImageEditor,
+            UiIntentTarget::TssView,
         ];
         assert_eq!(UiIntentTarget::COUNT, expected.len());
         assert_eq!(UiIntentTarget::all(), expected.as_slice());
@@ -837,11 +852,18 @@ mod tests {
             assert!(!row.title.trim().is_empty());
             assert!(!row.detail.trim().is_empty());
             assert!(!row.keywords.trim().is_empty());
-            assert!(
-                known_menus.contains(row.menu_path),
-                "unexpected menu path {}",
-                row.menu_path
-            );
+            if *target == UiIntentTarget::TssView {
+                // A display-mode transition lives in the DNA toolbar, not a new global menu.
+                assert_eq!(row.menu_path, "DNA viewer");
+                assert_eq!(row.actions, ["open", "focus", "close"]);
+                assert!(row.arguments.is_empty());
+            } else {
+                assert!(
+                    known_menus.contains(row.menu_path),
+                    "unexpected menu path {}",
+                    row.menu_path
+                );
+            }
             assert!(!row.actions.is_empty());
             for action in row.actions {
                 assert!(

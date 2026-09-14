@@ -3033,6 +3033,7 @@ impl GENtleApp {
         }
         match target {
             UiIntentTarget::OpenSequence => self.prompt_open_sequence(),
+            UiIntentTarget::TssView => return Some(self.apply_tss_view_intent(true)),
             UiIntentTarget::RecentProject => {
                 self.app_status =
                     "Recent-project UI intent requires an item id from the current GUI host context"
@@ -3359,6 +3360,7 @@ impl GENtleApp {
 
     fn apply_close_ui_intent_target(&mut self, target: UiIntentTarget) -> String {
         let was_open = match target {
+            UiIntentTarget::TssView => return self.apply_tss_view_intent(false),
             UiIntentTarget::GelImageEditor => {
                 let was_open = self.gel_image_editor.open;
                 self.gel_image_editor.open = false;
@@ -3439,6 +3441,40 @@ impl GENtleApp {
                 self.apply_open_or_focus_sequence_window_intent(action, seq_id)
             }
             UiIntentAction::Close => self.apply_close_sequence_window_intent(seq_id),
+        }
+    }
+
+    fn apply_tss_view_intent(&mut self, enabled: bool) -> String {
+        let Some((seq_id, _)) = self.active_dna_window_context() else {
+            return "TSS view not opened: activate the intended DNA sequence viewer first (ui focus sequence-window SEQ_ID). No sequence is selected implicitly.".into();
+        };
+        let Some(viewport) = self.find_open_sequence_viewport_id(&seq_id) else {
+            return "TSS view not opened: active DNA window is unavailable".into();
+        };
+        let result = self
+            .windows
+            .get(&viewport)
+            .and_then(|w| w.write().ok())
+            .ok_or_else(|| "Could not access DNA window".to_string())
+            .and_then(|mut w| w.set_tss_view(enabled));
+        match result {
+            Ok(()) => {
+                self.queue_focus_viewport(viewport);
+                format!(
+                    "{} for '{seq_id}'{}",
+                    if enabled {
+                        "Opened TSS / Regulatory view"
+                    } else {
+                        "Returned to Standard map"
+                    },
+                    if enabled {
+                        "; sequence binding will be validated before evidence is displayed"
+                    } else {
+                        ""
+                    }
+                )
+            }
+            Err(error) => format!("TSS view not changed: {error}"),
         }
     }
 

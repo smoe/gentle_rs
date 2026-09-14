@@ -19,6 +19,20 @@
   for identical clipped exon spans on both strands. No coordinate-only
   deduplication or change to the exported DNA is introduced.
 
+## 2026-09-14 - Native Annotated TSS Inspection
+
+- Added DNA-viewer TSS / Regulatory mode over a headless, sequence-hash-bound
+  presentation helper for existing annotated TSS EMBL/GenBank exports. It keeps
+  source records intact and uses coordinate-led titles, local/genomic/TSS rulers,
+  source/transcript/matrix lanes, filtering, hover provenance and DNA selection.
+- Preserved signal gaps, unavailable sources, score kinds, strand distinctions
+  and original features; negative motif values are hidden only in presentation.
+  Decoding runs outside paint, cached between frames with virtualized lane rows.
+- Added shared `ui open|focus|close tss-view` navigation and synthetic geometry,
+  format-round-trip, GUI-frame and shell/host regression coverage. Full typed
+  report attachment and native export remain separate; the `.10` release gate
+  is not broadened by this first native consumer.
+
 ## 2026-09-13 - Explained inner-agent fact relevance
 
 - Added request-aware ordering within the existing fair fact budget: named

@@ -6525,3 +6525,52 @@ Example FASTA headers:
   polished report, Lineage, Dotplot, and agentic workflow viewing. It should
   consume the same engine-owned JSON/SVG artifacts rather than replacing the
   egui desktop workbench in this GUI polish pass.
+# TSS / Regulatory DNA Display
+
+Open a GENtle **annotated TSS EMBL or GenBank** sequence in the DNA viewer,
+then choose **TSS / Regulatory** beside Standard map. The same sequence stays
+loaded; switching display does not extract a new molecule or change its bases.
+The title becomes gene, chromosome and genomic TSS position after validation.
+The file's original name and provenance remain unchanged.
+
+The native display separates transcript exon/coding context, each supplied
+CUT&RUN/chromatin source, retained motif peaks per matrix and score kind, and
+other annotations. Category checkboxes and a lane-name/source-ID filter limit
+clutter. The ordinary zoom/pan controls apply to its shared local axis. Rulers
+show local bases, genomic bases and signed TSS-relative offsets; a negative
+genomic strand decreases genomic coordinates without reversing the local DNA.
+Side summaries show interval counts and displayed coordinate envelopes (not
+continuous coverage). Hover retains original feature/source notes. Click a
+feature to select its exact local DNA span, then **Inspect in standard DNA map**
+to see that annotation and sequence. Wrapped/clipped original spans remain in
+details; unsupported compound locations are explicitly reported, not flattened.
+
+Signal intervals preserve gaps and supplied source scale; no-interval and
+not-prepared sources are not measured zeros. Motif triangles above/below the
+baseline distinguish local plus/minus strands, not positive/negative values.
+Their height uses the original score kind, never relabels tail probabilities
+as LLR bits, and hides values below zero without deleting data. These are stored
+peaks, **not full continuous score traces or experimentally measured binding**.
+Display clipping, filtering and selection never rescore motifs.
+
+Recognition is cached; hash/geometry validation and grouping run off the paint
+path. Only visible rows are painted, with an explicit 10,000-feature drawing
+limit per lane/viewport; zoom in if that limit is reached. The source data are
+not truncated. Editing/replacing the sequence invalidates the presentation.
+Mismatched bases, TSS markers, or motif-strand metadata fail closed. Sequence
+hash validation is not external reference authentication or a receipt audit.
+
+The first native consumer supports GENtle's annotated TSS export grammar,
+including existing hashed record names. FASTA alone, arbitrary locus features,
+and generic prose labels cannot establish its TSS geometry. Full report-backed
+dense traces, imported DuckDB hits, reporter rows, direct locus-to-TSS navigation,
+and native-view SVG export remain follow-ups. **Export View SVG** explains this
+limitation instead of silently exporting a different map; existing receipt-bound
+TSS report exports remain the quantitative publication path.
+The existing single-sequence file loader selects the last EMBL/GenBank record;
+multi-record import/selection is a separate follow-up, not provided by this view.
+
+Shared GUI/agent navigation: focus the intended DNA window, then use
+`ui open tss-view` or `ui focus tss-view`; `ui close tss-view` restores Standard
+map. No arbitrary project sequence is selected when the active DNA context is
+missing. Headless execution records the intent with `applied=false`.

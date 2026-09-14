@@ -73,6 +73,15 @@ pub struct WindowDna {
 }
 
 impl WindowDna {
+    pub(crate) fn set_tss_view(&mut self, enabled: bool) -> Result<(), String> {
+        if self.pending_dna_load.is_some() {
+            return Err(
+                "DNA sequence is still loading; retry TSS view after loading finishes".into(),
+            );
+        }
+        self.main_area.set_tss_view(enabled)
+    }
+
     fn render_deferred_load_indicator(ui: &mut egui::Ui) {
         let phase = ((ui.input(|input| input.time) * 10.0) as usize) % 4;
         let marker = match phase {
