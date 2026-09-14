@@ -12608,12 +12608,14 @@ fn build_fasta_index_with_progress<F>(
 where
     F: FnMut(u64, Option<u64>) -> bool,
 {
+    const PROGRESS_INTERVAL_BYTES: u64 = 8 * 1024 * 1024;
     let total_bytes = fs::metadata(fasta_path).ok().map(|m| m.len());
     let file = File::open(fasta_path)
         .map_err(|e| format!("Could not open FASTA '{}': {e}", fasta_path.display()))?;
     let mut reader = BufReader::new(file);
     let mut line = String::new();
     let mut byte_offset: u64 = 0;
+    let mut next_progress_at = PROGRESS_INTERVAL_BYTES;
     let mut entries: Vec<(String, FastaIndexEntry, bool)> = Vec::new();
     // tuple fields: (name, entry, saw_short_line)
     let mut active: Option<(String, FastaIndexEntry, bool)> = None;
@@ -12693,8 +12695,11 @@ where
             }
         }
         byte_offset += bytes_read as u64;
-        if !on_progress(byte_offset, total_bytes) {
-            return Err(prepare_cancelled_error("FASTA indexing progress"));
+        if byte_offset >= next_progress_at {
+            if !on_progress(byte_offset, total_bytes) {
+                return Err(prepare_cancelled_error("FASTA indexing progress"));
+            }
+            next_progress_at = byte_offset.saturating_add(PROGRESS_INTERVAL_BYTES);
         }
     }
 
@@ -13017,12 +13022,14 @@ fn parse_tabular_annotation_transcript_records_with_progress<F>(
 where
     F: FnMut(u64, Option<u64>) -> bool,
 {
+    const PROGRESS_INTERVAL_BYTES: u64 = 8 * 1024 * 1024;
     let total_bytes = fs::metadata(path).ok().map(|m| m.len());
     let file = File::open(path)
         .map_err(|e| format!("Could not open annotation file '{}': {e}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut transcripts: HashMap<String, TranscriptAccum> = HashMap::new();
     let mut bytes_read_total: u64 = 0;
+    let mut next_progress_at = PROGRESS_INTERVAL_BYTES;
     let mut raw_line: Vec<u8> = vec![];
     if !on_progress(0, total_bytes) {
         return Err(prepare_cancelled_error("transcript index start"));
@@ -13036,8 +13043,11 @@ where
             break;
         }
         bytes_read_total = bytes_read_total.saturating_add(line_bytes as u64);
-        if !on_progress(bytes_read_total, total_bytes) {
-            return Err(prepare_cancelled_error("transcript index progress"));
+        if bytes_read_total >= next_progress_at {
+            if !on_progress(bytes_read_total, total_bytes) {
+                return Err(prepare_cancelled_error("transcript index progress"));
+            }
+            next_progress_at = bytes_read_total.saturating_add(PROGRESS_INTERVAL_BYTES);
         }
         if raw_line.ends_with(b"\n") {
             raw_line.pop();
@@ -13329,6 +13339,7 @@ fn parse_tabular_annotation_gene_records_with_progress<F>(
 where
     F: FnMut(u64, Option<u64>) -> bool,
 {
+    const PROGRESS_INTERVAL_BYTES: u64 = 8 * 1024 * 1024;
     let total_bytes = fs::metadata(path).ok().map(|m| m.len());
     let file = File::open(path)
         .map_err(|e| format!("Could not open annotation file '{}': {e}", path.display()))?;
@@ -13339,6 +13350,7 @@ where
     let mut malformed_lines: usize = 0;
     let mut issue_examples: Vec<AnnotationParseIssue> = vec![];
     let mut bytes_read_total: u64 = 0;
+    let mut next_progress_at = PROGRESS_INTERVAL_BYTES;
     let mut raw_line: Vec<u8> = vec![];
     if !on_progress(0, total_bytes) {
         return Err(prepare_cancelled_error("annotation parse start"));
@@ -13353,8 +13365,11 @@ where
         }
         total_lines = total_lines.saturating_add(1);
         bytes_read_total = bytes_read_total.saturating_add(line_bytes as u64);
-        if !on_progress(bytes_read_total, total_bytes) {
-            return Err(prepare_cancelled_error("annotation parse progress"));
+        if bytes_read_total >= next_progress_at {
+            if !on_progress(bytes_read_total, total_bytes) {
+                return Err(prepare_cancelled_error("annotation parse progress"));
+            }
+            next_progress_at = bytes_read_total.saturating_add(PROGRESS_INTERVAL_BYTES);
         }
         if raw_line.ends_with(b"\n") {
             raw_line.pop();
@@ -16974,6 +16989,73 @@ mod tests {
         assert_eq!(
             attrs.get("dbxref").map(String::as_str),
             Some("GeneID:12345,HGNC:HGNC:5")
+        );
+    }
+
+    #[test]
+    fn preparation_index_progress_is_bounded_for_many_short_lines() {
+        let td = tempdir().unwrap();
+        let fasta = td.path().join("many-lines.fa");
+        let fai = td.path().join("many-lines.fa.fai");
+        let mut fasta_bytes = b">chr1\n".to_vec();
+        for _ in 0..10_000 {
+            fasta_bytes.extend_from_slice(
+                b"ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT\n",
+            );
+        }
+        fs::write(&fasta, fasta_bytes).unwrap();
+        let mut fasta_callbacks = 0;
+        build_fasta_index_with_progress(&fasta, &fai, |_done, _total| {
+            fasta_callbacks += 1;
+            true
+        })
+        .unwrap();
+        assert_eq!(fasta_callbacks, 2, "start and completion only below 8 MiB");
+
+        let annotation = td.path().join("many-lines.gff");
+        let mut annotation_bytes = b"##gff-version 3\n".to_vec();
+        for i in 0..1_000 {
+            annotation_bytes.extend_from_slice(
+                format!(
+                    "chr1\tsrc\tgene\t{}\t{}\t.\t+\t.\tID=gene:G{i};Name=G{i}\n",
+                    i * 100 + 1,
+                    i * 100 + 90
+                )
+                .as_bytes(),
+            );
+            annotation_bytes.extend_from_slice(
+                format!(
+                    "chr1\tsrc\tmRNA\t{}\t{}\t.\t+\t.\tID=transcript:T{i};gene_id=G{i};gene_name=G{i};transcript_id=T{i}\n",
+                    i * 100 + 1,
+                    i * 100 + 90
+                )
+                .as_bytes(),
+            );
+        }
+        fs::write(&annotation, annotation_bytes).unwrap();
+        let mut gene_callbacks = 0;
+        let (genes, _) =
+            parse_tabular_annotation_gene_records_with_progress(&annotation, |_done, _total| {
+                gene_callbacks += 1;
+                true
+            })
+            .unwrap();
+        assert_eq!(genes.len(), 1_000);
+        assert_eq!(gene_callbacks, 2, "start and completion only below 8 MiB");
+
+        let mut transcript_callbacks = 0;
+        let transcripts = parse_tabular_annotation_transcript_records_with_progress(
+            &annotation,
+            |_done, _total| {
+                transcript_callbacks += 1;
+                true
+            },
+        )
+        .unwrap();
+        assert_eq!(transcripts.len(), 1_000);
+        assert_eq!(
+            transcript_callbacks, 2,
+            "start and completion only below 8 MiB"
         );
     }
 
