@@ -896,8 +896,9 @@ impl GENtleApp {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
                 let mut status = format!(
-                    "{} task running ({:.1}s)",
+                    "{} task for '{}' running ({:.1}s)",
                     task.mode.progress_label(),
+                    task.genome_id,
                     task.started.elapsed().as_secs_f32()
                 );
                 if let Some(timeout) = task.timeout_seconds {
@@ -951,6 +952,7 @@ impl GENtleApp {
                 }
             }
             if self.genome_prepare_task.is_some()
+                && self.prepare_dialog_progress_matches_selection()
                 && ui
                     .button("Cancel Prepare")
                     .on_hover_text("Request cancellation of the running prepare task.")
@@ -986,6 +988,60 @@ impl GENtleApp {
                 self.queue_ensembl_installable_genome_discovery(Some("all"), None);
             }
         });
+        self.render_prepare_dialog_progress(ui);
+        close_requested
+    }
+
+    pub(super) fn prepare_dialog_progress_matches_selection(&self) -> bool {
+        let matches = |genome_id: &str, scope, catalog_path: &str, cache_dir: &str| {
+            genome_id.trim() == self.genome_id.trim()
+                && scope == self.genome_dialog_scope
+                && catalog_path.trim() == self.genome_catalog_path.trim()
+                && cache_dir.trim() == self.genome_cache_dir.trim()
+        };
+        if let Some(task) = &self.genome_prepare_task {
+            matches(
+                &task.genome_id,
+                task.scope,
+                &task.catalog_path,
+                &task.cache_dir,
+            )
+        } else if let Some(context) = &self.genome_prepare_context {
+            matches(
+                &context.genome_id,
+                context.scope,
+                &context.catalog_path,
+                &context.cache_dir,
+            )
+        } else {
+            true
+        }
+    }
+
+    pub(super) fn render_prepare_dialog_progress(&mut self, ui: &mut Ui) {
+        if !self.prepare_dialog_progress_matches_selection() {
+            let genome_id = self
+                .genome_prepare_task
+                .as_ref()
+                .map(|task| task.genome_id.as_str())
+                .or_else(|| {
+                    self.genome_prepare_context
+                        .as_ref()
+                        .map(|context| context.genome_id.as_str())
+                })
+                .unwrap_or_default();
+            ui.separator();
+            ui.label(format!(
+                "Preparation for '{genome_id}' belongs to a different genome, catalog, cache or reference/helper selection."
+            ));
+            if ui.button("Show Background Jobs").clicked() {
+                self.show_jobs_panel = true;
+            }
+            return;
+        }
+        if let Some(context) = &self.genome_prepare_context {
+            ui.small(format!("Preparation for '{}'", context.genome_id));
+        }
         if !self.genome_prepare_steps.is_empty() {
             self.render_prepare_step_checklist(ui);
         } else if let Some(progress) = &self.genome_prepare_progress {
@@ -1026,7 +1082,6 @@ impl GENtleApp {
             ui.separator();
             ui.monospace(&self.genome_prepare_status);
         }
-        close_requested
     }
 
     pub(super) fn render_reference_genome_prepare_scroll_area(

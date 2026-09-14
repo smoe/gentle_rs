@@ -5361,6 +5361,9 @@ Recommended flow:
      - inspects current Ensembl/Ensembl Metazoa FASTA + GTF species-directory listings
      - reports candidates where both listing types are present
      - shows collection, species directory, and the current listing URLs
+     - vertebrate discovery uses Ensembl's `pub/current/fasta/` and
+       `pub/current/gtf/` directories; installed URLs are pinned to the selected
+       release's `fasta/` and `gtf/` directories, not a `vertebrates/` subdirectory
      - each candidate now offers `Quick Install...`, which opens a confirmation dialog showing the resolved release, file stem, concrete FASTA/GTF URLs, the target catalog write mode, and the chosen output catalog path before the normal prepare workflow starts
      - discovery itself still does not edit the catalog until `Install + Prepare` is confirmed
    - helper-scope dialogs (`Prepare Helper Genome...`, `Retrieve Helper Sequence...`,
@@ -5378,6 +5381,13 @@ Recommended flow:
      that confirmation prompt stays in the same window stack instead of opening
      behind the specialist window
    - this runs in background and now shows the full ordered prepare plan up front
+   - changing the selected genome, catalog, cache or Reference/Helper scope does
+     not retarget or cancel a running job. Detailed progress stays attached to
+     the original job settings, including its completion or failure; a different
+     selection shows the job's genome name and a `Show Background Jobs` button
+     instead of displaying that job's checklist as if it belonged to the new
+     selection. Follow or cancel the original job in `Background Jobs`, or select
+     its settings again to see its progress here
    - the checklist now uses a single overall progress bar; the individual rows
      stay as status/check rows for sequence, annotation, FASTA index, gene
      index, and BLAST index

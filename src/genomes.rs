@@ -9823,7 +9823,7 @@ fn template_group_key(template: &EnsemblCatalogTemplate) -> String {
 
 fn current_ensembl_collection_fasta_root_url(collection: &str) -> Option<&'static str> {
     match normalize_ensembl_collection(collection)? {
-        "vertebrates" => Some("https://ftp.ensembl.org/pub/current_fasta/"),
+        "vertebrates" => Some("https://ftp.ensembl.org/pub/current/fasta/"),
         "metazoa" => Some("https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/fasta/"),
         _ => None,
     }
@@ -9831,7 +9831,7 @@ fn current_ensembl_collection_fasta_root_url(collection: &str) -> Option<&'stati
 
 fn current_ensembl_collection_gtf_root_url(collection: &str) -> Option<&'static str> {
     match normalize_ensembl_collection(collection)? {
-        "vertebrates" => Some("https://ftp.ensembl.org/pub/current_gtf/"),
+        "vertebrates" => Some("https://ftp.ensembl.org/pub/current/gtf/"),
         "metazoa" => Some("https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/current/gtf/"),
         _ => None,
     }
@@ -9840,7 +9840,7 @@ fn current_ensembl_collection_gtf_root_url(collection: &str) -> Option<&'static 
 fn current_ensembl_fasta_listing_url(template: &EnsemblCatalogTemplate) -> String {
     match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
         "vertebrates" => format!(
-            "https://ftp.ensembl.org/pub/current_fasta/{}/dna/",
+            "https://ftp.ensembl.org/pub/current/fasta/{}/dna/",
             template.species_dir
         ),
         "metazoa" => format!(
@@ -9854,7 +9854,7 @@ fn current_ensembl_fasta_listing_url(template: &EnsemblCatalogTemplate) -> Strin
 fn current_ensembl_gtf_listing_url(template: &EnsemblCatalogTemplate) -> String {
     match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
         "vertebrates" => format!(
-            "https://ftp.ensembl.org/pub/current_gtf/{}/",
+            "https://ftp.ensembl.org/pub/current/gtf/{}/",
             template.species_dir
         ),
         "metazoa" => format!(
@@ -9871,19 +9871,10 @@ fn ensembl_release_fasta_url(
     filename: &str,
 ) -> String {
     match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
-        "vertebrates" => {
-            if release >= 116 {
-                format!(
-                    "https://ftp.ensembl.org/pub/release-{release}/vertebrates/fasta/{}/dna/{}",
-                    template.species_dir, filename
-                )
-            } else {
-                format!(
-                    "https://ftp.ensembl.org/pub/release-{release}/fasta/{}/dna/{}",
-                    template.species_dir, filename
-                )
-            }
-        }
+        "vertebrates" => format!(
+            "https://ftp.ensembl.org/pub/release-{release}/fasta/{}/dna/{}",
+            template.species_dir, filename
+        ),
         "metazoa" => format!(
             "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-{release}/fasta/{}/dna/{}",
             template.species_dir, filename
@@ -9898,19 +9889,10 @@ fn ensembl_release_gtf_url(
     filename: &str,
 ) -> String {
     match normalize_ensembl_collection(&template.collection).unwrap_or("vertebrates") {
-        "vertebrates" => {
-            if release >= 116 {
-                format!(
-                    "https://ftp.ensembl.org/pub/release-{release}/vertebrates/gtf/{}/{}",
-                    template.species_dir, filename
-                )
-            } else {
-                format!(
-                    "https://ftp.ensembl.org/pub/release-{release}/gtf/{}/{}",
-                    template.species_dir, filename
-                )
-            }
-        }
+        "vertebrates" => format!(
+            "https://ftp.ensembl.org/pub/release-{release}/gtf/{}/{}",
+            template.species_dir, filename
+        ),
         "metazoa" => format!(
             "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/release-{release}/gtf/{}/{}",
             template.species_dir, filename
@@ -10099,7 +10081,8 @@ fn discover_ensembl_installable_genomes_with_fetcher(
 
     Ok(EnsemblInstallableGenomeCatalog {
         collection_filter: requested_filter,
-        availability_basis: "current_fasta/current_gtf species-directory intersection".to_string(),
+        availability_basis: "current/fasta + current/gtf species-directory intersection"
+            .to_string(),
         collection_latest_releases,
         candidates,
         warnings,
@@ -18619,17 +18602,74 @@ mod tests {
     }
 
     #[test]
+    fn test_ensembl_listing_and_download_urls_use_published_layout() {
+        // Synthetic template; URLs follow the public Ensembl layout checked on 2026-09-14.
+        for (collection, root, releases) in [
+            (
+                "vertebrates",
+                "https://ftp.ensembl.org/pub/",
+                vec![115, 116, 117],
+            ),
+            (
+                "metazoa",
+                "https://ftp.ensemblgenomes.ebi.ac.uk/pub/metazoa/",
+                vec![61, 62],
+            ),
+        ] {
+            let template = EnsemblCatalogTemplate {
+                provider: "ensembl".into(),
+                collection: collection.into(),
+                species_dir: "test_species".into(),
+                file_stem: "Test_species.ASM1".into(),
+                release: releases[0],
+            };
+            assert_eq!(
+                current_ensembl_collection_fasta_root_url(collection).unwrap(),
+                format!("{root}current/fasta/")
+            );
+            assert_eq!(
+                current_ensembl_collection_gtf_root_url(collection).unwrap(),
+                format!("{root}current/gtf/")
+            );
+            assert_eq!(
+                current_ensembl_fasta_listing_url(&template),
+                format!("{root}current/fasta/test_species/dna/")
+            );
+            assert_eq!(
+                current_ensembl_gtf_listing_url(&template),
+                format!("{root}current/gtf/test_species/")
+            );
+            for release in releases {
+                assert_eq!(
+                    ensembl_release_fasta_url(
+                        &template,
+                        release,
+                        "Test_species.ASM1.dna_sm.toplevel.fa.gz"
+                    ),
+                    format!(
+                        "{root}release-{release}/fasta/test_species/dna/Test_species.ASM1.dna_sm.toplevel.fa.gz"
+                    )
+                );
+                assert_eq!(
+                    ensembl_release_gtf_url(&template, release, "Test_species.ASM1.gtf.gz"),
+                    format!("{root}release-{release}/gtf/test_species/Test_species.ASM1.gtf.gz")
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_discover_ensembl_installable_genomes_intersects_current_species_dirs() {
         let fetch = |url: &str| -> Result<String, String> {
             match url {
                 "https://ftp.ensembl.org/pub/" => {
                     Ok(r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#.to_string())
                 }
-                "https://ftp.ensembl.org/pub/current_fasta/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/" => Ok(
                     r#"<a href="../">../</a><a href="danio_rerio/">danio_rerio/</a><a href="mus_musculus/">mus_musculus/</a>"#
                         .to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/" => Ok(
+                "https://ftp.ensembl.org/pub/current/gtf/" => Ok(
                     r#"<a href="../">../</a><a href="homo_sapiens/">homo_sapiens/</a><a href="mus_musculus/">mus_musculus/</a>"#
                         .to_string(),
                 ),
@@ -18654,7 +18694,7 @@ mod tests {
         assert_eq!(discovery.collection_filter, "all");
         assert_eq!(
             discovery.availability_basis,
-            "current_fasta/current_gtf species-directory intersection"
+            "current/fasta + current/gtf species-directory intersection"
         );
         assert_eq!(
             discovery
@@ -18668,6 +18708,19 @@ mod tests {
             Some(61)
         );
         assert_eq!(discovery.candidates.len(), 2);
+        let mouse = discovery
+            .candidates
+            .iter()
+            .find(|row| row.species_dir == "mus_musculus")
+            .unwrap();
+        assert_eq!(
+            mouse.current_fasta_listing_url,
+            "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/"
+        );
+        assert_eq!(
+            mouse.current_gtf_listing_url,
+            "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/"
+        );
         assert!(discovery.candidates.iter().any(|candidate| {
             candidate.collection == "vertebrates"
                 && candidate.species_dir == "mus_musculus"
@@ -18720,11 +18773,11 @@ mod tests {
                     r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#
                         .to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#
                         .to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => Ok(
+                "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string(),
                 ),
                 other => Err(format!("unexpected url: {other}")),
@@ -18795,11 +18848,11 @@ mod tests {
                     r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#
                         .to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#
                         .to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => Ok(
+                "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string(),
                 ),
                 other => Err(format!("unexpected url: {other}")),
@@ -18820,12 +18873,10 @@ mod tests {
             .apply_ensembl_catalog_updates_with_fetcher(None, &fetch)
             .unwrap();
         let text = fs::read_to_string(&catalog_path).unwrap();
-        assert!(text.contains("release-116/vertebrates/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz"));
-        assert!(
-            text.contains(
-                "release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz"
-            )
-        );
+        assert!(text.contains(
+            "release-116/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz"
+        ));
+        assert!(text.contains("release-116/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz"));
     }
 
     #[test]
@@ -18922,11 +18973,11 @@ mod tests {
                     r#"<a href="release-115/">release-115/</a><a href="release-116/">release-116/</a>"#
                         .to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#
                         .to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => Ok(
+                "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string(),
                 ),
                 other => Err(format!("unexpected url: {other}")),
@@ -18979,10 +19030,10 @@ mod tests {
             GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
         let fetch = |url: &str| -> Result<String, String> {
             match url {
-                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/" => {
                     Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
                 }
                 other => Err(format!("unexpected url: {other}")),
@@ -19002,6 +19053,14 @@ mod tests {
         assert_eq!(preview.catalog_write_mode, "full_catalog");
         assert_eq!(preview.catalog_entry_action, "add_new_entry");
         assert_eq!(preview.genome_id, "Mus Musculus GRCm39 Ensembl 116");
+        assert_eq!(
+            preview.sequence_remote,
+            "https://ftp.ensembl.org/pub/release-116/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz"
+        );
+        assert_eq!(
+            preview.annotations_remote,
+            "https://ftp.ensembl.org/pub/release-116/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz"
+        );
 
         let report = catalog
             .apply_ensembl_quick_install_with_fetcher(
@@ -19049,10 +19108,10 @@ mod tests {
         };
         let fetch = |url: &str| -> Result<String, String> {
             match url {
-                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/" => {
                     Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
                 }
                 other => Err(format!("unexpected url: {other}")),
@@ -19112,10 +19171,10 @@ mod tests {
         };
         let fetch = |url: &str| -> Result<String, String> {
             match url {
-                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/" => {
                     Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
                 }
                 other => Err(format!("unexpected url: {other}")),
@@ -19144,10 +19203,10 @@ mod tests {
             GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
         let fetch = |url: &str| -> Result<String, String> {
             match url {
-                "https://ftp.ensembl.org/pub/current_fasta/mus_musculus/dna/" => Ok(
+                "https://ftp.ensembl.org/pub/current/fasta/mus_musculus/dna/" => Ok(
                     r#"<a href="Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz">fasta</a>"#.to_string(),
                 ),
-                "https://ftp.ensembl.org/pub/current_gtf/mus_musculus/" => {
+                "https://ftp.ensembl.org/pub/current/gtf/mus_musculus/" => {
                     Ok(r#"<a href="Mus_musculus.GRCm39.116.gtf.gz">gtf</a>"#.to_string())
                 }
                 other => Err(format!("unexpected url: {other}")),

@@ -664,7 +664,7 @@ struct PrepareGenomeEtaBaseline {
 }
 
 #[derive(Debug, Clone)]
-struct PrepareGenomeFailureRecovery {
+struct GenomePrepareContext {
     genome_id: String,
     scope: GenomeDialogScope,
     catalog_path: String,
@@ -853,9 +853,10 @@ pub struct GENtleApp {
     genome_catalog_error: String,
     genome_prepare_task: Option<GenomePrepareTask>,
     genome_prepare_progress: Option<PrepareGenomeProgress>,
+    genome_prepare_context: Option<GenomePrepareContext>,
     genome_prepare_steps: Vec<PrepareGenomeUiStepState>,
     genome_prepare_eta_baseline: Option<PrepareGenomeEtaBaseline>,
-    genome_prepare_failure_recovery: Option<PrepareGenomeFailureRecovery>,
+    genome_prepare_failure_recovery: Option<GenomePrepareContext>,
     genome_prepare_status: String,
     tutorial_project_task: Option<TutorialProjectTask>,
     tutorial_project_progress_fraction: Option<f32>,
@@ -2774,6 +2775,7 @@ impl Default for GENtleApp {
             genome_catalog_error: String::new(),
             genome_prepare_task: None,
             genome_prepare_progress: None,
+            genome_prepare_context: None,
             genome_prepare_steps: vec![],
             genome_prepare_eta_baseline: None,
             genome_prepare_failure_recovery: None,
@@ -11700,6 +11702,7 @@ Error: `{err}`"
         if self.genome_prepare_task.is_none() {
             self.genome_prepare_steps.clear();
             self.genome_prepare_progress = None;
+            self.genome_prepare_context = None;
             self.genome_prepare_eta_baseline = None;
             self.genome_prepare_failure_recovery = None;
             self.genome_prepare_status.clear();
@@ -12126,6 +12129,12 @@ Error: `{err}`"
         self.reset_prepare_step_state_from_plan(prepare_plan);
         self.genome_prepare_eta_baseline = None;
         self.genome_prepare_failure_recovery = None;
+        self.genome_prepare_context = Some(GenomePrepareContext {
+            genome_id: genome_id.clone(),
+            scope,
+            catalog_path: self.genome_catalog_path.clone(),
+            cache_dir: self.genome_cache_dir.clone(),
+        });
         self.genome_prepare_progress = Some(PrepareGenomeProgress {
             genome_id: genome_id.clone(),
             phase: "queued".to_string(),
@@ -12477,7 +12486,7 @@ Error: `{err}`"
                         task.cancel_requested.load(Ordering::Relaxed),
                         task.timeout_seconds,
                         task.mode,
-                        PrepareGenomeFailureRecovery {
+                        GenomePrepareContext {
                             genome_id: task.genome_id.clone(),
                             scope: task.scope,
                             catalog_path: task.catalog_path.clone(),
@@ -12490,13 +12499,14 @@ Error: `{err}`"
                     false,
                     None,
                     GenomePrepareLaunchMode::Prepare,
-                    PrepareGenomeFailureRecovery {
+                    GenomePrepareContext {
                         genome_id: self.genome_id.clone(),
                         scope: self.genome_dialog_scope,
                         catalog_path: self.genome_catalog_path.clone(),
                         cache_dir: self.genome_cache_dir.clone(),
                     },
                 ));
+            self.genome_prepare_context = Some(failure_recovery.clone());
             self.genome_prepare_task = None;
             self.genome_prepare_eta_baseline = None;
             match outcome {
@@ -23005,20 +23015,20 @@ Error: `{err}`"
             ui.separator();
 
             ui.strong("Prepare Genome");
+            if self.genome_prepare_task.is_none()
+                && let Some(context) = &self.genome_prepare_context
+            {
+                ui.small(format!("Last task: '{}'", context.genome_id));
+            }
             let mut cancel_prepare_clicked = false;
             if self.genome_prepare_task.is_some() {
                 if let Some(task) = &self.genome_prepare_task {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new());
-                        let genome_label = self
-                            .genome_prepare_progress
-                            .as_ref()
-                            .map(|progress| progress.genome_id.clone())
-                            .unwrap_or_else(|| self.genome_id.clone());
                         ui.label(format!(
                             "{} '{}' ({:.1}s)",
                             task.mode.progress_label(),
-                            genome_label,
+                            task.genome_id,
                             task.started.elapsed().as_secs_f32()
                         ));
                         if ui

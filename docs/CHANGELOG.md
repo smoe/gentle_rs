@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-14 - Genome Discovery And Progress Ownership
+
+- Correct Ensembl vertebrate discovery to use `pub/current/fasta/` and
+  `pub/current/gtf/`, avoiding the missing legacy `current_gtf/` alias. Quick
+  install and explicit catalog updates now use flat release directories for
+  release 116 and later, matching the published layout. Existing catalogs and
+  prepared genomes are not automatically rewritten or downloaded again.
+- Keep preparation progress bound to the job's genome, catalog, cache and
+  Reference/Helper scope. Selecting something else leaves the job running and
+  links to Background Jobs rather than displaying its progress under another
+  genome. Retain this identity after success/failure and use the actual task
+  genome in Background Jobs even before its first progress message.
+- Add offline URL-builder/discovery/install/update coverage and a synthetic
+  worker/render regression for selection changes and completion ownership.
+
 ## 2026-09-14 - Evidence-Guided Reporter Boundary Proposals
 
 - Added read-only `promoters fragment-candidates` and its shared operation:

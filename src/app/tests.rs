@@ -12,19 +12,20 @@ use super::{
     ContainerRow, DEFAULT_DBSNP_TUTORIAL_RS_ID, DEFAULT_HELPER_GENOME_CACHE_DIR,
     DEFAULT_HELPER_GENOME_CATALOG_PATH, DEFAULT_LINEAGE_MAIN_SPLIT_FRACTION, DbSnpFetchTask,
     DbSnpFetchTaskMessage, EngineError, ErrorCode, GENtleApp, GenomeBlastOptionsPreset,
-    GenomeBlastTask, GenomeBlastTaskMessage, GenomeDialogScope, GenomePrepareLaunchMode,
-    GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackAutosyncKey, GenomeTrackImportTask,
-    GenomeTrackImportTaskMessage, GenomeTrackTaskKind, GenomeTrackTaskResult,
-    GibsonUiInsertOrientation, GibsonUiInsertRow, GibsonUiOpeningMode, HelpDoc, HelpSearchMatch,
-    HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY, LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT,
-    LineageAnalysisKind, LineageCopyPayloadKind, LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS,
-    MISTRAL_API_KEY_AUTH_HINT, MISTRAL_API_KEY_ENV, NATIVE_ABOUT_OPEN_REQUESTED,
-    OPENAI_API_KEY_ENV, OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
+    GenomeBlastTask, GenomeBlastTaskMessage, GenomeDialogScope, GenomePrepareContext,
+    GenomePrepareLaunchMode, GenomePrepareTask, GenomePrepareTaskMessage, GenomeTrackAutosyncKey,
+    GenomeTrackImportTask, GenomeTrackImportTaskMessage, GenomeTrackTaskKind,
+    GenomeTrackTaskResult, GibsonUiInsertOrientation, GibsonUiInsertRow, GibsonUiOpeningMode,
+    HelpDoc, HelpSearchMatch, HelpTutorialDocEntry, LINEAGE_GRAPH_WORKSPACE_METADATA_KEY,
+    LINEAGE_MAIN_TOP_PANEL_MIN_HEIGHT, LineageAnalysisKind, LineageCopyPayloadKind,
+    LineageNodeKind, LineageRow, MAX_RECENT_PROJECTS, MISTRAL_API_KEY_AUTH_HINT,
+    MISTRAL_API_KEY_ENV, NATIVE_ABOUT_OPEN_REQUESTED, OPENAI_API_KEY_ENV,
+    OPERATION_HISTORY_SCROLL_ID, PendingEnsemblCatalogUpdateDialog,
     PendingEnsemblInstallableGenomeDialog, PendingEnsemblQuickInstallDialog,
     PersistedConfiguration, PersistedLineageGraphWorkspace, PersistedLineageNodeGroup,
-    PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeFailureRecovery,
-    PrepareGenomeUiStepState, PrepareGenomeUiStepStatus, PreparedGenomeReinstallDialogHost,
-    PreparedGenomeReinstallRequest, ProjectAction, ProjectOverviewMetric, ProjectOverviewTarget,
+    PersistedRackWorkspace, PrepareGenomeDialogPrimaryAction, PrepareGenomeUiStepState,
+    PrepareGenomeUiStepStatus, PreparedGenomeReinstallDialogHost, PreparedGenomeReinstallRequest,
+    ProjectAction, ProjectOverviewMetric, ProjectOverviewTarget,
     RACK_HELP_AUTO_MINIMIZE_MOVE_THRESHOLD, RACK_WORKSPACE_METADATA_KEY,
     ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
     ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
@@ -13611,6 +13612,115 @@ fn agent_conversation_reloads_from_project_metadata_without_credentials() {
 }
 
 #[test]
+fn prepare_dialog_progress_tracks_job_context_across_selection_and_completion() {
+    fn rendered_text(app: &mut GENtleApp) -> String {
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| app.render_prepare_dialog_progress(ui),
+        );
+        let output = crate::egui_compat::end_test_pass(&ctx);
+        let mut texts = Vec::new();
+        for clipped in output.shapes {
+            collect_rendered_text_from_shape(&clipped.shape, &mut texts);
+        }
+        texts.join("\n")
+    }
+
+    // Synthetic worker messages: no catalogs or genome downloads are needed.
+    let mut app = GENtleApp::default();
+    app.genome_id = "Genome A".into();
+    app.genome_dialog_scope = GenomeDialogScope::Reference;
+    app.genome_catalog_path = "catalog-a.json".into();
+    app.genome_cache_dir = "cache-a".into();
+    let (tx, rx) = mpsc::channel();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    app.genome_prepare_task = Some(GenomePrepareTask {
+        job_id: 701,
+        started: Instant::now(),
+        cancel_requested: cancelled.clone(),
+        runtime_frame: test_runtime_frame("prepare-progress-ownership"),
+        timeout_seconds: None,
+        mode: GenomePrepareLaunchMode::Prepare,
+        genome_id: app.genome_id.clone(),
+        scope: app.genome_dialog_scope,
+        catalog_path: app.genome_catalog_path.clone(),
+        cache_dir: app.genome_cache_dir.clone(),
+        receiver: rx,
+    });
+    tx.send(GenomePrepareTaskMessage::Progress {
+        job_id: 701,
+        progress: PrepareGenomeProgress {
+            genome_id: "Genome A".into(),
+            phase: "download".into(),
+            item: "A-only download detail".into(),
+            bytes_done: 50,
+            bytes_total: Some(100),
+            percent: Some(50.0),
+            step_id: None,
+            step_label: None,
+        },
+    })
+    .unwrap();
+    app.poll_prepare_reference_genome_task(&egui::Context::default());
+    assert!(app.prepare_dialog_progress_matches_selection());
+    assert!(rendered_text(&mut app).contains("A-only download detail"));
+
+    app.genome_id = "Genome B".into();
+    assert!(!app.prepare_dialog_progress_matches_selection());
+    let text = rendered_text(&mut app);
+    assert!(text.contains("Preparation for 'Genome A'"), "{text}");
+    assert!(text.contains("Show Background Jobs"), "{text}");
+    assert!(!text.contains("A-only download detail"), "{text}");
+    app.reset_prepare_dialog_preview_state();
+    assert!(app.genome_prepare_task.is_some());
+    assert!(app.genome_prepare_progress.is_some());
+    assert!(!cancelled.load(Ordering::Relaxed));
+
+    app.genome_id = "Genome A".into();
+    app.genome_dialog_scope = GenomeDialogScope::Helper;
+    assert!(!app.prepare_dialog_progress_matches_selection());
+    app.genome_dialog_scope = GenomeDialogScope::Reference;
+    app.genome_catalog_path = "catalog-b.json".into();
+    assert!(!app.prepare_dialog_progress_matches_selection());
+    app.genome_catalog_path = "catalog-a.json".into();
+    app.genome_cache_dir = "cache-b".into();
+    assert!(!app.prepare_dialog_progress_matches_selection());
+    app.genome_cache_dir = "cache-a".into();
+    assert!(app.prepare_dialog_progress_matches_selection());
+    assert!(rendered_text(&mut app).contains("A-only download detail"));
+
+    app.genome_id = "Genome B".into();
+    tx.send(GenomePrepareTaskMessage::Done {
+        job_id: 701,
+        result: Err(EngineError {
+            code: ErrorCode::Io,
+            message: "A-only failure detail".into(),
+            cause_chain: vec![],
+        }),
+    })
+    .unwrap();
+    app.poll_prepare_reference_genome_task(&egui::Context::default());
+    assert!(app.genome_prepare_task.is_none());
+    assert_eq!(app.genome_id, "Genome B");
+    assert_eq!(
+        app.genome_prepare_context.as_ref().unwrap().genome_id,
+        "Genome A"
+    );
+    let text = rendered_text(&mut app);
+    assert!(text.contains("Preparation for 'Genome A'"), "{text}");
+    assert!(!text.contains("A-only failure detail"), "{text}");
+    app.genome_id = "Genome A".into();
+    assert!(rendered_text(&mut app).contains("A-only failure detail"));
+    app.reset_prepare_dialog_preview_state();
+    assert!(app.genome_prepare_context.is_none());
+    assert!(app.genome_prepare_progress.is_none());
+    assert!(app.prepare_dialog_progress_matches_selection());
+}
+
+#[test]
 fn poll_prepare_ignores_stale_job_messages() {
     let mut app = GENtleApp::default();
     let (tx, rx) = mpsc::channel::<GenomePrepareTaskMessage>();
@@ -13785,7 +13895,7 @@ fn poll_prepare_captures_reinstall_recovery_for_inconsistent_reindex_failure() {
 #[test]
 fn queue_prepare_failure_reinstall_uses_failed_job_settings() {
     let mut app = GENtleApp::default();
-    app.genome_prepare_failure_recovery = Some(PrepareGenomeFailureRecovery {
+    app.genome_prepare_failure_recovery = Some(GenomePrepareContext {
         genome_id: "ToyGenome".to_string(),
         scope: GenomeDialogScope::Helper,
         catalog_path: "/tmp/helper_catalog.json".to_string(),
@@ -13964,6 +14074,12 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
     app.poll_prepare_reference_genome_task(&egui::Context::default());
 
     assert!(app.genome_prepare_task.is_none());
+    assert_eq!(
+        app.genome_prepare_context.as_ref().unwrap().genome_id,
+        "ToyGenome"
+    );
+    app.genome_id = "AnotherGenome".into();
+    assert!(!app.prepare_dialog_progress_matches_selection());
     assert!(
         app.genome_prepare_status
             .contains("Prepare genome finished after cancellation request"),

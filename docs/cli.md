@@ -6711,6 +6711,10 @@ Genome convenience commands:
 - `genomes ensembl-available [--collection all|vertebrates|metazoa] [--filter TEXT]`
   - Lists Ensembl species directories that currently look installable because both FASTA and GTF listings are present.
   - Returns a read-only discovery report with current listing URLs and latest release numbers seen per collection.
+  - Vertebrate discovery uses `https://ftp.ensembl.org/pub/current/fasta/` and
+    `https://ftp.ensembl.org/pub/current/gtf/`; installation and spec updates pin
+    files under `pub/release-N/fasta/` and `pub/release-N/gtf/`. Metazoa retains
+    its separate collection root. Discovery does not rewrite existing catalogs.
 - `genomes install-ensembl SPECIES_DIR [--collection vertebrates|metazoa] [--catalog PATH] [--output-catalog PATH] [--genome-id ID] [--cache-dir PATH] [--timeout-secs N]`
   - Resolves concrete current Ensembl FASTA/GTF URLs for one species directory, writes a real catalog entry, and immediately runs the normal prepare workflow.
   - When the active catalog is a writable single JSON file, GENtle updates that file in place.
