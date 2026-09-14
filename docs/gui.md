@@ -3468,6 +3468,9 @@ Behavior:
   explanations. A named subject outranks the active view. No sequence is
   guessed when the active window is not a DNA viewer, and selection priority
   is not evidence of biological importance or readiness.
+- Helper/vector suggestions prioritize the current question, then the most
+  recent user message, then its assistant reply. Older topics do not influence
+  catalog matching; brief follow-up questions can still refer to the last reply.
 - The next project-context request includes bounded, session-only execution
   receipts. Blocked, failed, partially successful, dispatched, running and
   completed actions remain distinct. Ensembl metadata retrieval followed by a
@@ -3479,6 +3482,9 @@ Behavior:
   - At most 100 receipts are retained, including rejections; suggestions are
     correlated with the latest 12 turns. Project switches and Clear Conversation
     discard them. Saving a project does not persist them.
+  - Manually typed commands still populate the result panel and local execution
+    log. Their receipts have no suggestion binding, so they are not sent to
+    the model as anonymous completions; missing feedback is not proof of failure.
   - Recording a receipt cannot mark a project dirty or clear redo. Later edits
     can require rechecking a result without erasing its historical completion.
 - when an accepted UI intent is opening a DNA Sequence Viewer, Agent Assistant

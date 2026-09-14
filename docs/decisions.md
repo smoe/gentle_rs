@@ -358,6 +358,11 @@ persisted through metadata writes that would clear redo or change dirty state.
 Model-facing receipts contain bounded typed outcomes and hashes, not raw
 commands, result bodies, or error strings. Successful dispatch is not background
 job completion, GUI presentation, or scientific acceptance.
+Host projection omits receipts without both a visible turn and a positive
+suggestion index, retaining them locally rather than exposing anonymous outcomes.
+Helper-catalog retrieval ranks current-prompt matches before the latest user
+message and its assistant reply; older dialogue cannot displace current intent.
+This bounded lexical ranking does not establish biological relevance or readiness.
 
 ## DEC-025: Legacy SHA-1 Download Verification Uses External Tools
 

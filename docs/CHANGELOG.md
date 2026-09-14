@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-09-15 - Agent Helper Relevance And Attributable Feedback
+
+- Rank bundled helper/vector matches by the current question, then the latest
+  user message, then its assistant reply. Drop older turns from catalog search
+  without removing them from conversation context; bound and deduplicate search
+  terms while preserving short follow-up grounding and deterministic ties.
+- Exclude manual/unattributed command receipts from model projection. Keep their
+  local execution log and result display, count omissions, and retain the
+  session, visible-turn, privacy and undo/redo safeguards.
+- Add synthetic ranking, term-budget, stale-topic, attribution and live offline
+  worker regressions. No async executor, polling or receipt-replay behavior is
+  introduced; those remain separate follow-ups.
+
 ## 2026-09-14 - Prepared NCBI Transcript Joins And Indexing Progress
 
 - Integrate Glen's independent `edc776bc`, `f66aff41` and `a6916702` fixes:

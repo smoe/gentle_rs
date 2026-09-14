@@ -241,6 +241,8 @@ impl AgentExecutionFeedback {
         Ok(())
     }
 
+    /// Project only receipts attributable to a suggestion in the visible conversation.
+    /// Unattributed local commands remain in the host log, not in model context.
     pub fn project(
         session_id: &str,
         current: Option<AgentExecutionRevision>,
@@ -255,7 +257,8 @@ impl AgentExecutionFeedback {
                 receipt
                     .turn_id
                     .as_ref()
-                    .is_none_or(|id| turn_ids.contains(id))
+                    .is_some_and(|id| turn_ids.contains(id))
+                    && receipt.suggestion_index.is_some_and(|index| index > 0)
             })
             .take(AGENT_EXECUTION_RECEIPT_LIMIT)
             .map(|receipt| AgentExecutionFeedbackRow {
@@ -322,14 +325,21 @@ mod tests {
         );
         let session_id = new_agent_context_id();
         receipt.session_id = session_id.clone();
+        let turn_id = new_agent_context_id();
+        receipt.turn_id = Some(turn_id.clone());
+        receipt.suggestion_index = Some(1);
         receipt
             .bind_output(&serde_json::json!({"sequence":"ACGTACGT", "path":"/private/secret.fa"}));
         receipt.bind_error("PASSWORD");
         let mut receipts = vec![receipt; 103];
         receipts[0].session_id = "previous_project".into();
         receipts[1].turn_id = Some("expired_turn".into());
-        let feedback =
-            AgentExecutionFeedback::project(&session_id, None, &receipts, &BTreeSet::new());
+        let feedback = AgentExecutionFeedback::project(
+            &session_id,
+            None,
+            &receipts,
+            &BTreeSet::from([turn_id]),
+        );
         feedback.validate().expect("valid private projection");
         assert_eq!(feedback.rows.len(), 100);
         assert_eq!(feedback.omitted_receipt_count, 3);
@@ -352,6 +362,51 @@ mod tests {
     }
 
     #[test]
+    fn agent_feedback_omits_unattributable_receipts_without_erasing_local_history() {
+        let session_id = new_agent_context_id();
+        let turn_id = new_agent_context_id();
+        let mut bound = AgentExecutionReceipt::new(
+            "state-summary",
+            AgentExecutionStatus::Completed,
+            None,
+            None,
+        );
+        bound.session_id = session_id.clone();
+        bound.turn_id = Some(turn_id.clone());
+        bound.suggestion_index = Some(1);
+        let visible_turns = BTreeSet::from([turn_id.clone()]);
+        let mut receipts = vec![bound.clone()];
+        for (turn, index) in [
+            (None, None),
+            (None, Some(1)),
+            (Some(turn_id.clone()), None),
+            (Some(turn_id), Some(0)),
+            (Some(new_agent_context_id()), Some(1)),
+        ] {
+            let mut receipt = bound.clone();
+            receipt.turn_id = turn;
+            receipt.suggestion_index = index;
+            // Later unbound observations must not exhaust the projection's row budget.
+            receipts.extend(std::iter::repeat_n(receipt, AGENT_EXECUTION_RECEIPT_LIMIT));
+        }
+        let before = serde_json::to_value(&receipts).expect("local log");
+        let feedback =
+            AgentExecutionFeedback::project(&session_id, None, &receipts, &visible_turns);
+        feedback.validate().expect("valid projection");
+        assert_eq!(feedback.rows.len(), 1);
+        assert_eq!(feedback.rows[0].receipt.receipt_id, bound.receipt_id);
+        assert_eq!(feedback.omitted_receipt_count, receipts.len() - 1);
+        assert_eq!(
+            before,
+            serde_json::to_value(&receipts).expect("retained local log")
+        );
+        let no_conversation =
+            AgentExecutionFeedback::project(&session_id, None, &receipts, &BTreeSet::new());
+        assert!(no_conversation.rows.is_empty());
+        assert_eq!(no_conversation.omitted_receipt_count, receipts.len());
+    }
+
+    #[test]
     fn agent_feedback_keeps_historical_completion_separate_from_applicability() {
         let mut engine = GentleEngine::from_state(crate::engine::ProjectState::default());
         let revision = AgentExecutionRevision::capture(&engine);
@@ -362,12 +417,16 @@ mod tests {
             Some(revision),
         );
         receipt.session_id = "session".into();
+        let turn_id = new_agent_context_id();
+        receipt.turn_id = Some(turn_id.clone());
+        receipt.suggestion_index = Some(1);
+        let visible_turns = BTreeSet::from([turn_id]);
         engine.display_state_mut().show_features = false;
         let feedback = AgentExecutionFeedback::project(
             "session",
             Some(AgentExecutionRevision::capture(&engine)),
             &[receipt.clone()],
-            &BTreeSet::new(),
+            &visible_turns,
         );
         assert_eq!(
             feedback.rows[0].applicability,
@@ -378,7 +437,7 @@ mod tests {
             "session",
             Some(AgentExecutionRevision::capture(&engine)),
             &[receipt],
-            &BTreeSet::new(),
+            &visible_turns,
         );
         assert_eq!(
             feedback.rows[0].applicability,
@@ -400,8 +459,15 @@ mod tests {
             None,
         );
         receipt.session_id = session_id.clone();
-        let feedback =
-            AgentExecutionFeedback::project(&session_id, None, &[receipt], &BTreeSet::new());
+        let turn_id = new_agent_context_id();
+        receipt.turn_id = Some(turn_id.clone());
+        receipt.suggestion_index = Some(1);
+        let feedback = AgentExecutionFeedback::project(
+            &session_id,
+            None,
+            &[receipt],
+            &BTreeSet::from([turn_id]),
+        );
         feedback.validate().expect("valid receipt");
         let mut invalid = feedback.clone();
         invalid.rows[0].receipt.error_sha256 = Some("/private/result.fa".into());

@@ -39,6 +39,7 @@ const AGENT_LOCAL_REFERENCE_WARNING_LIMIT: usize = 8;
 pub const AGENT_HELPER_CATALOG_CONTEXT_SCHEMA: &str = "gentle.agent_helper_catalog_context.v1";
 const AGENT_HELPER_CATALOG_LIMIT: usize = 6;
 const AGENT_HELPER_CATALOG_QUERY_TERM_LIMIT: usize = 24;
+const AGENT_HELPER_CATALOG_HISTORY_TERM_LIMIT: usize = 8;
 const AGENT_HELPER_CATALOG_SOURCE_URL_LIMIT: usize = 8;
 const AGENT_HELPER_CATALOG_WARNING_LIMIT: usize = 8;
 pub const AGENT_WEB_ACCESS_CONTEXT_SCHEMA: &str = "gentle.agent_web_access.v1";
@@ -1949,18 +1950,80 @@ fn agent_helper_query_terms(prompt: &str) -> Vec<String> {
     terms
 }
 
-fn agent_helper_catalog_query(prompt: &str, conversation: Option<&AgentConversation>) -> String {
-    let mut query = prompt.to_string();
-    let Some(conversation) = conversation else {
-        return query;
-    };
-    for turn in conversation.turns.iter().rev() {
-        query.push('\n');
-        query.push_str(&turn.user_message);
-        query.push('\n');
-        query.push_str(&turn.response.assistant_message);
+struct AgentHelperCatalogQuery {
+    current: Vec<String>,
+    recent_user: Vec<String>,
+    recent_assistant: Vec<String>,
+}
+
+impl AgentHelperCatalogQuery {
+    fn terms(&self) -> Vec<String> {
+        self.current
+            .iter()
+            .chain(&self.recent_user)
+            .chain(&self.recent_assistant)
+            .cloned()
+            .collect()
     }
-    query
+
+    fn score(&self, card: &crate::genomes::HelperVectorCard) -> (usize, usize, usize) {
+        // Lexicographic ranking prevents any amount of history from outvoting the prompt.
+        (
+            helper_card_search_score(card, &self.current),
+            helper_card_search_score(card, &self.recent_user),
+            helper_card_search_score(card, &self.recent_assistant),
+        )
+    }
+}
+
+fn agent_helper_catalog_query(
+    prompt: &str,
+    conversation: Option<&AgentConversation>,
+) -> AgentHelperCatalogQuery {
+    // Follow-up phrasing is not a new helper topic. Keep this specific to catalog lookup.
+    let terms = |text: &str| {
+        const CONVERSATION_WORDS: &[&str] = &[
+            "again",
+            "can",
+            "check",
+            "message",
+            "now",
+            "option",
+            "options",
+            "previous",
+            "reply",
+            "response",
+            "suggestion",
+            "suggestions",
+            "use",
+            "user",
+            "verify",
+            "you",
+        ];
+        agent_helper_query_terms(text)
+            .into_iter()
+            .filter(|term| !CONVERSATION_WORDS.contains(&term.as_str()))
+            .collect::<Vec<_>>()
+    };
+    let current = terms(prompt);
+    let mut seen = current.iter().cloned().collect::<HashSet<_>>();
+    let mut history_terms = |text: &str| {
+        let remaining = AGENT_HELPER_CATALOG_QUERY_TERM_LIMIT.saturating_sub(seen.len());
+        terms(text)
+            .into_iter()
+            .filter(|term| seen.insert(term.clone()))
+            .take(remaining.min(AGENT_HELPER_CATALOG_HISTORY_TERM_LIMIT))
+            .collect()
+    };
+    let recent = conversation.and_then(|conversation| conversation.turns.last());
+    let recent_user = history_terms(recent.map_or("", |turn| &turn.user_message));
+    let recent_assistant =
+        history_terms(recent.map_or("", |turn| &turn.response.assistant_message));
+    AgentHelperCatalogQuery {
+        current,
+        recent_user,
+        recent_assistant,
+    }
 }
 
 fn helper_card_search_score(card: &crate::genomes::HelperVectorCard, terms: &[String]) -> usize {
@@ -2077,8 +2140,14 @@ fn agent_helper_catalog_card(card: crate::genomes::HelperVectorCard) -> AgentHel
 
 /// Build prompt-matched helper/vector context without downloading anything.
 pub fn build_agent_helper_catalog_context(prompt: &str) -> AgentHelperCatalogContext {
+    build_agent_helper_catalog_context_for_query(&agent_helper_catalog_query(prompt, None))
+}
+
+fn build_agent_helper_catalog_context_for_query(
+    query: &AgentHelperCatalogQuery,
+) -> AgentHelperCatalogContext {
     let mut context = AgentHelperCatalogContext::default();
-    context.query_terms = agent_helper_query_terms(prompt);
+    context.query_terms = query.terms();
     let report = match GentleEngine::list_helper_vector_cards(None, None) {
         Ok(report) => report,
         Err(error) => {
@@ -2097,8 +2166,8 @@ pub fn build_agent_helper_catalog_context(prompt: &str) -> AgentHelperCatalogCon
         .cards
         .into_iter()
         .filter_map(|card| {
-            let score = helper_card_search_score(&card, &context.query_terms);
-            (score > 0).then_some((score, card))
+            let score = query.score(&card);
+            (score > (0, 0, 0)).then_some((score, card))
         })
         .collect::<Vec<_>>();
     matched.sort_by(|(left_score, left), (right_score, right)| {
@@ -3548,7 +3617,7 @@ fn build_agent_request_with_feedback(
     }
     let local_documents = build_agent_local_documents_context(prompt);
     let conversation = conversation.and_then(AgentConversation::context_window);
-    let helper_catalog = build_agent_helper_catalog_context(&agent_helper_catalog_query(
+    let helper_catalog = build_agent_helper_catalog_context_for_query(&agent_helper_catalog_query(
         prompt,
         conversation.as_ref(),
     ));
@@ -6724,6 +6793,108 @@ mod tests {
     }
 
     #[test]
+    fn helper_catalog_query_prioritizes_prompt_then_latest_user_then_assistant() {
+        // Hand-crafted catalog identities isolate ranking from bundled catalog changes.
+        let card = |id: &str, topic: &str| -> crate::genomes::HelperVectorCard {
+            serde_json::from_value(serde_json::json!({
+                "helper_id": id, "summary": topic, "metadata_only_candidate": true
+            }))
+            .expect("synthetic helper card")
+        };
+        let mut old = test_conversation_turn(0);
+        old.user_message = "obsoletehelper".repeat(20);
+        old.response.assistant_message = "obsoletehelper".into();
+        let mut recent = test_conversation_turn(1);
+        recent.user_message = "previousone previoustwo".into();
+        recent.response.assistant_message = "assistantone assistanttwo".into();
+        let conversation = AgentConversation {
+            turns: vec![old, recent],
+            ..AgentConversation::default()
+        };
+        let query = agent_helper_catalog_query("currenttopic", Some(&conversation));
+        assert_eq!(query.current, ["currenttopic"]);
+        assert_eq!(query.recent_user, ["previousone", "previoustwo"]);
+        assert_eq!(query.recent_assistant, ["assistantone", "assistanttwo"]);
+        let current = card("fresh", "currenttopic");
+        let previous = card("previousone previoustwo", "");
+        let assistant = card("assistantone assistanttwo", "");
+        assert!(query.score(&current) > query.score(&previous));
+        assert!(query.score(&previous) > query.score(&assistant));
+        assert_eq!(query.score(&card("obsoletehelper", "")), (0, 0, 0));
+    }
+
+    #[test]
+    fn helper_catalog_query_bounds_and_deduplicates_history_after_current_terms() {
+        let words = |prefix: &str, count: usize| {
+            (0..count)
+                .map(|index| format!("{prefix}{index}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let mut turn = test_conversation_turn(1);
+        turn.user_message = format!("current0 {}", words("user", 30));
+        turn.response.assistant_message = format!("current0 user0 {}", words("assistant", 30));
+        let conversation = AgentConversation {
+            turns: vec![turn],
+            ..AgentConversation::default()
+        };
+        let prompt = words("current", 12);
+        let query = agent_helper_catalog_query(&prompt, Some(&conversation));
+        assert_eq!(query.current.len(), 12);
+        assert_eq!(
+            query.recent_user.len(),
+            AGENT_HELPER_CATALOG_HISTORY_TERM_LIMIT
+        );
+        assert_eq!(query.recent_assistant.len(), 4);
+        assert_eq!(query.terms().len(), AGENT_HELPER_CATALOG_QUERY_TERM_LIMIT);
+        assert_eq!(
+            query.terms().iter().collect::<HashSet<_>>().len(),
+            query.terms().len()
+        );
+        assert_eq!(
+            query.terms(),
+            agent_helper_catalog_query(&prompt, Some(&conversation)).terms()
+        );
+
+        let query = agent_helper_catalog_query(&words("current", 30), Some(&conversation));
+        assert_eq!(query.current.len(), AGENT_HELPER_CATALOG_QUERY_TERM_LIMIT);
+        assert!(query.recent_user.is_empty());
+        assert!(query.recent_assistant.is_empty());
+    }
+
+    #[test]
+    fn helper_catalog_request_does_not_retrieve_an_obsolete_conversation_topic() {
+        let mut old = test_conversation_turn(0);
+        old.user_message = "Promega pGL4.10 luciferase".into();
+        old.response.assistant_message = "Promega pGL4.10 luciferase".into();
+        let mut recent = test_conversation_turn(1);
+        recent.user_message = "What should I do?".into();
+        recent.response.assistant_message = "What would help?".into();
+        let conversation = AgentConversation {
+            turns: vec![old, recent],
+            ..AgentConversation::default()
+        };
+        let (_, request, _) = build_agent_request(
+            "builtin_echo",
+            "What should I do?",
+            None,
+            None,
+            Some(&conversation),
+            &[],
+        )
+        .expect("offline request");
+        assert_eq!(request["x_helper_catalog"]["cards"], serde_json::json!([]));
+        assert_eq!(
+            request["x_helper_catalog"]["query_terms"],
+            serde_json::json!([])
+        );
+        assert_eq!(
+            request["x_conversation"]["turns"].as_array().unwrap().len(),
+            2
+        );
+    }
+
+    #[test]
     fn helper_catalog_context_recognizes_bundled_promega_luciferase_vector() {
         let context = build_agent_helper_catalog_context(
             "Please suggest a Promega luciferase reporter for a promoter assay",
@@ -6760,6 +6931,13 @@ mod tests {
             schema: AGENT_CONVERSATION_SCHEMA.to_string(),
             turns: vec![turn],
         };
+
+        let query =
+            agent_helper_catalog_query("Can you verify that suggestion?", Some(&conversation));
+        assert!(
+            query.current.is_empty(),
+            "follow-up phrasing is not a new topic"
+        );
 
         let (_, request, _) = build_agent_request(
             "pi_local_stdio",
@@ -7439,10 +7617,13 @@ mod tests {
         receipt.session_id = new_agent_context_id();
         receipt.turn_id = turn.turn_id.clone();
         receipt.suggestion_index = Some(1);
+        let mut manual = receipt.clone();
+        manual.turn_id = None;
+        manual.suggestion_index = None;
         let feedback = AgentExecutionFeedback::project(
             &receipt.session_id,
             None,
-            &[receipt.clone()],
+            &[receipt.clone(), manual],
             &BTreeSet::from([turn.turn_id.clone().expect("turn id")]),
         );
         let conversation = AgentConversation {
@@ -7461,6 +7642,14 @@ mod tests {
             Some(&feedback),
         )
         .expect("request");
+        assert_eq!(
+            request["x_execution_feedback"]["rows"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(request["x_execution_feedback"]["omitted_receipt_count"], 1);
         assert_eq!(
             request["x_execution_feedback"]["rows"][0]["receipt"]["turn_id"],
             request["x_conversation"]["turns"][0]["turn_id"]

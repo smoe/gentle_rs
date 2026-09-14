@@ -1945,6 +1945,17 @@ fn agent_introspection_relevance_uses_known_active_view_in_worker_request() {
     app.agent_system_id = "builtin_echo".into();
     app.agent_prompt = "Please inspect named_target".into();
     app.agent_include_state_summary = true;
+    app.execute_agent_prompt_command("/list");
+    assert_eq!(app.agent_execution_log.len(), 1);
+    assert!(app.agent_last_command_output.is_some());
+    assert!(
+        app.agent_execution_log[0]
+            .feedback
+            .as_ref()
+            .expect("manual receipt")
+            .turn_id
+            .is_none()
+    );
     let dna = DNAsequence::from_sequence("ACGTACGT").expect("synthetic DNA");
     for id in ["named_target", "visible_sequence"] {
         app.engine
@@ -2002,6 +2013,15 @@ fn agent_introspection_relevance_uses_known_active_view_in_worker_request() {
         invocation.request["x_introspection"]["active_sequence_id"],
         "visible_sequence"
     );
+    assert_eq!(
+        invocation.request["x_execution_feedback"]["rows"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        invocation.request["x_execution_feedback"]["omitted_receipt_count"],
+        1
+    );
+    assert_eq!(app.agent_execution_log.len(), 1);
 }
 
 #[test]

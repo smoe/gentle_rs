@@ -311,9 +311,9 @@ wet-lab conclusions or unconfirmed mutations.
   view-only `offline-core`; extend typed coverage next to Gibson and dotplot.
   MCP/Feature Editor, transcript-assay, vendor and trace guides need Glen's review; keep biological verdicts separate.
 - Extend the transcript follow-up with provenance-complete array evidence for positive differential selection and approved-study execution.
-- Extend inner-agent context with helper-catalog relevance and
-  readiness-bound tutorial actions, deferred-job observation and explicit
-  headless receipt replay; keep approvals and undo history unchanged.
+- Extend inner-agent context with readiness-bound tutorial actions,
+  deferred-job observation and explicit headless receipt replay;
+  keep approvals and undo history unchanged.
   Defer skill activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local

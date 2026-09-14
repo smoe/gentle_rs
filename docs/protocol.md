@@ -5832,7 +5832,10 @@ Additive execution/context fields:
   are not copied into this extension. An unchanged structural revision is not
   a revalidation of external resources or scientific acceptance gates.
 - GUI feedback is in memory only, scoped to the current project session and
-  the latest 12 conversation turns (direct prompt commands have no turn id).
+  the latest 12 conversation turns. Model projection requires both a visible
+  turn ID and a positive, 1-based suggestion index. Direct prompt commands and
+  incompletely bound receipts stay in the local log, are omitted from model
+  rows, and contribute to `omitted_receipt_count`.
   Clearing conversation or switching projects clears feedback. Disabling
   project context omits feedback. Recording receipts does not touch project
   metadata, dirty state, approvals, or undo/redo.
@@ -6159,8 +6162,17 @@ prepared reference is present.
 prompt-matched projection of at most six records from GENtle's bundled
 helper/vector catalog, with exact known product/catalogue/accession identity,
 constraints, provenance URLs, and valid GENtle inspection/preparation/fetch
-routes. Matching also considers the bounded recent conversation so follow-up
-turns remain grounded. The projection performs no download and does not assert
+routes. Matches rank lexicographically by current-prompt score, latest user-turn
+score, then that turn's assistant-message score; equal scores use helper ID.
+Older turns contribute no search terms. Current-prompt terms take precedence
+within the existing 24-distinct-term limit, with at most eight additional terms
+from each recent message. `query_terms` lists the terms actually used, in that
+priority order. Recent context keeps short follow-ups grounded, but cannot
+outvote a current-prompt match. Catalog lookup ignores conversational filler
+such as "can you verify that suggestion" rather than treating it as a new topic.
+This is lexical retrieval, not biological
+relevance or evidence that an assistant's suggestion was executed.
+The projection performs no download and does not assert
 that a catalogued sequence is loaded in project state. Agents consult it before
 guessing an identity or searching externally.
 
