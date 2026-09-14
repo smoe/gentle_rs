@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-09-14 - Source-Coherent Transcript And TSS Presentation
+
+- Optional hash-bound Ensembl-entry/GFF3 sources now feed locus and TSS context
+  requests. Shared physical exons and full exon-chain/CDS groups retain every
+  source identity/designation without inferring a preferred biological TSS.
+- Overview and detail pages share source-coloured TSS ticks, strand-aware deltas
+  and hover provenance. Bounded omissions have one typed unassessed-coverage
+  statement instead of repeated missing-geometry warnings. Legacy layouts remain.
+- PDF composition can also publish ordered original SVGs, an HTML index,
+  selected FASTA and deterministic ZIP under its receipt. PDF receives the same
+  staged SVG bytes. No private report was regenerated.
+- See [workflow and source-field limitations](transcript_source_presentation.md).
+
 ## 2026-09-14 - Evidence-Guided Reporter Boundary Proposals
 
 - Added read-only `promoters fragment-candidates` and its shared operation:

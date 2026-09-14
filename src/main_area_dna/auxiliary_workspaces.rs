@@ -8126,6 +8126,7 @@ impl MainAreaDna {
             },
         };
         Ok(GeneLocusEvidenceDisplayRequest {
+            transcript_annotation_sources: vec![],
             isoform_evidence,
             upstream_bp: Self::parse_locus_usize(
                 &self.splicing_locus_upstream_bp,

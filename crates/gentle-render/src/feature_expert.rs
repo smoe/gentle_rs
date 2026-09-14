@@ -4831,7 +4831,19 @@ pub fn render_gene_locus_evidence_with_overlay(
     };
     let transcript_top = assay_top + assay_height + 30.0;
     let transcript_pitch = 42.0_f32;
-    let transcript_height = transcript_count.max(1) as f32 * transcript_pitch;
+    let presentation_frame = crate::transcript_presentation::Frame {
+        start: report.locus_genomic_start_1based.max(1) as u64,
+        end: report.locus_genomic_end_1based.max(1) as u64,
+        strand: if report.gene_strand == "-" { -1 } else { 1 },
+        left: plot_left as f64,
+        right: plot_right as f64,
+        label_left: 34.0,
+    };
+    let transcript_height = report
+        .transcript_presentation
+        .as_ref()
+        .map(|p| crate::transcript_presentation::height(p, presentation_frame) as f32)
+        .unwrap_or(transcript_count.max(1) as f32 * transcript_pitch);
     let overlay_top = transcript_top + transcript_height + 34.0;
     let overlay_pitch = 38.0_f32;
     let overlay_legend_height = overlay
@@ -5324,7 +5336,13 @@ pub fn render_gene_locus_evidence_with_overlay(
             .set("font-weight", "bold")
             .set("fill", "#1f2937"),
     );
-    if let Some(splicing) = splicing {
+    if let Some(p) = &report.transcript_presentation {
+        doc = doc.add(crate::transcript_presentation::render(
+            p,
+            presentation_frame,
+            transcript_top as f64,
+        ));
+    } else if let Some(splicing) = splicing {
         for (index, transcript) in splicing.transcripts.iter().enumerate() {
             let y = transcript_top + index as f32 * transcript_pitch;
             let metrics = report

@@ -384,6 +384,7 @@ fn tss_context_distinct_and_overlapping_windows_keep_their_own_cutrun_intervals(
                 schema: CONTEXT_INPUT_SCHEMA.into(),
                 reference,
                 genes: vec![TssContextSource {
+                    transcript_annotation_sources: vec![],
                     gene_id: record.gene_id,
                     locus_report: write("locus.json", serde_json::to_vec(&locus).unwrap()),
                     locus_fasta: write(
@@ -546,7 +547,109 @@ fn tss_context_missing_evidence_is_unavailable_not_negative_and_does_not_invent_
     assert_eq!(c.transcripts.len(), 1);
     assert!(c.occupancy.is_empty());
     assert!(c.tata.is_none());
-    assert!(c.warnings.iter().any(|s| s.contains("missing.tx")));
+    let coverage = c.transcript_payload_coverage.as_ref().unwrap();
+    assert_eq!(coverage.unassessed_transcript_ids, vec!["missing.tx"]);
+    assert!(coverage.statement.contains("unassessed, not missing"));
+    assert!(
+        !c.warnings
+            .iter()
+            .any(|s| s.contains("missing.tx") || s.contains("transcript geometry unavailable"))
+    );
+}
+
+#[test]
+fn tss_context_source_join_runs_bound_gff3_adapters_and_preserves_signal_on_both_strands() {
+    use gentle_protocol::transcript_presentation::*;
+    for strand in [TssStrand::Plus, TssStrand::Minus] {
+        for loaded_reverse in [false, true] {
+            let (mut record, reference, locus, sequence, _) = fixture(strand, loaded_reverse);
+            record
+                .transcripts
+                .extend(["other.1".into(), "omitted.1".into(), "omitted.2".into()]);
+            let dir = tempfile::tempdir().unwrap();
+            let locus_bytes = serde_json::to_vec(&locus).unwrap();
+            std::fs::write(dir.path().join("locus.json"), &locus_bytes).unwrap();
+            let fasta = format!(">synthetic\n{sequence}\n");
+            std::fs::write(dir.path().join("locus.fa"), &fasta).unwrap();
+            let mut annotations = Vec::new();
+            for (provider, id) in [
+                (TranscriptProvider::Ensembl, "synthetic.tx"),
+                (TranscriptProvider::RefSeq, "other.1"),
+            ] {
+                let content = format!(
+                    "##gff-version 3\n#!genome-build {}\nSynthetic\tannotation\tmRNA\t125\t194\t.\t{}\t.\tID=tx;Parent=gene;transcript_id={id}\nSynthetic\tannotation\texon\t125\t147\t.\t{}\t.\tID=e1;Parent=tx\nSynthetic\tannotation\texon\t183\t194\t.\t{}\t.\tID=e2;Parent=tx\n",
+                    reference.assembly,
+                    strand.as_str(),
+                    strand.as_str(),
+                    strand.as_str()
+                );
+                let name = format!("{id}.gff3");
+                std::fs::write(dir.path().join(&name), &content).unwrap();
+                annotations.push(TranscriptAnnotationSource {
+                    path: name,
+                    sha256: sha256_hex_bytes(content.as_bytes()),
+                    provider,
+                    format: TranscriptAnnotationFormat::Gff3,
+                    assembly: reference.assembly.clone(),
+                    release: format!("{provider:?}-release"),
+                    accession: format!("{provider:?}-source"),
+                    chromosome: "Synthetic".into(),
+                    locus_sequence_sha256: sha256_hex_bytes(sequence.as_bytes()),
+                    gene_ids: vec!["gene".into()],
+                });
+            }
+            let manifest = TssContextManifest {
+                schema: CONTEXT_INPUT_SCHEMA.into(),
+                reference: reference.clone(),
+                genes: vec![TssContextSource {
+                    gene_id: record.gene_id.clone(),
+                    locus_report: TssContextFile {
+                        path: "locus.json".into(),
+                        sha256: sha256_hex_bytes(&locus_bytes),
+                    },
+                    locus_fasta: TssContextFile {
+                        path: "locus.fa".into(),
+                        sha256: sha256_hex_bytes(fasta.as_bytes()),
+                    },
+                    tata_report: None,
+                    transcript_annotation_sources: annotations,
+                }],
+            };
+            let manifest_path = dir.path().join("context.json");
+            std::fs::write(&manifest_path, serde_json::to_vec(&manifest).unwrap()).unwrap();
+            let mut report = crate::tss_profile_export::tests::synthetic_report();
+            report.reference = reference;
+            report.windows.truncate(1);
+            report.windows[0].record = record;
+            let original = serde_json::to_vec(&report.windows[0].tracks).unwrap();
+            attach(&mut report, &manifest_path, &mut || true).unwrap();
+            assert_eq!(
+                serde_json::to_vec(&report.windows[0].tracks).unwrap(),
+                original
+            );
+            let c = report.windows[0].detail_context.as_ref().unwrap();
+            let p = c.transcript_presentation.as_ref().unwrap();
+            assert_eq!(p.physical_exons.len(), 2);
+            assert_eq!(p.structure_groups.len(), 1);
+            assert_eq!(p.records.len(), 2);
+            assert_eq!(
+                p.tss_ticks[0].genomic_position_1based,
+                if strand == TssStrand::Plus { 125 } else { 194 }
+            );
+            assert_eq!(p.tss_deltas[0].transcript_oriented_delta_bp, 0);
+            assert_eq!(
+                c.transcript_payload_coverage
+                    .as_ref()
+                    .unwrap()
+                    .unassessed_transcript_ids,
+                vec!["omitted.1", "omitted.2"]
+            );
+            assert!(c.warnings.iter().all(|w| !w.contains("omitted")));
+            assert!(!c.occupancy[0].intervals.is_empty());
+            let untouched = std::fs::read(dir.path().join("locus.json")).unwrap();
+            assert_eq!(untouched, locus_bytes);
+        }
+    }
 }
 
 #[test]
@@ -706,6 +809,7 @@ fn tss_context_export_is_read_only_hash_bound_and_replays_without_source_files()
         schema: CONTEXT_INPUT_SCHEMA.into(),
         reference,
         genes: vec![TssContextSource {
+            transcript_annotation_sources: vec![],
             gene_id: "synthetic-gene".into(),
             locus_report: locus_file,
             locus_fasta: fasta_file,

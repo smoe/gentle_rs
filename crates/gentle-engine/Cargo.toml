@@ -11,3 +11,6 @@ path = "src/lib.rs"
 
 [dependencies]
 gentle-protocol = { path = "../gentle-protocol" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ring = "0.17.14"

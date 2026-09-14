@@ -28,6 +28,8 @@ pub mod region_homology;
 pub mod regulatory_partners;
 pub mod reporter;
 pub mod tata_boxes;
+/// Source-neutral exon/structure identities retaining independent annotation provenance.
+pub mod transcript_presentation;
 /// Validated coordinate projections of separately scored sparse motif evidence.
 pub mod tss_motif_evidence;
 /// Accession-pinned, transcript-oriented TSS TFBS profile documents.

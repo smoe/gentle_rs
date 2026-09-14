@@ -207,6 +207,110 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
                        "font_identities": []} for _ in command[3:]],
         }), stderr="")
 
+    def test_ordered_svg_bundle_preserves_hover_and_exact_pdf_input_bytes(self):
+        import zipfile
+        args = self.args()
+        args.output_svg_directory = self.root / "svg-pages"
+        args.output_svg_zip = self.root / "svg-pages.zip"
+        observed = []
+
+        def render(command, **kwargs):
+            observed.extend(Path(path).read_bytes() for path in command[3:])
+            return self.fake_run(command, **kwargs)
+
+        with mock.patch.object(target.subprocess, "run", side_effect=render):
+            receipt = target.compose(args)
+        bundle = receipt["output"]["svg_bundle"]
+        self.assertEqual(len(observed), receipt["page_count"])
+        for index, page in enumerate(bundle["pages"]):
+            path = args.output_svg_directory / page["file"]
+            self.assertEqual(path.read_bytes(), observed[index])
+            self.assertEqual(digest(path), page["sha256"])
+            self.assertEqual(page["role"], receipt["page_order"][index])
+        for name, expected in bundle["files"].items():
+            self.assertEqual(digest(args.output_svg_directory / name), expected)
+        self.assertEqual(digest(args.output_svg_zip), bundle["zip"]["sha256"])
+        with zipfile.ZipFile(args.output_svg_zip) as archive:
+            self.assertEqual(archive.namelist(), sorted(bundle["files"]))
+            for info in archive.infolist():
+                self.assertEqual(info.date_time, (1980, 1, 1, 0, 0, 0))
+                self.assertEqual(archive.read(info.filename), (args.output_svg_directory / info.filename).read_bytes())
+        html = (args.output_svg_directory / "index.html").read_text()
+        self.assertIn('type="image/svg+xml"', html)
+        self.assertIn('selected_tss.fasta', html)
+
+    def test_svg_bundle_failure_rolls_back_without_a_success_receipt(self):
+        args = self.args()
+        args.output_svg_directory = self.root / "svg-pages"
+        args.output_svg_zip = self.root / "svg-pages.zip"
+        with mock.patch.object(target.subprocess, "run", side_effect=RuntimeError("renderer failed")):
+            with self.assertRaises(RuntimeError):
+                target.compose(args)
+        self.assert_no_outputs(args)
+        self.assertFalse(args.output_svg_directory.exists())
+        self.assertFalse(args.output_svg_zip.exists())
+
+    def test_svg_bundle_rejects_page_tamper_and_keeps_title_bytes(self):
+        args = self.args()
+        # Explicit synthetic hover text is an annotation, not an instruction.
+        self.locus_svg.write_text(self.locus_svg.read_text().replace('</svg>', '<title>source E.1 and R.2</title></svg>'))
+        self.rebind()
+        args.output_svg_directory = self.root / "svg-pages"
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run):
+            receipt = target.compose(args)
+        first = receipt["output"]["svg_bundle"]["pages"][0]["file"]
+        self.assertIn(b'<title>source E.1 and R.2</title>', (args.output_svg_directory / first).read_bytes())
+        self.locus_svg.write_bytes(self.locus_svg.read_bytes() + b'\n<!-- changed -->')
+        with self.assertRaises(ValueError):
+            target.svg_sequence_bundle(receipt, [self.locus_svg], "A", self.root / "new", None)
+
+    def source_coherent_fixture(self):
+        # Synthetic binding token only: the Rust tests verify geometry; the
+        # compositor must compare canonical content, not reimplement grouping.
+        presentation = {"schema": "gentle.transcript_structure_presentation.v1", "content_sha256": "a" * 64}
+        locus = json.loads(self.locus_report.read_text())
+        locus["transcript_presentation"] = presentation
+        self.locus_report.write_text(json.dumps(locus))
+        report = json.loads(self.report.read_text())
+        for window in report["windows"]:
+            if window.get("selected"):
+                window["detail_context"] = {"schema": "gentle.tss_detail_context.v1",
+                    "locus_report_sha256": digest(self.locus_report), "transcript_presentation": presentation}
+        self.report.write_text(json.dumps(report))
+        for path in self.root.glob("*.svg"):
+            root = target.ET.fromstring(path.read_bytes())
+            target.ET.SubElement(root, "g", {"data-role": "source-coherent-transcripts", "data-content-sha256": "a" * 64})
+            path.write_bytes(target.ET.tostring(root))
+        self.rebind()
+
+    def test_composite_requires_the_same_transcript_presentation_and_svg_binding(self):
+        self.source_coherent_fixture()
+        with mock.patch.object(target.subprocess, "run", side_effect=self.fake_run):
+            receipt = target.compose(self.args())
+        self.assertEqual(receipt["inputs"]["transcript_presentation_sha256"], "a" * 64)
+
+    def test_rebound_different_detail_presentation_is_rejected_before_pdf(self):
+        self.source_coherent_fixture()
+        report = json.loads(self.report.read_text())
+        next(w for w in report["windows"] if w.get("selected"))["detail_context"]["transcript_presentation"]["content_sha256"] = "b" * 64
+        self.report.write_text(json.dumps(report))
+        self.rebind()
+        with mock.patch.object(target.subprocess, "run") as run:
+            with self.assertRaisesRegex(ValueError, "transcript presentations differ"):
+                target.compose(self.args())
+            run.assert_not_called()
+        self.assert_no_outputs()
+
+    def test_rebound_svg_with_missing_shared_structure_layer_is_rejected(self):
+        self.source_coherent_fixture()
+        self.locus_svg.write_text(self.locus_svg.read_text().replace('data-role="source-coherent-transcripts"', 'data-role="omitted"'))
+        self.rebind()
+        with mock.patch.object(target.subprocess, "run") as run:
+            with self.assertRaisesRegex(ValueError, "SVG page does not bind"):
+                target.compose(self.args())
+            run.assert_not_called()
+        self.assert_no_outputs()
+
     def assert_no_outputs(self, args=None):
         args = args or self.args()
         for path in (args.output_pdf, args.output_fasta, args.output_receipt,

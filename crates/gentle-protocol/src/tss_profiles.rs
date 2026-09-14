@@ -331,6 +331,10 @@ pub struct TssContextFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TssContextSource {
+    /// Optional sources for the same reusable locus/structure join.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub transcript_annotation_sources:
+        Vec<crate::transcript_presentation::TranscriptAnnotationSource>,
     pub gene_id: String,
     pub locus_report: TssContextFile,
     pub locus_fasta: TssContextFile,
@@ -432,6 +436,12 @@ pub struct TssContextTata {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TssDetailContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_presentation:
+        Option<crate::transcript_presentation::TranscriptStructurePresentation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_payload_coverage:
+        Option<crate::transcript_presentation::TranscriptPayloadCoverage>,
     pub schema: String,
     /// Exact transcript-oriented bases, verified against window_sequence_sha256.
     /// Absent on legacy contexts; required for annotated sequence export.

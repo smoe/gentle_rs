@@ -1,5 +1,14 @@
 # GENtle CLI Manual
 
+## Source-Coherent Transcripts
+
+Existing `gene-locus prepare @request.json` and TSS `--context-manifest` inputs
+accept optional `transcript_annotation_sources` for bound Ensembl/RefSeq
+structure presentation. No network call or preferred-TSS selection is implied.
+Use the enriched locus JSON for both overview and detailed pages. The existing
+PDF compositor can also emit ordered SVG/HTML pages and a receipt-bound ZIP.
+See [input examples and limitations](transcript_source_presentation.md).
+
 ## Promoter Cofactors
 
 `features promoter-cofactors REQUEST_JSON_OR_@FILE` queries a local reduced

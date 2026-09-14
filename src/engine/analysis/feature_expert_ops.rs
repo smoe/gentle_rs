@@ -15008,7 +15008,23 @@ impl GentleEngine {
         } else {
             (local_start, local_end)
         };
-        Ok(GeneLocusEvidenceDisplayReport {
+        let report = GeneLocusEvidenceDisplayReport {
+            transcript_presentation: if request.transcript_annotation_sources.is_empty() {
+                None
+            } else {
+                crate::transcript_presentation::load(
+                    &request.transcript_annotation_sources,
+                    std::path::Path::new("."),
+                    &isoform_evidence.assembly,
+                    isoform_evidence.chromosome.as_deref().unwrap_or(""),
+                    &crate::digest_utils::sha256_hex_bytes(dna.get_forward_string().as_bytes()),
+                )
+                .map_err(|message| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message,
+                    cause_chain: vec![],
+                })?
+            },
             schema: GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA.to_string(),
             seq_id: seq_id.to_string(),
             sequence_binding: Some(crate::locus_report::sequence_binding(dna, anchor.as_ref())),
@@ -15051,7 +15067,13 @@ impl GentleEngine {
             conservation_blocks,
             provenance,
             warnings,
-        })
+        };
+        crate::transcript_presentation::validate_locus(&report).map_err(|message| EngineError {
+            code: ErrorCode::InvalidInput,
+            message,
+            cause_chain: vec![],
+        })?;
+        Ok(report)
     }
 
     fn gene_locus_ensembl_unavailable(
@@ -15976,6 +15998,7 @@ impl GentleEngine {
             }
         }
         let display_request = GeneLocusEvidenceDisplayRequest {
+            transcript_annotation_sources: request.transcript_annotation_sources.clone(),
             isoform_evidence: GeneIsoformEvidenceRequest {
                 panel_id: panel_id.clone(),
                 annotation_release: request.annotation_release.clone(),

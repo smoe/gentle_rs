@@ -83,6 +83,7 @@ impl LocusDocument {
         };
         let document = Self(document);
         let locus = document.locus();
+        crate::transcript_presentation::validate_locus(locus)?;
         if locus.schema != GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA
             || locus.seq_id.is_empty()
             || locus.locus_local_start_1based == 0

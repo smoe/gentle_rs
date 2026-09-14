@@ -2580,6 +2580,9 @@ name = "gentle-engine"
 version = "0.1.0-internal.10"
 dependencies = [
  "gentle-protocol",
+ "ring",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2604,6 +2607,7 @@ dependencies = [
 name = "gentle-render"
 version = "0.1.0-internal.10"
 dependencies = [
+ "gentle-engine",
  "gentle-protocol",
  "serde",
  "serde_json",

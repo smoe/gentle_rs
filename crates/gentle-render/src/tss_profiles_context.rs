@@ -9,6 +9,47 @@ pub(super) fn validate(window: &TssProfileWindow) -> Result<(), String> {
     };
     let g = &window.record.geometry;
     let length = g.length().ok_or("Invalid context geometry")?;
+    if let Some(p) = &context.transcript_presentation {
+        gentle_engine::transcript_presentation::validate(p)?;
+        if p.chromosome.strip_prefix("chr").unwrap_or(&p.chromosome)
+            != g.chromosome.strip_prefix("chr").unwrap_or(&g.chromosome)
+            || p.locus_sequence_sha256 != context.locus_sequence_sha256
+            || !context.bindings.iter().any(|b| {
+                b.role == "transcript_structure_presentation" && b.sha256 == p.content_sha256
+            })
+            || p.sources.iter().any(|s| {
+                !context.bindings.iter().any(|b| {
+                    b.role == "transcript_annotation"
+                        && b.name == s.source_id
+                        && b.sha256 == s.annotation_sha256
+                })
+            })
+        {
+            return Err("Source-coherent transcript presentation binding mismatch".into());
+        }
+    }
+    if let Some(coverage) = &context.transcript_payload_coverage {
+        let included: Vec<_> = if let Some(p) = &context.transcript_presentation {
+            p.records
+                .iter()
+                .map(|r| r.structure.transcript_id.clone())
+                .collect()
+        } else {
+            context
+                .transcripts
+                .iter()
+                .map(|r| r.transcript_id.clone())
+                .collect()
+        };
+        if *coverage
+            != gentle_engine::transcript_presentation::payload_coverage(
+                &window.record.transcripts,
+                &included,
+            )
+        {
+            return Err("Transcript payload coverage disagrees with supplied records".into());
+        }
+    }
     let hash_ok = |hash: &str| {
         hash.len() == 64
             && hash
@@ -24,7 +65,7 @@ pub(super) fn validate(window: &TssProfileWindow) -> Result<(), String> {
         || context.non_claims != CONTEXT_NON_CLAIMS
         || context.transcripts.len() > 128
         || context.occupancy.len() > 128
-        || context.bindings.len() > 16
+        || context.bindings.len() > 40
         || context.bindings.iter().any(|b| !hash_ok(&b.sha256))
         || !context
             .bindings
@@ -449,7 +490,11 @@ pub(super) struct ContextLayout<'a> {
 impl<'a> ContextLayout<'a> {
     pub(super) fn new(c: &'a TssDetailContext) -> Self {
         let mut rows = Vec::new();
-        for t in &c.transcripts {
+        for t in c
+            .transcripts
+            .iter()
+            .filter(|_| c.transcript_presentation.is_none())
+        {
             rows.push(ContextRow::new(
                 &format!("{}\n{}", t.transcript_id, t.label),
                 &format!(
@@ -460,11 +505,11 @@ impl<'a> ContextLayout<'a> {
                 &c.geometry,
             ));
         }
-        if c.transcripts.is_empty() {
+        if c.transcripts.is_empty() && c.transcript_presentation.is_none() {
             rows.push(ContextRow::new(
                 "Gene structure",
                 "",
-                Content::Unavailable("Transcript geometry unavailable"),
+                Content::Unavailable("Transcript payload unassessed"),
                 &c.geometry,
             ));
         }
@@ -558,6 +603,9 @@ impl<'a> ContextLayout<'a> {
             "Context: {} | locus report SHA-256 {}\n{}",
             c.locus_seq_id, c.locus_report_sha256, c.non_claims
         );
+        if let Some(coverage) = &c.transcript_payload_coverage {
+            let _ = write!(footer, "\n{}", coverage.statement);
+        }
         if let Some(tata) = &c.tata {
             let _ = write!(
                 footer,
@@ -591,6 +639,7 @@ impl<'a> ContextLayout<'a> {
     }
     pub(super) fn height(&self) -> f64 {
         self.intro.height()
+            + self.presentation_height()
             + 14.0
             + self.rows.iter().map(ContextRow::height).sum::<f64>()
             + self.footer.height()
@@ -607,6 +656,14 @@ impl<'a> ContextLayout<'a> {
             .set("data-height", self.height());
         self.intro.draw(&mut group, MARGIN, top, "context-legend");
         let mut y = top + self.intro.height() + 14.0;
+        if let Some(p) = &self.context.transcript_presentation {
+            group.append(crate::transcript_presentation::render(
+                p,
+                self.presentation_frame(),
+                y,
+            ));
+            y += self.presentation_height();
+        }
         for row in &self.rows {
             group.append(
                 Line::new()
@@ -624,5 +681,24 @@ impl<'a> ContextLayout<'a> {
         self.footer
             .draw(&mut group, MARGIN, y, "context-provenance");
         group
+    }
+
+    fn presentation_frame(&self) -> crate::transcript_presentation::Frame {
+        let g = &self.context.geometry;
+        crate::transcript_presentation::Frame {
+            start: g.start_1based,
+            end: g.end_1based,
+            strand: if g.strand == TssStrand::Minus { -1 } else { 1 },
+            left: PLOT_LEFT,
+            right: PLOT_RIGHT,
+            label_left: MARGIN,
+        }
+    }
+    fn presentation_height(&self) -> f64 {
+        self.context
+            .transcript_presentation
+            .as_ref()
+            .map(|p| crate::transcript_presentation::height(p, self.presentation_frame()))
+            .unwrap_or(0.0)
     }
 }
