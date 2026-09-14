@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-14 - TSS Track And Annotation Isolation Regressions
+
+- Added synthetic multi-window checks for CUT&RUN context attachment and SVG
+  cropping, including overlapping and empty windows, both genomic/loaded
+  orientations, missing controls and rejection of another TSS's context.
+- Check each window's TFBS batch result against its standalone result, isolate
+  single-window input changes, and verify per-accession/both-strand SVG points
+  across continuation pages and shared scales. Imported-hit tests now check
+  window-specific retention and offsets, not only common scale limits.
+- Documented legitimate repetition on continuation pages and in overlapping
+  genomic windows. The supplied PDF's repeated context belongs to continuation
+  pages of the same TSS; different windows retain different tracks. These are
+  audit regressions, not rescoring or changes to retained reports, and do not
+  replace source-data or final-candidate acceptance.
+- Documented shared-exon records in annotated exports and added a synthetic
+  GenBank/EMBL regression retaining distinct transcript IDs and exon ordinals
+  for identical clipped exon spans on both strands. No coordinate-only
+  deduplication or change to the exported DNA is introduced.
+
 ## 2026-09-13 - Explained inner-agent fact relevance
 
 - Added request-aware ordering within the existing fair fact budget: named

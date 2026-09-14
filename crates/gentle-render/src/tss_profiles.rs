@@ -1946,6 +1946,17 @@ mod tests {
         for page in pages {
             assert!(page.svg.contains("data-score-max=\"8\""));
             assert!(page.svg.contains("data-score-min=\"-1\""));
+            let hits = tags(&page.svg, "imported-motif-hit");
+            if page.promoter_ids == ["second-tss"] {
+                assert_eq!(hits.len(), 1, "the other two hits are outside this window");
+                assert_eq!(numeric(&hits[0], "data-local-start"), 7.0);
+                assert_eq!(numeric(&hits[0], "data-local-end"), 10.0);
+                assert_eq!(numeric(&hits[0], "data-score"), -1.0);
+            } else {
+                assert_eq!(hits.len(), 3);
+                assert_eq!(numeric(&hits[2], "data-local-start"), 19.0);
+                assert_eq!(numeric(&hits[2], "data-local-end"), 21.0);
+            }
         }
         report.imported_motif_evidence[0].report.hits[0].score = f64::INFINITY;
         assert!(render_tss_profile_pages(&report, &TssProfileRenderOptions::default()).is_err());
@@ -2403,6 +2414,129 @@ mod tests {
                     assert_eq!(trace["data-genomic-strand"].to_string(), genomic.as_str());
                 }
             }
+        }
+    }
+
+    #[test]
+    fn tss_distinct_window_traces_survive_shared_scales_and_continuation_pages() {
+        // Synthetic numerical traces, deliberately different per window,
+        // accession and strand. Enough rows to force pagination within a TSS.
+        let matrix_count = 60;
+        for strand in [TssStrand::Plus, TssStrand::Minus] {
+            let mut report = fixture(12, 10, matrix_count);
+            if strand == TssStrand::Minus {
+                reverse_geometry(&mut report);
+            }
+            let mut second = report.windows[0].clone();
+            second.record.promoter_id = "synthetic_tss_2".into();
+            second.record.geometry.start_1based += 500;
+            second.record.geometry.end_1based += 500;
+            second.record.geometry.tss_1based += 500;
+            second.record.sequence_sha256 = "c".repeat(64);
+            report.windows.push(second);
+            for (wi, window) in report.windows.iter_mut().enumerate() {
+                for (mi, track) in window.tracks.iter_mut().enumerate() {
+                    for (si, scores) in [&mut track.forward_scores, &mut track.reverse_scores]
+                        .into_iter()
+                        .enumerate()
+                    {
+                        for (position, value) in scores.iter_mut().enumerate() {
+                            *value = if position == 4 + wi + si {
+                                None
+                            } else {
+                                Some(((position * (si + 1) + mi + wi * 7) % 17) as f64)
+                            };
+                        }
+                    }
+                }
+            }
+            let before = serde_json::to_vec(&report).unwrap();
+            for scale_mode in [TssScaleMode::Independent, TssScaleMode::SharedAcrossTss] {
+                let pages = render_tss_profile_pages(
+                    &report,
+                    &TssProfileRenderOptions {
+                        scale_mode: Some(scale_mode),
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                assert!(pages.len() > 2, "must exercise continuation pages");
+                let mut seen = BTreeSet::new();
+                for page in pages {
+                    assert_eq!(page.promoter_ids.len(), 1);
+                    let window = report
+                        .windows
+                        .iter()
+                        .find(|w| w.record.promoter_id == page.promoter_ids[0])
+                        .unwrap();
+                    let mut row = None;
+                    for event in svg::read(&page.svg).unwrap() {
+                        if let Event::Tag(_, _, attributes) = event {
+                            let role = attributes
+                                .get("data-role")
+                                .map(ToString::to_string)
+                                .unwrap_or_default();
+                            if role == "matrix-row" {
+                                row = Some(attributes);
+                            } else if role == "score-trace" {
+                                let row = row.as_ref().unwrap();
+                                let accession = row["data-accession"].to_string();
+                                let track = window
+                                    .tracks
+                                    .iter()
+                                    .find(|t| t.accession == accession)
+                                    .unwrap();
+                                let local_strand = attributes["data-local-strand"].to_string();
+                                let scores = if local_strand == "+" {
+                                    &track.forward_scores
+                                } else {
+                                    assert_eq!(local_strand, "-");
+                                    &track.reverse_scores
+                                };
+                                assert!(seen.insert((
+                                    window.record.promoter_id.clone(),
+                                    accession,
+                                    local_strand
+                                )));
+                                let min = numeric(row, "data-y-min");
+                                let max = numeric(row, "data-y-max");
+                                let expected = scores
+                                    .iter()
+                                    .enumerate()
+                                    .filter_map(|(i, score)| score.map(|s| (i, s)))
+                                    .collect::<Vec<_>>();
+                                let points = path_points(&attributes);
+                                assert_eq!(points.len(), expected.len());
+                                for ((command, x, y), (position, score)) in
+                                    points.iter().zip(expected)
+                                {
+                                    assert_close(*x, LocalAxis { length: 23 }.x(position as f64));
+                                    assert_close(
+                                        *y,
+                                        numeric(row, "data-y")
+                                            + PLOT_TOP
+                                            + PLOT_HEIGHT * (1.0 - (score - min) / (max - min)),
+                                    );
+                                    assert_eq!(
+                                        *command,
+                                        if position == 0 || scores[position - 1].is_none() {
+                                            'M'
+                                        } else {
+                                            'L'
+                                        }
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                assert_eq!(
+                    seen.len(),
+                    2 * matrix_count * 2,
+                    "every window/accession/strand must appear exactly once"
+                );
+            }
+            assert_eq!(serde_json::to_vec(&report).unwrap(), before);
         }
     }
 

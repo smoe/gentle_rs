@@ -298,6 +298,237 @@ fn tss_context_rejects_reference_sequence_geometry_and_tata_corruption() {
 }
 
 #[test]
+fn tss_context_distinct_and_overlapping_windows_keep_their_own_cutrun_intervals() {
+    // One synthetic locus, four windows, two overlapping windows and an empty
+    // window. Exercise the manifest join, both loaded/genomic strands and SVG.
+    for strand in [TssStrand::Plus, TssStrand::Minus] {
+        for loaded_reverse in [false, true] {
+            let (record, reference, mut locus, sequence, _) = fixture(strand, loaded_reverse);
+            let prototype = locus.occupancy_groups[0].lanes[0].lane.intervals[0].clone();
+            locus.occupancy_groups[0].lanes[0].lane.intervals = [
+                ("early", 105, 115, 2.0),
+                ("shared", 125, 132, 7.0),
+                ("late", 185, 191, 5.0),
+            ]
+            .into_iter()
+            .map(|(id, start, end, score)| {
+                let mut interval = prototype.clone();
+                interval.interval_id = id.into();
+                interval.genomic_start_1based = start;
+                interval.genomic_end_1based = end;
+                (interval.local_start_1based, interval.local_end_1based) = if loaded_reverse {
+                    (220 - end, 220 - start)
+                } else {
+                    (start - 99, end - 99)
+                };
+                interval.score = Some(score);
+                interval
+            })
+            .collect();
+            let mut report = crate::tss_profile_export::tests::synthetic_report();
+            report.reference = reference.clone();
+            let template = report.windows[0].clone();
+            report.windows = [110, 120, 180, 195]
+                .into_iter()
+                .enumerate()
+                .map(|(index, start)| {
+                    let mut window = template.clone();
+                    window.record = record.clone();
+                    window.record.promoter_id = format!("synthetic-window-{index}");
+                    window.record.geometry = TssGeometry {
+                        chromosome: record.geometry.chromosome.clone(),
+                        strand,
+                        start_1based: start,
+                        end_1based: start + 24,
+                        tss_1based: if strand == TssStrand::Plus {
+                            start + 8
+                        } else {
+                            start + 16
+                        },
+                        upstream_bp: 8,
+                        downstream_bp: 16,
+                    };
+                    let genomic = "ACGTTGAACCTA".repeat(10);
+                    let bases = &genomic[(start - 100) as usize..(start - 75) as usize];
+                    let bases = if strand == TssStrand::Minus {
+                        GentleEngine::reverse_complement(bases)
+                    } else {
+                        bases.into()
+                    };
+                    window.record.sequence_sha256 = sha256_hex_bytes(bases.as_bytes());
+                    window.selected = false;
+                    window.selection_evidence = None;
+                    for track in &mut window.tracks {
+                        track.forward_scores = vec![Some(0.0); 26 - track.motif_length_bp];
+                        track.reverse_scores = track.forward_scores.clone();
+                        track.forward_maximum = None;
+                        track.reverse_maximum = None;
+                        track.forward_peaks.clear();
+                        track.reverse_peaks.clear();
+                    }
+                    window.comparisons =
+                        GentleEngine::tss_matrix_comparisons(&window, &report.panel_resolution);
+                    window
+                })
+                .collect();
+            let original = serde_json::to_value(&report).unwrap();
+            let temp = tempfile::tempdir().unwrap();
+            let write = |name: &str, bytes: Vec<u8>| {
+                std::fs::write(temp.path().join(name), &bytes).unwrap();
+                TssContextFile {
+                    path: name.into(),
+                    sha256: sha256_hex_bytes(&bytes),
+                }
+            };
+            let manifest = TssContextManifest {
+                schema: CONTEXT_INPUT_SCHEMA.into(),
+                reference,
+                genes: vec![TssContextSource {
+                    gene_id: record.gene_id,
+                    locus_report: write("locus.json", serde_json::to_vec(&locus).unwrap()),
+                    locus_fasta: write(
+                        "locus.fa",
+                        format!(">synthetic\n{sequence}\n").into_bytes(),
+                    ),
+                    tata_report: None,
+                }],
+            };
+            write("context.json", serde_json::to_vec(&manifest).unwrap());
+            attach(&mut report, &temp.path().join("context.json"), &mut || true).unwrap();
+            let mut expected = std::collections::BTreeMap::new();
+            for (index, window) in report.windows.iter().enumerate() {
+                let context = window.detail_context.as_ref().unwrap();
+                let lane = &context.occupancy[0];
+                let mut ids = lane
+                    .intervals
+                    .iter()
+                    .map(|i| i.interval_id.as_str())
+                    .collect::<Vec<_>>();
+                ids.sort();
+                assert_eq!(
+                    ids,
+                    [
+                        vec!["early", "shared"],
+                        vec!["shared"],
+                        vec!["late"],
+                        vec![]
+                    ][index]
+                );
+                assert_eq!(lane.display_abs_max_score, 10.0);
+                assert_eq!(
+                    context.occupancy[1].state,
+                    GeneLocusOccupancyLaneState::NotPrepared
+                );
+                assert!(context.occupancy[1].intervals.is_empty());
+                for interval in &lane.intervals {
+                    let start = interval
+                        .span
+                        .genomic_start_1based
+                        .max(window.record.geometry.start_1based);
+                    let end = interval
+                        .span
+                        .genomic_end_1based
+                        .min(window.record.geometry.end_1based);
+                    let (a, b) = if strand == TssStrand::Plus {
+                        (
+                            start - window.record.geometry.start_1based,
+                            end - window.record.geometry.start_1based + 1,
+                        )
+                    } else {
+                        (
+                            window.record.geometry.end_1based - end,
+                            window.record.geometry.end_1based - start + 1,
+                        )
+                    };
+                    assert_eq!(
+                        (
+                            interval.span.start_0based,
+                            interval.span.end_0based_exclusive
+                        ),
+                        (a as usize, b as usize)
+                    );
+                    let score = match interval.interval_id.as_str() {
+                        "early" => 2.0,
+                        "shared" => 7.0,
+                        "late" => 5.0,
+                        _ => unreachable!(),
+                    };
+                    assert_eq!(interval.score, Some(score));
+                    expected.insert(
+                        (
+                            window.record.promoter_id.clone(),
+                            interval.interval_id.clone(),
+                        ),
+                        (a, b, 22.0 * score / 10.0),
+                    );
+                }
+            }
+            for panels_per_page in [1, 2] {
+                let pages = gentle_render::tss_profiles::render_tss_profile_pages(
+                    &report,
+                    &TssProfileRenderOptions {
+                        panels_per_page,
+                        ..Default::default()
+                    },
+                )
+                .unwrap();
+                let mut seen = BTreeSet::new();
+                for page in pages {
+                    let mut promoter = String::new();
+                    for event in svg::read(&page.svg).unwrap() {
+                        if let svg::parser::Event::Tag(_, _, attributes) = event {
+                            let role = attributes
+                                .get("data-role")
+                                .map(ToString::to_string)
+                                .unwrap_or_default();
+                            if role == "tss-panel" {
+                                promoter = attributes["data-promoter-id"].to_string();
+                            }
+                            if role == "context-occupancy-interval" {
+                                let key =
+                                    (promoter.clone(), attributes["data-interval-id"].to_string());
+                                let (start, end, height) = expected[&key];
+                                assert_eq!(
+                                    attributes["data-start-0based"].to_string(),
+                                    start.to_string()
+                                );
+                                assert_eq!(
+                                    attributes["data-end-0based-exclusive"].to_string(),
+                                    end.to_string()
+                                );
+                                assert!(
+                                    (attributes["height"].to_string().parse::<f64>().unwrap()
+                                        - height)
+                                        .abs()
+                                        < 1e-6
+                                );
+                                assert!(seen.insert(key));
+                            }
+                        }
+                    }
+                }
+                assert_eq!(seen, expected.keys().cloned().collect());
+            }
+            let mut stripped = report.clone();
+            for window in &mut stripped.windows {
+                window.detail_context = None;
+            }
+            assert_eq!(
+                serde_json::to_value(stripped).unwrap(),
+                original,
+                "context must not change TFBS scores or window identity"
+            );
+            let mut stale = report.clone();
+            stale.windows[1].detail_context = stale.windows[0].detail_context.clone();
+            assert!(
+                gentle_render::tss_profiles::render_tss_profile_pages(&stale, &Default::default())
+                    .is_err()
+            );
+        }
+    }
+}
+
+#[test]
 fn tss_context_missing_evidence_is_unavailable_not_negative_and_does_not_invent_transcripts() {
     let (mut record, reference, mut locus, sequence, _) = fixture(TssStrand::Plus, false);
     record.transcripts.push("missing.tx".into());

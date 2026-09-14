@@ -152,6 +152,33 @@ including decreasing genomic coordinates for negative-strand genes. The context
 and its provenance repeat on continuation pages. Large contexts fail the existing
 readable-page limits explicitly instead of silently dropping lanes.
 
+### Checking Apparently Repeated Tracks
+
+First compare the **Promoter**, annotated TSS and stored genomic interval at the
+top of each panel. Pages marked **continued TSS** show another subset of matrices
+for the same window; repeating its CUT&RUN context is intentional. Different
+TSS windows use independently cropped intervals from the same locus source.
+Overlapping windows can therefore show the same measured interval at different
+TSS-relative positions. A broad constant-valued source interval may fill both
+windows; this is not evidence for two independent measurements.
+
+For an exact check, use the receipt-bound `report.json`: compare
+`windows[].record.geometry` and `detail_context.occupancy[].intervals` by source
+and lane ID, including genomic spans, local cropped spans and raw `score`.
+Common lane labels or `display_abs_max_score` values do not mean common data.
+For local TFBS traces, compare the window's `sequence_sha256` and each exact
+track `accession`, `forward_scores` and `reverse_scores`. Shared-across-TSS
+scaling shares axis limits only. Identical input sequences and models can
+legitimately give identical traces at different loci. Imported motif triangles
+instead use the source query's genomic hits, cropped separately for each window.
+Do not diagnose duplication from matching logos, scale labels or heights alone.
+
+Offline regressions exercise distinct/overlapping/empty CUT&RUN windows, both
+genomic and loaded-sequence orientations, batch-versus-single-window scoring,
+and different matrix/strand traces across continuation pages. These checks do
+not certify a particular external PDF or its source evidence: retain that
+bundle's report, index, receipt and relevant pages for a file-specific audit.
+
 Dense JASPAR traces remain predicted sequence-model scores, not called occupancy
 peaks. The dotted TSS guide and its white backing are drawn **behind** both score
 curves, so a narrow peak exactly at 0 bp is not erased or mistaken for a solid
@@ -208,6 +235,14 @@ segments are labelled `misc_feature`, not asserted to be complete coding
 sequences: this context does not bind their coding phase. The exported sequence is
 the genomic TSS window, not spliced cDNA or a materialized reporter construct.
 Null signal values, missing lanes, and prediction non-claims remain explicit.
+
+Exons are exported per transcript. Two `exon` features with the same location
+but different `/transcript_id` values retain the separate transcript
+associations; they do not represent duplicated DNA. For example, two transcripts
+can share exon 1 and both export it as `501..>701`: bases 501 through 701 are
+present, while `>` marks an exon extending beyond the exported window. Its full
+source span remains in `/note`. Do not deduplicate by coordinates alone, which
+would discard transcript membership and potentially transcript-specific numbering.
 
 For the integrated report, use the compositor's `--output-genbank` and/or
 `--output-embl` options as

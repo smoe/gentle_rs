@@ -1299,6 +1299,81 @@ fn tp73_maximum_tail_survives_shared_engine_and_exported_tss_profile() {
 }
 
 #[test]
+fn tss_profile_batch_never_reuses_another_windows_or_accessions_scores() {
+    let (_, registry) = three_matrix_registry();
+    let engine = engine_with_sentinel();
+    let before = serde_json::to_value(&engine).unwrap();
+    for strand in [TssStrand::Plus, TssStrand::Minus] {
+        for kind in [
+            TfbsScoreTrackValueKind::LlrBits,
+            TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+        ] {
+            let resolution = resolve(panel(&IDS, kind), &registry);
+            let records = vec![
+                record("first", strand, 1_000, "ACGTACTAC", false),
+                record("second", strand, 2_000, "TTCANAGGA", true),
+                record("third", strand, 3_000, "GGGGTATTT", false),
+            ];
+            let compute = |records| {
+                engine
+                    .compute_verified_tss_profiles(bundle(records), resolution.clone(), &mut |_| {
+                        true
+                    })
+                    .unwrap()
+            };
+            let report = compute(records.clone());
+            let mut reordered = records.clone();
+            reordered.reverse();
+            assert_eq!(
+                serde_json::to_value(&report.windows).unwrap(),
+                serde_json::to_value(&compute(reordered).windows).unwrap()
+            );
+            for input in &records {
+                let window = report
+                    .windows
+                    .iter()
+                    .find(|w| w.record.promoter_id == input.0.promoter_id)
+                    .unwrap();
+                assert_eq!(
+                    serde_json::to_value(window).unwrap(),
+                    serde_json::to_value(&compute(vec![input.clone()]).windows[0]).unwrap(),
+                    "batch and single-window scoring must agree for each accession and strand"
+                );
+            }
+            for matrix in 0..IDS.len() {
+                let tracks = report
+                    .windows
+                    .iter()
+                    .map(|w| &w.tracks[matrix])
+                    .collect::<Vec<_>>();
+                for pair in tracks.windows(2) {
+                    assert_ne!(pair[0].forward_scores, pair[1].forward_scores);
+                    assert_ne!(pair[0].reverse_scores, pair[1].reverse_scores);
+                }
+            }
+            let mut changed = records.clone();
+            changed[1] = record("second", strand, 2_000, "AAAAAAAAA", true);
+            let changed = compute(changed);
+            for (previous, current) in report.windows.iter().zip(&changed.windows) {
+                if previous.record.promoter_id == "second" {
+                    assert_ne!(
+                        serde_json::to_value(&previous.tracks).unwrap(),
+                        serde_json::to_value(&current.tracks).unwrap()
+                    );
+                } else {
+                    assert_eq!(
+                        serde_json::to_value(previous).unwrap(),
+                        serde_json::to_value(current).unwrap(),
+                        "changing one window must not alter any other window's scores or normalization"
+                    );
+                }
+            }
+        }
+    }
+    assert_eq!(serde_json::to_value(&engine).unwrap(), before);
+}
+
+#[test]
 fn two_tss_three_matrix_producer_exports_preserve_scores_pairs_and_receipt_bindings() {
     let (registry_bytes, registry) = three_matrix_registry();
     let mut input_panel = panel(&IDS, TfbsScoreTrackValueKind::LlrBits);

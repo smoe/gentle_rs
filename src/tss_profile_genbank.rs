@@ -356,6 +356,76 @@ mod tests {
     }
 
     #[test]
+    fn annotated_tss_shared_exon_keeps_both_transcript_associations() {
+        // Synthetic transcripts share one clipped exon, not two DNA copies.
+        let mut report = fixture();
+        for window in &mut report.windows {
+            let context = window.detail_context.as_mut().unwrap();
+            let mut other = context.transcripts[0].clone();
+            other.transcript_id.push_str("-shared");
+            window.record.transcripts.push(other.transcript_id.clone());
+            context.transcripts.push(other);
+        }
+        let before = serde_json::to_vec(&report).unwrap();
+        for window in &report.windows {
+            for format in [TssExportFormat::Genbank, TssExportFormat::Embl] {
+                let parsed = match format {
+                    TssExportFormat::Genbank => {
+                        let data = bytes(&report, window).unwrap();
+                        gb_io::reader::SeqReader::new(data.as_slice())
+                            .next()
+                            .unwrap()
+                            .unwrap()
+                    }
+                    TssExportFormat::Embl => {
+                        let data = embl_bytes(&report, window).unwrap();
+                        crate::dna_sequence::parse_embl_records(std::str::from_utf8(&data).unwrap())
+                            .unwrap()
+                            .remove(0)
+                    }
+                    _ => unreachable!(),
+                };
+                assert_eq!(parsed.seq.to_ascii_uppercase(), b"ACGTA");
+                let exons = parsed
+                    .features
+                    .iter()
+                    .filter(|f| f.kind == "exon")
+                    .collect::<Vec<_>>();
+                assert_eq!(exons.len(), 2);
+                assert_eq!(exons[0].location, exons[1].location);
+                assert_eq!(
+                    exons[0].location.to_gb_format(),
+                    if window.record.geometry.strand == TssStrand::Plus {
+                        "<1..5"
+                    } else {
+                        "1..>5"
+                    }
+                );
+                for (exon, transcript) in exons
+                    .iter()
+                    .zip(&window.detail_context.as_ref().unwrap().transcripts)
+                {
+                    let transcript_id = &transcript.transcript_id;
+                    assert_eq!(
+                        exon.qualifier_values("transcript_id").collect::<Vec<_>>(),
+                        [transcript_id.as_str()]
+                    );
+                    assert_eq!(
+                        exon.qualifier_values("label").next().unwrap(),
+                        format!("{transcript_id} E1")
+                    );
+                    assert_eq!(exon.qualifier_values("number").next(), Some("1"));
+                }
+                assert_eq!(
+                    exons[0].qualifier_values("note").next(),
+                    exons[1].qualifier_values("note").next()
+                );
+            }
+        }
+        assert_eq!(before, serde_json::to_vec(&report).unwrap());
+    }
+
+    #[test]
     fn annotated_format_parity_tss_export_receipt_rejects_rehashed_edits() {
         let report = fixture();
         let temp = tempfile::tempdir().unwrap();
