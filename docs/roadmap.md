@@ -1,7 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-09-13 - Glen approves preparing a `.10` candidate; final-SHA
-and packaged-binary acceptance and owner publication approval remain pending.
+Last session: 2026-09-15 - async prerequisites hardened; nonblocking submission remains pending.
+Glen approved `.10` preparation; final-SHA/package acceptance and owner publication approval remain pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -89,6 +89,8 @@ Pre-release finishing scope:
 4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Have Glen validate the [promoter-cofactor browser](promoter_cofactor_browser.md), live navigation and interpretation; keep raw coverage-block/annotation export separate.
    Validate DuckDB boundaries/limits, scan filters and selected-package GUI staleness; have Glen inspect [imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) on both strands. Native TSS follow-up (not an added `.10` gate): GUI acceptance, full report-bound traces/hits/reporters, direct locus navigation and native export; retain [flat-file limits and readability plan](tss_annotated_sequence_readability_plan.md). Glen: regenerate [source-coherent Ensembl/RefSeq pages](transcript_source_presentation.md) from one enriched locus and verify mappings/PDF/SVG/HTML receipts; synthetic coverage is not real-data acceptance. Keep the [standalone comparison](transcript_source_presentation.md#standalone-comparison-review) deferred rather than adding a second source-join implementation.
+6. Follow the [reconciled responsive-command plan](asynchronous_command_execution_plan.md#reconciled-codex-plan-2026-09-14): benchmark growing-journal snapshot costs; separate BLAST cached observation from transition persistence/scheduling. Preserve DEC-026 display/metadata merging and rollback regressions. Reuse runtime frames/detached workers for [DEC-048](decisions.md#dec-048-command-submission-and-observation-never-wait-for-execution), not a duplicate scheduler vocabulary.
+   Prove exact Run/slash submission, quiet quick results, nonmodal genome preparation and cancellable multi-step workflows with offline held-worker tests; preserve distinct dialog/shell journal semantics and approved payloads. Audit remaining adapters afterward, including BLAST-start fork/probe admission ordering. No private T2T/model run; general asynchronous migration is pending.
 
 Current non-goals:
 
@@ -311,9 +313,7 @@ wet-lab conclusions or unconfirmed mutations.
   view-only `offline-core`; extend typed coverage next to Gibson and dotplot.
   MCP/Feature Editor, transcript-assay, vendor and trace guides need Glen's review; keep biological verdicts separate.
 - Extend the transcript follow-up with provenance-complete array evidence for positive differential selection and approved-study execution.
-- Extend inner-agent context with readiness-bound tutorial actions,
-  deferred-job observation and explicit headless receipt replay;
-  keep approvals and undo history unchanged.
+- Extend inner-agent context with readiness-bound tutorial actions and explicit headless receipt replay; deferred-job observation is part of active DEC-048 work. Keep approvals and undo history unchanged.
   Defer skill activation and inverse discovery until readiness is safeguarded.
 - Optional OS credential-store persistence for Agent Assistant API keys.
 - Separate opt-in inner coding-agent mode for Codex, Pi, or comparable local

@@ -7740,6 +7740,123 @@ fn test_data_mutation_history_checkpoint_remains_full() {
     );
 }
 
+// Synthetic in-memory sequence/history only; reproducible without external data.
+fn rollback_history_fixture() -> GentleEngine {
+    let mut engine = GentleEngine::new();
+    for id in ["base", "redoable"] {
+        engine
+            .apply(Operation::CreateSequenceFromText {
+                sequence_text: "ACGTACGT".to_string(),
+                output_id: Some(id.to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("history fixture");
+    }
+    engine.undo_last_operation().expect("redo baseline");
+    engine.history_limit = 1;
+    engine
+}
+
+#[test]
+fn transaction_rollback_retains_shared_history_through_eviction_and_cancel_error() {
+    let mut engine = rollback_history_fixture();
+    let undo = engine.undo_stack[0].clone();
+    let redo = engine.redo_stack[0].clone();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let journal = serde_json::to_value(engine.operation_log()).unwrap();
+    let mut last_op_counter = engine.op_counter;
+    let error = engine
+        .with_rollback_on_error(|engine| {
+            assert!(std::sync::Arc::ptr_eq(&undo, &engine.undo_stack[0]));
+            assert!(
+                std::sync::Arc::strong_count(&undo) >= 3,
+                "baseline shares checkpoint"
+            );
+            for id in ["first", "second", "third"] {
+                engine
+                    .apply(Operation::Reverse {
+                        input: "base".to_string(),
+                        output_id: Some(id.to_string()),
+                    })
+                    .expect("temporary history");
+            }
+            assert_eq!(engine.undo_available(), 1, "history limit still enforced");
+            assert_eq!(engine.redo_available(), 0);
+            last_op_counter = engine.op_counter;
+            Err::<(), _>("cancelled")
+        })
+        .expect_err("cancellation remains an error");
+    assert_eq!(error, "cancelled");
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(
+        serde_json::to_value(engine.operation_log()).unwrap(),
+        journal
+    );
+    assert!(std::sync::Arc::ptr_eq(&undo, &engine.undo_stack[0]));
+    assert!(std::sync::Arc::ptr_eq(&redo, &engine.redo_stack[0]));
+    assert!(
+        engine.op_counter >= last_op_counter,
+        "do not reuse aborted IDs"
+    );
+    engine.redo_last_operation().expect("retained redo works");
+    assert!(engine.state().sequences.contains_key("redoable"));
+}
+
+#[test]
+fn transaction_rollback_restores_engine_on_unwind() {
+    let mut engine = rollback_history_fixture();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let history = serde_json::to_value(engine.history_summary()).unwrap();
+    let revision = engine.structural_revision();
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _: Result<(), ()> = engine.with_rollback_on_error(|engine| {
+            engine.redo_last_operation().expect("mutate history");
+            panic!("synthetic transaction panic");
+        });
+    }));
+    assert!(panic.is_err(), "rollback must not swallow a panic");
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    assert_eq!(
+        serde_json::to_value(engine.history_summary()).unwrap(),
+        history
+    );
+    assert!(engine.structural_revision() > revision);
+}
+
+#[test]
+fn shared_history_rebase_does_not_modify_another_snapshot() {
+    let mut live = rollback_history_fixture();
+    let mut detached = live.fork_detached_execution();
+    detached
+        .engine_mut()
+        .apply(Operation::Reverse {
+            input: "base".to_string(),
+            output_id: Some("detached".to_string()),
+        })
+        .expect("detached operation");
+    let mut witness = detached.engine().clone();
+    assert!(std::sync::Arc::ptr_eq(
+        &witness.undo_stack[0],
+        &detached.engine().undo_stack[0],
+    ));
+    live.auxiliary_metadata_mut().insert(
+        "synthetic_status".to_string(),
+        serde_json::json!("finished"),
+    );
+    live.commit_detached_execution(&mut detached)
+        .expect("merge disjoint live metadata");
+    live.undo_last_operation().expect("undo rebased checkpoint");
+    assert_eq!(
+        live.state().metadata["synthetic_status"],
+        serde_json::json!("finished")
+    );
+    witness
+        .undo_last_operation()
+        .expect("undo original checkpoint");
+    assert!(!witness.state().metadata.contains_key("synthetic_status"));
+}
+
 #[test]
 fn test_extract_region() {
     let mut state = ProjectState::default();

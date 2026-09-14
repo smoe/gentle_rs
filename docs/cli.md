@@ -7101,6 +7101,11 @@ Workflow macro commands (`gentle_cli shell 'macros ...'`):
   - Executes semicolon/newline-separated shell statements.
   - Existing file paths are auto-loaded even without `@` (shebang-friendly).
   - Supports transactional rollback (`--transactional`) when any statement fails.
+    This includes parse/nested-macro errors after earlier steps: pre-run project
+    state, journal and undo/redo history are restored, while revisions advance
+    to invalidate stale work. External files, resources and running jobs are
+    not rolled back. The same guarantee applies to `candidates macro` and
+    transactional template execution.
   - Designed for full cloning workflows through `op ...` and `workflow ...`
     statements (Digest/Ligation/PCR/ExtractRegion/container ops, etc.).
   - All runs persist a lineage macro-instance record:

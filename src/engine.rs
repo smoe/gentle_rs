@@ -6849,11 +6849,41 @@ pub struct GentleEngine {
     #[serde(skip, default)]
     structural_revision: u64,
     #[serde(skip, default)]
-    undo_stack: Vec<EngineHistoryCheckpoint>,
+    undo_stack: Vec<std::sync::Arc<EngineHistoryCheckpoint>>,
     #[serde(skip, default)]
-    redo_stack: Vec<EngineHistoryCheckpoint>,
+    redo_stack: Vec<std::sync::Arc<EngineHistoryCheckpoint>>,
     #[serde(skip, default = "GentleEngine::default_history_limit")]
     history_limit: usize,
+}
+
+/// Restores only in-memory engine effects on error or unwind. History entries
+/// are shared immutably, so retaining a baseline does not clone every project
+/// checkpoint. External files, resources and running jobs are not transactional.
+struct EngineRollbackGuard<'a> {
+    engine: &'a mut GentleEngine,
+    baseline: Option<GentleEngine>,
+}
+
+impl Drop for EngineRollbackGuard<'_> {
+    fn drop(&mut self) {
+        let Some(mut baseline) = self.baseline.take() else {
+            return;
+        };
+        baseline.execution_revision = baseline
+            .execution_revision
+            .max(self.engine.execution_revision)
+            .wrapping_add(1);
+        baseline.mutation_revision = baseline
+            .mutation_revision
+            .max(self.engine.mutation_revision)
+            .wrapping_add(1);
+        baseline.structural_revision = baseline
+            .structural_revision
+            .max(self.engine.structural_revision)
+            .wrapping_add(1);
+        baseline.op_counter = baseline.op_counter.max(self.engine.op_counter);
+        *self.engine = baseline;
+    }
 }
 
 /// Engine-owned state for one optimistic detached execution.
@@ -7033,6 +7063,27 @@ impl GentleEngine {
             redo_stack: Vec::new(),
             history_limit: self.history_limit,
         }
+    }
+
+    /// Run an in-memory transaction, restoring its complete baseline on a
+    /// returned error or unwind. Rollback invalidates detached execution without
+    /// resetting revisions, losing older undo/redo entries or hiding the error.
+    pub(crate) fn with_rollback_on_error<T, E>(
+        &mut self,
+        work: impl FnOnce(&mut Self) -> Result<T, E>,
+    ) -> Result<T, E> {
+        let mut baseline = self.clone_without_history();
+        baseline.undo_stack = self.undo_stack.clone();
+        baseline.redo_stack = self.redo_stack.clone();
+        let mut guard = EngineRollbackGuard {
+            engine: self,
+            baseline: Some(baseline),
+        };
+        let result = work(guard.engine);
+        if result.is_ok() {
+            guard.baseline = None;
+        }
+        result
     }
 
     /// Fork the execution state needed by a detached background operation.
@@ -7239,7 +7290,7 @@ impl GentleEngine {
             .iter_mut()
             .filter(|checkpoint| checkpoint.journal().len() >= base_journal_len)
         {
-            match checkpoint {
+            match std::sync::Arc::make_mut(checkpoint) {
                 EngineHistoryCheckpoint::Full { state, .. } => {
                     state.display = live_display.clone();
                     for (key, live_value) in &live_metadata_changes {
@@ -10075,7 +10126,7 @@ impl GentleEngine {
     }
 
     fn push_undo_checkpoint(&mut self, checkpoint: EngineHistoryCheckpoint) {
-        self.undo_stack.push(checkpoint);
+        self.undo_stack.push(std::sync::Arc::new(checkpoint));
         let limit = self.history_limit_or_default();
         if self.undo_stack.len() > limit {
             let drain_len = self.undo_stack.len() - limit;
@@ -10094,12 +10145,12 @@ impl GentleEngine {
 
     #[cfg(test)]
     fn top_undo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
-        self.undo_stack.last().map(EngineHistoryCheckpoint::kind)
+        self.undo_stack.last().map(|checkpoint| checkpoint.kind())
     }
 
     #[cfg(test)]
     fn top_redo_checkpoint_kind(&self) -> Option<EngineHistoryCheckpointKind> {
-        self.redo_stack.last().map(EngineHistoryCheckpoint::kind)
+        self.redo_stack.last().map(|checkpoint| checkpoint.kind())
     }
 
     pub fn undo_last_operation(&mut self) -> Result<(), EngineError> {
@@ -10113,13 +10164,13 @@ impl GentleEngine {
         };
         let checkpoint_kind = previous.kind();
         let current = self.capture_history_checkpoint(checkpoint_kind);
-        self.redo_stack.push(current);
+        self.redo_stack.push(std::sync::Arc::new(current));
         let limit = self.history_limit_or_default();
         if self.redo_stack.len() > limit {
             let drain_len = self.redo_stack.len() - limit;
             self.redo_stack.drain(0..drain_len);
         }
-        self.restore_history_checkpoint(previous);
+        self.restore_history_checkpoint(std::sync::Arc::unwrap_or_clone(previous));
         self.bump_revision_for_checkpoint_kind(Some(checkpoint_kind));
         Ok(())
     }
@@ -10135,13 +10186,13 @@ impl GentleEngine {
         };
         let checkpoint_kind = next.kind();
         let current = self.capture_history_checkpoint(checkpoint_kind);
-        self.undo_stack.push(current);
+        self.undo_stack.push(std::sync::Arc::new(current));
         let limit = self.history_limit_or_default();
         if self.undo_stack.len() > limit {
             let drain_len = self.undo_stack.len() - limit;
             self.undo_stack.drain(0..drain_len);
         }
-        self.restore_history_checkpoint(next);
+        self.restore_history_checkpoint(std::sync::Arc::unwrap_or_clone(next));
         self.bump_revision_for_checkpoint_kind(Some(checkpoint_kind));
         Ok(())
     }

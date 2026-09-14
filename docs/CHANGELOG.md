@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-15 - Transaction And BLAST Status Prerequisites
+
+- Transactional workflow/candidate macros restore the pre-run project, journal
+  and undo/redo history on statement, parse or nested-macro errors. Rollback
+  advances revisions instead of resetting them, invalidating older detached
+  work. The public workflow path still retains its failure lineage receipt.
+  An unwind also restores engine state without swallowing the panic; external
+  files, resources and running jobs are explicitly outside this guarantee.
+- Retain private history checkpoints through immutable shared ownership, with
+  copy-on-write when detached commits rebase them. Taking a rollback baseline
+  no longer requires a deep copy of every historical project; current state
+  and the journal still need copying. No persisted schema changes.
+- Persist BLAST job transitions/prunes through auxiliary metadata mutation:
+  keep restart recovery and dirty-state reporting, but do not invalidate a
+  detached scientific result solely through a structural revision bump.
+  Byte-identical status stores remain no-ops. Status reads still can persist
+  transitions; cached observation and general nonblocking submission remain
+  future slices of the [responsive-command plan](asynchronous_command_execution_plan.md).
+
 ## 2026-09-15 - Agent Helper Relevance And Attributable Feedback
 
 - Rank bundled helper/vector matches by the current question, then the latest
@@ -12,6 +31,24 @@
 - Add synthetic ranking, term-budget, stale-topic, attribution and live offline
   worker regressions. No async executor, polling or receipt-replay behavior is
   introduced; those remain separate follow-ups.
+
+## 2026-09-14 - System-Wide Asynchronous Command Invariant
+
+- Document DEC-048: prompt command admission and nonblocking status observation
+  across every adapter, with explicit lifecycle/blockers and caller-side waiting.
+  Asynchronous execution is GENtle's responsibility, not an agent's choice of a
+  special command. Preserve approval, snapshot/commit and readiness semantics.
+- Track agent-requested genome preparation and offline responsiveness/parity
+  regressions as outstanding work. This is documentation only: no runtime fix,
+  protocol change, interruption or restart of an existing preparation is claimed.
+- Add the [responsive-command/workflow review draft](asynchronous_command_execution_plan.md):
+  unify prepared buttons with explicit command input, suppress quick-result
+  message noise and supervise whole workflows separately from conversation.
+- Reconcile Claude's supplied review against source: prioritize confirmed macro
+  rollback and BLAST status side effects, reuse existing runtime/detached workers,
+  and retain slash-derived input. Preserve already-implemented display/metadata
+  merging; do not replace it with blanket stale-result rejection. The revised
+  plan remains documentation, not an implemented asynchronous execution fix.
 
 ## 2026-09-14 - Prepared NCBI Transcript Joins And Indexing Progress
 

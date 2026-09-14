@@ -5284,6 +5284,10 @@ Adapter-equivalence guarantee for UI-intent tools:
     template changes are kept
   - expanded scripts can execute `op ...` and `workflow ...` statements and
     optionally roll back via `--transactional`
+  - transactional macro errors (including parsing and forbidden nested macros)
+    restore pre-run state, journal and undo/redo history; revision counters
+    advance rather than reset. Failure lineage is recorded outside rollback.
+    External files, resources and jobs are not transactional.
   - `template-run` supports non-mutating preflight mode via `--validate-only`
   - template-run responses now include a preflight payload
     (`gentle.macro_template_preflight.v1`) with warnings/errors and typed
@@ -13306,6 +13310,10 @@ Async BLAST shell contract (agent/MCP-ready baseline):
 - Durability/restart semantics:
   - BLAST async status snapshots are persisted in project metadata as
     `blast_async_jobs` (`gentle.blast_async_job_store.v1`).
+    Changed stores advance auxiliary mutation/execution identity and clear
+    redo, not structural identity. Identical stores do not change revisions.
+    Detached commits preserve disjoint live metadata through the existing
+    merge contract and still reject genuine metadata conflicts.
   - On restart/reload, recovered jobs that were previously non-terminal but no
     longer have an active worker context are normalized deterministically:
     - `cancel_requested=true` -> `cancelled`

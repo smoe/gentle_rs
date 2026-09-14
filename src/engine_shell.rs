@@ -14882,8 +14882,7 @@ fn persist_blast_async_jobs_to_engine(
     if jobs.is_empty() {
         if existing.is_some() {
             engine
-                .state_mut()
-                .metadata
+                .auxiliary_metadata_mut()
                 .remove(BLAST_ASYNC_STORE_METADATA_KEY);
             return Ok(true);
         }
@@ -14896,8 +14895,7 @@ fn persist_blast_async_jobs_to_engine(
         return Ok(false);
     }
     engine
-        .state_mut()
-        .metadata
+        .auxiliary_metadata_mut()
         .insert(BLAST_ASYNC_STORE_METADATA_KEY.to_string(), value);
     Ok(true)
 }
@@ -48984,74 +48982,63 @@ fn run_candidates_macro(
     if statements.is_empty() {
         return Err("candidates macro script is empty".to_string());
     }
-    let rollback_state = if transactional {
-        Some(engine.state().clone())
-    } else {
-        None
-    };
-    let mut executed = 0usize;
-    let mut changed = false;
-    let mut rows: Vec<Value> = vec![];
-    for statement in statements {
-        let statement = statement.trim();
-        if statement.is_empty() {
-            continue;
-        }
-        let prefixed = if statement.starts_with("candidates ") {
-            statement.to_string()
-        } else {
-            format!("candidates {statement}")
-        };
-        let tokens = split_shell_words(&prefixed)?;
-        let cmd = parse_candidates_command(&tokens)?;
-        if matches!(
-            cmd,
-            ShellCommand::CandidatesMacro { .. }
-                | ShellCommand::CandidatesTemplateRun { .. }
-                | ShellCommand::MacrosRun { .. }
-                | ShellCommand::MacrosTemplateRun { .. }
-        ) {
-            return Err("Nested candidates macro/template-run calls are not allowed".to_string());
-        }
-        let run = match execute_shell_command_with_options(engine, &cmd, options) {
-            Ok(run) => run,
-            Err(err) => {
-                if transactional {
-                    if let Some(state) = rollback_state {
-                        *engine = GentleEngine::from_state(state);
-                    }
+    run_macro_transaction(engine, transactional, |engine| {
+        let mut executed = 0usize;
+        let mut changed = false;
+        let mut rows: Vec<Value> = vec![];
+        for statement in statements {
+            let statement = statement.trim();
+            if statement.is_empty() {
+                continue;
+            }
+            let prefixed = if statement.starts_with("candidates ") {
+                statement.to_string()
+            } else {
+                format!("candidates {statement}")
+            };
+            let tokens = split_shell_words(&prefixed)?;
+            let cmd = parse_candidates_command(&tokens)?;
+            if matches!(
+                cmd,
+                ShellCommand::CandidatesMacro { .. }
+                    | ShellCommand::CandidatesTemplateRun { .. }
+                    | ShellCommand::MacrosRun { .. }
+                    | ShellCommand::MacrosTemplateRun { .. }
+            ) {
+                return Err(
+                    "Nested candidates macro/template-run calls are not allowed".to_string()
+                );
+            }
+            let run = match execute_shell_command_with_options(engine, &cmd, options) {
+                Ok(run) => run,
+                Err(err) => {
                     return Err(format!(
-                        "candidates macro failed at statement {} ('{}'): {err}; all macro changes were rolled back",
+                        "candidates macro failed at statement {} ('{}'): {err}",
                         executed + 1,
                         statement
                     ));
                 }
-                return Err(format!(
-                    "candidates macro failed at statement {} ('{}'): {err}",
-                    executed + 1,
-                    statement
-                ));
-            }
-        };
-        executed = executed.saturating_add(1);
-        changed |= run.state_changed;
-        rows.push(json!({
-            "statement": statement,
-            "state_changed": run.state_changed,
-            "output": run.output
-        }));
-    }
-    if executed == 0 {
-        return Err("candidates macro script has no executable statements".to_string());
-    }
-    Ok(ShellRunResult {
-        state_changed: changed,
-        output: json!({
-            "executed": executed,
-            "transactional": transactional,
-            "state_changed": changed,
-            "results": rows
-        }),
+            };
+            executed = executed.saturating_add(1);
+            changed |= run.state_changed;
+            rows.push(json!({
+                "statement": statement,
+                "state_changed": run.state_changed,
+                "output": run.output
+            }));
+        }
+        if executed == 0 {
+            return Err("candidates macro script has no executable statements".to_string());
+        }
+        Ok(ShellRunResult {
+            state_changed: changed,
+            output: json!({
+                "executed": executed,
+                "transactional": transactional,
+                "state_changed": changed,
+                "results": rows
+            }),
+        })
     })
 }
 
@@ -49066,88 +49053,91 @@ fn run_workflow_macro(
     if statements.is_empty() {
         return Err("macros run script is empty".to_string());
     }
-    let rollback_state = if transactional {
-        Some(engine.state().clone())
-    } else {
-        None
-    };
-    let mut executed = 0usize;
-    let mut changed = false;
-    let mut rows: Vec<Value> = vec![];
-    for statement in statements {
-        let statement = statement.trim();
-        if statement.is_empty() {
-            continue;
-        }
-        let cmd = if let Some(raw_payload) = statement.strip_prefix("op ") {
-            let payload = raw_payload.trim();
-            if payload.is_empty() {
-                return Err("macros run statement 'op' requires a JSON payload".to_string());
+    run_macro_transaction(engine, transactional, |engine| {
+        let mut executed = 0usize;
+        let mut changed = false;
+        let mut rows: Vec<Value> = vec![];
+        for statement in statements {
+            let statement = statement.trim();
+            if statement.is_empty() {
+                continue;
             }
-            ShellCommand::Op {
-                payload: payload.to_string(),
+            let cmd = if let Some(raw_payload) = statement.strip_prefix("op ") {
+                let payload = raw_payload.trim();
+                if payload.is_empty() {
+                    return Err("macros run statement 'op' requires a JSON payload".to_string());
+                }
+                ShellCommand::Op {
+                    payload: payload.to_string(),
+                }
+            } else if let Some(raw_payload) = statement.strip_prefix("workflow ") {
+                let payload = raw_payload.trim();
+                if payload.is_empty() {
+                    return Err(
+                        "macros run statement 'workflow' requires a JSON payload".to_string()
+                    );
+                }
+                ShellCommand::Workflow {
+                    payload: payload.to_string(),
+                }
+            } else {
+                let tokens = split_shell_words(statement)?;
+                parse_shell_tokens(&tokens)?
+            };
+            if matches!(
+                cmd,
+                ShellCommand::CandidatesMacro { .. }
+                    | ShellCommand::CandidatesTemplateRun { .. }
+                    | ShellCommand::MacrosRun { .. }
+                    | ShellCommand::MacrosTemplateRun { .. }
+            ) {
+                return Err("Nested macros/template-run calls are not allowed".to_string());
             }
-        } else if let Some(raw_payload) = statement.strip_prefix("workflow ") {
-            let payload = raw_payload.trim();
-            if payload.is_empty() {
-                return Err("macros run statement 'workflow' requires a JSON payload".to_string());
-            }
-            ShellCommand::Workflow {
-                payload: payload.to_string(),
-            }
-        } else {
-            let tokens = split_shell_words(statement)?;
-            parse_shell_tokens(&tokens)?
-        };
-        if matches!(
-            cmd,
-            ShellCommand::CandidatesMacro { .. }
-                | ShellCommand::CandidatesTemplateRun { .. }
-                | ShellCommand::MacrosRun { .. }
-                | ShellCommand::MacrosTemplateRun { .. }
-        ) {
-            return Err("Nested macros/template-run calls are not allowed".to_string());
-        }
-        let run = match execute_shell_command_with_options(engine, &cmd, options) {
-            Ok(run) => run,
-            Err(err) => {
-                if transactional {
-                    if let Some(state) = rollback_state {
-                        *engine = GentleEngine::from_state(state);
-                    }
+            let run = match execute_shell_command_with_options(engine, &cmd, options) {
+                Ok(run) => run,
+                Err(err) => {
                     return Err(format!(
-                        "macros run failed at statement {} ('{}'): {err}; all macro changes were rolled back",
+                        "macros run failed at statement {} ('{}'): {err}",
                         executed + 1,
                         statement
                     ));
                 }
-                return Err(format!(
-                    "macros run failed at statement {} ('{}'): {err}",
-                    executed + 1,
-                    statement
-                ));
-            }
-        };
-        executed = executed.saturating_add(1);
-        changed |= run.state_changed;
-        rows.push(json!({
-            "statement": statement,
-            "state_changed": run.state_changed,
-            "output": run.output
-        }));
-    }
-    if executed == 0 {
-        return Err("macros run script has no executable statements".to_string());
-    }
-    Ok(ShellRunResult {
-        state_changed: changed,
-        output: json!({
-            "executed": executed,
-            "transactional": transactional,
-            "state_changed": changed,
-            "results": rows
-        }),
+            };
+            executed = executed.saturating_add(1);
+            changed |= run.state_changed;
+            rows.push(json!({
+                "statement": statement,
+                "state_changed": run.state_changed,
+                "output": run.output
+            }));
+        }
+        if executed == 0 {
+            return Err("macros run script has no executable statements".to_string());
+        }
+        Ok(ShellRunResult {
+            state_changed: changed,
+            output: json!({
+                "executed": executed,
+                "transactional": transactional,
+                "state_changed": changed,
+                "results": rows
+            }),
+        })
     })
+}
+
+fn run_macro_transaction(
+    engine: &mut GentleEngine,
+    transactional: bool,
+    work: impl FnOnce(&mut GentleEngine) -> Result<ShellRunResult, String>,
+) -> Result<ShellRunResult, String> {
+    if transactional {
+        engine.with_rollback_on_error(work).map_err(|error| {
+            format!("{error}; all macro project changes were rolled back; external files, resources and jobs were not rolled back")
+        })
+    } else {
+        work(engine)
+    }
 }
 
 fn macro_statement_contains_agent_invocation(engine: &GentleEngine, statement: &str) -> bool {

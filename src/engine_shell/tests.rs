@@ -17347,6 +17347,271 @@ fn execute_candidates_macro_rejects_nested_macro() {
     assert!(err.contains("Nested candidates macro"));
 }
 
+// Synthetic, in-memory sequences and job records: no private input or tools.
+fn transaction_history_test_engine() -> GentleEngine {
+    let mut engine = GentleEngine::new();
+    for id in ["base", "redoable"] {
+        engine
+            .apply(Operation::CreateSequenceFromText {
+                sequence_text: "ACGTACGTACGT".to_string(),
+                output_id: Some(id.to_string()),
+                name: None,
+                circular: false,
+            })
+            .expect("create history fixture");
+    }
+    engine.undo_last_operation().expect("retain a redo entry");
+    engine
+}
+
+#[test]
+fn transactional_macro_errors_restore_history_and_invalidate_detached_results() {
+    let cases = [
+        (
+            false,
+            r#"op {"Reverse":{"input":"base","output_id":"transient"}}; op {"Reverse":{"input":"missing","output_id":"bad"}}"#,
+        ),
+        (
+            false,
+            r#"op {"Reverse":{"input":"base","output_id":"transient"}}; not-a-command"#,
+        ),
+        (
+            false,
+            r#"op {"Reverse":{"input":"base","output_id":"transient"}}; macros run 'help'"#,
+        ),
+        (false, "history undo; not-a-command"),
+        (false, "history redo; not-a-command"),
+        (
+            true,
+            "generate temp base --length 4 --step 2; filter missing out --metric gc_fraction --min 0.1",
+        ),
+        (
+            true,
+            "generate temp base --length 4 --step 2; not-a-command",
+        ),
+        (true, "generate temp base --length 4 --step 2; macro help"),
+    ];
+    for (candidates, script) in cases {
+        let mut engine = transaction_history_test_engine();
+        let state = serde_json::to_value(engine.state()).expect("baseline state");
+        let journal = serde_json::to_value(engine.operation_log()).expect("baseline journal");
+        let history = serde_json::to_value(engine.history_summary()).expect("baseline history");
+        let structural = engine.structural_revision();
+        let mutation = engine.mutation_revision();
+        let execution = engine.execution_revision();
+        let mut detached = engine.fork_detached_execution();
+        let options = ShellExecutionOptions::default();
+        let error = if candidates {
+            run_candidates_macro(&mut engine, script, true, &options)
+        } else {
+            run_workflow_macro(&mut engine, script, true, &options)
+        }
+        .expect_err("macro must fail");
+        assert!(error.contains("rolled back"), "{script}: {error}");
+        assert_eq!(
+            serde_json::to_value(engine.state()).unwrap(),
+            state,
+            "{script}"
+        );
+        assert_eq!(
+            serde_json::to_value(engine.operation_log()).unwrap(),
+            journal,
+            "{script}"
+        );
+        assert_eq!(
+            serde_json::to_value(engine.history_summary()).unwrap(),
+            history,
+            "{script}"
+        );
+        assert!(engine.structural_revision() > structural, "{script}");
+        assert!(engine.mutation_revision() > mutation, "{script}");
+        assert!(engine.execution_revision() > execution, "{script}");
+        assert!(engine.commit_detached_execution(&mut detached).is_err());
+        engine
+            .redo_last_operation()
+            .expect("pre-existing redo still works");
+        assert!(engine.state().sequences.contains_key("redoable"));
+        engine.undo_last_operation().expect("undo redo");
+        engine
+            .undo_last_operation()
+            .expect("pre-existing undo still works");
+        assert!(!engine.state().sequences.contains_key("base"));
+    }
+}
+
+#[test]
+fn transactional_macro_success_and_nontransactional_failure_keep_their_effects() {
+    let script = r#"op {"Reverse":{"input":"base","output_id":"transient"}}"#;
+    let mut engine = transaction_history_test_engine();
+    let run = run_workflow_macro(&mut engine, script, true, &ShellExecutionOptions::default())
+        .expect("successful transaction");
+    assert_eq!(run.output["transactional"], true);
+    assert_eq!(engine.operation_log().len(), 2);
+    assert_eq!(engine.undo_available(), 2);
+    assert_eq!(engine.redo_available(), 0);
+    engine
+        .undo_last_operation()
+        .expect("undo committed transaction operation");
+    assert!(!engine.state().sequences.contains_key("transient"));
+    let error = run_workflow_macro(
+        &mut engine,
+        &format!("{script}; not-a-command"),
+        false,
+        &ShellExecutionOptions::default(),
+    )
+    .expect_err("nontransactional failure");
+    assert!(!error.contains("rolled back"));
+    assert!(engine.state().sequences.contains_key("transient"));
+}
+
+#[test]
+fn transactional_macro_public_failure_retains_prior_journal_and_failure_receipt() {
+    let mut engine = transaction_history_test_engine();
+    let journal = serde_json::to_value(engine.operation_log()).unwrap();
+    let error = execute_shell_command(
+        &mut engine,
+        &ShellCommand::MacrosRun {
+            script: r#"op {"Reverse":{"input":"base","output_id":"transient"}}; not-a-command"#
+                .to_string(),
+            transactional: true,
+        },
+    )
+    .expect_err("public macro failure");
+    assert!(error.contains("macro_instance_id="));
+    assert_eq!(
+        serde_json::to_value(engine.operation_log()).unwrap(),
+        journal
+    );
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(engine.redo_available(), 1);
+    assert!(!engine.state().sequences.contains_key("transient"));
+    let receipt = engine
+        .state()
+        .lineage
+        .macro_instances
+        .last()
+        .expect("failure receipt");
+    assert_eq!(receipt.status, MacroInstanceStatus::Failed);
+    assert!(receipt.expanded_op_ids.is_empty());
+}
+
+fn synthetic_async_job(state: &str) -> BlastAsyncJobRecord {
+    BlastAsyncJobRecord {
+        status: BlastAsyncJobStatus {
+            schema: "gentle.blast_async_job.v1".to_string(),
+            job_id: "synthetic-history-job".to_string(),
+            state: state.to_string(),
+            genome_id: "synthetic-genome".to_string(),
+            ..BlastAsyncJobStatus::default()
+        },
+        cancel_requested: Arc::new(AtomicBool::new(false)),
+        receiver: None,
+        launch_spec: None,
+        report: None,
+    }
+}
+
+#[test]
+fn blast_async_store_changes_preserve_detached_commits_and_undo() {
+    with_blast_async_test_overrides(1, 0, || {
+        let mut engine = transaction_history_test_engine();
+        let mut jobs = HashMap::new();
+        for (index, state) in [Some("running"), Some("failed"), None]
+            .into_iter()
+            .enumerate()
+        {
+            if let Some(state) = state {
+                jobs.insert(
+                    "synthetic-history-job".to_string(),
+                    synthetic_async_job(state),
+                );
+            } else {
+                jobs.clear();
+            }
+            let structural = engine.structural_revision();
+            let mutation = engine.mutation_revision();
+            let mut detached = engine.fork_detached_execution();
+            detached
+                .engine_mut()
+                .apply(Operation::Reverse {
+                    input: "base".to_string(),
+                    output_id: Some(format!("detached_{index}")),
+                })
+                .expect("detached work");
+            assert!(persist_blast_async_jobs_to_engine(&mut engine, &jobs).unwrap());
+            assert_eq!(engine.structural_revision(), structural);
+            assert!(engine.mutation_revision() > mutation);
+            assert_eq!(
+                engine.redo_available(),
+                0,
+                "side edit invalidates stale redo"
+            );
+            let latest = engine
+                .state()
+                .metadata
+                .get(BLAST_ASYNC_STORE_METADATA_KEY)
+                .cloned();
+            let mutation = engine.mutation_revision();
+            assert!(!persist_blast_async_jobs_to_engine(&mut engine, &jobs).unwrap());
+            assert_eq!(
+                engine.mutation_revision(),
+                mutation,
+                "unchanged store is a no-op"
+            );
+            engine
+                .commit_detached_execution(&mut detached)
+                .expect("status must not stale work");
+            assert_eq!(
+                engine
+                    .state()
+                    .metadata
+                    .get(BLAST_ASYNC_STORE_METADATA_KEY)
+                    .cloned(),
+                latest
+            );
+            engine
+                .undo_last_operation()
+                .expect("undo detached operation");
+            assert_eq!(
+                engine
+                    .state()
+                    .metadata
+                    .get(BLAST_ASYNC_STORE_METADATA_KEY)
+                    .cloned(),
+                latest
+            );
+        }
+    });
+}
+
+#[test]
+fn blast_async_store_still_recovers_interrupted_jobs() {
+    with_blast_async_test_overrides(1, 0, || {
+        for cancel in [false, true] {
+            let mut engine = GentleEngine::new();
+            let job = synthetic_async_job("running");
+            job.cancel_requested.store(cancel, Ordering::Relaxed);
+            let jobs = HashMap::from([("synthetic-history-job".to_string(), job)]);
+            persist_blast_async_jobs_to_engine(&mut engine, &jobs).expect("persist");
+            let restored: ProjectState =
+                serde_json::from_value(serde_json::to_value(engine.state()).unwrap()).unwrap();
+            let restored = GentleEngine::from_state(restored);
+            let mut jobs = HashMap::new();
+            hydrate_blast_async_jobs_from_engine(&mut jobs, &restored);
+            let job = jobs
+                .get_mut("synthetic-history-job")
+                .expect("recovered job");
+            refresh_blast_async_orphaned_non_terminal_record(job);
+            assert_eq!(
+                job.status.state,
+                if cancel { "cancelled" } else { "failed" }
+            );
+            assert!(!job.status.result_available);
+            assert!(job.status.error.is_some());
+        }
+    });
+}
+
 #[test]
 fn execute_guides_commands_end_to_end() {
     let mut engine = GentleEngine::from_state(ProjectState::default());

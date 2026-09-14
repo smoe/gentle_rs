@@ -399,10 +399,22 @@ execution identity so GUI dirty checks remain constant-time without marking
 inspections as edits.
 
 Read-only workers use a history-free engine clone and do not commit it. A raw
-`GentleEngine::clone` in a background worker is prohibited because it can clone
-hundreds of full-state history checkpoints. Persisted metadata mutations outside
+`GentleEngine::clone` in a background worker is prohibited because it retains
+unneeded history (even with shared checkpoints). Persisted metadata mutations outside
 `apply` must advance the mutation revision and clear redo; otherwise a redo
 checkpoint captured before the side-edit can overwrite that metadata.
+
+Transactional macro rollback restores the complete pre-run engine baseline,
+including the journal and both history stacks, on error or unwind. It advances
+execution/mutation/structural revisions beyond the baseline and final failed
+state, retaining the larger baseline/final operation counter. Private history
+checkpoints may be shared immutably; rebasing them requires copy-on-write.
+The public macro failure receipt is recorded after rollback. This guarantee
+does not undo external files, resource preparation or running jobs.
+
+[DEC-048](#dec-048-command-submission-and-observation-never-wait-for-execution)
+extends the nonblocking requirement to command submission and observation across
+all adapters; this snapshot/commit rule still governs project-changing workers.
 
 ## DEC-027: RNA Allele Evidence Does Not Invent Phase
 
@@ -1091,6 +1103,41 @@ Paired-context conservation requires an actual shared ortholog locus with
 strand-consistent block order and measured query/target gaps within the stated
 bounds and gap-difference tolerance. Reuse the alignment's winning-HSP
 projection for those coordinates; query proximity alone is insufficient.
+
+## DEC-048: Command Submission And Observation Never Wait For Execution
+
+Status: active
+
+Every interface uses the same separation of command submission, execution and
+observation. Submission acknowledges a stable identity and lifecycle state
+promptly, or rejects with a structured reason. Expensive preflight, resource
+resolution and computation happen after admission, not before acknowledgment.
+Status/result-availability queries return the latest timestamped snapshot
+without waiting for the worker or holding its execution lock. Cached status
+must expose staleness; unknown progress/ETA is never invented completion.
+
+The lifecycle must distinguish queued, validating, blocked/waiting, running,
+cancellation/termination in progress, and terminal outcomes. The exact versioned
+wire vocabulary belongs in the protocol implementation. A blocked command states
+its reason and dependency/approval needed; it does not block the application,
+agent conversation or unrelated work. Conflicting mutations retain explicit
+ordering, short-lock commit and stale-result protection under DEC-026.
+
+Asynchrony is a system responsibility, never a requirement for an agent or human
+to select a special background command. Existing synchronous CLI/script behavior
+may remain as a documented caller-side wait policy over the same lifecycle;
+it must not block shared dispatch or keep the engine locked. An immediately
+joined worker thread does not satisfy the asynchronous submission contract.
+
+Acceptance authorizes no unapproved execution. The exact scientific request,
+approval digests, result validation and atomicity remain unchanged by scheduling.
+Job receipts and progress updates are execution evidence, not scientific project
+edits. Cancellation is requested before it is confirmed. Worker ownership,
+shutdown behavior and interruption must be explicit; no host-independent
+execution or restart recovery is implied merely by issuing a job ID.
+
+This decision records the invariant, not completed runtime migration. Existing
+blocking paths and deterministic acceptance tests remain tracked in the roadmap.
 
 ## Measured-Gel Evidence Invariants
 

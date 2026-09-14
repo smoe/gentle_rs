@@ -779,6 +779,57 @@ share a scale across different matrices, models, or providers only through an
 exact typed cross-source calibration id and digest; display labels,
 calibration prose, and matching units are not calibration contracts.
 
+### Asynchronous Command Lifecycle
+
+The system-wide rule is [DEC-048](decisions.md#dec-048-command-submission-and-observation-never-wait-for-execution):
+command submission, execution and observation are separate across GUI, inner
+agent, CLI, shared shell, MCP, JS, Lua and Python. A caller does not need to
+choose a special background command to preserve responsiveness.
+
+- Submission returns promptly with a stable command identity and current state,
+  or a bounded structured rejection. Immediate feedback means independence
+  from work duration, not a promise of zero wall-clock latency. Only bounded
+  local admission work belongs on this path; network/disk access, large-input
+  hashing, executable probes and resource validation are execution phases.
+- Status/progress reads return the latest timestamped, revisioned snapshot,
+  including unavailable/stale observations, without waiting for the worker,
+  fresh I/O or its engine lock. Result retrieval is separate and reports when
+  a result is not ready; it must not implicitly wait for completion.
+- The lifecycle distinguishes acceptance/queueing, validation, waiting for
+  approval or a dependency/resource, running, cancellation/termination in
+  progress, and terminal success/failure/cancellation/interruption. Waiting
+  states expose blockers and what can unblock them. These are semantic
+  requirements, not a new wire enum declared by this document.
+- A command's wait never creates application-wide or conversation-wide
+  modality. Unrelated commands remain usable; conflicting/dependent commands
+  are explicitly queued or blocked. Execution uses short commit locks and
+  existing versioned-snapshot rules, never a live engine lock for a long run.
+- Submission is not execution approval, completion or scientific readiness.
+  Scheduling preserves the approved operation payload and bindings. A cancel
+  request is not confirmed cancellation; results are published only under the
+  operation's existing validation and atomicity rules.
+- Waiting for a final result is an explicit caller-side policy, including CLI
+  convenience wrappers. Worker ownership and lifetime are reported explicitly;
+  returning a job ID must not imply survival after its host exits.
+- Nonblocking execution does not require queued/completed message noise for
+  quick work. A presentation grace period may show only the final result, but
+  must never wait on the UI thread. A workflow is one managed activity even if
+  each child step is quick; observation/control and conversation remain usable.
+
+Migration status: this invariant governs implementation but is not yet enforced
+universally. GUI genome preparation has a worker, while agent shell dispatch
+still executes synchronously under the engine write lock without a progress
+callback. Expanded-stack shell workers are synchronously joined; they are
+stack protection, not background submission. BLAST-specific async routes are
+existing migration foundations, not a caller obligation or a general solution.
+The first prerequisites preserve complete macro history on rollback and treat
+BLAST job-store transitions as auxiliary metadata, not structural edits.
+They do not yet make status polling observation-only or command execution
+nonblocking; the detached display/metadata merge remains the commit contract.
+Track the runtime correction and missing regressions in [roadmap.md](roadmap.md).
+The [review draft](asynchronous_command_execution_plan.md) separates button/text
+submission, presentation timing, workflow supervision and conversation ownership.
+
 Progress/cancellation contract:
 
 - Engine progress callbacks are cooperative and return `bool`.
@@ -813,8 +864,8 @@ Interactive orchestration contract:
   operations.
 - Read-only background computation uses the same engine execution baseline but
   clones no inherited undo/redo checkpoints and never enters the commit path.
-  Raw full-engine clones are not permitted in GUI workers because history
-  checkpoints may each contain a complete project snapshot.
+  Raw full-engine clones are not permitted in GUI workers: retaining unneeded
+  shared history can keep complete historical project snapshots alive.
 - Persisted metadata edits made outside `apply` go through the engine auxiliary
   metadata accessor. They advance the mutation revision and invalidate redo,
   because an older redo checkpoint could otherwise restore stale metadata.
@@ -1509,6 +1560,8 @@ Execution safety model:
 - The same async BLAST surface is exposed through MCP tools
   (`blast_async_start|status|cancel|list`) with shared parser/executor parity.
 - Remaining limitation:
+  - the system-wide asynchronous lifecycle above is not yet implemented for
+    every command; the agent is not responsible for choosing an async variant.
   - agent auto-execution currently runs one suggested command at a time and does
     not yet orchestrate multi-step poll/wait loops automatically for async jobs.
   - planned primer-pair multi-BLAST specificity fan-out still needs dedicated
