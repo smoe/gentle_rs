@@ -992,6 +992,15 @@ bytes and coordinate contract.
 
 Status: active
 
+Upstream evidence-guided boundary selection is a separate read-only proposal.
+Its fixed signal-measurement envelope, historical selection provenance, display
+window and proposed insert are distinct geometries. Required biological context
+precedes compactness; explained per-end changes retain alternatives and cannot
+silently waive context. Vector/MCS constraints may motivate new proposals, not
+modify approved downstream products. Raw coverage is not an enrichment claim;
+optimizing insert boundaries cannot retrospectively validate them with the
+same broad-window signal.
+
 A regulatory-fragment panel consumes exact persisted genomic regions rather
 than rediscovering or substituting candidate biology. Requests bind region-set
 content, ROI identity and content, current sequence projection, assembly,

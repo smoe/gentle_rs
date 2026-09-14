@@ -2570,6 +2570,22 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
+            Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
+                Self::push_unique_token(&mut summary.file_paths, &request.locus.path);
+                if let Some(vector) = &request.vector {
+                    Self::push_unique_token(&mut summary.sequence_ids, &vector.seq_id);
+                    Self::push_unique_token(
+                        &mut summary.file_paths,
+                        vector
+                            .helper_catalog_path
+                            .as_deref()
+                            .unwrap_or("assets/helper_genomes.json"),
+                    );
+                }
+                if let Some(path) = path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
             Operation::PlanPromoterReporterPanel { request, path } => {
                 Self::push_unique_token(&mut summary.sequence_ids, &request.vector_seq_id);
                 if let Some(path) = request.helper_catalog_path.as_deref() {
@@ -2959,7 +2975,10 @@ impl GentleEngine {
             | Operation::PlanReporterConstructHandoff {
                 path: Some(path), ..
             } => push(path),
-            Operation::PlanPromoterReporterPanel {
+            Operation::PlanEvidenceGuidedFragmentCandidates {
+                path: Some(path), ..
+            }
+            | Operation::PlanPromoterReporterPanel {
                 path: Some(path), ..
             } => push(path),
             Operation::PlanRegulatoryFragmentPanel { request, path } => {

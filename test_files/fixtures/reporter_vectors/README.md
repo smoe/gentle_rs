@@ -11,6 +11,11 @@
 - GENtle use: exact helper-vector validation tests in
   `src/engine/ops/reporter_ops.rs` exercise positive generic validation and
   derived restriction-site reporting without downloading a commercial vector.
+- Also used by the inline `reporter_fragment_selection` tests: generate the
+  hand-crafted 3 kb locus, annotations and signal lanes in that test module;
+  insert a HindIII footprint in optional promoter padding, bind this synthetic
+  MCS through a temporary catalog, and verify preserved-context trimming and
+  per-candidate checks. No experimental/provider sequence is retrieved.
 - Limitation: this record is not Promega pGL4.10[luc2], contains no functional
   luciferase CDS, and must be rejected when the pGL4.10 catalog identity is
   requested.

@@ -125,6 +125,8 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
                 "label": "Selected in integrated report",
                 "factor": "TP73",
                 "criterion": "synthetic criterion",
+                "selection_window": {"upstream_bp": 2000, "downstream_bp": 200,
+                                     "length_bp": 2201, "sequence_sha256": "a" * 64},
             } if selected else None),
             "record": {
                 "promoter_id": promoter_id,
@@ -232,6 +234,9 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
         self.assertEqual(receipt["page_order"], ["locus_context", "selected_tss_tfbs"])
         self.assertEqual(receipt["selected_tss_count"], 1)
         self.assertEqual(receipt["selected_tss_bindings"][0]["promoter_id"], "selected")
+        self.assertEqual(receipt["selected_tss_bindings"][0]["historical_selection_window"]["length_bp"], 2201)
+        self.assertEqual(receipt["selected_tss_bindings"][0]["selection_window_join_policy"],
+                         "provenance_only_not_display_geometry")
         self.assertEqual(receipt["selected_tss_bindings"][0]["covering_tss_bands"],
                          ["GENE_tss_stretch_1"])
         self.assertTrue(self.args().output_pdf.is_file())

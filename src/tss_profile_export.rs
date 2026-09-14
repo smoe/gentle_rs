@@ -243,6 +243,27 @@ fn validate_selection_evidence(window: &TssProfileWindow) -> Result<(), EngineEr
         if let Some(factor) = &evidence.factor {
             text_field(factor, "selection factor")?;
         }
+        if let Some(geometry) = &evidence.selection_window {
+            if geometry
+                .upstream_bp
+                .checked_add(1)
+                .and_then(|n| n.checked_add(geometry.downstream_bp))
+                != Some(geometry.length_bp)
+            {
+                return Err(invalid(
+                    "Historical selection-window length disagrees with offsets",
+                ));
+            }
+            let digest = geometry
+                .sequence_sha256
+                .strip_prefix("sha256:")
+                .unwrap_or(&geometry.sequence_sha256);
+            if digest.len() != 64 || !digest.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(invalid(
+                    "Invalid historical selection-window sequence digest",
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -931,6 +952,14 @@ fn write_selection_preamble(
             selection_fields(window).map(|field| field.map(tsv).unwrap_or_else(|| "null".into()));
         writeln!(writer, "# selection_promoter_id: {}\n# selection_label: {label}\n# selection_legend: {legend}\n# selection_criterion: {criterion}\n# selection_factor: {factor}", tsv(&window.record.promoter_id))
             .map_err(|e| io_error("write selected-panel TSV legend", e))?;
+        if let Some(evidence) = &window.selection_evidence {
+            writeln!(
+                writer,
+                "# selection_window: {}",
+                evidence.selection_window_description()
+            )
+            .map_err(|e| io_error("write selection-window provenance", e))?;
+        }
     }
     Ok(())
 }
@@ -1754,6 +1783,9 @@ identities are copied from the report, not independently reverified against orig
             tsv(&window.record.gene_symbol), tsv(&window.record.gene_id), tsv(&window.record.promoter_id),
             assessed(label), assessed(legend), assessed(criterion), assessed(factor),
         ));
+        if let Some(evidence) = &window.selection_evidence {
+            descriptions.push_str(&format!("{}\n\n", evidence.selection_window_description()));
+        }
     }
     if !report.windows.iter().any(|window| window.selected) {
         descriptions.push_str("No TSS is marked selected in the supplied report.\n");
@@ -2614,6 +2646,7 @@ pub(crate) mod tests {
             legend: "Synthetic descriptive window criterion; not evidence of TSS usage, direct binding or promoter activity.".into(),
             criterion: "Synthetic window overlap rule (fixture, not an assay)".into(),
             factor: Some("SYNTH_A".into()),
+            selection_window: None,
         });
         report
     }

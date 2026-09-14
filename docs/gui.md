@@ -6122,6 +6122,11 @@ Tutorial projects:
     - labels remain hypotheses or unresolved comparisons; the panel does not
       claim sufficiency, enhancer/silencer activity, partner dependence, or
       causal regulation
+    - before fixing the ROI, GUI Shell also accepts `promoters fragment-candidates`
+      for [evidence-guided boundaries](reporter_fragment_selection.md), including
+      explained extension/shortening and optional exact-vector MCS checks.
+      This is a read-only proposal, not a new graphical drag editor; saving a
+      proposed region and approving its construct remain separate actions.
     - the executable offline tutorial
       `08-11_regulatory_fragment_panel_planning_offline` walks through the
       region selectors, exact A/B geometry, independent evidence states, and

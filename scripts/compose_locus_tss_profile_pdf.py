@@ -294,6 +294,8 @@ def select_pages(
             "selection_label": evidence["label"],
             "selection_factor": evidence.get("factor"),
             "selection_criterion": evidence.get("criterion"),
+            "historical_selection_window": evidence.get("selection_window"),
+            "selection_window_join_policy": "provenance_only_not_display_geometry",
         })
 
     genes = [row for row in index.get("genes", []) if row.get("gene_symbol") == gene]

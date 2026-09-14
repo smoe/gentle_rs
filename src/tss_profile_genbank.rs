@@ -85,6 +85,10 @@ fn annotated_record(
     ];
     seq.comments
         .extend(context.warnings.iter().map(|w| clean(w)));
+    if let Some(evidence) = &window.selection_evidence {
+        seq.comments
+            .push(clean(&evidence.selection_window_description()));
+    }
     seq.features.push(feature(
         "source",
         Location::simple_range(0, bases.len() as i64),
@@ -272,6 +276,35 @@ mod tests {
             });
         }
         report
+    }
+
+    #[test]
+    fn historical_selection_window_is_preserved_in_annotated_record_comments() {
+        let mut report = fixture();
+        report.windows[0].selection_evidence = Some(TssSelectionEvidence {
+            label: "Selected".into(),
+            legend: "Historical descriptive selection".into(),
+            criterion: "synthetic".into(),
+            factor: None,
+            selection_window: Some(TssSelectionWindow {
+                upstream_bp: 2000,
+                downstream_bp: 200,
+                length_bp: 2201,
+                sequence_sha256: "f".repeat(64),
+            }),
+        });
+        let record = annotated_record(&report, &report.windows[0]).unwrap();
+        assert!(
+            record
+                .comments
+                .iter()
+                .any(|c| c.contains("2201 bp") && c.contains(&"f".repeat(64)))
+        );
+        assert_eq!(
+            record.seq.len(),
+            5,
+            "historical metadata cannot resize the exported sequence"
+        );
     }
 
     #[test]

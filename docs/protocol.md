@@ -4094,6 +4094,15 @@ Sequencing-trace evidence notes:
     the optional planning path writes the exact returned JSON plan
   - the historical slice-one design is recorded in
     `regulatory_fragment_panel_slice1_design.md`; DEC-046 defines the current boundary
+- `PlanEvidenceGuidedFragmentCandidates { request, path? }` is read-only.
+  It accepts `gentle.reporter_fragment_selection_request.v1` and returns
+  `gentle.reporter_fragment_selection.v1` in `reporter_fragment_selection`.
+  Bound locus content and live transcript geometry drive explicit candidates;
+  required context, fixed measurement envelopes, optional per-end adjustments,
+  validated vector/MCS identity and per-candidate restriction checks are separate.
+  Only eligible candidates enter the proposed portable region set, which is not
+  persisted. See [the contract and workflow](reporter_fragment_selection.md).
+  The existing exact-ROI/approval semantics are unchanged.
 - `PlanRegulatoryFragmentMaterialization { plan, output_prefix }` is read-only.
   It emits `gentle.regulatory_fragment_materialization_proposal.v1`, binding
   the current plan, exact ordered products, uppercase DNA hashes, topology,

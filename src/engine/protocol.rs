@@ -14,6 +14,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+#[path = "protocol/reporter_fragment_selection.rs"]
+mod reporter_fragment_selection;
+pub use reporter_fragment_selection::*;
+
 use crate::genomes::{BlastDatabaseInspectionReport, BlastSubjectAnnotation};
 use crate::primerbank::PrimerBankSearchReport;
 
@@ -5592,6 +5596,8 @@ pub struct OpResult {
     pub promoter_reporter_panel_proposal: Option<Box<PromoterReporterPanelProposal>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulatory_reporter_study: Option<Box<RegulatoryReporterStudyReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reporter_fragment_selection: Option<Box<FragmentSelectionReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulatory_fragment_panel_plan: Option<Box<RegulatoryFragmentPanelPlan>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1513,6 +1513,7 @@ impl<'a> WindowLayout<'a> {
         );
         if let Some(evidence) = evidence {
             let _ = write!(intro, "\n{}", evidence.legend);
+            let _ = write!(intro, "\n{}", evidence.selection_window_description());
         }
         let _ = write!(
             intro,
@@ -1749,7 +1750,7 @@ mod tests {
     use super::*;
     use gentle_protocol::tss_profiles::{
         JasparPanelTrack, JasparTargetPanel, PANEL_SCHEMA, TssPanelResolution, TssRecord,
-        TssReference, TssSelectionEvidence, TssStrandPolicy,
+        TssReference, TssSelectionEvidence, TssSelectionWindow, TssStrandPolicy,
     };
     use svg::node::Attributes;
     use svg::parser::Event;
@@ -3052,6 +3053,7 @@ mod tests {
             ),
             criterion: "synthetic_descriptive_window_membership".into(),
             factor: Some(factor.into()),
+            selection_window: None,
         }
     }
 
@@ -3101,13 +3103,23 @@ mod tests {
     fn selection_evidence_repeats_on_every_track_continuation_page() {
         let mut report = fixture(5, 3, 90);
         reverse_geometry(&mut report);
-        let evidence = synthetic_selection_evidence("SYNTH_SELECTION_A");
+        let mut evidence = synthetic_selection_evidence("SYNTH_SELECTION_A");
+        evidence.selection_window = Some(TssSelectionWindow {
+            upstream_bp: 2000,
+            downstream_bp: 200,
+            length_bp: 2201,
+            sequence_sha256: "a".repeat(64),
+        });
         report.windows[0].selection_evidence = Some(evidence.clone());
         let before = serde_json::to_value(&report).unwrap();
         let pages = render(&report);
         assert!(pages.len() > 1);
         for page in &pages {
             assert_selection_evidence_count(&page.svg, &evidence, 1);
+            assert!(
+                rendered_text(&page.svg).contains("Historical selection: -2000/+200 bp (2201 bp)")
+            );
+            assert!(rendered_text(&page.svg).contains(&"a".repeat(64)));
             assert!(rendered_text(&page.svg).contains("annotation: not separately declared"));
             assert!(numeric(&tags(&page.svg, "svg")[0], "height") <= MAX_PAGE_HEIGHT);
             assert_eq!(page.promoter_ids, vec!["synthetic_tss_1"]);

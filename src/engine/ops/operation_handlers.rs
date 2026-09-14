@@ -40096,6 +40096,7 @@ impl GentleEngine {
             reporter_vector_validation: None,
             promoter_reporter_panel_proposal: None,
             regulatory_reporter_study: None,
+            reporter_fragment_selection: None,
             regulatory_fragment_panel_plan: None,
             regulatory_fragment_materialization_proposal: None,
             regulatory_fragment_materialization_receipt: None,
@@ -51466,6 +51467,27 @@ impl GentleEngine {
                     result.gene_set_promoter_cohort = Some(cohort);
                     result.promoter_reporter_panel_readiness = Some(Box::new(readiness));
                     result.regulatory_reporter_study = Some(Box::new(report));
+                }
+                Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
+                    let report = self.plan_reporter_fragment_selection(*request)?;
+                    if let Some(path) = path.as_deref() {
+                        if let Ok(output) = std::fs::canonicalize(path) {
+                            let mut inputs = vec![report.request.locus.path.as_str()];
+                            if let Some(vector) = &report.vector {
+                                inputs.push(&vector.validation.helper_catalog_path);
+                            }
+                            if inputs.iter().any(|input| {
+                                std::fs::canonicalize(input).is_ok_and(|input| input == output)
+                            }) {
+                                return Err(EngineError::invalid_input(
+                                    "Fragment report output must not overwrite a bound input",
+                                ));
+                            }
+                        }
+                        self.write_pretty_json_file(&report, path, "reporter fragment candidates")?;
+                    }
+                    result.messages.push(format!("Proposed {} fragment boundary alternatives; no regions or constructs saved", report.candidates.len()));
+                    result.reporter_fragment_selection = Some(Box::new(report));
                 }
                 Operation::PlanRegulatoryFragmentPanel { request, path } => {
                     let plan = self.plan_regulatory_fragment_panel(*request)?;

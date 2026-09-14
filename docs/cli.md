@@ -7662,6 +7662,13 @@ cargo run --quiet --bin gentle_cli -- --state STATE.json \
   --path study_report.json
 ```
 
+For read-only, variable-length boundary proposals from a composed locus, use
+`promoters fragment-candidates REQUEST_JSON_OR_@FILE --path candidates.json`.
+It supports explained adjustments at either end, a soft compact-length target,
+fixed-envelope signal comparisons and optional validated-vector MCS checks.
+See [Evidence-Guided Reporter Boundaries](reporter_fragment_selection.md).
+This is upstream of exact-ROI planning; it does not save regions or approve constructs.
+
 `promoters compose-study` is the multi-gene front-half route. Its
 `gentle.regulatory_reporter_study_request.v1` input accepts exactly one of a
 gene-set `source` or an existing `gentle.gene_set_resolution.v1`, a prepared

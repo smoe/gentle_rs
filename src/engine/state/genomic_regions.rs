@@ -787,7 +787,7 @@ impl GentleEngine {
         Ok(reference)
     }
 
-    fn interval_and_projection_from_local(
+    pub(crate) fn interval_and_projection_from_local(
         &self,
         seq_id: &str,
         local_start_0based: u64,

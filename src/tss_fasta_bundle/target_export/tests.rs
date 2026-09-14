@@ -547,6 +547,8 @@ fn target_selection_requires_subset_and_rejects_duplicates_in_both_arrays() {
 fn target_selection_evidence_windows_are_not_display_geometry_or_digest_joins() {
     let mut fixture = Fixture::new();
     fixture.selection["regions"][0]["sequence_length_bp"] = json!(2201);
+    fixture.selection["regions"][0]["genome_extraction"]["promoter_upstream_bp"] = json!(2000);
+    fixture.selection["regions"][0]["genome_extraction"]["promoter_downstream_bp"] = json!(200);
     fixture.selection["regions"][0]["sequence_sha256"] =
         json!(format!("sha256:{}", "f".repeat(64)));
     fixture.selection["regions"][0]["genome_extraction"]["start_1based"] = json!(10);
@@ -556,6 +558,12 @@ fn target_selection_evidence_windows_are_not_display_geometry_or_digest_joins() 
     let before = fs::read(fixture.selection_path()).unwrap();
     let bundle = read_bundle(&fixture.request()).unwrap();
     let evidence = &bundle.selection_evidence["p.plus"];
+    let window = evidence.selection_window.as_ref().unwrap();
+    assert_eq!(
+        (window.upstream_bp, window.downstream_bp, window.length_bp),
+        (2000, 200, 2201)
+    );
+    assert_eq!(window.sequence_sha256, format!("sha256:{}", "f".repeat(64)));
     assert_eq!(evidence.factor.as_deref(), Some("DifferentSyntheticFactor"));
     assert_eq!(
         evidence.label,
@@ -598,6 +606,36 @@ fn target_without_selection_does_not_infer_selected_gene_membership() {
     let bundle = read_bundle(&request).unwrap();
     assert!(bundle.records.iter().all(|r| !r.2));
     assert!(bundle.selection_evidence.is_empty());
+}
+
+#[test]
+fn target_selection_legacy_partial_window_is_unavailable_and_complete_invalid_window_fails() {
+    let mut fixture = Fixture::new();
+    fixture.selection["regions"][0]["genome_extraction"]
+        .as_object_mut()
+        .unwrap()
+        .remove("promoter_upstream_bp");
+    fixture.save_selection();
+    let bundle = read_bundle(&fixture.request()).unwrap();
+    assert!(
+        bundle.selection_evidence["p.plus"]
+            .selection_window
+            .is_none()
+    );
+    assert!(
+        bundle.selection_evidence["p.plus"]
+            .selection_window_description()
+            .contains("unavailable")
+    );
+    fixture.selection["regions"][0]["genome_extraction"]["promoter_upstream_bp"] = json!(700);
+    fixture.selection["regions"][0]["sequence_length_bp"] = json!(900);
+    fixture.save_selection();
+    assert!(
+        read_bundle(&fixture.request())
+            .unwrap_err()
+            .message
+            .contains("historical selection-window")
+    );
 }
 
 #[test]

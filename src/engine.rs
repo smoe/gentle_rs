@@ -1328,6 +1328,8 @@ pub(crate) use region_homology::validate_genomic_region_homology_report;
 mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]
 mod repeat_cohort;
+#[path = "engine/analysis/reporter_fragment_selection.rs"]
+mod reporter_fragment_selection;
 #[path = "engine/ops/reporter_ops.rs"]
 mod reporter_ops;
 #[path = "engine/analysis/reporter_panel.rs"]
@@ -5811,6 +5813,11 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    PlanEvidenceGuidedFragmentCandidates {
+        request: Box<FragmentSelectionRequest>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+    },
     ComposeRegulatoryReporterStudy {
         request: Box<RegulatoryReporterStudyRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -10004,6 +10011,7 @@ impl GentleEngine {
                 | Operation::ExportReporterCorpus { .. }
                 | Operation::PlanReporterConstructHandoff { .. }
                 | Operation::PlanPromoterReporterPanel { .. }
+                | Operation::PlanEvidenceGuidedFragmentCandidates { .. }
                 | Operation::PlanRegulatoryFragmentPanel { .. }
                 | Operation::PlanRegulatoryFragmentMaterialization { .. }
                 | Operation::RenderRegulatoryFragmentPanelSvg { .. }

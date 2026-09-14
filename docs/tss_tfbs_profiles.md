@@ -431,6 +431,18 @@ selection can refer to the same TSS as a -500/+200 display window. The explicitl
 supplied selection file is read-only and its exact bytes enter the receipt.
 Selected panels carry the recorded factor/criterion and a legend explaining
 that selection does not establish TSS usage, direct binding or promoter activity.
+When complete source geometry is available, `selection_evidence.selection_window`
+also records the historical upstream/downstream extents, length and sequence
+SHA-256. JSON, SVG/TSV legends, GenBank/EMBL comments and PDF composition bindings
+keep that provenance separate from the displayed sequence. It is not a join key
+and does not assert reassessment of the smaller window. Missing legacy geometry
+remains unavailable. New binaries read reports without the optional field;
+older strict parsers may reject reports containing it.
+
+For new insert boundaries, use the separate
+[evidence-guided reporter selector](reporter_fragment_selection.md), including
+explicit per-end adjustments and optional validated-MCS checks. That operation
+does not replace the selected TSSs or modify this export's scoring windows.
 
 For simple synthetic selection, `gentle.tss_profile_selection.v1` has the same `reference` and a `selected`
 array of exact `{promoter_id, gene_id}` records. Selection changes ordering,

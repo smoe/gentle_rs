@@ -383,8 +383,8 @@ wet-lab conclusions or unconfirmed mutations.
   provenance, biological-context compatibility, multiple-testing correction,
   unresolved-member accounting, and no causal-regulation claim inferred from
   enrichment alone.
-- Engine-owned regulatory-reporter study composer: turn a perturbation-response
-  cohort plus TSS/evidence policies into candidate ROI inputs for the downstream exact-ROI and terminal planners, feeding context-bound inspectors rather than persistent Boolean readiness.
+- Extend the [evidence-guided boundary selector](reporter_fragment_selection.md) with cohort/GUI acceptance, verified control/replicate metadata, calibrated local support and native-cloning simulation;
+  keep broad-window enrichment separate from insert-local proof and approved downstream plans.
 - Extend regulatory-fragment exact design products with explicit cloning-reaction
   simulation and final-product QA; retain live GUI acceptance of exact-product
   review, digest approval, receipt inspection and one-step undo before release.

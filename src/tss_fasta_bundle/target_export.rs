@@ -414,6 +414,8 @@ struct SelectedRegion {
     transcript_ids: Vec<String>,
     genome_extraction: SelectedExtraction,
     cutrun_support: CutrunSupport,
+    sequence_length_bp: Option<usize>,
+    sequence_sha256: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -425,6 +427,8 @@ struct SelectedExtraction {
     strand: TssStrand,
     tss_1based: u64,
     transcript_ids: Vec<String>,
+    promoter_upstream_bp: Option<usize>,
+    promoter_downstream_bp: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -492,6 +496,44 @@ fn read_selection(
             &record.transcripts,
             "genome_extraction.transcript_ids",
         )?;
+        let selection_window = match (
+            extraction.promoter_upstream_bp,
+            extraction.promoter_downstream_bp,
+            region.sequence_length_bp,
+            region.sequence_sha256,
+        ) {
+            (None, None, None, None) => None,
+            (Some(upstream_bp), Some(downstream_bp), Some(length_bp), Some(sequence_sha256)) => {
+                if upstream_bp
+                    .checked_add(1)
+                    .and_then(|n| n.checked_add(downstream_bp))
+                    != Some(length_bp)
+                    || sequence_sha256
+                        .strip_prefix("sha256:")
+                        .unwrap_or(&sequence_sha256)
+                        .len()
+                        != 64
+                    || !sequence_sha256
+                        .strip_prefix("sha256:")
+                        .unwrap_or(&sequence_sha256)
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit())
+                {
+                    return Err(EngineError::invalid_input(
+                        "Invalid historical selection-window length or sequence digest",
+                    ));
+                }
+                Some(gentle_protocol::tss_profiles::TssSelectionWindow {
+                    upstream_bp,
+                    downstream_bp,
+                    length_bp,
+                    sequence_sha256,
+                })
+            }
+            // Legacy exports may contain only some historical fields. Never
+            // fill the missing geometry from the newly displayed window.
+            _ => None,
+        };
         let support = region.cutrun_support;
         text_field(&support.criterion, "cutrun_support.criterion")?;
         text_field(&support.non_claim, "cutrun_support.non_claim")?;
@@ -508,6 +550,7 @@ fn read_selection(
             legend: format!("This TSS belonged to the integrated reporter panel and met the recorded descriptive CUT&RUN window criterion. This does not establish TSS usage, direct binding, or promoter activity. Source non-claim: {}", support.non_claim),
             criterion: support.criterion,
             factor: support.factor,
+            selection_window,
         });
     }
     Ok(result)

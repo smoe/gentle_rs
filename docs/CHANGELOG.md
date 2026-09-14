@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-14 - Evidence-Guided Reporter Boundary Proposals
+
+- Added read-only `promoters fragment-candidates` and its shared operation:
+  bound locus annotations/model sites seed variable inserts, retaining required
+  promoter/evidence context before the soft 700 bp preference. Explained,
+  transcript-oriented extensions and shortening keep parent alternatives and
+  explicit blockers; saved regions and approved constructs are unchanged.
+- Optional exact-vector validation binds the MCS and per-insert restriction
+  checks, proposing bounded trims around dispensable internal sites. Native
+  genomic sites remain visible context, distinct from PCR-added cloning sites.
+- Descriptive sample/control comparisons use fixed envelopes and explicit
+  missingness, not optimized trial inserts. Raw coverage does not become a peak
+  or a binding claim. Current transcript geometry and local/genomic evidence
+  coordinates are checked, including reverse-oriented loaded loci.
+- TSS exports retain optional historical selection-window extents/sequence
+  identity independently of display geometry in JSON, legends, annotated
+  sequence comments and PDF composition bindings. Missing legacy geometry is
+  not inferred. See [workflow and limitations](reporter_fragment_selection.md).
+
 ## 2026-09-14 - TSS Track And Annotation Isolation Regressions
 
 - Added synthetic multi-window checks for CUT&RUN context attachment and SVG

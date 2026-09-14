@@ -1108,6 +1108,10 @@ pub enum ShellCommand {
         request: RegulatoryFragmentPanelRequest,
         output: Option<String>,
     },
+    PromotersFragmentCandidates {
+        request: crate::engine::FragmentSelectionRequest,
+        output: Option<String>,
+    },
     PromotersRegulatoryPanelRender {
         plan: RegulatoryFragmentPanelPlan,
         output: String,
@@ -8601,6 +8605,11 @@ impl ShellCommand {
                     .unwrap_or("assets/reporter_catalog.json"),
                 format,
                 output,
+            ),
+            Self::PromotersFragmentCandidates { request, output } => format!(
+                "propose evidence-guided reporter boundaries for {} transcript anchor(s) (output='{}')",
+                request.anchors.len(),
+                output.as_deref().unwrap_or("-")
             ),
             Self::PromotersPanelPlan { request, output } => format!(
                 "plan promoter-reporter panel '{}' from {} selected candidate(s) into vector '{}' (output='{}')",
@@ -27451,6 +27460,24 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("PlanPromoterReporterPanel")
         }),
         json!({
+            "id": "promoters fragment-candidates", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other", "detail": "gentle.reporter_fragment_selection_request.v1; hash-bound loaded locus, anchor transcripts, boundary policy and optional exact vector"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional JSON report via --path"}],
+            "reads": [], "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}],
+            "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+            "description": "Propose auditable reporter boundaries and optional MCS-compatible trims. Validates bound locus/vector content at execution; never saves regions or constructs.",
+            "registry": registry_metadata_for_introspection("promoters fragment-candidates")
+        }),
+        json!({
+            "id": "PlanEvidenceGuidedFragmentCandidates", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.reporter_fragment_selection_request.v1"},
+                {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional JSON report path"}],
+            "reads": [], "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}],
+            "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+            "description": "Read-only upstream fragment selection from a validated locus, fixed-window evidence and explicit boundary changes; runtime binding checks remain authoritative.",
+            "registry": registry_metadata_for_introspection("PlanEvidenceGuidedFragmentCandidates")
+        }),
+        json!({
             "id": "promoters regulatory-panel-plan",
             "kind": "operation",
             "mutating": "false",
@@ -42489,6 +42516,35 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             Ok(ShellCommand::PromotersPanelPlan { request, output })
         }
+        "fragment-candidates" => {
+            if tokens.len() < 3 || tokens[2].starts_with("--") {
+                return Err("promoters fragment-candidates requires REQUEST_JSON_OR_@FILE [--path REPORT.json]".into());
+            }
+            let request = parse_required_json_payload::<crate::engine::FragmentSelectionRequest>(
+                &tokens[2],
+                "reporter fragment selection",
+            )?;
+            let mut output = None;
+            let mut idx = 3;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--path" | "--output" => {
+                        output = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--path",
+                            "promoters fragment-candidates",
+                        )?)
+                    }
+                    other => {
+                        return Err(format!(
+                            "Unknown option '{other}' for promoters fragment-candidates"
+                        ));
+                    }
+                }
+            }
+            Ok(ShellCommand::PromotersFragmentCandidates { request, output })
+        }
         "regulatory-panel-plan" => {
             if tokens.len() < 3 || tokens[2].starts_with("--") {
                 return Err(
@@ -53517,6 +53573,21 @@ fn execute_export_import_and_resource_command(
             Ok(ShellRunResult {
                 state_changed: false,
                 output: json!({ "result": proposal }),
+            })
+        }
+        ShellCommand::PromotersFragmentCandidates { request, output } => {
+            let result = engine
+                .apply(Operation::PlanEvidenceGuidedFragmentCandidates {
+                    request: Box::new(request.clone()),
+                    path: output.clone(),
+                })
+                .map_err(|e| e.to_string())?;
+            let report = result
+                .reporter_fragment_selection
+                .ok_or("Fragment selection returned no report")?;
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({"result": report}),
             })
         }
         ShellCommand::PromotersRegulatoryPanelPlan { request, output } => {
@@ -67007,6 +67078,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::PromotersCompareArchitectures { .. }
             | ShellCommand::PromotersComposeStudy { .. }
             | ShellCommand::PromotersPanelPlan { .. }
+            | ShellCommand::PromotersFragmentCandidates { .. }
             | ShellCommand::PromotersRegulatoryPanelPlan { .. }
             | ShellCommand::PromotersRegulatoryPanelRender { .. }
             | ShellCommand::PromotersPanelReadiness { .. }
@@ -67850,6 +67922,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::PromotersCompareArchitectures { .. }
         | ShellCommand::PromotersComposeStudy { .. }
         | ShellCommand::PromotersPanelPlan { .. }
+        | ShellCommand::PromotersFragmentCandidates { .. }
         | ShellCommand::PromotersRegulatoryPanelPlan { .. }
         | ShellCommand::PromotersRegulatoryPanelRender { .. }
         | ShellCommand::PromotersPanelReadiness { .. }

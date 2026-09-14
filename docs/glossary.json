@@ -2368,6 +2368,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["PlanEvidenceGuidedFragmentCandidates"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "promoters fragment-candidates",
+         "summary": "Propose evidence-guided reporter boundaries, explicit human adjustments and validated-MCS restriction alternatives without saving regions or constructs.",
+         "usage": "promoters fragment-candidates REQUEST_JSON_OR_@FILE [--path REPORT.json]"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "RenderRegulatoryFragmentPanelSvg"
          ],

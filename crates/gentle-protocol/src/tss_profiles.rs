@@ -68,6 +68,32 @@ pub struct TssSelectionEvidence {
     pub legend: String,
     pub criterion: String,
     pub factor: Option<String>,
+    /// Historical measurement geometry, never a display-window join key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selection_window: Option<TssSelectionWindow>,
+}
+
+/// Geometry of the source selection calculation, not of the displayed insert.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TssSelectionWindow {
+    pub upstream_bp: usize,
+    pub downstream_bp: usize,
+    pub length_bp: usize,
+    pub sequence_sha256: String,
+}
+
+impl TssSelectionEvidence {
+    /// One shared wording for all human-facing projections.
+    pub fn selection_window_description(&self) -> String {
+        match &self.selection_window {
+            Some(window) => format!(
+                "Historical selection: -{}/+{} bp ({} bp); sequence SHA-256={}. Separate from the displayed window. No display-window reassessment is recorded here.",
+                window.upstream_bp, window.downstream_bp, window.length_bp, window.sequence_sha256
+            ),
+            None => "Historical selection window: unavailable; not assumed to equal the displayed window.".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
