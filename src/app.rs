@@ -112,6 +112,12 @@ mod gibson_ui;
 #[path = "app/collection_operations_ui.rs"]
 mod collection_operations_ui;
 
+#[path = "app/pattern_catalog_ui.rs"]
+mod pattern_catalog_ui;
+
+#[path = "app/subject_selection.rs"]
+mod subject_selection;
+
 #[path = "app/gene_set_ui.rs"]
 mod gene_set_ui;
 
@@ -713,6 +719,7 @@ struct RuntimeStatusSnapshotCache {
 
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
+    pattern_catalog: pattern_catalog_ui::PatternCatalogCache,
     new_windows: Vec<Window>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     detached_auxiliary_window_hosts: HashMap<ViewportId, Arc<RwLock<Window>>>,
@@ -1073,6 +1080,8 @@ pub struct GENtleApp {
     genome_blast_import_track_name: String,
     genome_blast_import_clear_existing: bool,
     show_command_palette_dialog: bool,
+    command_palette_subject: Option<subject_selection::PaletteSubject>,
+    command_palette_dispatching: bool,
     command_palette_query: String,
     command_palette_selected: usize,
     command_palette_focus_query: bool,
@@ -2634,6 +2643,7 @@ impl Default for GENtleApp {
     fn default() -> Self {
         Self {
             engine: Arc::new(RwLock::new(GentleEngine::new())),
+            pattern_catalog: pattern_catalog_ui::PatternCatalogCache::default(),
             new_windows: vec![],
             windows: HashMap::new(),
             detached_auxiliary_window_hosts: HashMap::new(),
@@ -2999,6 +3009,8 @@ impl Default for GENtleApp {
             tracked_autosync_last_probe: None,
             tracked_autosync_full_scan_count: 0,
             show_command_palette_dialog: false,
+            command_palette_subject: None,
+            command_palette_dispatching: false,
             command_palette_query: String::new(),
             command_palette_selected: 0,
             command_palette_focus_query: false,
@@ -4247,6 +4259,9 @@ Error: `{err}`"
 
     fn open_command_palette_dialog(&mut self) {
         let was_open = self.show_command_palette_dialog;
+        if !was_open {
+            self.command_palette_subject = Some(self.capture_palette_subject());
+        }
         self.show_command_palette_dialog = true;
         self.command_palette_focus_query = true;
         self.mark_window_open_or_focus(Self::command_palette_viewport_id(), was_open);
@@ -5748,6 +5763,17 @@ Error: `{err}`"
     }
 
     fn execute_command_palette_action(
+        &mut self,
+        ctx: &egui::Context,
+        action: CommandPaletteAction,
+    ) {
+        let previous = self.command_palette_dispatching;
+        self.command_palette_dispatching = self.show_command_palette_dialog;
+        self.execute_command_palette_action_bound(ctx, action);
+        self.command_palette_dispatching = previous;
+    }
+
+    fn execute_command_palette_action_bound(
         &mut self,
         ctx: &egui::Context,
         action: CommandPaletteAction,
@@ -8411,14 +8437,16 @@ Error: `{err}`"
     }
 
     fn open_genomic_region_conservation(&mut self) {
-        let seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = seq_id else {
-            self.open_reference_genome_retrieve_dialog();
-            self.app_status = "Genomic Region Conservation requires a project sequence; retrieve one, then save or import a genomic region"
-                .to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Genomic Region Conservation", true)
+        else {
+            let empty = self
+                .engine
+                .try_read()
+                .is_ok_and(|engine| engine.state().sequences.is_empty());
+            if empty {
+                self.open_reference_genome_retrieve_dialog();
+                self.app_status = "Genomic Region Conservation requires a project sequence; retrieve one, then select it".into();
+            }
             return;
         };
         self.open_saved_genomic_regions_for_sequence(&seq_id);
@@ -8733,13 +8761,7 @@ Error: `{err}`"
     }
 
     fn open_cryptic_splicing_screen(&mut self) {
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status =
-                "Cannot open cryptic-splicing screen: no project sequence is available".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("cryptic-splicing screen", true) else {
             return;
         };
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
@@ -8775,13 +8797,7 @@ Error: `{err}`"
     }
 
     fn open_tata_box_workspace(&mut self) {
-        let seq_id = self
-            .active_dna_window_context()
-            .map(|(id, _)| id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = seq_id else {
-            self.app_status =
-                "Cannot open TATA-box evidence: no project sequence is available".into();
+        let Some(seq_id) = self.sequence_subject_for_action("TATA-box evidence", true) else {
             return;
         };
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
@@ -8812,13 +8828,8 @@ Error: `{err}`"
     }
 
     fn open_feature_location_editor(&mut self) {
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status =
-                "Cannot open Feature Location Editor: no project sequence is available".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Feature Location Editor", false)
+        else {
             return;
         };
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
@@ -8848,13 +8859,7 @@ Error: `{err}`"
     }
 
     fn open_saved_genomic_regions(&mut self) {
-        let seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = seq_id else {
-            self.app_status =
-                "Cannot open Saved Genomic Regions: no project sequence is available".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Saved Genomic Regions", true) else {
             return;
         };
         self.open_saved_genomic_regions_for_sequence(&seq_id);
@@ -8985,21 +8990,13 @@ Error: `{err}`"
     }
 
     fn prefill_gibson_from_active_context(&mut self) {
-        let active_context = self.active_dna_window_context();
-        if self.gibson_destination_seq_id.trim().is_empty() {
-            if let Some((seq_id, _)) = active_context.as_ref() {
-                self.gibson_destination_seq_id = seq_id.clone();
-            } else if let Some(seq_id) = self.project_sequence_ids_for_blast().first() {
-                self.gibson_destination_seq_id = seq_id.clone();
-            }
+        let active_context = self.selected_sequence_context(true).ok();
+        if self.gibson_destination_seq_id.trim().is_empty()
+            && let Some((seq_id, _)) = active_context.as_ref()
+        {
+            self.gibson_destination_seq_id = seq_id.clone();
         }
-        if self.gibson_insert_seq_id.trim().is_empty() {
-            self.gibson_insert_seq_id = self
-                .project_sequence_ids_for_blast()
-                .into_iter()
-                .find(|seq_id| seq_id != &self.gibson_destination_seq_id)
-                .unwrap_or_default();
-        }
+        // Inserts are chosen explicitly in the existing form, never by sort order.
         if let Some((active_seq_id, Some((start, end)))) = active_context
             && active_seq_id == self.gibson_destination_seq_id
             && self.gibson_opening_start_0based.trim().is_empty()
@@ -9022,16 +9019,19 @@ Error: `{err}`"
         if seq_id.is_empty() {
             return Err("sequence id is empty".to_string());
         }
-        let exists = self
+        let kind = self
             .engine
             .read()
             .map_err(|_| "could not read engine state".to_string())?
-            .state()
-            .sequences
-            .contains_key(seq_id);
-        if !exists {
+            .sequence_kind(seq_id);
+        let Some(kind) = kind else {
             return Err(format!(
                 "sequence '{seq_id}' was not found in the current project"
+            ));
+        };
+        if kind != "dna" {
+            return Err(format!(
+                "sequence '{seq_id}' is {kind}; PCR Designer requires DNA"
             ));
         }
         if self.find_open_sequence_viewport_id(seq_id).is_none()
@@ -9051,14 +9051,7 @@ Error: `{err}`"
             self.mark_window_open_or_focus(Self::pcr_design_viewport_id(), true);
             return;
         }
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status =
-                "Cannot open PCR Designer: no active sequence window or project sequence"
-                    .to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("PCR Designer", true) else {
             return;
         };
         if let Err(err) = self.open_pcr_design_dialog_for_seq_id(&seq_id) {
@@ -9071,12 +9064,7 @@ Error: `{err}`"
             self.mark_window_open_or_focus(Self::sequencing_confirmation_viewport_id(), true);
             return;
         }
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status = "Cannot open Sequencing Confirmation: no active sequence window or project sequence".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Sequencing Confirmation", true) else {
             return;
         };
         if self.find_open_sequence_viewport_id(&seq_id).is_none() {
@@ -14726,18 +14714,9 @@ Error: `{err}`"
         }
         ui.label("Selection-first pair-PCR specialist. Paint ROI/windows on the map and run deterministic primer-pair design queue operations.");
         if self.pcr_design_seq_id.trim().is_empty() {
-            let target = self
-                .active_dna_window_context()
-                .map(|(seq_id, _)| seq_id)
-                .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-            if let Some(seq_id) = target {
-                self.pcr_design_seq_id = seq_id;
-            }
-        }
-        if self.pcr_design_seq_id.trim().is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
-                "No sequence is available. Load/open one sequence window first.",
+                "No DNA target selected. Select a sequence in the project graph or its viewer, then reopen this tool.",
             );
             #[cfg(feature = "gui-test-support")]
             Self::register_pcr_design_semantic_window(ui, ctx, false);
@@ -14874,18 +14853,9 @@ Error: `{err}`"
         }
         ui.label("Construct-confirmation specialist. Review persisted sequencing-confirmation reports or run a new confirmation pass against the current expected construct sequence using called reads and/or imported sequencing traces.");
         if self.sequencing_confirmation_seq_id.trim().is_empty() {
-            let target = self
-                .active_dna_window_context()
-                .map(|(seq_id, _)| seq_id)
-                .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-            if let Some(seq_id) = target {
-                self.sequencing_confirmation_seq_id = seq_id;
-            }
-        }
-        if self.sequencing_confirmation_seq_id.trim().is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
-                "No sequence is available. Load/open one sequence window first.",
+                "No DNA target selected. Select a sequence in the project graph or its viewer, then reopen this tool.",
             );
             return close_requested;
         }
@@ -15712,6 +15682,19 @@ Error: `{err}`"
         let normalized = raw.replace(['_', '-'], " ");
         let mut out_words = vec![];
         for word in normalized.split_whitespace() {
+            let acronym = match word.to_ascii_lowercase().as_str() {
+                "grna" => Some("gRNA"),
+                "crispr" => Some("CRISPR"),
+                "pcr" => Some("PCR"),
+                "dna" => Some("DNA"),
+                "rna" => Some("RNA"),
+                "tfbs" => Some("TFBS"),
+                _ => None,
+            };
+            if let Some(acronym) = acronym {
+                out_words.push(acronym.to_string());
+                continue;
+            }
             let mut chars = word.chars();
             let Some(first) = chars.next() else {
                 continue;
@@ -15748,11 +15731,19 @@ Error: `{err}`"
         let mut out = vec![];
         let mut entries = fs::read_dir(dir)
             .map_err(|e| format!("Could not read catalog directory '{}': {e}", dir.display()))?
-            .filter_map(|entry| entry.ok())
-            .collect::<Vec<_>>();
+            .collect::<std::io::Result<Vec<_>>>()
+            .map_err(|e| format!("Could not list catalog directory '{}': {e}", dir.display()))?;
         entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_string());
         for entry in entries {
             let path = entry.path();
+            // Do not follow recursive symlinks during background catalog discovery.
+            if entry
+                .file_type()
+                .map_err(|err| err.to_string())?
+                .is_symlink()
+            {
+                continue;
+            }
             if path.is_dir() {
                 let children = Self::collect_cloning_pattern_catalog_entries_from_dir(&path)?;
                 if children.is_empty() {
@@ -15797,8 +15788,8 @@ Error: `{err}`"
         for entry in entries {
             if entry.is_file {
                 let response = ui
-                    .button(entry.label.clone())
-                    .on_hover_text(format!("Import macro template(s) from {}", entry.path));
+                    .button(format!("Import {} template", entry.label))
+                    .on_hover_text(format!("Import macro template(s) from {}; does not execute a workflow and does not require selected DNA", entry.path));
                 if response.clicked() {
                     *selected_path = Some(entry.path.clone());
                 }
@@ -15837,7 +15828,7 @@ Error: `{err}`"
         status_message: &mut Option<String>,
     ) {
         for routine in routines {
-            let label = format!("{} [{}]", routine.title, routine.status);
+            let label = format!("Import {} template [{}]", routine.title, routine.status);
             let tags = if routine.vocabulary_tags.is_empty() {
                 "-".to_string()
             } else {
@@ -15868,7 +15859,10 @@ Error: `{err}`"
                 tags,
                 routine.summary.as_deref().unwrap_or("No summary")
             );
-            let response = ui.button(label).on_hover_text(hover);
+            let response = ui
+                .add_enabled(template_path != "-", egui::Button::new(label))
+                .on_disabled_hover_text("No importable template path is provided for this routine")
+                .on_hover_text(hover);
             if response.clicked() {
                 if let Some(path) = routine
                     .template_path
@@ -16965,57 +16959,13 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.import_workflow_macro_templates_from_path(
-                        DEFAULT_CLONING_PATTERN_PACK_PATH,
+                        &crate::runtime_assets::resolve_runtime_asset_path(DEFAULT_CLONING_PATTERN_PACK_PATH).to_string_lossy(),
                     );
                     ui.close();
                 }
                 ui.separator();
 
-                let catalog_root = Path::new(DEFAULT_CLONING_PATTERN_CATALOG_DIR);
-                match Self::collect_cloning_pattern_catalog_entries(catalog_root) {
-                    Ok(entries) => {
-                        if entries.is_empty() {
-                            ui.add_enabled(
-                                false,
-                                egui::Button::new(self.tr("menu.patterns.catalog_empty")),
-                            );
-                        } else {
-                            if ui
-                                .button(self.tr("menu.patterns.import_full_catalog"))
-                                .on_hover_text(format!(
-                                    "Import all catalog templates from {}",
-                                    catalog_root.display()
-                                ))
-                                .clicked()
-                            {
-                                self.import_workflow_macro_templates_from_path(
-                                    &catalog_root.display().to_string(),
-                                );
-                                ui.close();
-                            }
-                            ui.separator();
-                            ui.small(self.tr("menu.patterns.catalog_hierarchy"));
-                            let mut selected_path: Option<String> = None;
-                            Self::render_cloning_pattern_catalog_menu_entries(
-                                ui,
-                                &entries,
-                                &mut selected_path,
-                            );
-                            if let Some(path) = selected_path {
-                                self.import_workflow_macro_templates_from_path(&path);
-                                ui.close();
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new(self.tr("menu.patterns.catalog_unavailable")),
-                        );
-                        ui.small(err);
-                    }
-                }
-
+                self.render_pattern_template_catalog_menu(ui);
                 ui.separator();
                 if ui
                     .button(self.tr("menu.patterns.gibson"))
@@ -17078,102 +17028,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 ui.separator();
-                ui.small(self.tr("menu.patterns.routine_catalog"));
-                match self.list_cloning_routines(None, None, None) {
-                    Ok(mut routines) => {
-                        if routines.is_empty() {
-                            ui.add_enabled(
-                                false,
-                                egui::Button::new(self.tr("menu.patterns.no_routines")),
-                            );
-                        } else {
-                            routines.sort_by(|left, right| {
-                                left.family
-                                    .to_ascii_lowercase()
-                                    .cmp(&right.family.to_ascii_lowercase())
-                                    .then(
-                                        left.title
-                                            .to_ascii_lowercase()
-                                            .cmp(&right.title.to_ascii_lowercase()),
-                                    )
-                            });
-                            if ui
-                                .button(self.tr("menu.patterns.show_routine_catalog_summary"))
-                                .on_hover_text(
-                                    "Show current routine catalog location and routine count",
-                                )
-                                .clicked()
-                            {
-                                self.app_status = format!(
-                                    "Loaded {} routine(s) from '{}'",
-                                    routines.len(),
-                                    DEFAULT_CLONING_ROUTINE_CATALOG_PATH
-                                );
-                                ui.close();
-                            }
-
-                            let mut selected_template_path: Option<String> = None;
-                            let mut status_message: Option<String> = None;
-                            let mut by_family: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
-                                BTreeMap::new();
-                            let mut by_status: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
-                                BTreeMap::new();
-                            for routine in routines {
-                                by_family
-                                    .entry(routine.family.clone())
-                                    .or_default()
-                                    .push(routine.clone());
-                                by_status
-                                    .entry(routine.status.clone())
-                                    .or_default()
-                                    .push(routine);
-                            }
-
-                            ui.menu_button(self.tr("menu.patterns.browse_by_family"), |ui| {
-                                for (family, rows) in &by_family {
-                                    ui.menu_button(format!("{family} ({})", rows.len()), |ui| {
-                                        Self::render_cloning_routine_menu_entries(
-                                            ui,
-                                            rows,
-                                            &mut selected_template_path,
-                                            &mut status_message,
-                                        );
-                                    });
-                                }
-                            });
-                            ui.menu_button(self.tr("menu.patterns.browse_by_status"), |ui| {
-                                for (status, rows) in &by_status {
-                                    ui.menu_button(format!("{status} ({})", rows.len()), |ui| {
-                                        Self::render_cloning_routine_menu_entries(
-                                            ui,
-                                            rows,
-                                            &mut selected_template_path,
-                                            &mut status_message,
-                                        );
-                                    });
-                                }
-                            });
-
-                            if let Some(path) = selected_template_path {
-                                self.import_workflow_macro_templates_from_path(&path);
-                                if let Some(message) = status_message {
-                                    self.app_status = message;
-                                }
-                                ui.close();
-                            } else if let Some(message) = status_message {
-                                self.app_status = message;
-                                ui.close();
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new(self.tr("menu.patterns.routine_catalog_unavailable")),
-                        );
-                        ui.small(err);
-                    }
-                }
+                self.render_pattern_routine_catalog_menu(ui);
             });
             ui.menu_button(self.tr("menu.services"), |ui| {
                 if ui

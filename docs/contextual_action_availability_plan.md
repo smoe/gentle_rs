@@ -1,6 +1,8 @@
 # Contextual Menu And Action Availability
 
-Status: proposal for discussion; no runtime changes approved or implemented.
+Status: slices 0 and 1 are implemented and covered by deterministic tests.
+Shared readiness and gRNA binding remain
+follow-up slices, not completed application-wide availability.
 Claude's user-forwarded review inspected `98f74ee8`, 2026-09-14. Codex checked
 the feedback against that source and rechecked the relevant app paths after
 HEAD advanced to `a5b7028157493d44c1812fc8e1f39e1ccbea6f6a`.
@@ -345,7 +347,51 @@ review. The user then forwarded the
 and supplied Claude's source-based critique on 2026-09-14. The summary above
 separates that feedback from Codex's corrections and revised scope.
 
-Recommendation: approve slices 0 and 1 first, then verify the smaller readiness
-pilot before adding gRNA subject binding. Implementation still waits for the
-user's agreement. The revised proposal is available for a further user-forwarded
-Claude review if desired; do not contact Claude directly.
+The user approved starting implementation after this review. Slices 0 and 1
+also include explicit palette-origin capture because removing inventory
+fallbacks must not break subject-bound launches when the palette takes focus.
+This is not the general readiness-presentation migration in slice 2. The
+revised proposal remains available for user-forwarded Claude review if desired;
+do not contact Claude directly.
+
+## First-Slice Implementation Record
+
+- Catalog snapshot/refresh and labels: `src/app/pattern_catalog_ui.rs` and
+  `src/app.rs`, using shared validation in `src/engine_shell.rs`.
+- Explicit subjects and palette origin: `src/app/subject_selection.rs`,
+  `src/app.rs`, and the existing molecule-kind helper exposed through
+  `src/engine/state/sequence_ops.rs`.
+- Shared asset lookup: `src/runtime_assets.rs`, `src/lib.rs` and
+  `src/bin/gentle.rs`; explicit import paths do not use default-asset fallbacks.
+- Regression coverage: inline tests in the new modules and `src/app/tests.rs`.
+  Existing PCR/confirmation dispatch tests now check rejection without selection
+  and successful opening after explicit selection, rather than requiring the
+  removed inventory fallback.
+- Necessary feedback fix: `src/app/routine_and_agent_assistant_ui.rs` preserves
+  subject-launcher messages alongside the UI-intent identifier. Otherwise the
+  generic dispatch summary hid the new missing-subject explanation.
+- User-facing/status documentation: this plan, `docs/gui.md`, `docs/CHANGELOG.md`
+  and `docs/roadmap.md`. No dependency, fixture artifact, template ID, assay
+  algorithm or release-gate change.
+
+Verification on 2026-09-14: the initial focused set passed 21/21; the final
+broader command below passed 595/595 app/runtime-asset tests, including both
+palette-origin modes, stale origins, explicit subject transitions, catalog
+worker/cache behavior and packaged-path lookup.
+
+```sh
+cargo test --lib --locked -j 1 -- app:: runtime_assets::tests --test-threads=2 --quiet
+cargo check -q --locked -j 1
+cargo fmt --all --check
+git diff --check
+```
+
+All four commands passed. Session-close hygiene reported 4 OK, 2 warnings and
+0 failures: intentional uncommitted changes and the manual plan-fidelity
+reminder. The palette-origin and UI-intent feedback additions above are the
+explicitly documented dependencies of removing unsafe launch fallbacks.
+
+This is headless egui/dispatch coverage, not live macOS focus acceptance or a
+GUI performance measurement. Full workspace/release gates were not rerun.
+The beta toolchain also reported the existing nightly-only `lints.cargo`
+manifest warning and a large debug-test unwind-table linker warning.

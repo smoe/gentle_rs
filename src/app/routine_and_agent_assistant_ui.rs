@@ -3031,6 +3031,21 @@ impl GENtleApp {
             self.genome_id = genome_id.to_string();
             self.invalidate_genome_genes();
         }
+        let mut summary = format!("ui intent {} '{}'", action.as_str(), target.as_str());
+        if let Some(genome_id) = selected_genome_id {
+            summary.push_str(&format!(" (selected_genome_id={genome_id})"));
+        }
+        let subject_launcher = matches!(
+            target,
+            UiIntentTarget::FeatureLocationEditor
+                | UiIntentTarget::SavedGenomicRegions
+                | UiIntentTarget::PcrDesign
+                | UiIntentTarget::SequencingConfirmation
+        );
+        if subject_launcher {
+            // Preserve missing-subject feedback instead of replacing it after dispatch.
+            self.app_status = summary.clone();
+        }
         match target {
             UiIntentTarget::OpenSequence => self.prompt_open_sequence(),
             UiIntentTarget::TssView => return Some(self.apply_tss_view_intent(true)),
@@ -3064,9 +3079,10 @@ impl GENtleApp {
             UiIntentTarget::RetrieveHelperSequence => self.open_helper_genome_retrieve_dialog(),
             UiIntentTarget::BlastHelperSequence => self.open_helper_genome_blast_dialog(),
         }
-        let mut summary = format!("ui intent {} '{}'", action.as_str(), target.as_str());
-        if let Some(genome_id) = selected_genome_id {
-            summary.push_str(&format!(" (selected_genome_id={genome_id})"));
+        if subject_launcher && self.app_status != summary {
+            summary.push_str(": ");
+            summary.push_str(&self.app_status);
+            self.app_status = summary.clone();
         }
         Some(summary)
     }

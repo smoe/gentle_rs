@@ -6902,6 +6902,16 @@ fn command_palette_test_app_with_sequence() -> GENtleApp {
     );
     let mut app = GENtleApp::default();
     app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    // These dispatch tests model an explicit graph selection, not an inventory fallback.
+    app.lineage_graph_selected_node_id = app
+        .engine
+        .read()
+        .unwrap()
+        .state()
+        .lineage
+        .seq_to_node
+        .get("seq1")
+        .cloned();
     app
 }
 
@@ -6916,7 +6926,7 @@ fn tata_palette_handles_missing_pending_and_existing_sequence_windows() {
         .unwrap()
         .action;
     missing.execute_command_palette_action(&ctx, action);
-    assert!(missing.app_status.contains("no project sequence"));
+    assert!(missing.app_status.contains("Select a sequence"));
     let mut pending = command_palette_test_app_with_sequence();
     for _ in 0..2 {
         pending.execute_command_palette_action(&ctx, action);
@@ -7491,14 +7501,18 @@ fn execute_command_palette_action_opens_evidence_preparation_dialog() {
 
 #[test]
 fn execute_command_palette_action_opens_pcr_design_dialog() {
-    let mut state = ProjectState::default();
-    state.sequences.insert(
-        "seq1".to_string(),
-        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
-    );
-    let mut app = GENtleApp::default();
-    app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut app = command_palette_test_app_with_sequence();
+    let selected_node = app.lineage_graph_selected_node_id.take();
 
+    app.execute_command_palette_action(
+        &egui::Context::default(),
+        CommandPaletteAction::UiIntent(UiIntentTarget::PcrDesign),
+    );
+    assert!(!app.show_pcr_design_dialog);
+    assert!(app.new_windows.is_empty());
+    assert!(app.app_status.contains("Select a sequence"));
+
+    app.lineage_graph_selected_node_id = selected_node;
     app.execute_command_palette_action(
         &egui::Context::default(),
         CommandPaletteAction::UiIntent(UiIntentTarget::PcrDesign),
@@ -7510,14 +7524,18 @@ fn execute_command_palette_action_opens_pcr_design_dialog() {
 
 #[test]
 fn execute_command_palette_action_opens_sequencing_confirmation_dialog() {
-    let mut state = ProjectState::default();
-    state.sequences.insert(
-        "seq1".to_string(),
-        DNAsequence::from_sequence("ACGTACGT").expect("sequence"),
-    );
-    let mut app = GENtleApp::default();
-    app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut app = command_palette_test_app_with_sequence();
+    let selected_node = app.lineage_graph_selected_node_id.take();
 
+    app.execute_command_palette_action(
+        &egui::Context::default(),
+        CommandPaletteAction::UiIntent(UiIntentTarget::SequencingConfirmation),
+    );
+    assert!(!app.show_sequencing_confirmation_dialog);
+    assert!(app.new_windows.is_empty());
+    assert!(app.app_status.contains("Select a sequence"));
+
+    app.lineage_graph_selected_node_id = selected_node;
     app.execute_command_palette_action(
         &egui::Context::default(),
         CommandPaletteAction::UiIntent(UiIntentTarget::SequencingConfirmation),

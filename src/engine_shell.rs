@@ -4133,6 +4133,13 @@ fn load_cloning_pattern_templates_from_path(
     Ok((templates, source_files))
 }
 
+/// Validated static catalog rows for browsing, without project-dependent planning.
+#[cfg(feature = "desktop-gui")]
+pub(crate) fn cloning_routine_catalog_rows(path: &str) -> Result<Value, String> {
+    serde_json::to_value(load_cloning_routine_catalog(path)?.routines)
+        .map_err(|err| format!("Could not serialize routine catalog: {err}"))
+}
+
 fn load_cloning_routine_catalog(path: &str) -> Result<CloningRoutineCatalog, String> {
     let raw = fs::read_to_string(path)
         .map_err(|e| format!("Could not read cloning routine catalog '{}': {e}", path))?;
