@@ -13087,8 +13087,9 @@ where
             continue;
         }
         let attrs = parse_annotation_attributes(cols[8]);
-        let row_gene_id = pick_gene_id(&attrs);
-        let row_gene_name = pick_gene_name(&attrs);
+        let is_transcript_row = feature_kind == "transcript" || feature_kind == "mrna";
+        let row_gene_id = pick_transcript_gene_id(&attrs, is_transcript_row);
+        let row_gene_name = pick_transcript_gene_name(&attrs);
         let transcript_id =
             pick_annotation_attribute(&attrs, &["transcript_id", "transcript", "id", "name"])
                 .map(|v| normalize_transcript_id(&v))
@@ -13980,6 +13981,38 @@ fn pick_gene_name(attrs: &HashMap<String, String>) -> Option<String> {
             "standard_name",
         ],
     )
+}
+
+fn pick_transcript_gene_name(attrs: &HashMap<String, String>) -> Option<String> {
+    // In NCBI GFF3, Name on an mRNA is the transcript accession while gene is
+    // the gene symbol. Do not silently relabel an NM_/XM_ accession as a gene.
+    pick_annotation_attribute(
+        attrs,
+        &[
+            "gene_name",
+            "gene",
+            "gene_symbol",
+            "symbol",
+            "locus_tag",
+            "standard_name",
+        ],
+    )
+}
+
+fn pick_transcript_gene_id(
+    attrs: &HashMap<String, String>,
+    is_transcript_row: bool,
+) -> Option<String> {
+    // A top-level NCBI mRNA points at gene-* through Parent. Child exon/CDS
+    // rows instead point at rna-* and must prefer their explicit gene field.
+    let keys: &[&str] = if is_transcript_row {
+        &["gene_id", "parent", "gene", "geneid", "locus_tag"]
+    } else {
+        &["gene_id", "gene", "geneid", "locus_tag", "parent"]
+    };
+    pick_annotation_attribute(attrs, keys)
+        .or_else(|| pick_gene_id_from_dbxref(attrs))
+        .map(normalize_gene_id)
 }
 
 fn pick_gene_id(attrs: &HashMap<String, String>) -> Option<String> {
@@ -15381,6 +15414,32 @@ mod tests {
         assert_eq!(records[1].transcript_id, "TX2");
         assert_eq!(records[1].exons_1based, vec![(2, 10)]);
         assert_eq!(records[1].cds_1based, vec![(3, 9)]);
+    }
+
+    #[test]
+    fn test_ncbi_gff_transcript_uses_gene_symbol_not_transcript_name() {
+        let td = tempdir().unwrap();
+        let annotation = td.path().join("ncbi.gff");
+        fs::write(
+            &annotation,
+            concat!(
+                "##gff-version 3\n",
+                "NC_000011.10\tBestRefSeq\tmRNA\t35139171\t35232402\t.\t+\t.\tID=rna-NM_001440324.1;Parent=gene-CD44;Dbxref=GeneID:960,GenBank:NM_001440324.1;Name=NM_001440324.1;gene=CD44;transcript_id=NM_001440324.1\n",
+                "NC_000011.10\tBestRefSeq\texon\t35139171\t35139370\t.\t+\t.\tID=exon-NM_001440324.1-1;Parent=rna-NM_001440324.1;Dbxref=GeneID:960,GenBank:NM_001440324.1;gene=CD44;transcript_id=NM_001440324.1\n",
+            ),
+        )
+        .unwrap();
+
+        let records = parse_tabular_annotation_transcript_records_with_progress(
+            &annotation,
+            |_done, _total| true,
+        )
+        .unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].transcript_id, "NM_001440324.1");
+        assert_eq!(records[0].gene_id.as_deref(), Some("gene-CD44"));
+        assert_eq!(records[0].gene_name.as_deref(), Some("CD44"));
+        assert_eq!(records[0].exons_1based, vec![(35139171, 35139370)]);
     }
 
     #[test]
