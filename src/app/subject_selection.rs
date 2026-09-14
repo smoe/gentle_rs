@@ -24,14 +24,35 @@ impl GENtleApp {
         &self,
         require_dna: bool,
     ) -> Result<(String, Option<(usize, usize)>), String> {
-        let active = self.active_dna_window_context();
+        self.selected_sequence_context_with_origin(require_dna, self.command_palette_dispatching)
+    }
+
+    pub(super) fn selected_sequence_context_with_origin(
+        &self,
+        require_dna: bool,
+        palette: bool,
+    ) -> Result<(String, Option<(usize, usize)>), String> {
+        let active = if palette && self.command_palette_subject.is_some() {
+            None
+        } else if let Some(window) = self
+            .active_window_menu_key
+            .and_then(|key| self.native_window_key_to_viewport.get(&key))
+            .and_then(|id| self.windows.get(id))
+        {
+            let guard = window
+                .try_read()
+                .map_err(|_| "Sequence viewer is busy; try again".to_string())?;
+            guard
+                .sequence_id()
+                .map(|id| (id, guard.selection_range_0based()))
+        } else {
+            None
+        };
         let engine = self
             .engine
             .try_read()
             .map_err(|_| "Project is busy; try again".to_string())?;
-        let context = if self.command_palette_dispatching
-            && let Some(subject) = &self.command_palette_subject
-        {
+        let context = if palette && let Some(subject) = &self.command_palette_subject {
             if !subject.engine.ptr_eq(&Arc::downgrade(&self.engine))
                 || subject
                     .viewport

@@ -227,6 +227,7 @@ pub use gentle_shell::{
 // execution contracts stay in this file so GUI Shell and CLI shell keep one
 // visible behavior surface.
 mod command_parsers;
+pub(crate) mod routine_bindings;
 mod tss_profiles;
 use command_parsers::*;
 
@@ -6788,7 +6789,10 @@ fn preflight_workflow_macro_template_run(
             }
         };
 
-    let catalog_path = DEFAULT_CLONING_ROUTINE_CATALOG_PATH.to_string();
+    let catalog_path =
+        crate::runtime_assets::resolve_runtime_asset_path(DEFAULT_CLONING_ROUTINE_CATALOG_PATH)
+            .to_string_lossy()
+            .into_owned();
     report.catalog_path = Some(catalog_path.clone());
     let mut matched_routine: Option<CloningRoutineDefinition> = None;
     match load_cloning_routine_catalog(&catalog_path) {
@@ -6933,7 +6937,10 @@ fn preflight_workflow_macro_template_run(
     for contract in contracts {
         let port = contract.port;
         let value = resolved_bindings
-            .get(&port.port_id)
+            .get(routine_bindings::routine_parameter_name(
+                &template.name,
+                &port.port_id,
+            ))
             .or_else(|| bindings.get(&port.port_id))
             .cloned();
         match value {
@@ -7048,6 +7055,11 @@ fn preflight_workflow_macro_template_run(
     }
 
     apply_cross_port_semantics(engine, &mut report);
+    if let Err(error) =
+        routine_bindings::grna_binding_readiness(engine, &template.name, &resolved_bindings)
+    {
+        report.errors.push(error);
+    }
     apply_family_specific_preflight_semantics(engine, &mut report, &resolved_bindings);
 
     Ok(report)
@@ -31624,19 +31636,30 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
     }
 }
 
-fn capability_precondition_expr_value(capability_id: &str) -> Option<Value> {
+fn capability_descriptor(capability_id: &str) -> Option<&'static Value> {
+    static DESCRIPTORS: std::sync::OnceLock<HashMap<String, Value>> = std::sync::OnceLock::new();
     let canonical = canonical_introspection_capability_id(capability_id);
-    let descriptor = annotated_introspection_capability_descriptors()
-        .into_iter()
-        .find(|descriptor| descriptor["id"].as_str() == Some(canonical))?;
+    DESCRIPTORS
+        .get_or_init(|| {
+            let mut descriptors = HashMap::new();
+            // Preserve the previous lookup's first-match semantics for legacy duplicate IDs.
+            for descriptor in annotated_introspection_capability_descriptors() {
+                if let Some(id) = descriptor["id"].as_str() {
+                    descriptors.entry(id.to_string()).or_insert(descriptor);
+                }
+            }
+            descriptors
+        })
+        .get(canonical)
+}
+
+fn capability_precondition_expr_value(capability_id: &str) -> Option<Value> {
+    let descriptor = capability_descriptor(capability_id)?;
     descriptor.get("precondition_expr").cloned()
 }
 
 fn capability_must_effect_atoms(capability_id: &str) -> Option<Vec<Value>> {
-    let canonical = canonical_introspection_capability_id(capability_id);
-    let descriptor = annotated_introspection_capability_descriptors()
-        .into_iter()
-        .find(|descriptor| descriptor["id"].as_str() == Some(canonical))?;
+    let descriptor = capability_descriptor(capability_id)?;
     let effects = descriptor["effects"].as_array()?;
     Some(
         effects

@@ -5292,6 +5292,12 @@ Adapter-equivalence guarantee for UI-intent tools:
   - preflight includes cross-port semantic checks (alias/collision checks,
     input sequence/container consistency, and sequence-anchor semantics when
     sequence context is unambiguous)
+  - the built-in gRNA anchor routine explicitly binds catalog ports
+    `anchor_a`/`anchor_b` to macro parameters `anchor_a_pos`/`anchor_b_pos`.
+    Shared preflight validates DNA kind, in-range zero-based boundaries,
+    distinct endpoints and candidate-length-compatible span. The oligo routine
+    requires a stored guide set rather than a generic candidate set. These
+    checks do not introduce PAM/off-target analysis or change failure receipts.
   - routine-family semantic checks are now supported:
     - Gibson routines validate adjacent fragment overlap compatibility against
       configured overlap length before execution

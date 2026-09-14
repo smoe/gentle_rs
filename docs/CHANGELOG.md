@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-14 - Contextual Launcher Readiness And gRNA Setup
+
+- Generalize the collection launcher's typed app readiness presentation for
+  the bounded menu/palette pilot. Disabled rows explain missing inputs; both
+  palette paths reject disabled Enter/click and recheck state on dispatch.
+  Imports and configuration remain independent of scientific input readiness.
+- Add explicit gRNA Routine Assistant setup actions, distinct from import:
+  candidate scans bind selected DNA, anchor scans collect validated boundaries,
+  and oligo preparation requires an explicitly chosen stored guide set.
+  Shared macro preflight uses explicit port-to-parameter mapping and the
+  existing engine anchor checks. Project/binding changes invalidate gRNA
+  execution readiness. No guide-design biology or release gate is changed.
+- Keep catalog/template validation outside paint and cache immutable
+  capability-descriptor lookup. Resolve the default preflight catalog as a
+  packaged asset; no caller-selected import path is rewritten.
+- Add inline synthetic readiness, mouse/Enter, project-change, gRNA binding,
+  macro execution and descriptor-cache regressions. Native GUI and additional
+  action families remain separate follow-ups in the roadmap.
+
 ## 2026-09-14 - Explicit Template Imports And Sequence Launch Subjects
 
 - Patterns uses a refreshable background snapshot for both its directory tree

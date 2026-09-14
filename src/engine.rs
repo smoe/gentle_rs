@@ -29508,6 +29508,29 @@ impl GentleEngine {
         Ok(config)
     }
 
+    /// Shallow input inventory for launchers; does not clone guide arrays or imply preflight.
+    pub fn guide_set_input_ids(&self) -> Vec<String> {
+        let Some(sets) = self
+            .state
+            .metadata
+            .get(GUIDE_DESIGN_METADATA_KEY)
+            .and_then(|store| store.get("guide_sets"))
+            .and_then(serde_json::Value::as_object)
+        else {
+            return vec![];
+        };
+        let mut ids = sets
+            .iter()
+            .filter(|(id, set)| {
+                set.get("guide_set_id").and_then(serde_json::Value::as_str) == Some(id.as_str())
+                    && set.get("guides").is_some_and(serde_json::Value::is_array)
+            })
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        ids.sort();
+        ids
+    }
+
     pub fn list_guide_sets(&self) -> Vec<GuideSetSummary> {
         let store = self.read_guide_design_store();
         let mut names = store.guide_sets.keys().cloned().collect::<Vec<_>>();

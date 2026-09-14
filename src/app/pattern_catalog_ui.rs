@@ -8,6 +8,7 @@ struct PatternCatalogSnapshot {
     catalog_path: PathBuf,
     entries: Result<Vec<CloningPatternCatalogEntry>, String>,
     routines: Result<Vec<CloningRoutineCatalogRow>, String>,
+    grna: HashMap<grna_routine_ui::GrnaRoutine, Result<CloningRoutineCatalogRow, String>>,
 }
 
 impl PatternCatalogSnapshot {
@@ -44,11 +45,26 @@ impl PatternCatalogSnapshot {
         if let Ok(entries) = &mut entries {
             Self::apply_titles(entries, &titles);
         }
+        let grna = grna_routine_ui::GrnaRoutine::ALL
+            .into_iter()
+            .map(|routine| {
+                let result = routines.as_ref().map_err(Clone::clone).and_then(|rows| {
+                    let row = rows
+                        .iter()
+                        .find(|row| row.routine_id == routine.id())
+                        .ok_or_else(|| format!("Routine '{}' is absent", routine.id()))?;
+                    routine.validate(row)?;
+                    Ok(row.clone())
+                });
+                (routine, result)
+            })
+            .collect();
         Self {
             root,
             catalog_path,
             entries,
             routines,
+            grna,
         }
     }
 
@@ -196,6 +212,7 @@ mod tests {
                 catalog_path: "missing".into(),
                 entries: Err("missing".into()),
                 routines: Err("missing".into()),
+                grna: HashMap::new(),
             }
         });
         for _ in 0..5 {
@@ -227,6 +244,19 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+pub(super) fn load_test_catalog() -> PatternCatalogCache {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    PatternCatalogCache {
+        started: true,
+        snapshot: Some(Arc::new(PatternCatalogSnapshot::load(
+            root.join(DEFAULT_CLONING_PATTERN_CATALOG_DIR),
+            root.join(DEFAULT_CLONING_ROUTINE_CATALOG_PATH),
+        ))),
+        ..Default::default()
+    }
+}
+
 #[derive(Default)]
 pub(super) struct PatternCatalogCache {
     started: bool,
@@ -236,6 +266,39 @@ pub(super) struct PatternCatalogCache {
 }
 
 impl PatternCatalogCache {
+    pub(super) fn ensure_started(&mut self, ctx: &egui::Context) {
+        if !self.started {
+            self.start(ctx);
+        }
+        self.poll();
+    }
+
+    pub(super) fn grna_routine(
+        &self,
+        routine: grna_routine_ui::GrnaRoutine,
+    ) -> Result<CloningRoutineCatalogRow, ActionReadiness> {
+        if let Some(error) = &self.error {
+            return Err(ActionReadiness::AdapterUnavailable {
+                detail: error.clone(),
+            });
+        }
+        let Some(snapshot) = &self.snapshot else {
+            return Err(ActionReadiness::Checking {
+                detail: "Loading routine catalog; use Refresh template catalog to retry".into(),
+            });
+        };
+        snapshot
+            .grna
+            .get(&routine)
+            .cloned()
+            .unwrap_or_else(|| Err("Routine not in this catalog".into()))
+            .map_err(|error| ActionReadiness::AdapterUnavailable {
+                detail: format!(
+                    "{error}. Refresh template catalog or import a template explicitly."
+                ),
+            })
+    }
+
     fn start(&mut self, ctx: &egui::Context) {
         self.start_with(ctx, || {
             PatternCatalogSnapshot::load(
