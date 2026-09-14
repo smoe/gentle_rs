@@ -1974,14 +1974,23 @@ fn agent_introspection_relevance_uses_known_active_view_in_worker_request() {
         .agent_task
         .take()
         .unwrap_or_else(|| panic!("worker did not start: {}", app.agent_status));
-    let deadline = Instant::now() + Duration::from_secs(15);
+    let deadline = Instant::now() + APP_BACKGROUND_TASK_TEST_TIMEOUT;
+    let mut last_status = app.agent_status.clone();
     let invocation = loop {
         let message = task
             .receiver
             .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .expect("offline worker should finish");
-        if let AgentAskTaskMessage::Done { result, .. } = message {
-            break result.expect("offline echo request");
+            .unwrap_or_else(|err| {
+                panic!(
+                    "offline worker did not finish within {:?}: {err}; last status: {last_status}",
+                    APP_BACKGROUND_TASK_TEST_TIMEOUT
+                )
+            });
+        match message {
+            AgentAskTaskMessage::Status { message, .. } => last_status = message,
+            AgentAskTaskMessage::Done { result, .. } => {
+                break result.expect("offline echo request");
+            }
         }
     };
     assert_eq!(
