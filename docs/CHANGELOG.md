@@ -20,6 +20,42 @@
   stronger accession/index provenance. See the
   [integration decision](transcript_source_presentation.md#standalone-comparison-review).
 
+- Generalize the collection launcher's typed app readiness presentation for
+  the bounded menu/palette pilot. Disabled rows explain missing inputs; both
+  palette paths reject disabled Enter/click and recheck state on dispatch.
+  Imports and configuration remain independent of scientific input readiness.
+- Add explicit gRNA Routine Assistant setup actions, distinct from import:
+  candidate scans bind selected DNA, anchor scans collect validated boundaries,
+  and oligo preparation requires an explicitly chosen stored guide set.
+  Shared macro preflight uses explicit port-to-parameter mapping and the
+  existing engine anchor checks. Project/binding changes invalidate gRNA
+  execution readiness. No guide-design biology or release gate is changed.
+- Keep catalog/template validation outside paint and cache immutable
+  capability-descriptor lookup. Resolve the default preflight catalog as a
+  packaged asset; no caller-selected import path is rewritten.
+- Add inline synthetic readiness, mouse/Enter, project-change, gRNA binding,
+  macro execution and descriptor-cache regressions. Native GUI and additional
+  action families remain separate follow-ups in the roadmap.
+
+## 2026-09-14 - Explicit Template Imports And Sequence Launch Subjects
+
+- Patterns uses a refreshable background snapshot for both its directory tree
+  and routine-import browser, reusing shared catalog validation without
+  project-dependent planning during paint. Reuse startup asset resolution for
+  checkout/macOS/Linux catalog lookup; explicit file/folder imports stay explicit.
+- Use catalog titles, correct gRNA/CRISPR casing, and truthful "Import ...
+  template" labels. Import remains available without selected DNA.
+- Remove arbitrary sequence defaults from DNA-specialist launches and Gibson
+  prefill. Explicit subject selection uses the engine's existing molecule-kind
+  classification; generic sequence tools retain their broader input contract.
+  The palette preserves its initiating subject across focus changes and rejects
+  a closed origin or replaced project. Shared UI-intent summaries retain the
+  launcher's missing-input explanation as well as the command identity.
+  General disabled-row/submenu readiness
+  and gRNA binding remain follow-up work, not part of this slice.
+- Add synthetic catalog-cache/refresh, packaged-path and subject-selection
+  regressions. No assay scoring, saved workflow identifiers or release gate changed.
+
 ## 2026-09-14 - Genome Discovery And Progress Ownership
 
 - Correct Ensembl vertebrate discovery to use `pub/current/fasta/` and

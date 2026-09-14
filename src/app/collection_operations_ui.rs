@@ -122,70 +122,7 @@ impl CollectionLauncherRow {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum CollectionLauncherReadiness {
-    Ready,
-    NeedsInput {
-        detail: String,
-    },
-    NeedsBindings {
-        detail: String,
-    },
-    RequiresMaterialization {
-        reason: CollectionLiftRejectionReason,
-        detail: String,
-    },
-    RequiresPhysicalPool {
-        reason: CollectionLiftRejectionReason,
-        detail: String,
-    },
-    PolicyRejected {
-        reason: CollectionLiftRejectionReason,
-        detail: String,
-    },
-    AdapterUnavailable {
-        detail: String,
-    },
-}
-
-impl CollectionLauncherReadiness {
-    pub(super) fn is_ready(&self) -> bool {
-        matches!(self, Self::Ready)
-    }
-
-    pub(super) fn label(&self) -> &'static str {
-        match self {
-            Self::Ready => "Ready",
-            Self::NeedsInput { .. } => "Needs input",
-            Self::NeedsBindings { .. } => "Needs bindings",
-            Self::RequiresMaterialization { .. } => "Requires materialization",
-            Self::RequiresPhysicalPool { .. } => "Requires physical pool",
-            Self::PolicyRejected { .. } => "Unsupported",
-            Self::AdapterUnavailable { .. } => "GUI adapter unavailable",
-        }
-    }
-
-    pub(super) fn detail(&self) -> Option<&str> {
-        match self {
-            Self::Ready => None,
-            Self::NeedsInput { detail }
-            | Self::NeedsBindings { detail }
-            | Self::RequiresMaterialization { detail, .. }
-            | Self::RequiresPhysicalPool { detail, .. }
-            | Self::PolicyRejected { detail, .. }
-            | Self::AdapterUnavailable { detail } => Some(detail),
-        }
-    }
-
-    pub(super) fn rejection_reason(&self) -> Option<CollectionLiftRejectionReason> {
-        match self {
-            Self::RequiresMaterialization { reason, .. }
-            | Self::RequiresPhysicalPool { reason, .. }
-            | Self::PolicyRejected { reason, .. } => Some(*reason),
-            _ => None,
-        }
-    }
-}
+pub(super) use super::action_readiness::ActionReadiness as CollectionLauncherReadiness;
 
 pub(super) fn collection_launcher_rows(
     subject_kind: CollectionSubjectKind,

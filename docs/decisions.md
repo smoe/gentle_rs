@@ -1,5 +1,18 @@
 # GENtle Decisions
 
+## Contextual Launcher Readiness
+
+The egui menu/palette pilot reuses the app's collection-launcher readiness
+presentation, including typed collection rejection reasons. It is not a second
+protocol capability registry or permission system. Compute bounded selection,
+molecule-kind and stored-input facts once per surface; do not call full project
+introspection, filesystem probes or scientific preflight from menu paint.
+Host catalog validation has its own background snapshot and explicit refresh,
+independent of project revision. Invocation rechecks its explicit subject;
+shared macro/engine validation remains authoritative for execution. Static
+capability descriptor lookup may cache immutable metadata, never host availability.
+Importing a template and using it with bound inputs are separate actions.
+
 ## Accession-Pinned TSS Document Invariants
 
 Status: active

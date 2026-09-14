@@ -2307,6 +2307,16 @@ cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 isoform tp53_is
 cargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 isoform tp53_isoforms_v1 exports/tp53_isoform_architecture.svg
 ```
 
+For `grna_anchor_window_scan`, the shared macro contract uses
+`--bind seq_id=ID --bind anchor_a_pos=0 --bind anchor_b_pos=END`.
+The Routine Assistant maps its catalog ports `anchor_a`/`anchor_b` explicitly
+to those parameter names. Preflight (`--validate-only`) validates DNA kind,
+zero-based boundaries within the sequence, distinct endpoints and sufficient
+span for `length_bp` (default 20). Invalid bindings also block actual execution.
+These templates perform generic candidate preselection, not PAM-aware guide
+design. `grna_practical_filter_and_oligos` instead requires an existing
+`guide_set_id`; a generic candidate set is not a guide set.
+
 You can pass JSON from a file with `@file.json` or a bare existing file path.
 When loading from file path, an initial shebang line (`#!...`) is ignored so
 executable script files can embed JSON payloads directly.

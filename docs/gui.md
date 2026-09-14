@@ -2128,6 +2128,38 @@ Patterns menu:
     `assets/cloning_patterns_catalog`.
 - `Patterns` submenu hierarchy mirrors the directory hierarchy under
   `assets/cloning_patterns_catalog` (one JSON template file per leaf entry).
+  Leaves say **Import ... template**, not run/design; they remain usable in an
+  empty project. Canonical routine titles preserve names such as **gRNA**;
+  directory labels use **CRISPR**, **PCR**, **DNA**, **RNA**, and **TFBS**.
+  The hierarchy and routine-import browser share a background-loaded snapshot.
+  **Refresh template catalog** explicitly reloads it after files change; loading
+  and errors remain visible without rereading directories or evaluating project
+  planning on each menu frame. Shipped catalogs resolve from the checkout or
+  packaged application; user-selected import paths remain explicit.
+- `Patterns -> Use gRNA routines` opens **setup**, separately from template import.
+  Candidate scans require explicitly selected DNA (project graph or focused
+  viewer). Anchor scan setup asks for two zero-based sequence boundaries;
+  `0` and sequence length are valid endpoints, the right boundary is excluded,
+  and the span must fit the candidate length (20 bp by default). Reversed
+  boundary order is accepted. Run Preflight remains disabled until valid.
+  These are generic candidate preselection scans, not PAM-aware guide design
+  or off-target confirmation. Practical Filter and Oligos requires a stored
+  guide set, selected explicitly in the form; DNA or a candidate set is not a
+  substitute. No guide set is silently selected by alphabetical order.
+  Existing macro preflight and transactional execution remain authoritative.
+- Pilot availability is shared between egui menus and Command Palette rows:
+  PCR Design, Sequencing Confirmation, Saved Genomic Regions, the three gRNA
+  setup actions, and palette-only TATA, cryptic-splicing, conservation, and
+  feature-location actions. Already-open PCR/confirmation windows can still be
+  focused; empty-project conservation setup still offers reference retrieval.
+  Disabled rows retain their reason (hover or selected palette row). Enter and
+  click cannot invoke them, and dispatch rechecks state. The gRNA submenu is
+  available when any of its children is available; imports, help and configuration
+  remain reachable. This is not application-wide or native-macOS-menu coverage.
+- gRNA preflight is bound to its project revision, template and bindings.
+  Editing bindings, switching/replacing a project, or changing project state
+  requires another preflight before Run. Catalog checks run outside menu paint
+  and refresh explicitly; availability does not grant execution permission.
 - `Patterns -> Routine Assistant...`
   - opens a dedicated staged workflow window for routine application:
     1. goal + candidate search
@@ -4230,6 +4262,20 @@ In `Main window -> Graph` view:
     to resize it against the containers pane
 
 ## Command Palette and History/Jobs Panels
+
+Subject-bound DNA tools use the focused sequence viewer or an explicitly
+selected sequence node in the main project graph, never the first sequence by
+name. PCR Designer, Sequencing Confirmation, TATA evidence, cryptic-splicing and
+saved-region/conservation launches reject protein/RNA targets and explain how to
+select DNA. Feature Location Editor requires an explicit sequence but is not
+restricted to DNA. Gibson keeps its input choosers: the selected DNA may prefill
+the destination, but an insert is never picked automatically.
+
+The palette captures its initiating subject before taking focus. Closing that
+viewer, changing the project or removing the sequence invalidates the subject
+rather than choosing another one. This launch safeguard does not yet make every
+palette/menu row state-aware; dimmed actions, shared readiness presentation and
+broader action coverage remain the next implementation slice.
 
 - Command Palette:
   - open via `Cmd/Ctrl+K` or `Edit -> Command Palette...`

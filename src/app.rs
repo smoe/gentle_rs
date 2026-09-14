@@ -112,6 +112,19 @@ mod gibson_ui;
 #[path = "app/collection_operations_ui.rs"]
 mod collection_operations_ui;
 
+#[path = "app/pattern_catalog_ui.rs"]
+mod pattern_catalog_ui;
+
+#[path = "app/subject_selection.rs"]
+mod subject_selection;
+
+#[path = "app/action_readiness.rs"]
+mod action_readiness;
+use action_readiness::{ActionReadiness, LaunchContext};
+
+#[path = "app/grna_routine_ui.rs"]
+mod grna_routine_ui;
+
 #[path = "app/gene_set_ui.rs"]
 mod gene_set_ui;
 
@@ -713,6 +726,7 @@ struct RuntimeStatusSnapshotCache {
 
 pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
+    pattern_catalog: pattern_catalog_ui::PatternCatalogCache,
     new_windows: Vec<Window>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     detached_auxiliary_window_hosts: HashMap<ViewportId, Arc<RwLock<Window>>>,
@@ -1073,6 +1087,8 @@ pub struct GENtleApp {
     genome_blast_import_track_name: String,
     genome_blast_import_clear_existing: bool,
     show_command_palette_dialog: bool,
+    command_palette_subject: Option<subject_selection::PaletteSubject>,
+    command_palette_dispatching: bool,
     command_palette_query: String,
     command_palette_selected: usize,
     command_palette_focus_query: bool,
@@ -1098,6 +1114,7 @@ pub struct GENtleApp {
     routine_assistant_explain_output: Option<serde_json::Value>,
     routine_assistant_compare_output: Option<serde_json::Value>,
     routine_assistant_preflight_output: Option<serde_json::Value>,
+    grna_preflight_token: Option<grna_routine_ui::GrnaPreflightToken>,
     routine_assistant_execute_output: Option<serde_json::Value>,
     routine_assistant_status: String,
     routine_assistant_decision_trace: Option<RoutineDecisionTrace>,
@@ -2556,6 +2573,7 @@ enum CommandPaletteAction {
     OpenEvidencePreparation,
     OpenPlanning,
     OpenRoutineAssistant,
+    UseGrnaRoutine(grna_routine_ui::GrnaRoutine),
     FocusProjectOverview(ProjectOverviewTarget),
     UiIntent(UiIntentTarget),
     OpenGuiManual,
@@ -2574,6 +2592,7 @@ enum CommandPaletteAction {
 
 #[derive(Clone)]
 struct CommandPaletteEntry {
+    readiness: ActionReadiness,
     title: String,
     detail: String,
     keywords: String,
@@ -2583,6 +2602,7 @@ struct CommandPaletteEntry {
 impl CommandPaletteEntry {
     fn ui_intent(target: UiIntentTarget) -> Self {
         Self {
+            readiness: ActionReadiness::Ready,
             title: target.discoverability_title().to_string(),
             detail: target.discoverability_detail().to_string(),
             keywords: format!(
@@ -2634,6 +2654,7 @@ impl Default for GENtleApp {
     fn default() -> Self {
         Self {
             engine: Arc::new(RwLock::new(GentleEngine::new())),
+            pattern_catalog: pattern_catalog_ui::PatternCatalogCache::default(),
             new_windows: vec![],
             windows: HashMap::new(),
             detached_auxiliary_window_hosts: HashMap::new(),
@@ -2999,6 +3020,8 @@ impl Default for GENtleApp {
             tracked_autosync_last_probe: None,
             tracked_autosync_full_scan_count: 0,
             show_command_palette_dialog: false,
+            command_palette_subject: None,
+            command_palette_dispatching: false,
             command_palette_query: String::new(),
             command_palette_selected: 0,
             command_palette_focus_query: false,
@@ -3025,6 +3048,7 @@ impl Default for GENtleApp {
             routine_assistant_explain_output: None,
             routine_assistant_compare_output: None,
             routine_assistant_preflight_output: None,
+            grna_preflight_token: None,
             routine_assistant_execute_output: None,
             routine_assistant_status: String::new(),
             routine_assistant_decision_trace: None,
@@ -4247,6 +4271,9 @@ Error: `{err}`"
 
     fn open_command_palette_dialog(&mut self) {
         let was_open = self.show_command_palette_dialog;
+        if !was_open {
+            self.command_palette_subject = Some(self.capture_palette_subject());
+        }
         self.show_command_palette_dialog = true;
         self.command_palette_focus_query = true;
         self.mark_window_open_or_focus(Self::command_palette_viewport_id(), was_open);
@@ -5499,24 +5526,28 @@ Error: `{err}`"
     fn collect_command_palette_entries(&mut self) -> Vec<CommandPaletteEntry> {
         let mut entries = vec![
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "New Project".to_string(),
                 detail: "Create a new empty project".to_string(),
                 keywords: "file project new".to_string(),
                 action: CommandPaletteAction::NewProject,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Open Project".to_string(),
                 detail: "Open an existing project file".to_string(),
                 keywords: "file project open".to_string(),
                 action: CommandPaletteAction::OpenProject,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Save Project".to_string(),
                 detail: "Save current project state".to_string(),
                 keywords: "file project save".to_string(),
                 action: CommandPaletteAction::SaveProject,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Project Overview".to_string(),
                 detail: "Focus physical containers and collection actions in the project overview"
                     .to_string(),
@@ -5528,30 +5559,35 @@ Error: `{err}`"
                 ),
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "New Sequence".to_string(),
                 detail: "Type or paste IUPAC DNA into a new project sequence".to_string(),
                 keywords: "sequence new paste clipboard type create".to_string(),
                 action: CommandPaletteAction::NewSequence,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "New Sequence from Clipboard".to_string(),
                 detail: "Read clipboard text into the new-sequence dialog".to_string(),
                 keywords: "sequence new paste clipboard create".to_string(),
                 action: CommandPaletteAction::NewSequenceFromClipboard,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Open Sequence".to_string(),
                 detail: "Import one or more sequence files into project".to_string(),
                 keywords: "sequence import load".to_string(),
                 action: CommandPaletteAction::OpenSequence,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Protein Evidence".to_string(),
                 detail: "Fetch/import UniProt or Ensembl protein evidence and compare it against transcript-native products".to_string(),
                 keywords: "uniprot swiss-prot ensembl protein map compare evidence".to_string(),
                 action: CommandPaletteAction::OpenUniprot,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "GenBank / dbSNP Fetch".to_string(),
                 detail: "Fetch GenBank accessions or rsID-anchored genome regions from NCBI"
                     .to_string(),
@@ -5559,24 +5595,28 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGenbank,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Undo Last Operation".to_string(),
                 detail: "Restore previous project state".to_string(),
                 keywords: "undo history edit".to_string(),
                 action: CommandPaletteAction::Undo,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Redo Last Operation".to_string(),
                 detail: "Re-apply previously undone state".to_string(),
                 keywords: "redo history edit".to_string(),
                 action: CommandPaletteAction::Redo,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Configuration".to_string(),
                 detail: "Open global app configuration".to_string(),
                 keywords: "settings config preferences".to_string(),
                 action: CommandPaletteAction::OpenConfiguration,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "External Services".to_string(),
                 detail:
                     "Inspect providers, preflight service requests, and prepare quote handoff bundles"
@@ -5586,6 +5626,7 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenExternalServices,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Gene Set Inspector".to_string(),
                 detail:
                     "Bind resolved gene-set members to exact primer reports and run shared collection specificity"
@@ -5596,6 +5637,7 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGeneSetInspector,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Gibson".to_string(),
                 detail: "Plan one destination-first Gibson assembly with cartoon preview."
                     .to_string(),
@@ -5603,12 +5645,14 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGibson,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "microRNA Target Scan".to_string(),
                 detail: "Scan transcript annotations for microRNA seed candidates and inspect graphical pairing evidence".to_string(),
                 keywords: "mirna microRNA target scan seed pairing transcript utr exon intron splice".to_string(),
                 action: CommandPaletteAction::OpenMirnaTargetScan,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Cryptic-splicing Structural Screen".to_string(),
                 detail: "Inspect bounded GT-AG pseudo-intron candidates in a project sequence"
                     .to_string(),
@@ -5618,12 +5662,14 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenCrypticSplicingScreen,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "TATA-box Evidence".to_string(),
                 detail: "Inspect source annotations, EPD promoter classifications and TBP matrix predictions".into(),
                 keywords: "tata tbp promoter epd tss annotation motif".into(),
                 action: CommandPaletteAction::OpenTataBoxes,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Precomputed Genomic Motif Evidence".to_string(),
                 detail: "Open an anchored DNA sequence for optional precomputed JASPAR genome-scan queries"
                     .to_string(),
@@ -5633,12 +5679,14 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Promoter Cofactors".into(),
                 detail: "Inspect a local reduced JASPAR/TP73 collaborator package".into(),
                 keywords: "jaspar tp73 cofactor promoter odds ratio duckdb parquet".into(),
                 action: CommandPaletteAction::OpenPromoterCofactors,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Genomic Region Conservation".to_string(),
                 detail: "Choose a saved genomic region for local homology screening and conserved-module assessment"
                     .to_string(),
@@ -5647,60 +5695,70 @@ Error: `{err}`"
                 action: CommandPaletteAction::OpenGenomicRegionConservation,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Evidence Preparation".to_string(),
                 detail: "Prepare the TP73 evidence-viewer proof material through shared GENtle operations and copyable handoff commands".to_string(),
                 keywords: "tp73 evidence preparation array clariom repeat rmsk cutrun bed tfbs proof".to_string(),
                 action: CommandPaletteAction::OpenEvidencePreparation,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Planning".to_string(),
                 detail: "Edit planning profiles/objectives and resolve suggestions".to_string(),
                 keywords: "planning profile objective suggestions sync meta-layer".to_string(),
                 action: CommandPaletteAction::OpenPlanning,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Routine Assistant".to_string(),
                 detail: "Compare routine families and run semantic preflight".to_string(),
                 keywords: "routine assistant cloning preflight".to_string(),
                 action: CommandPaletteAction::OpenRoutineAssistant,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "GUI Manual".to_string(),
                 detail: "Open in-app GUI help".to_string(),
                 keywords: "help gui manual docs".to_string(),
                 action: CommandPaletteAction::OpenGuiManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "CLI Manual".to_string(),
                 detail: "Open in-app CLI help".to_string(),
                 keywords: "help cli manual docs".to_string(),
                 action: CommandPaletteAction::OpenCliManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Agent Interface".to_string(),
                 detail: "Open in-app agent integration guide".to_string(),
                 keywords: "help agent interface mcp cli assistant prompt docs".to_string(),
                 action: CommandPaletteAction::OpenAgentInterfaceManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Reviewer Quickstart".to_string(),
                 detail: "Open internal preview quickstart and known limitations".to_string(),
                 keywords: "help reviewer quickstart preview internal limitations".to_string(),
                 action: CommandPaletteAction::OpenReviewerPreviewManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Shell Commands".to_string(),
                 detail: "Open in-app shell command reference".to_string(),
                 keywords: "help shell commands glossary docs".to_string(),
                 action: CommandPaletteAction::OpenShellManual,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Export DALG SVG".to_string(),
                 detail: "Export lineage graph as SVG".to_string(),
                 keywords: "export lineage svg".to_string(),
                 action: CommandPaletteAction::ExportLineageSvg,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Export Lab Assistant Report".to_string(),
                 detail: "Export bench-facing cloning handoff as ODT, DOCX, or Markdown"
                     .to_string(),
@@ -5708,12 +5766,14 @@ Error: `{err}`"
                 action: CommandPaletteAction::ExportLabAssistantReport,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Toggle Background Jobs Panel".to_string(),
                 detail: "Show or hide centralized jobs panel".to_string(),
                 keywords: "jobs progress background".to_string(),
                 action: CommandPaletteAction::ToggleJobsPanel,
             },
             CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Toggle History Panel".to_string(),
                 detail: "Show or hide operation history".to_string(),
                 keywords: "history undo redo".to_string(),
@@ -5738,16 +5798,43 @@ Error: `{err}`"
         self.refresh_open_window_model_cache();
         for entry in &self.open_window_model_cache.model.entries {
             entries.push(CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: format!("Focus: {}", entry.title),
                 detail: entry.detail.clone(),
                 keywords: "focus window".to_string(),
                 action: CommandPaletteAction::FocusViewport(entry.viewport_id),
             });
         }
+        let context = LaunchContext::capture(self, self.show_command_palette_dialog);
+        for entry in &mut entries {
+            entry.readiness = context.readiness(entry.action);
+        }
+        self.append_grna_palette_entries(&mut entries, &context);
         entries
     }
 
     fn execute_command_palette_action(
+        &mut self,
+        ctx: &egui::Context,
+        action: CommandPaletteAction,
+    ) -> bool {
+        let previous = self.command_palette_dispatching;
+        self.command_palette_dispatching = self.show_command_palette_dialog;
+        let readiness = self.palette_action_readiness(action);
+        if !readiness.is_ready() {
+            self.app_status = readiness
+                .detail()
+                .unwrap_or("Action unavailable")
+                .to_string();
+            self.command_palette_dispatching = previous;
+            return false;
+        }
+        self.execute_command_palette_action_bound(ctx, action);
+        self.command_palette_dispatching = previous;
+        true
+    }
+
+    fn execute_command_palette_action_bound(
         &mut self,
         ctx: &egui::Context,
         action: CommandPaletteAction,
@@ -5784,6 +5871,7 @@ Error: `{err}`"
             }
             CommandPaletteAction::OpenPlanning => self.open_planning_dialog(),
             CommandPaletteAction::OpenRoutineAssistant => self.open_routine_assistant_dialog(),
+            CommandPaletteAction::UseGrnaRoutine(routine) => self.open_grna_routine(routine),
             CommandPaletteAction::FocusProjectOverview(target) => {
                 self.focus_project_overview_target(target);
                 self.persist_lineage_graph_workspace_to_state();
@@ -8411,14 +8499,16 @@ Error: `{err}`"
     }
 
     fn open_genomic_region_conservation(&mut self) {
-        let seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = seq_id else {
-            self.open_reference_genome_retrieve_dialog();
-            self.app_status = "Genomic Region Conservation requires a project sequence; retrieve one, then save or import a genomic region"
-                .to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Genomic Region Conservation", true)
+        else {
+            let empty = self
+                .engine
+                .try_read()
+                .is_ok_and(|engine| engine.state().sequences.is_empty());
+            if empty {
+                self.open_reference_genome_retrieve_dialog();
+                self.app_status = "Genomic Region Conservation requires a project sequence; retrieve one, then select it".into();
+            }
             return;
         };
         self.open_saved_genomic_regions_for_sequence(&seq_id);
@@ -8733,13 +8823,7 @@ Error: `{err}`"
     }
 
     fn open_cryptic_splicing_screen(&mut self) {
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status =
-                "Cannot open cryptic-splicing screen: no project sequence is available".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("cryptic-splicing screen", true) else {
             return;
         };
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
@@ -8775,13 +8859,7 @@ Error: `{err}`"
     }
 
     fn open_tata_box_workspace(&mut self) {
-        let seq_id = self
-            .active_dna_window_context()
-            .map(|(id, _)| id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = seq_id else {
-            self.app_status =
-                "Cannot open TATA-box evidence: no project sequence is available".into();
+        let Some(seq_id) = self.sequence_subject_for_action("TATA-box evidence", true) else {
             return;
         };
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
@@ -8812,13 +8890,8 @@ Error: `{err}`"
     }
 
     fn open_feature_location_editor(&mut self) {
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status =
-                "Cannot open Feature Location Editor: no project sequence is available".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Feature Location Editor", false)
+        else {
             return;
         };
         if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
@@ -8848,13 +8921,7 @@ Error: `{err}`"
     }
 
     fn open_saved_genomic_regions(&mut self) {
-        let seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = seq_id else {
-            self.app_status =
-                "Cannot open Saved Genomic Regions: no project sequence is available".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Saved Genomic Regions", true) else {
             return;
         };
         self.open_saved_genomic_regions_for_sequence(&seq_id);
@@ -8985,21 +9052,13 @@ Error: `{err}`"
     }
 
     fn prefill_gibson_from_active_context(&mut self) {
-        let active_context = self.active_dna_window_context();
-        if self.gibson_destination_seq_id.trim().is_empty() {
-            if let Some((seq_id, _)) = active_context.as_ref() {
-                self.gibson_destination_seq_id = seq_id.clone();
-            } else if let Some(seq_id) = self.project_sequence_ids_for_blast().first() {
-                self.gibson_destination_seq_id = seq_id.clone();
-            }
+        let active_context = self.selected_sequence_context(true).ok();
+        if self.gibson_destination_seq_id.trim().is_empty()
+            && let Some((seq_id, _)) = active_context.as_ref()
+        {
+            self.gibson_destination_seq_id = seq_id.clone();
         }
-        if self.gibson_insert_seq_id.trim().is_empty() {
-            self.gibson_insert_seq_id = self
-                .project_sequence_ids_for_blast()
-                .into_iter()
-                .find(|seq_id| seq_id != &self.gibson_destination_seq_id)
-                .unwrap_or_default();
-        }
+        // Inserts are chosen explicitly in the existing form, never by sort order.
         if let Some((active_seq_id, Some((start, end)))) = active_context
             && active_seq_id == self.gibson_destination_seq_id
             && self.gibson_opening_start_0based.trim().is_empty()
@@ -9022,16 +9081,19 @@ Error: `{err}`"
         if seq_id.is_empty() {
             return Err("sequence id is empty".to_string());
         }
-        let exists = self
+        let kind = self
             .engine
             .read()
             .map_err(|_| "could not read engine state".to_string())?
-            .state()
-            .sequences
-            .contains_key(seq_id);
-        if !exists {
+            .sequence_kind(seq_id);
+        let Some(kind) = kind else {
             return Err(format!(
                 "sequence '{seq_id}' was not found in the current project"
+            ));
+        };
+        if kind != "dna" {
+            return Err(format!(
+                "sequence '{seq_id}' is {kind}; PCR Designer requires DNA"
             ));
         }
         if self.find_open_sequence_viewport_id(seq_id).is_none()
@@ -9051,14 +9113,7 @@ Error: `{err}`"
             self.mark_window_open_or_focus(Self::pcr_design_viewport_id(), true);
             return;
         }
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status =
-                "Cannot open PCR Designer: no active sequence window or project sequence"
-                    .to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("PCR Designer", true) else {
             return;
         };
         if let Err(err) = self.open_pcr_design_dialog_for_seq_id(&seq_id) {
@@ -9071,12 +9126,7 @@ Error: `{err}`"
             self.mark_window_open_or_focus(Self::sequencing_confirmation_viewport_id(), true);
             return;
         }
-        let target_seq_id = self
-            .active_dna_window_context()
-            .map(|(seq_id, _)| seq_id)
-            .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-        let Some(seq_id) = target_seq_id else {
-            self.app_status = "Cannot open Sequencing Confirmation: no active sequence window or project sequence".to_string();
+        let Some(seq_id) = self.sequence_subject_for_action("Sequencing Confirmation", true) else {
             return;
         };
         if self.find_open_sequence_viewport_id(&seq_id).is_none() {
@@ -14726,18 +14776,9 @@ Error: `{err}`"
         }
         ui.label("Selection-first pair-PCR specialist. Paint ROI/windows on the map and run deterministic primer-pair design queue operations.");
         if self.pcr_design_seq_id.trim().is_empty() {
-            let target = self
-                .active_dna_window_context()
-                .map(|(seq_id, _)| seq_id)
-                .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-            if let Some(seq_id) = target {
-                self.pcr_design_seq_id = seq_id;
-            }
-        }
-        if self.pcr_design_seq_id.trim().is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
-                "No sequence is available. Load/open one sequence window first.",
+                "No DNA target selected. Select a sequence in the project graph or its viewer, then reopen this tool.",
             );
             #[cfg(feature = "gui-test-support")]
             Self::register_pcr_design_semantic_window(ui, ctx, false);
@@ -14874,18 +14915,9 @@ Error: `{err}`"
         }
         ui.label("Construct-confirmation specialist. Review persisted sequencing-confirmation reports or run a new confirmation pass against the current expected construct sequence using called reads and/or imported sequencing traces.");
         if self.sequencing_confirmation_seq_id.trim().is_empty() {
-            let target = self
-                .active_dna_window_context()
-                .map(|(seq_id, _)| seq_id)
-                .or_else(|| self.project_sequence_ids_for_blast().first().cloned());
-            if let Some(seq_id) = target {
-                self.sequencing_confirmation_seq_id = seq_id;
-            }
-        }
-        if self.sequencing_confirmation_seq_id.trim().is_empty() {
             ui.colored_label(
                 egui::Color32::from_rgb(190, 70, 70),
-                "No sequence is available. Load/open one sequence window first.",
+                "No DNA target selected. Select a sequence in the project graph or its viewer, then reopen this tool.",
             );
             return close_requested;
         }
@@ -15712,6 +15744,19 @@ Error: `{err}`"
         let normalized = raw.replace(['_', '-'], " ");
         let mut out_words = vec![];
         for word in normalized.split_whitespace() {
+            let acronym = match word.to_ascii_lowercase().as_str() {
+                "grna" => Some("gRNA"),
+                "crispr" => Some("CRISPR"),
+                "pcr" => Some("PCR"),
+                "dna" => Some("DNA"),
+                "rna" => Some("RNA"),
+                "tfbs" => Some("TFBS"),
+                _ => None,
+            };
+            if let Some(acronym) = acronym {
+                out_words.push(acronym.to_string());
+                continue;
+            }
             let mut chars = word.chars();
             let Some(first) = chars.next() else {
                 continue;
@@ -15748,11 +15793,19 @@ Error: `{err}`"
         let mut out = vec![];
         let mut entries = fs::read_dir(dir)
             .map_err(|e| format!("Could not read catalog directory '{}': {e}", dir.display()))?
-            .filter_map(|entry| entry.ok())
-            .collect::<Vec<_>>();
+            .collect::<std::io::Result<Vec<_>>>()
+            .map_err(|e| format!("Could not list catalog directory '{}': {e}", dir.display()))?;
         entries.sort_by_key(|entry| entry.file_name().to_string_lossy().to_string());
         for entry in entries {
             let path = entry.path();
+            // Do not follow recursive symlinks during background catalog discovery.
+            if entry
+                .file_type()
+                .map_err(|err| err.to_string())?
+                .is_symlink()
+            {
+                continue;
+            }
             if path.is_dir() {
                 let children = Self::collect_cloning_pattern_catalog_entries_from_dir(&path)?;
                 if children.is_empty() {
@@ -15797,8 +15850,8 @@ Error: `{err}`"
         for entry in entries {
             if entry.is_file {
                 let response = ui
-                    .button(entry.label.clone())
-                    .on_hover_text(format!("Import macro template(s) from {}", entry.path));
+                    .button(format!("Import {} template", entry.label))
+                    .on_hover_text(format!("Import macro template(s) from {}; does not execute a workflow and does not require selected DNA", entry.path));
                 if response.clicked() {
                     *selected_path = Some(entry.path.clone());
                 }
@@ -15837,7 +15890,7 @@ Error: `{err}`"
         status_message: &mut Option<String>,
     ) {
         for routine in routines {
-            let label = format!("{} [{}]", routine.title, routine.status);
+            let label = format!("Import {} template [{}]", routine.title, routine.status);
             let tags = if routine.vocabulary_tags.is_empty() {
                 "-".to_string()
             } else {
@@ -15868,7 +15921,10 @@ Error: `{err}`"
                 tags,
                 routine.summary.as_deref().unwrap_or("No summary")
             );
-            let response = ui.button(label).on_hover_text(hover);
+            let response = ui
+                .add_enabled(template_path != "-", egui::Button::new(label))
+                .on_disabled_hover_text("No importable template path is provided for this routine")
+                .on_hover_text(hover);
             if response.clicked() {
                 if let Some(path) = routine
                     .template_path
@@ -16836,6 +16892,7 @@ Error: `{err}`"
                 }
             });
             ui.menu_button(self.tr("menu.genome"), |ui| {
+                let launch = LaunchContext::capture(self, false);
                 if ui
                     .button(self.tr("menu.genome.prepare_reference"))
                     .on_hover_text(
@@ -16890,8 +16947,8 @@ Error: `{err}`"
                     self.open_genome_bed_track_dialog();
                     ui.close();
                 }
-                if ui
-                    .button(self.tr("menu.genome.saved_genomic_regions"))
+                if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::SavedGenomicRegions))
+                    .button(ui, self.tr("menu.genome.saved_genomic_regions"))
                     .on_hover_text(
                         "Save, inspect, recolour, and interchange assembly-bound genomic regions of interest",
                     )
@@ -16937,6 +16994,7 @@ Error: `{err}`"
                 }
             });
             ui.menu_button(self.tr("menu.patterns"), |ui| {
+                let launch = LaunchContext::capture(self, false);
                 if ui.button("Gel Image Analysis...").clicked() {
                     self.open_gel_image_editor();
                     ui.close();
@@ -16965,57 +17023,14 @@ Error: `{err}`"
                     .clicked()
                 {
                     self.import_workflow_macro_templates_from_path(
-                        DEFAULT_CLONING_PATTERN_PACK_PATH,
+                        &crate::runtime_assets::resolve_runtime_asset_path(DEFAULT_CLONING_PATTERN_PACK_PATH).to_string_lossy(),
                     );
                     ui.close();
                 }
                 ui.separator();
 
-                let catalog_root = Path::new(DEFAULT_CLONING_PATTERN_CATALOG_DIR);
-                match Self::collect_cloning_pattern_catalog_entries(catalog_root) {
-                    Ok(entries) => {
-                        if entries.is_empty() {
-                            ui.add_enabled(
-                                false,
-                                egui::Button::new(self.tr("menu.patterns.catalog_empty")),
-                            );
-                        } else {
-                            if ui
-                                .button(self.tr("menu.patterns.import_full_catalog"))
-                                .on_hover_text(format!(
-                                    "Import all catalog templates from {}",
-                                    catalog_root.display()
-                                ))
-                                .clicked()
-                            {
-                                self.import_workflow_macro_templates_from_path(
-                                    &catalog_root.display().to_string(),
-                                );
-                                ui.close();
-                            }
-                            ui.separator();
-                            ui.small(self.tr("menu.patterns.catalog_hierarchy"));
-                            let mut selected_path: Option<String> = None;
-                            Self::render_cloning_pattern_catalog_menu_entries(
-                                ui,
-                                &entries,
-                                &mut selected_path,
-                            );
-                            if let Some(path) = selected_path {
-                                self.import_workflow_macro_templates_from_path(&path);
-                                ui.close();
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new(self.tr("menu.patterns.catalog_unavailable")),
-                        );
-                        ui.small(err);
-                    }
-                }
-
+                self.render_pattern_template_catalog_menu(ui);
+                self.render_grna_use_menu(ui, &launch);
                 ui.separator();
                 if ui
                     .button(self.tr("menu.patterns.gibson"))
@@ -17027,8 +17042,8 @@ Error: `{err}`"
                     self.open_gibson_dialog();
                     ui.close();
                 }
-                if ui
-                    .button(self.tr("menu.patterns.pcr_designer"))
+                if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::PcrDesign))
+                    .button(ui, self.tr("menu.patterns.pcr_designer"))
                     .on_hover_text(
                         "Open paint-first pair-PCR specialist window (ROI + primer windows + queue)",
                     )
@@ -17037,8 +17052,8 @@ Error: `{err}`"
                     self.open_pcr_design_dialog();
                     ui.close();
                 }
-                if ui
-                    .button(self.tr("menu.patterns.sequencing_confirmation"))
+                if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::SequencingConfirmation))
+                    .button(ui, self.tr("menu.patterns.sequencing_confirmation"))
                     .on_hover_text(
                         "Open construct-confirmation specialist window for called sequencing reads",
                     )
@@ -17078,102 +17093,7 @@ Error: `{err}`"
                     ui.close();
                 }
                 ui.separator();
-                ui.small(self.tr("menu.patterns.routine_catalog"));
-                match self.list_cloning_routines(None, None, None) {
-                    Ok(mut routines) => {
-                        if routines.is_empty() {
-                            ui.add_enabled(
-                                false,
-                                egui::Button::new(self.tr("menu.patterns.no_routines")),
-                            );
-                        } else {
-                            routines.sort_by(|left, right| {
-                                left.family
-                                    .to_ascii_lowercase()
-                                    .cmp(&right.family.to_ascii_lowercase())
-                                    .then(
-                                        left.title
-                                            .to_ascii_lowercase()
-                                            .cmp(&right.title.to_ascii_lowercase()),
-                                    )
-                            });
-                            if ui
-                                .button(self.tr("menu.patterns.show_routine_catalog_summary"))
-                                .on_hover_text(
-                                    "Show current routine catalog location and routine count",
-                                )
-                                .clicked()
-                            {
-                                self.app_status = format!(
-                                    "Loaded {} routine(s) from '{}'",
-                                    routines.len(),
-                                    DEFAULT_CLONING_ROUTINE_CATALOG_PATH
-                                );
-                                ui.close();
-                            }
-
-                            let mut selected_template_path: Option<String> = None;
-                            let mut status_message: Option<String> = None;
-                            let mut by_family: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
-                                BTreeMap::new();
-                            let mut by_status: BTreeMap<String, Vec<CloningRoutineCatalogRow>> =
-                                BTreeMap::new();
-                            for routine in routines {
-                                by_family
-                                    .entry(routine.family.clone())
-                                    .or_default()
-                                    .push(routine.clone());
-                                by_status
-                                    .entry(routine.status.clone())
-                                    .or_default()
-                                    .push(routine);
-                            }
-
-                            ui.menu_button(self.tr("menu.patterns.browse_by_family"), |ui| {
-                                for (family, rows) in &by_family {
-                                    ui.menu_button(format!("{family} ({})", rows.len()), |ui| {
-                                        Self::render_cloning_routine_menu_entries(
-                                            ui,
-                                            rows,
-                                            &mut selected_template_path,
-                                            &mut status_message,
-                                        );
-                                    });
-                                }
-                            });
-                            ui.menu_button(self.tr("menu.patterns.browse_by_status"), |ui| {
-                                for (status, rows) in &by_status {
-                                    ui.menu_button(format!("{status} ({})", rows.len()), |ui| {
-                                        Self::render_cloning_routine_menu_entries(
-                                            ui,
-                                            rows,
-                                            &mut selected_template_path,
-                                            &mut status_message,
-                                        );
-                                    });
-                                }
-                            });
-
-                            if let Some(path) = selected_template_path {
-                                self.import_workflow_macro_templates_from_path(&path);
-                                if let Some(message) = status_message {
-                                    self.app_status = message;
-                                }
-                                ui.close();
-                            } else if let Some(message) = status_message {
-                                self.app_status = message;
-                                ui.close();
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        ui.add_enabled(
-                            false,
-                            egui::Button::new(self.tr("menu.patterns.routine_catalog_unavailable")),
-                        );
-                        ui.small(err);
-                    }
-                }
+                self.render_pattern_routine_catalog_menu(ui);
             });
             ui.menu_button(self.tr("menu.services"), |ui| {
                 if ui
@@ -22775,6 +22695,8 @@ Error: `{err}`"
             return;
         }
 
+        self.pattern_catalog.ensure_started(ctx);
+
         let mut entries = self.collect_command_palette_entries();
         let query = self.command_palette_query.trim().to_ascii_lowercase();
         if !query.is_empty() {
@@ -22829,11 +22751,10 @@ Error: `{err}`"
                         self.command_palette_selected -= 1;
                     }
                 }
-                if ui.input(|i| i.key_pressed(Key::Enter))
-                    && !entries.is_empty()
-                    && self.command_palette_selected < entries.len()
-                {
-                    execute_action = Some(entries[self.command_palette_selected].action);
+                if ui.input(|i| i.key_pressed(Key::Enter)) {
+                    execute_action = entries
+                        .get(self.command_palette_selected)
+                        .and_then(CommandPaletteEntry::ready_action);
                 }
 
                 ui.separator();
@@ -22851,7 +22772,7 @@ Error: `{err}`"
                             for (idx, entry) in entries.iter().enumerate() {
                                 let selected = self.command_palette_selected == idx;
                                 let label = format!("{} — {}", entry.title, entry.detail);
-                                let response = ui.selectable_label(selected, label);
+                                let response = entry.render_row(ui, selected, label);
                                 if response.hovered() {
                                     self.command_palette_selected = idx;
                                     self.hover_status_name =
@@ -22875,8 +22796,7 @@ Error: `{err}`"
             self.clear_viewport_foreground_request_after_render(viewport_id);
 
             if let Some(action) = execute_action {
-                self.execute_command_palette_action(ctx, action);
-                open = false;
+                open = !self.execute_command_palette_action(ctx, action);
             }
 
             if ctx.input(|i| i.key_pressed(Key::Escape)) {
@@ -22918,11 +22838,10 @@ Error: `{err}`"
                         self.command_palette_selected -= 1;
                     }
                 }
-                if ui.input(|i| i.key_pressed(Key::Enter))
-                    && !entries.is_empty()
-                    && self.command_palette_selected < entries.len()
-                {
-                    execute_action = Some(entries[self.command_palette_selected].action);
+                if ui.input(|i| i.key_pressed(Key::Enter)) {
+                    execute_action = entries
+                        .get(self.command_palette_selected)
+                        .and_then(CommandPaletteEntry::ready_action);
                 }
 
                 ui.separator();
@@ -22940,7 +22859,7 @@ Error: `{err}`"
                             for (idx, entry) in entries.iter().enumerate() {
                                 let selected = self.command_palette_selected == idx;
                                 let label = format!("{} — {}", entry.title, entry.detail);
-                                let response = ui.selectable_label(selected, label);
+                                let response = entry.render_row(ui, selected, label);
                                 if response.hovered() {
                                     self.command_palette_selected = idx;
                                     self.hover_status_name =
@@ -22980,8 +22899,7 @@ Error: `{err}`"
         });
 
         if let Some(action) = execute_action {
-            self.execute_command_palette_action(ctx, action);
-            open = false;
+            open = !self.execute_command_palette_action(ctx, action);
         }
 
         if ctx.input(|i| i.key_pressed(Key::Escape)) {

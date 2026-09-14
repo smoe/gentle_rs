@@ -1,6 +1,9 @@
 # Contextual Menu And Action Availability
 
-Status: proposal for discussion; no runtime changes approved or implemented.
+Status: slices 0 and 1 are committed as `89050bac`. Slices 2 and 3 now have
+the shared readiness/menu/palette implementation and explicit gRNA bindings;
+verification results are recorded below. This is a closed pilot, not completed
+application-wide availability.
 Claude's user-forwarded review inspected `98f74ee8`, 2026-09-14. Codex checked
 the feedback against that source and rechecked the relevant app paths after
 HEAD advanced to `a5b7028157493d44c1812fc8e1f39e1ccbea6f6a`.
@@ -345,7 +348,102 @@ review. The user then forwarded the
 and supplied Claude's source-based critique on 2026-09-14. The summary above
 separates that feedback from Codex's corrections and revised scope.
 
-Recommendation: approve slices 0 and 1 first, then verify the smaller readiness
-pilot before adding gRNA subject binding. Implementation still waits for the
-user's agreement. The revised proposal is available for a further user-forwarded
-Claude review if desired; do not contact Claude directly.
+The user approved starting implementation after this review. Slices 0 and 1
+also include explicit palette-origin capture because removing inventory
+fallbacks must not break subject-bound launches when the palette takes focus.
+This is not the general readiness-presentation migration in slice 2. The
+revised proposal remains available for user-forwarded Claude review if desired;
+do not contact Claude directly.
+
+## First-Slice Implementation Record
+
+- Catalog snapshot/refresh and labels: `src/app/pattern_catalog_ui.rs` and
+  `src/app.rs`, using shared validation in `src/engine_shell.rs`.
+- Explicit subjects and palette origin: `src/app/subject_selection.rs`,
+  `src/app.rs`, and the existing molecule-kind helper exposed through
+  `src/engine/state/sequence_ops.rs`.
+- Shared asset lookup: `src/runtime_assets.rs`, `src/lib.rs` and
+  `src/bin/gentle.rs`; explicit import paths do not use default-asset fallbacks.
+- Regression coverage: inline tests in the new modules and `src/app/tests.rs`.
+  Existing PCR/confirmation dispatch tests now check rejection without selection
+  and successful opening after explicit selection, rather than requiring the
+  removed inventory fallback.
+- Necessary feedback fix: `src/app/routine_and_agent_assistant_ui.rs` preserves
+  subject-launcher messages alongside the UI-intent identifier. Otherwise the
+  generic dispatch summary hid the new missing-subject explanation.
+- User-facing/status documentation: this plan, `docs/gui.md`, `docs/CHANGELOG.md`
+  and `docs/roadmap.md`. No dependency, fixture artifact, template ID, assay
+  algorithm or release-gate change.
+
+Verification on 2026-09-14: the initial focused set passed 21/21; the final
+broader command below passed 595/595 app/runtime-asset tests, including both
+palette-origin modes, stale origins, explicit subject transitions, catalog
+worker/cache behavior and packaged-path lookup.
+
+```sh
+cargo test --lib --locked -j 1 -- app:: runtime_assets::tests --test-threads=2 --quiet
+cargo check -q --locked -j 1
+cargo fmt --all --check
+git diff --check
+```
+
+All four commands passed. Session-close hygiene reported 4 OK, 2 warnings and
+0 failures: intentional uncommitted changes and the manual plan-fidelity
+reminder. The palette-origin and UI-intent feedback additions above are the
+explicitly documented dependencies of removing unsafe launch fallbacks.
+
+This is headless egui/dispatch coverage, not live macOS focus acceptance or a
+GUI performance measurement. Full workspace/release gates were not rerun.
+The beta toolchain also reported the existing nightly-only `lints.cargo`
+manifest warning and a large debug-test unwind-table linker warning.
+
+## Readiness And Binding Slices
+
+- `src/app/action_readiness.rs` lifts the collection readiness presentation
+  without changing its typed rejection reasons. One bounded context per surface
+  supplies DNA/sequence/guide-set readiness; project and viewer locks are
+  nonblocking. The pilot never calls whole-project introspection or host probes
+  from paint. The broader agent/introspection host-probe path is not rewritten.
+- Menus aggregate children bottom-up; imports remain separate. Both palette
+  paths use the same disabled-row/Enter policy and a fresh dispatch guard.
+  `docs/gui.md` enumerates migrated actions and the already-open-window and
+  empty-project retrieval exceptions.
+- `src/app/grna_routine_ui.rs` opens the existing Routine Assistant with the
+  explicitly selected DNA or a guide-set chooser. Catalog port/template checks
+  run in the background snapshot and again on explicit invocation. Missing
+  anchors block preflight, not setup. A previous gRNA preflight cannot authorize
+  execution after its project revision or bound parameters change.
+- `src/engine_shell/routine_bindings.rs` explicitly maps anchor port names,
+  validates through the engine's existing anchor geometry, and is reused by
+  macro preflight. No new PAM/off-target or guide-design algorithm is implied.
+  Static descriptor lookup now uses `OnceLock`; it does not cache mutable host
+  availability. Default preflight catalog lookup also uses packaged asset
+  resolution, required for the same workflow outside the checkout directory.
+- Existing collection launchers, engine validation, confirmation and non-pilot
+  actions retain their prior contracts. Native menus, broader capability
+  migration and agent-expression unification remain deferred. Glen's live GUI
+  and timing acceptance remains separate from headless regression tests.
+
+Verification on 2026-09-14: 634 app/runtime/macro/guide-design tests passed,
+followed by 79 introspection, guide-shell and anchor-operation regressions.
+The two commands below cover 713 tests, with no failures or ignored tests.
+Initial focused testing caught a cache semantic regression (duplicate descriptor
+IDs must keep the former first-match behavior) and an incorrect test assumption:
+rejected shell macro execution intentionally preserves a failed lineage receipt,
+whereas a disabled GUI launch and `--validate-only` do not mutate the project.
+The fixes preserve both existing contracts rather than suppressing failure audit.
+
+```sh
+cargo test --lib --locked -j 1 -- app:: runtime_assets::tests engine_shell::routine_bindings::tests engine_shell::tests::execute_macros engine_shell::tests::parse_macros engine_shell::tests::execute_introspection engine::tests::test_guide_design --test-threads=2 --quiet
+cargo test --lib --locked -j 1 -- engine_shell::tests::execute_introspect engine::tests::test_generate_candidate_set_between_two_sequence_anchors engine_shell::tests::execute_guides --test-threads=2 --quiet
+```
+
+The first command's `execute_introspection` filter matches no current test names;
+the second deliberately covers the actual `execute_introspect` names.
+No full-workspace, release packaging or measured latency claim is made.
+
+Final `cargo check -q --locked -j 1`, `cargo fmt --all --check` and
+`git diff --check` passed. Session-close hygiene reported 4 OK, 2 warnings,
+0 failures before commit: intentional edits and the manual plan-fidelity
+reminder. The small subject-lock, preflight asset-resolution and stale-status
+changes above are dependencies of the pilot, not unrelated refactoring.
