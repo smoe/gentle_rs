@@ -161,6 +161,7 @@ egui_extras = { version = "0.36.1", features = ["all_loaders"], optional = true 
 egui_commonmark = { version = "0.22.0", default-features = false, features = ["pulldown_cmark", "load-images"], optional = true }
 image = { workspace = true, features = ["jpeg", "png"] }
 resvg = "*"
+pdf-writer = "0.12.1"
 svg2pdf = "0.13.0"
 rfd = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["blocking", "form", "json"] }

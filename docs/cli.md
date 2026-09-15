@@ -5391,6 +5391,13 @@ Rendering export commands:
     count and actual used-font identities/hashes from that page's rasterization.
     It also declares lossless PDF image encoding. Failed font auditing prevents
     PDF publication; SVGs are never silently rendered through an unaudited fallback.
+- `svg-vector-pdf-set OUTPUT.pdf INPUT.svg [INPUT.svg ...] [--scale N] [--drop-dotplot-metadata]`
+  - Preserves each ordered SVG as a separate vector page with its own dimensions
+    and embeds selectable, Unicode-mapped subset fonts.
+  - The JSON summary records exact page geometry and used-font identities.
+    This is a static PDF: SVG hover and URI interaction are not preserved.
+    Unsupported SVG effects may be rasterized locally rather than converting
+    the entire page into an image.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,

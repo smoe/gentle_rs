@@ -189,6 +189,9 @@
 - Keep interaction claims representation-specific: SVG retains per-hit title
   hover, while the PDF is static. A PDF may locally rasterize SVG features its
   backend cannot represent; it is not advertised as a browser substitute.
+- Add `svg-vector-pdf-set` and a `--pdf-representation vector` compositor path
+  so final multipage locus/TSS reporter bundles can use the same audited vector
+  representation rather than only their component TSS pages.
 
 ## 2026-09-15 - `.10` Notes And Scientific Regeneration Input Gate
 

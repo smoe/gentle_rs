@@ -8,7 +8,11 @@ families without rescoring either one:
 2. the detailed TFBS pages for only the TSSs marked selected in an
    accession-pinned `gentle.tss_tfbs_profiles.v1` report.
 
-The output is one PDF per gene. The context SVG is page 1. Selected TSS pages
+The output is one PDF per gene. Pass `--pdf-representation vector` for GENtle's
+audited multipage vector backend; the compatibility default remains `raster`.
+Vector output keeps page geometry and selectable text, while the ordered
+SVG/HTML peer remains the interactive representation for per-hit hover details.
+The context SVG is page 1. Selected TSS pages
 follow in the deterministic order of the scored report, retaining all continuation
 pages for a tall TSS. Each selected TSS still contributes only one FASTA record.
 Detailed pages can now also carry cropped CUT&RUN/chromatin, exon/CDS structure,

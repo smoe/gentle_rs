@@ -14,11 +14,12 @@ use crate::{
         strip_dotplot_metadata_text,
     },
 };
+use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref, TextStr};
 use serde::Serialize;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     env,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 use svg2pdf::usvg;
 
@@ -42,6 +43,34 @@ pub struct SvgVectorPdfRenderBytes {
     pub font_identities: Vec<SvgUsedFontIdentity>,
     /// Whether PDF text is embedded as selectable text rather than paths.
     pub embedded_text: bool,
+}
+
+/// Audited identity and geometry for one page of a vector-PDF set.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SvgVectorPdfSetPageSummary {
+    pub input_path: String,
+    pub width: u32,
+    pub height: u32,
+    pub page_width_pt: String,
+    pub page_height_pt: String,
+    pub font_face_count: usize,
+    pub font_identities: Vec<SvgUsedFontIdentity>,
+    pub font_identity_status: &'static str,
+    pub font_digest_convention: &'static str,
+}
+
+/// Machine-readable summary of one static multipage vector PDF.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SvgVectorPdfSetRenderSummary {
+    pub output_path: String,
+    pub scale: String,
+    pub drop_dotplot_metadata: bool,
+    pub pdf_representation: &'static str,
+    pub embedded_text: bool,
+    pub svg_interactivity_preserved: bool,
+    pub svg_uri_links_preserved: bool,
+    pub page_count: usize,
+    pub pages: Vec<SvgVectorPdfSetPageSummary>,
 }
 
 fn configured_font_paths(var_name: &str) -> Vec<PathBuf> {
@@ -272,6 +301,158 @@ pub fn render_svg_to_vector_pdf_bytes_audited(
     })
 }
 
+/// Convert ordered SVG files into one static multipage vector PDF.
+///
+/// Every source keeps its own page dimensions. The output is written only
+/// after every SVG parses, converts and yields a complete used-font audit.
+pub fn render_svg_files_to_vector_pdf(
+    input_paths: &[&Path],
+    output_path: &Path,
+    options: SvgPngRenderOptions,
+) -> Result<SvgVectorPdfSetRenderSummary, String> {
+    if input_paths.is_empty() {
+        return Err("svg-vector-pdf-set requires at least one INPUT.svg".into());
+    }
+    if output_path.as_os_str().is_empty() {
+        return Err("svg-vector-pdf-set requires OUTPUT.pdf".into());
+    }
+    if !(options.scale.is_finite() && options.scale > 0.0) {
+        return Err(format!(
+            "svg-vector-pdf-set requires a positive finite scale value, got {}",
+            options.scale
+        ));
+    }
+
+    let mut alloc = Ref::new(1);
+    let catalog_id = alloc.bump();
+    let page_tree_id = alloc.bump();
+    let mut page_ids = Vec::with_capacity(input_paths.len());
+    let mut converted = Vec::with_capacity(input_paths.len());
+    let mut summaries = Vec::with_capacity(input_paths.len());
+    for input_path in input_paths {
+        if input_path.as_os_str().is_empty() {
+            return Err("svg-vector-pdf-set input paths must not be empty".into());
+        }
+        let source = std::fs::read_to_string(input_path).map_err(|error| {
+            format!(
+                "Could not read vector-PDF SVG '{}': {error}",
+                input_path.display()
+            )
+        })?;
+        let source = if options.drop_dotplot_metadata {
+            strip_dotplot_metadata_text(&source)
+        } else {
+            source
+        };
+        let mut usvg_options = usvg::Options::default();
+        {
+            let fontdb = usvg_options.fontdb_mut();
+            fontdb.load_system_fonts();
+            load_configured_fonts(fontdb)?;
+            configure_generic_families(fontdb);
+        }
+        let font_face_count = usvg_options.fontdb.len();
+        if font_face_count == 0 && source.to_ascii_lowercase().contains("<text") {
+            return Err("SVG contains text, but no font faces are available for vector PDF".into());
+        }
+        let tree = usvg::Tree::from_str(&source, &usvg_options)
+            .map_err(|error| format!("Could not parse SVG for vector PDF: {error}"))?;
+        let font_identities = collect_used_fonts(&tree)?;
+        let size = tree
+            .size()
+            .to_int_size()
+            .scale_by(options.scale)
+            .ok_or_else(|| format!("Could not scale SVG size by {}", options.scale))?;
+        let page_width_pt = size.width() as f32 * 72.0 / 96.0;
+        let page_height_pt = size.height() as f32 * 72.0 / 96.0;
+        let conversion = svg2pdf::ConversionOptions {
+            compress: true,
+            raster_scale: 1.5 * options.scale,
+            embed_text: true,
+            pdfa: false,
+        };
+        let (chunk, svg_id) = svg2pdf::to_chunk(&tree, conversion)
+            .map_err(|error| format!("Could not convert SVG to vector PDF: {error}"))?;
+        let page_id = alloc.bump();
+        let content_id = alloc.bump();
+        let mut references = HashMap::new();
+        let chunk = chunk.renumber(|old| *references.entry(old).or_insert_with(|| alloc.bump()));
+        let svg_id = *references
+            .get(&svg_id)
+            .ok_or_else(|| "vector-PDF backend omitted its root graphic".to_string())?;
+        page_ids.push(page_id);
+        summaries.push(SvgVectorPdfSetPageSummary {
+            input_path: input_path.to_string_lossy().into_owned(),
+            width: size.width(),
+            height: size.height(),
+            page_width_pt: format!("{page_width_pt:.2}"),
+            page_height_pt: format!("{page_height_pt:.2}"),
+            font_face_count,
+            font_identities,
+            font_identity_status: "glyph_used_font_sources_recorded",
+            font_digest_convention:
+                "sha256(complete font source/container bytes); face_index recorded separately",
+        });
+        converted.push((
+            page_id,
+            content_id,
+            svg_id,
+            page_width_pt,
+            page_height_pt,
+            chunk,
+        ));
+    }
+
+    let mut pdf = Pdf::new();
+    pdf.catalog(catalog_id).pages(page_tree_id);
+    pdf.pages(page_tree_id)
+        .kids(page_ids.iter().copied())
+        .count(i32::try_from(page_ids.len()).map_err(|_| "too many vector-PDF pages")?);
+    for (page_id, content_id, svg_id, width, height, chunk) in converted {
+        let graphic_name = Name(b"S1");
+        let mut page = pdf.page(page_id);
+        page.media_box(Rect::new(0.0, 0.0, width, height));
+        page.parent(page_tree_id);
+        page.contents(content_id);
+        let mut resources = page.resources();
+        resources.x_objects().pair(graphic_name, svg_id);
+        resources.finish();
+        page.finish();
+        let mut content = Content::new();
+        content
+            .save_state()
+            .transform([width, 0.0, 0.0, height, 0.0, 0.0])
+            .x_object(graphic_name)
+            .restore_state();
+        pdf.stream(content_id, &content.finish());
+        pdf.extend(&chunk);
+    }
+    let info_id = alloc.bump();
+    pdf.document_info(info_id)
+        .producer(TextStr("GENtle svg2pdf"));
+    let bytes = pdf.finish();
+    if !bytes.starts_with(b"%PDF-") {
+        return Err("vector PDF backend returned a non-PDF payload".into());
+    }
+    std::fs::write(output_path, bytes).map_err(|error| {
+        format!(
+            "Could not write vector PDF '{}': {error}",
+            output_path.display()
+        )
+    })?;
+    Ok(SvgVectorPdfSetRenderSummary {
+        output_path: output_path.to_string_lossy().into_owned(),
+        scale: options.scale.to_string(),
+        drop_dotplot_metadata: options.drop_dotplot_metadata,
+        pdf_representation: "static multipage vector PDF with embedded selectable text",
+        embedded_text: true,
+        svg_interactivity_preserved: false,
+        svg_uri_links_preserved: false,
+        page_count: summaries.len(),
+        pages: summaries,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,5 +487,38 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("positive finite scale"));
+    }
+
+    #[test]
+    fn vector_pdf_set_preserves_order_and_distinct_page_sizes() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory.path().join("first.svg");
+        let second = directory.path().join("second.svg");
+        let output = directory.path().join("combined.pdf");
+        std::fs::write(&first, r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text x="5" y="20">first page</text></svg>"#).unwrap();
+        std::fs::write(&second, r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="120"><path d="M0 0L300 120" stroke="black"/><text x="5" y="20">second page</text></svg>"#).unwrap();
+        let summary = render_svg_files_to_vector_pdf(
+            &[first.as_path(), second.as_path()],
+            &output,
+            SvgPngRenderOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(summary.page_count, 2);
+        assert_eq!(
+            (summary.pages[0].width, summary.pages[0].height),
+            (200, 100)
+        );
+        assert_eq!(
+            (summary.pages[1].width, summary.pages[1].height),
+            (300, 120)
+        );
+        assert_eq!(summary.pages[0].input_path, first.to_string_lossy());
+        let bytes = std::fs::read(output).unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert!(
+            !bytes
+                .windows(b"/Subtype /Image".len())
+                .any(|window| window == b"/Subtype /Image")
+        );
     }
 }
