@@ -1,15 +1,17 @@
 # Contextual Menu And Action Availability
 
-Status: slices 0 and 1 are committed as `89050bac`. Slices 2 and 3 now have
+Status: slices 0 and 1 are committed as `89050bac`; slices 2 and 3 as
+`8f27f8b8` (also integrated as `b7d4e97c` / `ccf461dc`). They provide
 the shared readiness/menu/palette implementation and explicit gRNA bindings;
 verification results are recorded below. This is a closed pilot, not completed
 application-wide availability.
-Claude's user-forwarded review inspected `98f74ee8`, 2026-09-14. Codex checked
-the feedback against that source and rechecked the relevant app paths after
-HEAD advanced to `a5b7028157493d44c1812fc8e1f39e1ccbea6f6a`.
-This does not expand the `.10` release gate. The original proposal and review
-response are retained below; the revised plan has not had a second Claude
-review. No further direct Claude connection is part of this task.
+Claude's initial user-forwarded review inspected `98f74ee8` on 2026-09-14.
+The user-forwarded follow-up, received 2026-09-15, inspected `c1eb0ef7`,
+accepted the revised pilot design and withdrew the sticky-focus finding.
+The original proposal, Codex response and follow-up verification are retained
+below. No further implementation blocker was identified in that review; live
+GUI acceptance and broader migration remain outstanding. This does not expand
+the `.10` release gate. No new direct Claude session was invoked for closeout.
 
 ## Evidence And User Intent
 
@@ -73,7 +75,10 @@ Historical proposal, superseded where the review response below says otherwise:
    existing subject-bound launchers; add deterministic transitions, parity and
    no-work-in-paint tests before migrating additional families.
 
-## Claude Feedback And Codex Response
+## Initial Claude Feedback And Codex Response
+
+Historical response to the 2026-09-14 review, checked against `98f74ee8` and
+rechecked after HEAD advanced to `a5b7028157493d44c1812fc8e1f39e1ccbea6f6a`.
 
 Adopt Claude's main simplification: generalize the existing app-layer
 `CollectionLauncherReadiness` presentation instead of introducing protocol
@@ -87,7 +92,7 @@ Do not repeat the agent's per-suggestion fact-graph construction per menu row.
 
 Three qualifications matter:
 
-- **Focus is not already solved.** Claude missed the helper call chain:
+- **The sticky-focus claim is unsupported.** Claude missed the helper call chain:
   `set_active_window_viewport` reports focus, and
   `note_viewport_focus_if_active` calls it (`src/app.rs:3309`). The separate
   palette calls that helper (`src/app.rs:22879`), and the root frame explicitly
@@ -105,8 +110,9 @@ Three qualifications matter:
   palette entries for presentation, but also recheck at the shared dispatcher.
   That covers both Enter/click paths and state changes after collection.
 
-Claude ran no build or tests. Source inspection supports these revisions,
-not a claim of measured latency or a reproduced GUI focus failure.
+Claude ran no build or tests during that initial review. Source inspection
+supports these revisions, not a claim of measured latency or a reproduced GUI
+focus failure. The follow-up review below includes focused test results.
 
 ## Revised Abstraction
 
@@ -351,9 +357,47 @@ separates that feedback from Codex's corrections and revised scope.
 The user approved starting implementation after this review. Slices 0 and 1
 also include explicit palette-origin capture because removing inventory
 fallbacks must not break subject-bound launches when the palette takes focus.
-This is not the general readiness-presentation migration in slice 2. The
-revised proposal remains available for user-forwarded Claude review if desired;
-do not contact Claude directly.
+This is not the general readiness-presentation migration in slice 2. The user
+subsequently supplied the completed follow-up review recorded below; it is not
+a new direct Claude consultation by Codex.
+
+### Follow-Up Review Received 2026-09-15
+
+Claude inspected main at `c1eb0ef7` and reported no further objections to the
+revised design. The review closes findings A/B/C/E/F for this pilot: background
+catalog snapshots and packaged paths, cached static descriptors, explicit
+per-action subjects, canonical import labels, and palette readiness with a
+dispatch-time recheck. It accepts app-layer `ActionReadiness`, bottom-up submenu
+aggregation and explicit anchor-port bindings rather than another protocol DTO
+or inferred parameter names.
+
+Claude explicitly withdrew finding D: the root frame already reclaims focus
+through the active-viewport path. Filtering molecule kind per action remains
+intentional because shared sequence inventories also serve non-DNA workflows.
+Finding G (agent-path typing), native-menu integration, a protocol DTO and
+remaining capability families stay deferred. This review does not authorize
+their implementation or change the release gate.
+
+Verification reported by Claude: 15 tests passed (8 subject selection,
+4 pattern catalog, 3 routine bindings). Claude did not run the full suite.
+Codex independently rechecked source at `84e26d78` on 2026-09-15 and reran those
+15 tests plus 4 action-readiness regressions: 19 passed, none failed or ignored.
+The latter cover disabled mouse/Enter input, submenu aggregation, busy project
+locks and dispatch-time rejection after removal of the selected sequence.
+
+```sh
+cargo test --locked --offline --lib -j 1 -- app::subject_selection::tests app::pattern_catalog_ui::tests app::action_readiness::tests engine_shell::routine_bindings::tests --test-threads=2
+```
+
+`cargo check -q --locked --offline -j 1`, `cargo fmt --all --check` and
+`git diff --check` also passed. Session-close hygiene reported 4 OK, 2 warnings,
+0 failures: the intentional/unrelated dirty files and manual scope reminder.
+The closeout changes only this review record and `docs/CHANGELOG.md`.
+
+Neither review establishes live macOS focus behavior, measured latency or
+release readiness. The existing large debug-test unwind-table linker warning
+remains; no full-workspace or release gates were rerun for this documentation
+closeout. Runtime code and unrelated working-tree changes are untouched.
 
 ## First-Slice Implementation Record
 

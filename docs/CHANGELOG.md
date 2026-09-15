@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-09-15 - Contextual Availability Review Closeout
+
+- Record Claude's user-forwarded follow-up on `c1eb0ef7`: the revised pilot
+  design is accepted, the sticky-focus finding is withdrawn, and the initial
+  no-test review is distinguished from the follow-up's 15 reported passing tests.
+  Correct the stale second-review status in the
+  [availability plan](contextual_action_availability_plan.md). No runtime,
+  release-gate or deferred-scope change; live GUI acceptance remains outstanding.
+
 ## 2026-09-15 - Fragment-Candidate Glossary Smoke Fixture
 
 - Give both CLI glossary smoke checks a synthetic typed request for
