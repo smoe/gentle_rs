@@ -7073,6 +7073,27 @@ mod tests {
     }
 
     #[test]
+    fn patz1_probe_fixture_digest_matches_retained_tutorial_provenance() {
+        let report: TranscriptAssayPanelReport = serde_json::from_slice(
+            &fs::read(tutorial_output_dir().join(
+                "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
+            ))
+            .expect("read retained common-region report"),
+        )
+        .expect("parse retained common-region report");
+        assert_eq!(report.provenance.junction_sources.len(), 1);
+        for source in &report.provenance.junction_sources {
+            let bytes = fs::read(source.path.as_deref().expect("bound evidence path"))
+                .expect("read synthetic probe evidence");
+            assert_eq!(
+                crate::digest_utils::sha256_prefixed_bytes(&bytes),
+                source.sha256.as_deref().expect("bound evidence digest"),
+                "PATZ1 input bytes must match retained provenance; preserve the fixture's LF checkout rule in .gitattributes"
+            );
+        }
+    }
+
+    #[test]
     fn retained_patz1_assay_tutorial_versions_match_current_package() {
         let directory =
             tutorial_output_dir().join("artifacts/patz1_transcript_assay_panels_cli/artifacts");
@@ -7184,6 +7205,29 @@ mod tests {
                     && row.status == "selected_spanning_assay")
         );
         assert!(!sybr.short_sybr_junction_assays.is_empty());
+
+        for filename in [
+            "patz1_endpoint_end_matrix.report.json",
+            "patz1_sybr_juc_panel.report.json",
+            "patz1_routine_common_region_screen.report.json",
+        ] {
+            let actual = fs::read_to_string(run_dir.path().join("artifacts").join(filename))
+                .expect("read fresh PATZ1 report");
+            let expected = fs::read(
+                tutorial_output_dir()
+                    .join("artifacts/patz1_transcript_assay_panels_cli/artifacts")
+                    .join(filename),
+            )
+            .expect("read retained PATZ1 report");
+            assert!(
+                tutorial_generated_bytes_equal(
+                    filename,
+                    &expected,
+                    normalize_retained_tutorial_artifact_text(&actual).as_bytes(),
+                ),
+                "PATZ1 report {filename} must match the retained tutorial, including input hashes"
+            );
+        }
     }
 
     #[test]

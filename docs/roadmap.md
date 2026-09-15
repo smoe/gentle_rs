@@ -54,7 +54,7 @@ Release acceptance:
 - The proof workflow remains offline-safe and writes non-empty sequence,
   splicing-expert, TFBS SVG, repeat-materialization JSON, CUT&RUN regulatory
   JSON, and CUT&RUN coverage/cut-site/fragment TSV artifacts.
-- Version metadata, generated documentation, capability/parity checks, and the
+- Version metadata, LF/CRLF tutorial replays, capability/parity checks, and the
   deterministic proof workflow pass the pre-tag validation recorded in the
   versioned release notes.
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional

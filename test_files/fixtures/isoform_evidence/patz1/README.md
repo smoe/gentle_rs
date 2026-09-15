@@ -31,6 +31,16 @@ GENtle preserves selection evidence without claiming exact probe reuse.
 4. Keep expression, cDNA/EST, and probe rows exactly as recorded in the local
    TSV/JSON files. No timestamps or network results enter the fixture.
 
+Keep `patz1_probe_evidence.json` as UTF-8 with LF line endings, including on
+Windows (`.gitattributes` enforces this). Its exact-byte SHA-256 is
+`11e2a7b4cbb83af5868902b1834ecbfe6c5e7ddb80e521c1060abf7a4d8418a9`.
+The PATZ1 endpoint/SYBR tutorial's junction and common-region reports retain
+this digest; converting LF to CRLF changes the evidence identity even though
+the parsed JSON is equivalent. Engine hashing deliberately does not normalize
+user evidence. `patz1_probe_fixture_digest_matches_retained_tutorial_provenance`
+checks the checkout against the retained report, and the focused PATZ1 workflow
+test compares all three regenerated assay reports with the tutorial snapshots.
+
 ## GENtle use
 
 - Engine tests load the GenBank slice, import `patz1_isoform_panel.json`, and

@@ -51,6 +51,10 @@ cargo run -q --bin gentle_cli -- --state /tmp/gentle-patz1-routine-fixture.json 
 The generated isoform-evidence fixture has SHA-256
 `267a8fc00da8fea653dd440259987b20fc68422554cfed8bbff61809d4eeaaf5`.
 The workflow checks this digest before composing the routine.
+`.gitattributes` pins this JSON fixture to LF line endings on every platform
+so the direct CLI examples also receive those exact bytes. Preserve LF when
+recreating it; do not update expected hashes just to accommodate CRLF checkout
+conversion. The source probe-evidence fixture has the same checkout safeguard.
 
 ## GENtle use
 

@@ -65,6 +65,15 @@ content-bound manifest, and renders the three regions on a SERPINE1 locus
 figure. The engine and workflow tests verify coordinate conventions, source
 provenance, explicit non-claims, and stable SVG markers.
 
+The retained `portable_genomic_regions.bed` export has its own `bed_sha256`
+in `portable_genomic_regions.bed.manifest.json`. `.gitattributes` pins retained
+tutorial BED exports to LF so Windows checkout conversion cannot invalidate
+that receipt. `scripts.test_tutorial_checkouts` verifies the retained bytes
+against the manifest; the full checkout replay verifies fresh output too.
+The synthetic BED input is likewise pinned to LF: the retained locus SVG binds
+its exact SHA-256 on the occupancy lane. A focused checkout-harness regression
+compares that figure provenance with the input bytes.
+
 The fixture validates contracts and rendering only. Synthetic signal is not
 evidence for SERPINE1 regulation, TP73 occupancy, biochemical affinity, or
 causal activity.

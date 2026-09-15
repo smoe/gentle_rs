@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-15 - Windows PATZ1 Tutorial Evidence Identity
+
+- Pin the PATZ1 probe and composed isoform-evidence JSON fixtures to LF on
+  checkout. Windows CRLF conversion changed the probe input's SHA-256 and
+  therefore the tutorial's retained common-region/SYBR report provenance.
+- Check the fixture digest against retained provenance and compare all three
+  freshly generated PATZ1 assay reports in the focused workflow regression.
+  Preserve byte-exact engine hashing and strict tutorial checks; no scientific
+  inputs, scores, selected assays or generated artifacts are changed.
+- Add a portable checkout replay to every selected CI platform: the existing
+  binary validates both LF and Windows-style CRLF local checkouts without a
+  second Rust build. Synthetic harness tests cover hash drift, explicit LF
+  protection, binary preservation, source isolation and failed/timeout checks.
+  This tests checkout portability, not a substitute for native-OS acceptance.
+- The new CRLF replay exposed drift in the portable-regions BED export and
+  synthetic occupancy input. Pin those bytes to LF and check the export's
+  manifest digest and the figure's source digest;
+  do not hide the mismatch with line-ending-insensitive receipt validation.
+
 ## 2026-09-15 - Contextual Availability Review Closeout
 
 - Record Claude's user-forwarded follow-up on `c1eb0ef7`: the revised pilot

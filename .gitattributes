@@ -9,3 +9,13 @@ docs/tutorial/generated/** export-ignore
 
 # Keep the hashed TP73 BLAST fixture byte-identical on Windows checkouts.
 test_files/fixtures/blast_tp73_isoforms/*.fasta text eol=lf
+
+# PATZ1 tutorial reports bind these exact input bytes, including line endings.
+test_files/fixtures/isoform_evidence/patz1/patz1_probe_evidence.json text eol=lf
+test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json text eol=lf
+
+# BED sidecar manifests bind the retained exports byte-for-byte.
+docs/tutorial/generated/**/*.bed text eol=lf
+
+# The retained SERPINE1 figure binds the occupancy source's exact bytes.
+test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.bed text eol=lf

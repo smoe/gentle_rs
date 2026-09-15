@@ -1,0 +1,137 @@
+"""Synthetic temporary Git fixtures for the cross-host tutorial checkout gate.
+
+Fixtures are created below from literal bytes, committed only inside temporary
+repositories, and consumed by the checkout/replay tests. No biological data,
+network, build, real checkout changes, or platform-specific tools are used.
+"""
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+import xml.etree.ElementTree as ET
+
+from scripts import check_tutorial_checkouts as checker
+
+
+class TutorialCheckoutTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="gentle-checkout-test-")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "source"
+        self.root.mkdir()
+        checker.git(self.root, "init", "--quiet")
+        checker.git(self.root, "config", "core.autocrlf", "false")
+        checker.git(self.root, "config", "user.name", "Synthetic test")
+        checker.git(self.root, "config", "user.email", "fixture@example.invalid")
+        self.payload = b'{\n  "schema": "synthetic.fixture.v1"\n}\n'
+        (self.root / "evidence.json").write_bytes(self.payload)
+        (self.root / "unbound.txt").write_bytes(b"first\nsecond\n")
+        (self.root / "binary.bin").write_bytes(b"\x00\xff\n\r\n")
+        (self.root / ".gitattributes").write_bytes(b"evidence.json text eol=lf\n")
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "fixture")
+
+    def test_both_modes_preserve_bound_bytes_binary_and_history(self):
+        revision = checker.git(self.root, "rev-parse", "HEAD").decode().strip()
+        (self.root / "untracked-private.txt").write_text("must not be copied")
+        before = checker.git(self.root, "status", "--porcelain")
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / mode[0]
+                self.assertEqual(checker.prepare_checkout(self.root, target, mode), revision)
+                self.assertEqual((target / "evidence.json").read_bytes(), self.payload)
+                self.assertEqual((target / "binary.bin").read_bytes(), b"\x00\xff\n\r\n")
+                separator = b"\r\n" if mode[0] == "crlf" else b"\n"
+                self.assertEqual((target / "unbound.txt").read_bytes(),
+                                 separator.join((b"first", b"second", b"")))
+                self.assertFalse((target / "untracked-private.txt").exists())
+                self.assertEqual(checker.git(target, "log", "-1", "--format=%H", "--", "evidence.json")
+                                 .decode().strip(), revision)
+        self.assertEqual(checker.git(self.root, "status", "--porcelain"), before)
+
+    def test_missing_lf_rule_changes_digest_and_explicit_overlay_restores_it(self):
+        (self.root / ".gitattributes").write_bytes(b"# No protection\n")
+        checker.git(self.root, "add", "--", ".gitattributes")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "regression")
+        broken = Path(self.tmp.name) / "broken"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1])
+        self.assertNotEqual(hashlib.sha256((broken / "evidence.json").read_bytes()).digest(),
+                            hashlib.sha256(self.payload).digest())
+        fixed = Path(self.tmp.name) / "fixed"
+        checker.prepare_checkout(self.root, fixed, checker.MODES[1],
+                                 b"evidence.json text eol=lf\n")
+        self.assertEqual((fixed / "evidence.json").read_bytes(), self.payload)
+        self.assertEqual((self.root / ".gitattributes").read_bytes(), b"# No protection\n")
+
+    def test_replay_uses_existing_binary_and_forces_offline(self):
+        with patch.dict(os.environ, {"GENTLE_TEST_ONLINE": "1"}), \
+                patch.object(checker.subprocess, "run") as run:
+            checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [["existing-binary", "--check"], ["existing-binary", "tutorial-check"]])
+        for call in run.call_args_list:
+            self.assertNotIn("GENTLE_TEST_ONLINE", call.kwargs["env"])
+            self.assertEqual(call.kwargs["cwd"], self.root)
+            self.assertTrue(call.kwargs["check"])
+            self.assertEqual(call.kwargs["timeout"], 12)
+
+    def test_failed_check_or_timeout_cannot_be_reported_as_success(self):
+        for error in (subprocess.CalledProcessError(1, "validator"),
+                      subprocess.TimeoutExpired("validator", 12)):
+            for failed_call in (0, 1):
+                with self.subTest(error=type(error).__name__, failed_call=failed_call), \
+                        patch.object(checker.subprocess, "run",
+                                     side_effect=[None] * failed_call + [error]):
+                    with self.assertRaisesRegex(RuntimeError, "crlf checkout failed"):
+                        checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
+
+    def test_main_checks_both_modes_at_one_revision_without_building(self):
+        binary = Path(self.tmp.name) / "existing-binary"
+        binary.touch()
+        arguments = ["--repo-root", str(self.root), "--binary", str(binary)]
+        with patch.object(checker, "prepare_checkout") as prepare, \
+                patch.object(checker, "check_checkout") as check:
+            self.assertEqual(checker.main(arguments), 0)
+        self.assertEqual([call.args[2][0] for call in prepare.call_args_list], ["lf", "crlf"])
+        self.assertEqual(prepare.call_args_list[0].args[4], prepare.call_args_list[1].args[4])
+        self.assertEqual([call.args[2] for call in check.call_args_list], ["lf", "crlf"])
+        with patch.object(checker, "prepare_checkout"), \
+                patch.object(checker, "check_checkout", side_effect=[None, RuntimeError("crlf failed")]):
+            with self.assertRaisesRegex(RuntimeError, "crlf failed"):
+                checker.main(arguments)
+
+
+class RetainedTutorialReceiptTests(unittest.TestCase):
+    def test_serpine1_occupancy_fixture_matches_retained_figure_provenance(self):
+        root = checker.ROOT
+        fixture = root / "test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.bed"
+        figure = root / "docs/tutorial/generated/artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg"
+        sources = [element for element in ET.parse(figure).iter()
+                   if element.get("data-gentle-occupancy-source") == "synthetic_serpine1_cutrun_v1"]
+        self.assertEqual(len(sources), 1, "expected retained synthetic occupancy lane")
+        self.assertEqual("sha256:" + hashlib.sha256(fixture.read_bytes()).hexdigest(),
+                         sources[0].get("data-gentle-occupancy-source-sha256"),
+                         "Preserve the synthetic BED input's LF checkout rule")
+
+    def test_retained_bed_bytes_match_manifest_digests(self):
+        root = checker.ROOT / "docs/tutorial/generated"
+        manifests = sorted(root.rglob("*.bed.manifest.json"))
+        self.assertTrue(manifests, "expected retained BED receipt coverage")
+        for path in manifests:
+            with self.subTest(manifest=path.relative_to(root)):
+                manifest = json.loads(path.read_bytes())
+                self.assertEqual(manifest["schema"], "gentle.genomic_region_bed_manifest.v1")
+                name = manifest["bed_file_name"]
+                self.assertEqual(Path(name).name, name)
+                digest = "sha256:" + hashlib.sha256((path.parent / name).read_bytes()).hexdigest()
+                self.assertEqual(digest, manifest["bed_sha256"],
+                                 "Preserve the retained BED export's LF checkout rule")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -163,6 +163,36 @@ Pass criteria:
   minimal follow-up/fix recorded with evidence. Codex readability reviews may be
   recorded as `codex` sign-offs, but human scientific approval remains distinct.
 
+### Portable Tutorial Checkouts
+
+The sampled macOS/Linux/Windows CI job reuses its built `gentle_examples_docs`
+binary to check two isolated local Git checkouts: `core.autocrlf=false` with
+`core.eol=lf`, and `core.autocrlf=true` with `core.eol=crlf`. Thus every selected
+host tests Windows-style conversion as well as LF inputs. Both run `--check`
+and the complete offline `tutorial-check`; comparison and evidence hashes are
+not weakened. Git history is retained for tutorial review dates. Ignored caches,
+untracked private files, submodules and Cargo build outputs are not copied.
+
+```bash
+python3 -m unittest scripts.test_tutorial_checkouts -v
+cargo build --locked --bin gentle_examples_docs
+python3 scripts/check_tutorial_checkouts.py --binary target/debug/gentle_examples_docs
+```
+
+On Windows, use `python` and the `.exe` binary suffix. Each checkout is removed
+before the next is created; each validator invocation has a 900-second timeout.
+The binary must be built from the tested revision. For an uncommitted LF-rule
+fix, `--attributes-from .gitattributes` explicitly overlays only that file in
+the temporary indexes and labels the result as an overlay, not exact-commit
+acceptance. All other content comes from the captured HEAD, not dirty files.
+
+This detects line-ending-induced tutorial/provenance drift on any selected OS;
+it does not emulate another OS's path semantics, libraries, compiler or GUI.
+Native-platform packaging and release checks remain necessary. New failures
+must be traced to their inputs, not repaired by erasing hashes or overwriting
+scientific output snapshots. The synthetic harness tests also prove binary-byte
+preservation and that a missing LF rule changes a bound fixture's hash.
+
 ## Chore 4: Release-Gate Readiness Scan
 
 Cadence: before tags, before release-candidate handoff, and weekly while the
