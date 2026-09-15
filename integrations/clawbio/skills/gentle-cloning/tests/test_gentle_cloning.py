@@ -60,6 +60,80 @@ def _examples_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "examples"
 
 
+def _fixture_cli_argv(
+    path: Path, *, platform_name: str | None = None
+) -> list[str]:
+    """Return an explicit interpreter command for synthetic CLI scripts on Windows."""
+
+    platform_name = os.name if platform_name is None else platform_name
+    if platform_name != "nt":
+        return [str(path)]
+    script_bytes = path.read_bytes()
+    script_text = script_bytes.decode("utf-8")
+    first_line = script_text.splitlines()[0]
+    if path.suffix == ".py" or "python" in first_line:
+        return [sys.executable, str(path)]
+    if path.suffix == ".sh" or "sh" in first_line:
+        if b"\r\n" in script_bytes:
+            path.write_bytes(script_bytes.replace(b"\r\n", b"\n"))
+        shell = shutil.which("bash") or shutil.which("sh")
+        if shell is None and platform_name == "nt":
+            program_files = Path(os.environ.get("ProgramFiles", "C:/Program Files"))
+            git_bash = program_files / "Git" / "bin" / "bash.exe"
+            if git_bash.is_file():
+                shell = str(git_bash)
+        if shell is None:
+            pytest.skip("synthetic shell CLI fixture requires bash or sh on Windows")
+        return [shell, path.as_posix()]
+    pytest.fail(f"synthetic CLI fixture '{path}' has no supported interpreter")
+
+
+def _fixture_cli_command(
+    path: Path, *, platform_name: str | None = None
+) -> str:
+    return shlex.join(_fixture_cli_argv(path, platform_name=platform_name))
+
+
+def _fixture_python_shell_command() -> str:
+    return shlex.quote(Path(sys.executable).as_posix())
+
+
+def _fixture_exit_command(exit_code: int) -> str:
+    if os.name != "nt":
+        return "true" if exit_code == 0 else "false"
+    return shlex.join([sys.executable, "-c", f"raise SystemExit({exit_code})"])
+
+
+def test_fixture_cli_command_selects_python_explicitly_on_windows(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake_cli.py"
+    fake_cli.write_text("print('synthetic')\n", encoding="utf-8")
+
+    argv = _fixture_cli_argv(fake_cli, platform_name="nt")
+
+    assert argv == [sys.executable, str(fake_cli)]
+    assert shlex.split(shlex.join(argv)) == argv
+
+
+def test_fixture_cli_command_selects_shell_explicitly_on_windows(
+    tmp_path: Path,
+) -> None:
+    fake_cli = tmp_path / "fake cli.sh"
+    fake_cli.write_bytes(
+        b"#!/usr/bin/env bash\r\nprintf '%s\\n' synthetic-shell-cli\r\n"
+    )
+
+    command = _fixture_cli_command(fake_cli, platform_name="nt")
+    argv = shlex.split(command)
+    run = subprocess.run(argv, capture_output=True, text=True, check=False)
+
+    assert argv[1] == fake_cli.as_posix()
+    assert b"\r\n" not in fake_cli.read_bytes()
+    assert run.returncode == 0
+    assert run.stdout == "synthetic-shell-cli\n"
+
+
 def test_run_cli_command_preserves_child_failure_bytes_and_hashes(tmp_path: Path) -> None:
     module = _skill_module()
     child = tmp_path / "child_failure.py"
@@ -110,6 +184,10 @@ def test_run_cli_command_timeout_preserves_partial_output_receipt(tmp_path: Path
     assert step["stderr_sha256"] == module._sha256_prefixed_bytes(b"timeout-diagnostic")
 
 
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="a child handling SIGTERM and exiting zero is a POSIX-only contract",
+)
 def test_run_cli_command_timeout_stays_failed_when_child_exits_zero(
     tmp_path: Path,
 ) -> None:
@@ -397,6 +475,10 @@ def test_run_cli_command_timeout_cleans_up_signal_ignoring_descendant(
     assert forced[0]["forwarded"] is True
 
 
+@pytest.mark.skipif(
+    os.name != "posix",
+    reason="a child handling SIGTERM and returning JSON is a POSIX-only contract",
+)
 def test_wrapper_timeout_manifest_is_failed_even_when_child_returns_json_and_zero(
     tmp_path: Path,
 ) -> None:
@@ -439,7 +521,7 @@ def test_wrapper_timeout_manifest_is_failed_even_when_child_returns_json_and_zer
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -563,7 +645,7 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
         "if [ \"${1:-}\" = \"svg-png\" ]; then\n"
         "  output_path=$3\n"
         "  mkdir -p \"$(dirname \"$output_path\")\"\n"
-        "  python3 - \"$output_path\" <<'PY'\n"
+        f"  {_fixture_python_shell_command()} - \"$output_path\" <<'PY'\n"
         "import base64, sys\n"
         "from pathlib import Path\n"
         "Path(sys.argv[1]).write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII='))\n"
@@ -965,7 +1047,7 @@ def test_external_primer_handoff_binds_native_results_and_preserves_non_pcr_reco
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1067,7 +1149,7 @@ def test_external_primer_handoff_rejects_altered_native_sequence(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1104,7 +1186,7 @@ def test_external_primer_handoff_rejects_result_from_wrong_target(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1142,7 +1224,7 @@ def test_external_primer_handoff_does_not_accept_missing_requested_specificity(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -1177,7 +1259,7 @@ def test_external_primer_handoff_rejects_wrong_target_state_before_invocation(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            "false",
+            _fixture_exit_command(1),
         ],
         capture_output=True,
         text=True,
@@ -1215,7 +1297,7 @@ def test_external_primer_handoff_keeps_non_pcr_collection_as_not_submitted(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            "false",
+            _fixture_exit_command(1),
         ],
         capture_output=True,
         text=True,
@@ -1455,7 +1537,7 @@ def test_strict_pcr_bundle_writes_attributed_report_and_artifact_ledger(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1597,7 +1679,7 @@ def test_content_bound_input_mutation_fails_closed_and_keeps_original_hash(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1663,7 +1745,7 @@ def test_delegated_run_binds_route_runtime_state_and_native_verdict(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1732,7 +1814,7 @@ def test_confirmation_gated_delegation_proposes_then_executes_exact_approval(
             "--output",
             str(proposal_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1784,7 +1866,7 @@ def test_confirmation_gated_delegation_proposes_then_executes_exact_approval(
             "--output",
             str(repeat_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1828,7 +1910,7 @@ def test_confirmation_gated_delegation_proposes_then_executes_exact_approval(
             "--output",
             str(execution_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1901,7 +1983,7 @@ def test_approved_execution_rejects_tampered_review_projection(
             "--output",
             str(proposal_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -1986,7 +2068,7 @@ def test_approved_execution_rejects_input_drift_before_command(
             "--output",
             str(proposal_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2025,7 +2107,7 @@ def test_approved_execution_rejects_input_drift_before_command(
             "--output",
             str(execution_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2060,7 +2142,7 @@ def test_approved_execution_rejects_state_drift_before_version_probe(
             "--output",
             str(proposal_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2091,7 +2173,7 @@ def test_approved_execution_rejects_state_drift_before_version_probe(
             "--output",
             str(execution_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2128,7 +2210,7 @@ def test_approved_execution_rejects_environment_drift_before_version_probe(
             "--output",
             str(proposal_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=proposal_env,
@@ -2161,7 +2243,7 @@ def test_approved_execution_rejects_environment_drift_before_version_probe(
             "--output",
             str(execution_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=execution_env,
@@ -2197,7 +2279,7 @@ def test_approved_execution_rejects_runtime_drift_before_version_probe(
             "--output",
             str(proposal_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2242,7 +2324,7 @@ def test_approved_execution_rejects_runtime_drift_before_version_probe(
             "--output",
             str(execution_output),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2312,7 +2394,7 @@ def test_demo_writes_expected_artifacts(tmp_path: Path) -> None:
         "--output",
         str(output_dir),
         "--gentle-cli",
-        "true",
+        _fixture_exit_command(0),
     ]
     run = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert run.returncode == 0, run.stderr
@@ -2365,7 +2447,7 @@ def test_demo_followup_action_is_routeable_by_skill_alias(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            "true",
+            _fixture_exit_command(0),
         ],
         capture_output=True,
         text=True,
@@ -2418,7 +2500,7 @@ def test_demo_promotes_graphical_artifact_and_capabilities_followup(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2482,7 +2564,7 @@ def test_expected_artifact_parent_dirs_are_created_before_command(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2771,7 +2853,7 @@ def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=env,
@@ -2831,9 +2913,9 @@ def test_capabilities_mode_surfaces_ui_intent_catalog_and_handoff_actions(
     commands_text = (output_dir / "reproducibility" / "commands.sh").read_text(
         encoding="utf-8"
     )
-    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " capabilities\n" in commands_text
     assert (
-        "\n" + shlex.quote(str(fake_cli)) + " shell 'ui intents'\n"
+        "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " shell 'ui intents'\n"
         in commands_text
     )
     assert capture_path.read_text(encoding="utf-8").splitlines() == [
@@ -2879,7 +2961,7 @@ def test_capabilities_mode_tolerates_missing_ui_intents_probe(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -2900,9 +2982,9 @@ def test_capabilities_mode_tolerates_missing_ui_intents_probe(
     commands_text = (output_dir / "reproducibility" / "commands.sh").read_text(
         encoding="utf-8"
     )
-    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " capabilities\n" in commands_text
     assert (
-        "\n" + shlex.quote(str(fake_cli)) + " shell 'ui intents'\n"
+        "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " shell 'ui intents'\n"
         in commands_text
     )
 
@@ -2939,7 +3021,7 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -2951,7 +3033,7 @@ def test_version_mode_reports_installed_gentle_runtime(tmp_path: Path) -> None:
     assert payload["status"] == "ok"
     assert payload["invocation_marker"] == "GENtle ClawBio skill wrapper invoked"
     assert payload["request"]["mode"] == "version"
-    assert payload["command"] == [str(fake_cli), "--version"]
+    assert payload["command"] == [*_fixture_cli_argv(fake_cli), "--version"]
     assert payload["stdout"] == "GENtle 0.1.0-test\n"
     assert payload["stdout_json"] is None
     assert payload["chat_summary_lines"] == [
@@ -2988,7 +3070,7 @@ def test_clawbio_style_input_path_resolves_from_skill_cwd(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=_skill_script().parent,
         capture_output=True,
@@ -3062,7 +3144,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
             "--output",
             str(tmp_path / "list_out"),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -3071,7 +3153,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
     assert list_run.returncode == 0, list_run.stderr
     list_payload = json.loads(list_run.stdout)
     assert list_payload["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -3111,7 +3193,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
             "--output",
             str(tmp_path / "run_out"),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -3120,7 +3202,7 @@ def test_construct_reasoning_inspection_modes_build_shared_shell_commands(
     assert run_run.returncode == 0, run_run.stderr
     run_payload = json.loads(run_run.stdout)
     assert run_payload["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -3150,7 +3232,7 @@ def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         "#!/usr/bin/env bash\n"
-        "python3 - \"$@\" <<'PY'\n"
+        f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
         "import json, sys\n"
         "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
         "PY\n",
@@ -3168,7 +3250,7 @@ def test_agent_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> None:
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -3208,7 +3290,7 @@ def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> Non
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         "#!/usr/bin/env bash\n"
-        "python3 - \"$@\" <<'PY'\n"
+        f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
         "import json, sys\n"
         "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
         "PY\n",
@@ -3226,7 +3308,7 @@ def test_exon_skip_plan_mode_builds_shell_wrapper_command(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -3271,7 +3353,7 @@ def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_return
             "--output",
             str(bad_out),
             "--gentle-cli",
-            "true",
+            _fixture_exit_command(0),
         ],
         capture_output=True,
         text=True,
@@ -3300,7 +3382,7 @@ def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_return
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         "#!/usr/bin/env bash\n"
-        "python3 - \"$@\" <<'PY'\n"
+        f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
         "import json, sys\n"
         "print(json.dumps({\"argv\": sys.argv[1:]}))\n"
         "PY\n",
@@ -3318,7 +3400,7 @@ def test_exon_skip_materialize_mode_requires_confirm_and_builds_requested_return
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         capture_output=True,
         text=True,
@@ -3350,7 +3432,7 @@ def test_rejects_invalid_request_schema(tmp_path: Path) -> None:
         "--output",
         str(out_dir),
         "--gentle-cli",
-        "true",
+        _fixture_exit_command(0),
     ]
     run = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert run.returncode != 0
@@ -3403,7 +3485,7 @@ def test_result_payload_promotes_sequence_context_chat_summary(tmp_path: Path) -
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3481,7 +3563,7 @@ def test_result_payload_promotes_bundle_nested_sequence_context_chat_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3568,7 +3650,7 @@ def test_result_payload_promotes_protein_residue_genomic_coordinate_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3579,7 +3661,7 @@ def test_result_payload_promotes_protein_residue_genomic_coordinate_summary(
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "op",
@@ -3643,7 +3725,7 @@ def test_result_payload_promotes_cdna_genomic_carryover_risk_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3714,7 +3796,7 @@ def test_result_payload_promotes_cdna_product_materialization_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3770,7 +3852,7 @@ def test_cdna_assay_mode_builds_genomic_aligned_map_shell_command(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3781,7 +3863,7 @@ def test_cdna_assay_mode_builds_genomic_aligned_map_shell_command(
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -3824,7 +3906,7 @@ def test_cdna_assay_mode_builds_product_gel_shell_command(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3835,7 +3917,7 @@ def test_cdna_assay_mode_builds_product_gel_shell_command(tmp_path: Path) -> Non
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -3879,7 +3961,7 @@ def test_qpcr_seed_mode_builds_shared_primer_shell_command(tmp_path: Path) -> No
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3890,7 +3972,7 @@ def test_qpcr_seed_mode_builds_shared_primer_shell_command(tmp_path: Path) -> No
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "--state",
         ".gentle_state.json",
         "shell",
@@ -3928,7 +4010,7 @@ def test_pcr_protocol_cartoon_mode_builds_render_shell_command(tmp_path: Path) -
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -3939,7 +4021,7 @@ def test_pcr_protocol_cartoon_mode_builds_render_shell_command(tmp_path: Path) -
 
     result = json.loads((output_dir / "result.json").read_text(encoding="utf-8"))
     assert result["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "shell",
         "protocol-cartoon render-svg pcr.assay.qpcr artifacts/qpcr.assay.protocol.svg",
     ]
@@ -3986,7 +4068,7 @@ def test_services_status_promotes_prepare_and_sync_suggested_actions(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4090,7 +4172,7 @@ def test_services_status_running_suppresses_prepare_and_suggests_refresh(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4161,7 +4243,7 @@ def test_services_handoff_uses_engine_suggested_actions_and_artifacts(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4296,7 +4378,7 @@ def test_services_telegram_guide_promotes_section_actions(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4368,7 +4450,7 @@ def test_genomes_status_promotes_prepare_command_as_suggested_action(tmp_path: P
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4432,7 +4514,7 @@ def test_genomes_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pa
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4496,7 +4578,7 @@ def test_cutrun_status_promotes_prepare_for_missing_dataset(tmp_path: Path) -> N
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4560,7 +4642,7 @@ def test_cutrun_status_running_suggests_refresh_instead_of_prepare(tmp_path: Pat
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4624,7 +4706,7 @@ def test_prepare_request_suggests_rechecking_services_status(tmp_path: Path) -> 
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -4721,7 +4803,7 @@ def test_wrapper_builds_variant_storyboard_from_collected_svgs(tmp_path: Path) -
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5069,7 +5151,7 @@ def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> N
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=run_cwd,
         env=env,
@@ -5123,7 +5205,7 @@ def test_expected_artifacts_are_copied_into_output_bundle(tmp_path: Path) -> Non
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5197,7 +5279,7 @@ def test_expected_artifacts_are_sandboxed_under_generated_dir(tmp_path: Path) ->
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=run_cwd,
         capture_output=True,
@@ -5257,7 +5339,7 @@ def test_non_graphic_expected_artifacts_are_copied_without_rasterization(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5333,7 +5415,7 @@ def test_wrapper_rasterizes_svg_artifact_via_real_gentle_cli_route(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5418,7 +5500,7 @@ def test_simple_pcr_workflow_promotes_protocol_figure_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=env,
@@ -5483,7 +5565,7 @@ def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> N
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5545,7 +5627,7 @@ def test_isoform_protein_gel_demo_request_promotes_png_first_artifact(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5605,7 +5687,7 @@ def test_isoform_protein_2d_gel_demo_request_promotes_png_first_artifact(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5640,7 +5722,7 @@ def test_gene_protein_2d_gel_request_builds_parameterized_ensembl_workflow(
     fake_cli = tmp_path / "fake_cli.sh"
     fake_cli.write_text(
         _fake_cli_with_svg_png(
-            "python3 - \"$@\" <<'PY'\n"
+            f"{_fixture_python_shell_command()} - \"$@\" <<'PY'\n"
             "import json, sys\n"
             "from pathlib import Path\n"
             "args = sys.argv[1:]\n"
@@ -5677,7 +5759,7 @@ def test_gene_protein_2d_gel_request_builds_parameterized_ensembl_workflow(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5760,7 +5842,7 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         env=env,
@@ -5778,13 +5860,13 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
     assert preflight["status"] == "prepared_during_run"
     assert len(preflight["steps"]) == 3
     assert preflight["steps"][0]["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "genomes",
         "status",
         "Human GRCh38 Ensembl 116",
     ]
     assert preflight["steps"][1]["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "genomes",
         "prepare",
         "Human GRCh38 Ensembl 116",
@@ -5792,7 +5874,7 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
         "7200",
     ]
     assert preflight["steps"][2]["command"] == [
-        str(fake_cli),
+        *_fixture_cli_argv(fake_cli),
         "genomes",
         "status",
         "Human GRCh38 Ensembl 116",
@@ -5805,7 +5887,7 @@ def test_reference_preflight_runs_status_prepare_and_main_command(tmp_path: Path
         'genomes prepare \'Human GRCh38 Ensembl 116\' --timeout-secs 7200'
         in commands_text
     )
-    assert "\n" + shlex.quote(str(fake_cli)) + " capabilities\n" in commands_text
+    assert "\n" + shlex.join(_fixture_cli_argv(fake_cli)) + " capabilities\n" in commands_text
 
 
 def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: Path) -> None:
@@ -5842,7 +5924,7 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5857,12 +5939,12 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
         "stage": "main_command",
         "note": None,
         "command": [
-            str(fake_cli),
+            *_fixture_cli_argv(fake_cli),
             "shell",
             'genomes status "Human GRCh38 Ensembl 116"',
         ],
         "command_text": (
-            f"{shlex.quote(str(fake_cli))} shell "
+            f"{shlex.join(_fixture_cli_argv(fake_cli))} shell "
             '\'genomes status "Human GRCh38 Ensembl 116"\''
         ),
         "execution_cwd": str(tmp_path.resolve()),
@@ -5918,7 +6000,7 @@ def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: 
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -5971,7 +6053,7 @@ def test_relative_input_path_resolves_from_copied_clawbio_skill_layout(tmp_path:
             "--output",
             str(output_dir),
             "--gentle-cli",
-            "true",
+            _fixture_exit_command(0),
         ],
         cwd=unrelated_cwd,
         capture_output=True,
@@ -6026,7 +6108,7 @@ def test_confirmed_capabilities_action_gets_telegram_safe_summary(
             "--output",
             str(output_dir),
             "--gentle-cli",
-            str(fake_cli),
+            _fixture_cli_command(fake_cli),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -6039,14 +6121,14 @@ def test_confirmed_capabilities_action_gets_telegram_safe_summary(
     assert result["status"] == "ok"
     assert result["chat_summary_lines"] == [
         "GENtle command completed with status `ok` and exit code `0`.",
-        f"Command: {shlex.quote(str(fake_cli))} shell capabilities",
+        f"Command: {shlex.join(_fixture_cli_argv(fake_cli))} shell capabilities",
         "Parsed JSON output keys: capabilities",
         "Capability entries reported: 2",
     ]
 
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     assert "## Execution Summary" in report
-    assert f"- Command: `{shlex.quote(str(fake_cli))} shell capabilities`" in report
+    assert f"- Command: `{shlex.join(_fixture_cli_argv(fake_cli))} shell capabilities`" in report
     assert '- Stdout preview: `{"capabilities":["demo","services handoff"]}`' in report
 
 

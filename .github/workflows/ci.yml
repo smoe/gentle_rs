@@ -176,7 +176,7 @@ jobs:
         run: cargo test -q workflow_examples -- --test-threads=1
 
       - name: Full test suite
-        run: cargo test -q
+        run: cargo test -q --locked --workspace
 
       - name: Tutorial core CLI runtime smoke
         run: |
@@ -343,7 +343,7 @@ jobs:
         run: cargo test -q workflow_examples -- --test-threads=1
 
       - name: Full test suite
-        run: cargo test -q
+        run: cargo test -q --locked --workspace
 
       - name: Tutorial core CLI runtime smoke
         run: |
@@ -462,6 +462,7 @@ jobs:
       - name: DNA viewer repro binary smoke
         run: |
           $modes = cargo run -q --bin gentle_dna_viewer_repro -- --list-modes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if ([string]::IsNullOrWhiteSpace(($modes -join "`n"))) {
             throw "gentle_dna_viewer_repro did not report any modes"
           }
@@ -470,13 +471,16 @@ jobs:
       - name: Script adapter version smoke
         run: |
           cargo run --features js-interface --bin gentle_js -- --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --features lua-interface --bin gentle_lua -- --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Examples and tutorial schema/drift checks
         run: |
           cargo run --bin gentle_examples_docs -- --check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/check_tutorial_checkouts.py --binary target/debug/gentle_examples_docs.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Install Python test dependencies
         run: |
@@ -488,33 +492,44 @@ jobs:
           if importlib.util.find_spec("pytest") is None:
               subprocess.check_call([sys.executable, "-m", "pip", "install", "pytest"])
           '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: ClawBio skill parity checks
         run: |
           python scripts/generate_clawbio_trigger_keywords.py --check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest integrations/clawbio/skills/gentle-cloning/tests/ -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Workflow example runtime tests
         run: cargo test -q workflow_examples -- --test-threads=1
 
       - name: Full test suite
-        run: cargo test -q
+        run: cargo test -q --locked --workspace
 
       - name: Tutorial core CLI runtime smoke
         run: |
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/load_and_digest_pgex.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/guides_filter_and_generate_oligos.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- workflow '@docs/examples/workflows/digest_ligation_extract_region_minimal.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Internal preview reviewer smoke
         run: |
           $state = Join-Path $env:RUNNER_TEMP "gentle_preview_state.json"
           Remove-Item -ErrorAction SilentlyContinue $state
           cargo run --bin gentle_cli -- --state $state workflow '@docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state workflow '@docs/examples/workflows/digest_ligation_extract_region_minimal.json'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state primers design '{"DesignPrimerPairs":{"template":"pgex_fasta","roi_start_0based":100,"roi_end_0based":300,"forward":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":80,"end_0based":130,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"reverse":{"min_length":18,"max_length":22,"location_0based":null,"start_0based":280,"end_0based":340,"min_tm_c":50.0,"max_tm_c":72.0,"min_gc_fraction":0.2,"max_gc_fraction":0.8,"max_anneal_hits":5},"min_amplicon_bp":120,"max_amplicon_bp":400,"max_pairs":5,"report_id":"preview_pgex_fast"}}' --backend internal
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state primers show-report preview_pgex_fast
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Engine tests
         run: cargo test -q "engine::tests::"
@@ -522,7 +537,9 @@ jobs:
       - name: Graphics adaptive-default regression tests
         run: |
           cargo test -q default_configuration_graphics_prefers_adaptive_linear_letters
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -q apply_configuration_graphics_to_engine_state_keeps_adaptive_linear_defaults
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Glossary coverage guard
         run: cargo test -q --bin gentle_cli test_shell_forwarded_commands_are_documented_in_glossary
@@ -530,8 +547,11 @@ jobs:
       - name: EMBL parser regression tests
         run: |
           cargo test -q test_toy_small_cross_format_sequence_parity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -q test_toy_multi_embl_parses_multiple_records
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test -q test_embl_wrapped_feature_location_is_parsed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Genome catalog regression test
         run: cargo test -q genomes::tests::test_repo_assets_genome_catalog_is_valid
@@ -543,7 +563,10 @@ jobs:
         run: |
           $archivePath = Join-Path $env:RUNNER_TEMP "gentle-src.tar"
           git archive --format=tar HEAD --output=$archivePath
-          $hasGeneratedTutorials = tar -tf $archivePath |
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archiveEntries = tar -tf $archivePath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hasGeneratedTutorials = $archiveEntries |
             Select-String -Pattern '^docs/tutorial/generated/' -Quiet
           if ($hasGeneratedTutorials) {
             throw "docs/tutorial/generated unexpectedly present in git archive output"
@@ -556,10 +579,15 @@ jobs:
           $circular = Join-Path $env:RUNNER_TEMP "pgex.circular.svg"
 
           cargo run --bin gentle_cli -- --state $state op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex"}}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state op '{"SetDisplayVisibility":{"target":"Features","visible":false}}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state op '{"SetDisplayVisibility":{"target":"MethylationSites","visible":false}}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state render-svg pgex linear $linear
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo run --bin gentle_cli -- --state $state render-svg pgex circular $circular
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           if (!(Test-Path $linear) -or (Get-Item $linear).Length -eq 0) {
             throw "Linear SVG was not written"
