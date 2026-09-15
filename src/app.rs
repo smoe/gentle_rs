@@ -1185,6 +1185,8 @@ pub struct GENtleApp {
     agent_conversation: AgentConversation,
     agent_execution_log: Vec<AgentCommandExecutionRecord>,
     agent_execution_session_id: String,
+    agent_command_service: crate::command_execution::CommandExecutionService,
+    agent_pending_commands: Vec<routine_and_agent_assistant_ui::PendingAgentCommand>,
     agent_last_command_output: Option<AgentCommandOutput>,
     agent_pending_image_attachment: Option<AgentPendingImageAttachment>,
     agent_help_capture_failure: Option<AgentHelpCaptureFailure>,
@@ -3119,6 +3121,8 @@ impl Default for GENtleApp {
             agent_conversation: AgentConversation::default(),
             agent_execution_log: vec![],
             agent_execution_session_id: crate::agent_feedback::new_agent_context_id(),
+            agent_command_service: crate::command_execution::CommandExecutionService::default(),
+            agent_pending_commands: Vec::new(),
             agent_last_command_output: None,
             agent_pending_image_attachment: None,
             agent_help_capture_failure: None,
@@ -7331,6 +7335,7 @@ Error: `{err}`"
     }
 
     fn reset_to_empty_project(&mut self) {
+        self.cancel_agent_commands_for_project_change();
         self.engine = Arc::new(RwLock::new(GentleEngine::new()));
         self.apply_configuration_graphics_to_engine_state();
         self.current_project_path = None;
@@ -7711,6 +7716,15 @@ Error: `{err}`"
         progress: &OperationProgress,
     ) -> TutorialProjectTaskProgress {
         let mut message = match progress {
+            OperationProgress::Workflow { completed, total } => {
+                Self::tutorial_project_progress_message(
+                    chapter_id,
+                    chapter_title,
+                    "execute_workflow",
+                    &format!("Operations completed: {completed}/{total}"),
+                    None,
+                )
+            }
             OperationProgress::PrimerDesign(p) => {
                 let percent = p
                     .primer3_progress
@@ -16004,6 +16018,7 @@ Error: `{err}`"
     fn load_project_from_file_with_recent(&mut self, path: &str, track_recent: bool) -> Result<()> {
         let state = ProjectState::load_from_path(path).map_err(|e| anyhow!(e.to_string()))?;
 
+        self.cancel_agent_commands_for_project_change();
         self.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         self.set_current_project_path(path, track_recent);
         self.lineage_cache_valid = false;
@@ -25590,6 +25605,7 @@ impl GENtleApp {
             self.poll_dbsnp_fetch_task(ctx);
             self.poll_jaspar_background_task(ctx);
             self.poll_agent_assistant_task(ctx);
+            self.poll_agent_commands(ctx);
             self.poll_agent_help_capture_events(ctx);
             self.poll_agent_model_discovery_task(ctx);
             self.poll_clawbio_task(ctx);

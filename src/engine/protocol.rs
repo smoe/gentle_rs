@@ -6473,6 +6473,11 @@ pub struct GenomicRegionHomologyProgress {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
+    /// Completed operation count, not an estimate of remaining wall-clock time.
+    Workflow {
+        completed: usize,
+        total: usize,
+    },
     PrimerDesign(PrimerDesignProgress),
     Tfbs(TfbsProgress),
     GenomePrepare(PrepareGenomeProgress),

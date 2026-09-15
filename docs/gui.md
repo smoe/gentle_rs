@@ -3194,6 +3194,34 @@ Screenshot command status:
 GENtle provides a standalone `Agent Assistant` window for structured support from
 configured external/internal agent systems.
 
+### Background Commands
+
+Prepared Run buttons and typed commands use the same execution policy. Genome
+preparation, `op`, `workflow`, workflow/candidate macros and template runs, and a
+verified single gene-study workflow run on an engine snapshot in the background.
+Run does not replace your draft or ask the model to reinterpret the command.
+You can type canonical commands such as `genomes prepare ID` or `workflow @file`
+directly into the prompt for these routes; no invented slash alias is needed.
+You can navigate, inspect the live project, or send a new model request while
+these commands run. Direct commands remain available during a model request.
+
+For work lasting more than 200 ms, the assistant shows a command preview, phase,
+available completed-step count and Cancel. Counts are not a time estimate.
+The local execution log retains the exact command; the running row limits its
+preview so an inline JSON workflow cannot consume the whole window.
+Cancel requests cooperative termination; it does not claim the worker has
+already stopped. The terminal receipt distinguishes computed operations from
+committed operations. Failure/cancellation discards unpublished engine changes,
+but downloaded resources and exported files can remain. Concurrent structural
+edits or project replacement reject stale results; viewport-only edits are kept.
+
+The host accepts at most four active commands and retains 32 results/receipts.
+If the project lock or capacity is unavailable, submission reports that it was
+not admitted, rather than waiting. Results above 16 MiB require a file-export
+workflow. These are initial audited routes, not a claim that every shell command
+is nonblocking. BLAST status/probe migration and other command families remain
+in the [responsive-command plan](asynchronous_command_execution_plan.md).
+
 Conceptual/tutorial companion:
 
 - `docs/tutorial/01-01_agent_interfaces.md` (who runs what where, and how Agent

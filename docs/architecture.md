@@ -862,6 +862,17 @@ Interactive orchestration contract:
   Detached forks exclude inherited undo/redo checkpoints; successful commits
   preserve the live history and append only checkpoints created by detached
   operations.
+- Detached baselines also bind a process-local project-instance identity. New
+  engines and deserialization get fresh identities; clones and verified checkpoint
+  imports within one detached execution retain ownership. Matching revisions alone
+  never authorize a result after project replacement. This identity is not serialized
+  and does not alter scientific request/approval digests.
+- `command_execution` places bounded host admission above the synchronous shell
+  executor. Worker-owned snapshots preserve the expanded-stack executor's immediate
+  join safety. Cached receipts and cancellation use a separate control lock;
+  publication serializes cancellation with the existing guarded engine commit.
+  Failed/cancelled managed commands discard unpublished engine deltas, not external
+  effects. Blocking CLI callers retain their prior nontransactional prefix semantics.
 - Read-only background computation uses the same engine execution baseline but
   clones no inherited undo/redo checkpoints and never enters the commit path.
   Raw full-engine clones are not permitted in GUI workers: retaining unneeded

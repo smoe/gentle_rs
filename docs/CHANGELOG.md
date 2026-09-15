@@ -57,6 +57,29 @@
   Cover the base route, quoted request/output paths, and continued rejection
   of `{}`. No parser validation, scientific behavior or generated artifacts change.
 
+## 2026-09-15 - Background Agent Commands And Workflow Cancellation
+
+- Agent Assistant Run and direct command submission admit genome preparation,
+  operation/workflow JSON, macros/templates and a verified single study workflow
+  to a headless command service. Probes, snapshotting and shell execution run on
+  workers; the prompt draft is retained. Quick completions avoid a queued banner.
+  Held commands have visible status/cancel controls independent of the model.
+- Bind detached work to a non-persisted project instance, including across
+  close/reopen with matching revision counters. Preserve exact command text,
+  result hashes, original conversation attribution, terminal errors and separate
+  computed/committed counts. Keep existing display/metadata merge protections.
+- Add workflow/statement boundary progress and cancellation checks; forward
+  operation and genome preparation callbacks through the shared shell. Cancelled
+  workflows return errors, not successful partial result lists. Managed failures
+  discard the unpublished engine delta; synchronous nontransactional callers keep
+  their existing completed-prefix semantics. External files/resources are not
+  rolled back. Shell preparation still journals once; dialog preparation is unchanged.
+- Admission is bounded to four active commands and 32 retained receipts/results;
+  engine-lock contention is reported without waiting. Interactive results above
+  16 MiB are rejected before commit. Cross-thread runtime nesting is preserved.
+  Remaining command families, durable jobs, pure cached BLAST observation and
+  real T2T/GUI acceptance remain explicitly pending in the responsive-command plan.
+
 ## 2026-09-15 - Transaction And BLAST Status Prerequisites
 
 - Transactional workflow/candidate macros restore the pre-run project, journal

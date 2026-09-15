@@ -10,6 +10,91 @@
 //! - CLI-like round trips that should stay in parity with GUI shell mode
 
 use super::*;
+
+#[test]
+fn workflow_progress_cancels_between_short_operations_without_successful_partial_result() {
+    let mut engine = GentleEngine::new();
+    let wf = Workflow {
+        run_id: "cancel-boundary".into(),
+        ops: ["one", "two"]
+            .into_iter()
+            .map(|id| Operation::CreateSequenceFromText {
+                sequence_text: "ATGC".into(),
+                output_id: Some(id.into()),
+                name: None,
+                circular: false,
+            })
+            .collect(),
+    };
+    let options = ShellExecutionOptions {
+        progress_callback: Some(Arc::new(Mutex::new(Box::new(|event| {
+            !matches!(event, OperationProgress::Workflow { completed: 1, .. })
+        })))),
+        ..ShellExecutionOptions::default()
+    };
+    let error = execute_shell_command_with_options(
+        &mut engine,
+        &ShellCommand::Workflow {
+            payload: serde_json::to_string(&wf).unwrap(),
+        },
+        &options,
+    )
+    .unwrap_err();
+    assert!(error.contains("cancelled after 1 of 2"));
+    assert!(
+        engine.state().sequences.contains_key("one"),
+        "synchronous nontransactional compatibility retains completed operations"
+    );
+    assert!(!engine.state().sequences.contains_key("two"));
+    assert_eq!(engine.journal_len(), 1);
+}
+
+#[test]
+fn workflow_progress_cancellation_rolls_back_transactional_macro_history() {
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::CreateSequenceFromText {
+            sequence_text: "ATGC".into(),
+            output_id: Some("existing".into()),
+            name: None,
+            circular: false,
+        })
+        .unwrap();
+    let undo = engine.undo_available();
+    let journal = engine.journal_len();
+    let before = engine.structural_revision();
+    let options = ShellExecutionOptions {
+        progress_callback: Some(Arc::new(Mutex::new(Box::new(|event| {
+            !matches!(event, OperationProgress::Workflow { completed: 1, .. })
+        })))),
+        ..ShellExecutionOptions::default()
+    };
+    let script = format!(
+        "op {}; state-summary",
+        serde_json::to_string(&Operation::CreateSequenceFromText {
+            sequence_text: "TTAA".into(),
+            output_id: Some("discarded".into()),
+            name: None,
+            circular: false
+        })
+        .unwrap()
+    );
+    let error = execute_shell_command_with_options(
+        &mut engine,
+        &ShellCommand::MacrosRun {
+            script,
+            transactional: true,
+        },
+        &options,
+    )
+    .unwrap_err();
+    assert!(error.contains("cancelled"));
+    assert!(engine.state().sequences.contains_key("existing"));
+    assert!(!engine.state().sequences.contains_key("discarded"));
+    assert_eq!(engine.undo_available(), undo);
+    assert_eq!(engine.journal_len(), journal);
+    assert!(engine.structural_revision() > before);
+}
 use crate::allele_hash_screen::{
     ALLELE_HASH_SCREEN_SCHEMA, AlleleHashScreenReport, AlleleReadClassification,
     AlleleReadSourceOrigin,

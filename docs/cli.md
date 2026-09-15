@@ -6538,6 +6538,14 @@ completed; inspect its status/result separately. CLI invocations remain
 stateless and do not automatically recall previous execution receipts. See the
 [agent request contract](protocol.md) for GUI session feedback and privacy limits.
 
+Agent Assistant's initial background-command routes now use the host-owned
+service described under [Background Commands](gui.md#background-commands).
+Standalone CLI commands remain blocking by caller policy; this does not add a
+cross-process job server. Shared workflow/macro progress includes completed/total
+step counts and checks cooperative cancellation between short steps. Cancelled
+execution returns an error, not a successful partial result. Existing synchronous
+nontransactional prefixes and transactional rollback semantics remain unchanged.
+
 Its `x_introspection` projection uses the current prompt to prioritize matching
 subject/report/enzyme identities within the existing per-type fact budget.
 `selection_explanations` records each included fact's priority and matches.

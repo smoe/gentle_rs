@@ -38,6 +38,8 @@ pub mod attract_motifs;
 mod background_engine;
 /// Small shared helpers for GENtle command-line binaries.
 pub mod cli_support;
+/// Bounded host-owned asynchronous shell execution and retained receipts.
+pub mod command_execution;
 pub(crate) mod digest_utils;
 /// Shared DNA display configuration and visibility policies.
 #[cfg(feature = "desktop-gui")]

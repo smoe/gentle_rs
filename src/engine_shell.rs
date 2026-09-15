@@ -48983,10 +48983,12 @@ fn run_candidates_macro(
         return Err("candidates macro script is empty".to_string());
     }
     run_macro_transaction(engine, transactional, |engine| {
+        let total = statements.len();
         let mut executed = 0usize;
         let mut changed = false;
         let mut rows: Vec<Value> = vec![];
         for statement in statements {
+            check_shell_workflow_boundary(options, executed, total)?;
             let statement = statement.trim();
             if statement.is_empty() {
                 continue;
@@ -49030,6 +49032,7 @@ fn run_candidates_macro(
         if executed == 0 {
             return Err("candidates macro script has no executable statements".to_string());
         }
+        check_shell_workflow_boundary(options, executed, total)?;
         Ok(ShellRunResult {
             state_changed: changed,
             output: json!({
@@ -49054,10 +49057,12 @@ fn run_workflow_macro(
         return Err("macros run script is empty".to_string());
     }
     run_macro_transaction(engine, transactional, |engine| {
+        let total = statements.len();
         let mut executed = 0usize;
         let mut changed = false;
         let mut rows: Vec<Value> = vec![];
         for statement in statements {
+            check_shell_workflow_boundary(options, executed, total)?;
             let statement = statement.trim();
             if statement.is_empty() {
                 continue;
@@ -49114,6 +49119,7 @@ fn run_workflow_macro(
         if executed == 0 {
             return Err("macros run script has no executable statements".to_string());
         }
+        check_shell_workflow_boundary(options, executed, total)?;
         Ok(ShellRunResult {
             state_changed: changed,
             output: json!({
@@ -55056,21 +55062,13 @@ fn execute_reference_and_track_command(
             cache_dir,
             timeout_seconds,
         } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
             let op = Operation::PrepareGenome {
                 genome_id: genome_id.clone(),
                 catalog_path: operation_catalog_path(catalog_path, *helper_mode),
                 cache_dir: cache_dir.clone(),
                 timeout_seconds: *timeout_seconds,
             };
-            let op_result = engine.apply(op).map_err(|e| e.to_string())?;
-            Ok(ShellRunResult {
-                state_changed: true,
-                output: json!({
-                    "binary_preflight": binary_preflight,
-                    "result": op_result
-                }),
-            })
+            execute_prepare_genome_operation(engine, op, &ShellExecutionOptions::default())
         }
         ShellCommand::ReferencePrepareBlastResource {
             helper_mode,
@@ -59291,7 +59289,12 @@ fn execute_primers_command(
         ShellCommand::PrimersExecuteGeneIsoformAssayStudyWorkflow {
             plan_json,
             workflow_json,
-        } => execute_approved_gene_isoform_assay_study_workflow(engine, plan_json, workflow_json),
+        } => execute_approved_gene_isoform_assay_study_workflow(
+            engine,
+            plan_json,
+            workflow_json,
+            options,
+        ),
         ShellCommand::PrimersComposeGeneIsoformAssayStudyWorkflowBatch { request_json } => {
             compose_gene_isoform_assay_study_workflow_batch(request_json)
         }
@@ -64866,7 +64869,11 @@ fn execute_op_command(
         });
     }
     let before_state = serde_json::to_value(engine.snapshot()).ok();
-    let op_result = engine.apply(op).map_err(|e| e.to_string())?;
+    let op_result = engine
+        .apply_with_progress(op, |progress| {
+            forward_shell_progress(options, progress).unwrap_or(false)
+        })
+        .map_err(|e| e.to_string())?;
     let state_changed = if let Some(before) = before_state {
         serde_json::to_value(engine.snapshot())
             .map(|after| after != before)
@@ -64886,18 +64893,55 @@ fn execute_op_command(
 fn execute_workflow_command(
     engine: &mut GentleEngine,
     payload: &str,
+    options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let json_text = parse_json_payload(payload)?;
     let workflow = parse_workflow_json_payload(&json_text)?;
-    execute_parsed_workflow_command(engine, workflow)
+    execute_parsed_workflow_command(engine, workflow, options)
+}
+
+fn execute_prepare_genome_operation(
+    engine: &mut GentleEngine,
+    op: Operation,
+    options: &ShellExecutionOptions,
+) -> Result<ShellRunResult, String> {
+    let binary_preflight = engine.blast_external_binary_preflight_report();
+    let result = engine
+        .apply_with_progress(op, |progress| {
+            forward_shell_progress(options, progress).unwrap_or(false)
+        })
+        .map_err(|error| error.to_string())?;
+    Ok(ShellRunResult {
+        state_changed: true,
+        output: json!({ "binary_preflight": binary_preflight, "result": result }),
+    })
+}
+
+fn check_shell_workflow_boundary(
+    options: &ShellExecutionOptions,
+    completed: usize,
+    total: usize,
+) -> Result<(), String> {
+    if forward_shell_progress(options, OperationProgress::Workflow { completed, total })? {
+        Ok(())
+    } else {
+        Err(format!(
+            "Command workflow cancelled after {completed} of {total} statements"
+        ))
+    }
 }
 
 fn execute_parsed_workflow_command(
     engine: &mut GentleEngine,
     workflow: Workflow,
+    options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let before_state = serde_json::to_value(engine.snapshot()).ok();
-    let results = engine.apply_workflow(workflow).map_err(|e| e.to_string())?;
+    let results = engine
+        .apply_workflow_with_progress(workflow, |progress| {
+            forward_shell_progress(options, progress).unwrap_or(false)
+        })
+        .map_err(|e| e.to_string())?;
     let state_changed = if let Some(before) = before_state {
         serde_json::to_value(engine.snapshot())
             .map(|after| after != before)
@@ -65044,6 +65088,7 @@ fn execute_approved_gene_isoform_assay_study_workflow(
     engine: &mut GentleEngine,
     plan_json: &str,
     workflow_json: &str,
+    options: &ShellExecutionOptions,
 ) -> Result<ShellRunResult, String> {
     let plan_text = parse_json_payload(plan_json)?;
     let workflow_text = parse_json_payload(workflow_json)?;
@@ -65052,7 +65097,7 @@ fn execute_approved_gene_isoform_assay_study_workflow(
     let feasibility =
         preflight_approved_transcript_assay_operations(engine, &verified.workflow.ops, plan_json)?;
 
-    let execution = execute_parsed_workflow_command(engine, verified.workflow)?;
+    let execution = execute_parsed_workflow_command(engine, verified.workflow, options)?;
     Ok(ShellRunResult {
         state_changed: execution.state_changed,
         output: json!({
@@ -66729,12 +66774,14 @@ fn execute_shell_command_with_options_on_expanded_stack(
     let engine_ptr = engine as *mut GentleEngine as usize;
     let command = command.clone();
     let options = options.clone();
+    let runtime_parent = crate::runtime_status::RuntimeParentScope::capture();
     #[cfg(test)]
     let scoped_tool_overrides = crate::tool_overrides::scoped_tool_overrides_snapshot();
     let worker = thread::Builder::new()
         .name("gentle-shell-command".to_string())
         .stack_size(SHELL_COMMAND_STACK_SIZE)
         .spawn(move || {
+            let _runtime_parent = crate::runtime_status::RuntimeParentScope::enter(runtime_parent);
             #[cfg(test)]
             let _scoped_tool_overrides =
                 crate::tool_overrides::ScopedToolOverridesSnapshotGuard::install(
@@ -66794,6 +66841,25 @@ fn execute_shell_command_with_options_dispatch_inner(
 ) -> Result<ShellRunResult, String> {
     if matches!(command, ShellCommand::Help { .. }) {
         return execute_help_command(engine, command);
+    }
+    if let ShellCommand::ReferencePrepare {
+        helper_mode,
+        genome_id,
+        catalog_path,
+        cache_dir,
+        timeout_seconds,
+    } = command
+    {
+        return execute_prepare_genome_operation(
+            engine,
+            Operation::PrepareGenome {
+                genome_id: genome_id.clone(),
+                catalog_path: operation_catalog_path(catalog_path, *helper_mode),
+                cache_dir: cache_dir.clone(),
+                timeout_seconds: *timeout_seconds,
+            },
+            options,
+        );
     }
     if let Some(result) = execute_stack_safe_reference_command(engine, command) {
         return result;
@@ -67488,7 +67554,7 @@ fn execute_shell_command_with_options_dispatch_inner(
         return execute_op_command(engine, payload, options);
     }
     if let ShellCommand::Workflow { payload } = command {
-        return execute_workflow_command(engine, payload);
+        return execute_workflow_command(engine, payload, options);
     }
     execute_shell_command_with_options_inner(engine, command, options)
 }
@@ -69183,7 +69249,7 @@ fn execute_shell_command_with_options_inner(
             execute_configuration_command(engine, command)?
         }
         ShellCommand::Op { payload } => execute_op_command(engine, payload, options)?,
-        ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload)?,
+        ShellCommand::Workflow { payload } => execute_workflow_command(engine, payload, options)?,
     };
     Ok(result)
 }

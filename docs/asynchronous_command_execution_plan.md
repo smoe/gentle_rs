@@ -1,7 +1,8 @@
 # Responsive Commands And Workflows
 
-Status: reviewed plan; initial rollback/status prerequisites implemented on
-2026-09-15, general asynchronous migration pending. The user supplied Claude's
+Status: reviewed plan; rollback/status prerequisites and the first managed
+Agent Assistant command tranche implemented on 2026-09-15. Broader asynchronous
+migration and live acceptance remain pending. The user supplied Claude's
 review on 2026-09-14. The original proposal and review remain below;
 the [reconciled Codex plan](#reconciled-codex-plan-2026-09-14) supersedes their
 implementation ordering and identifies findings not supported by this checkout.
@@ -445,7 +446,9 @@ claimed defect is **retracted** - see item 2.
    their tests as a regression boundary for every later slice.
 
 3. **A BLAST poll that observes a job transition invalidates every in-flight
-   detached execution.** `persist_blast_async_jobs_to_engine`
+   detached execution.** *(RESOLVED in `c1eb0ef7`; both the insert and the
+   remove now go through `auxiliary_metadata_mut()`, the byte-identical early
+   return is intact, and a steady-state poll stays inert.)* `persist_blast_async_jobs_to_engine`
    (`engine_shell.rs:14854`) writes the job store through `state_mut()`, which
    bumps `structural_revision` (`engine.rs:7139`) - the one baseline the rebase
    in item 2 does **not** merge, and the exact value
@@ -529,10 +532,11 @@ rather than `Err`. Declared order and per-op atomicity are untouched; only
 "launch the next op" is gated. Then switch `execute_parsed_workflow_command` to
 the progress variant.
 
-**Blocker before slice 3.** The existing transactional rollback is unsound.
-`run_candidates_macro` and `run_workflow_macro` roll back with
-`*engine = GentleEngine::from_state(state)` (`engine_shell.rs:48991`, `:49086`;
-also `:52477`, `:67507`), and `from_state` (`engine.rs:6931`) builds with
+**Blocker before slice 3.** *(RESOLVED in `c1eb0ef7` - see the correction
+below.)* The existing transactional rollback is unsound. `run_candidates_macro`
+and `run_workflow_macro` roll back with
+`*engine = GentleEngine::from_state(state)` (`engine_shell.rs:48991`, `:49086`),
+and `from_state` (`engine.rs:6931`) builds with
 `..Self::default()`. A rollback therefore erases the **entire** operation
 journal and both history stacks, and resets execution, mutation and structural
 revisions to zero - not just the macro's own effects. That is already a history
@@ -540,6 +544,24 @@ bug synchronously; with detached commits in flight it destroys the revision
 monotonicity `commit_detached_execution` relies on for staleness detection. Fix
 rollback to restore `state` while preserving journal and history and bumping
 revisions forward.
+
+*Correction and resolution.* The review also cited `engine_shell.rs:52477` and
+`:67507` as rollback sites. They are not: `:67507` is `LoadProject` and `:52477`
+is a sequence-pool import, where rebuilding from state is intended. Only the two
+macro runners were the defect, and `c1eb0ef7` replaced both with one engine-owned
+`with_rollback_on_error` guard (`engine.rs:7071`). Its `Drop`
+(`engine.rs:6867`) restores state, journal and both history stacks, and sets each
+revision to `max(current) + 1` with `op_counter` likewise `max`-ed - strictly
+monotonic, so an in-flight detached fork is correctly rejected as stale rather
+than silently passing. Being `Drop`-based, it also covers an early `?` and panic
+unwinding. That is more complete than the review asked for.
+
+`LoadProject` does remain relevant to a *different* point: `from_state` resets
+revisions to zero, so a fork taken on a fresh project (structural revision 0,
+empty journal) would pass the staleness check against a newly loaded project.
+Revisions alone cannot carry project identity across a reopen. This is the
+concrete case for the owner/project-instance binding in reconciled slice 1, not
+a rollback issue.
 
 Separately: `execute_parsed_workflow_command` computes `state_changed` by
 serializing the whole project with `serde_json::to_value(engine.snapshot())`
@@ -788,7 +810,78 @@ Retain section 4's controlled-worker tests, with these clarifications:
   availability, owner/project scope, bounded retention and stale-result rejection
   are tested independently of whether a frame is still visible.
 
-Implementation and the large-project benchmark remain pending.
+Implementation status is recorded below; the historical reconciliation was planning only.
+
+### First Managed-Command Tranche, 2026-09-15
+
+The initial service uses runtime frame states and history-free detached execution,
+not a second execution engine. Admission performs bounded text hashing and a
+nonblocking owner/revision check; snapshot copying, probes and execution run on
+workers. The admitted structural revision and journal length are checked again
+before copying, so a queued worker never silently adopts later sequence edits.
+Project-instance identities close the reopen/revision-zero hole without rejecting
+mergeable display/metadata edits. Status/cancel use an independent control lock;
+result publication and cancellation share a final guarded boundary. Terminal
+receipts retain request/output hashes and computed versus committed counts.
+
+The first GUI migration covers `genomes prepare` (including its helper alias),
+`op`, `workflow`, workflow/candidate macros/templates, and the verified single
+gene-study workflow route. Run and typed submission use the same path; the draft
+is untouched. Direct commands no longer depend on the model being idle. Progress
+and Cancel appear after a 200 ms quiet interval. Completion retains its original
+turn/session, not the conversation turn current when the worker finishes.
+Its state-change flag describes that command's result, not unrelated edits made
+while it ran. Running status text stays bounded even for a large JSON workflow.
+
+Workflow and macro boundaries now check cancellation and expose counts. Managed
+errors/cancellation discard the detached engine delta; standalone synchronous
+nontransactional execution keeps its prior prefix semantics. External file,
+resource and independently running child-job effects are not transactional.
+The shell still journals preparation once; dialog-only resource preparation is
+unchanged. No warm-cache re-execution is performed on the UI thread.
+
+Limits: four active workers (no implicit waiting queue), 32 retained records,
+1 MiB command text and 16 MiB interactive result. Busy admission is explicit;
+consumed terminal receipts may be evicted at capacity. This is process-local,
+not restart recovery or a new CLI job server. Concurrent structural changes can
+still reject a result, including changes made by another admitted worker.
+
+Remaining: pure cached BLAST observation, BLAST-start full-clone/probe ordering,
+audited batch/per-operation failure receipts, other GUI command families and
+adapters, cross-process control/recovery, and live T2T acceptance. The synthetic
+1-Mbp/growing-journal cost probe is not a bound for real annotated projects.
+No live model, private genome preparation or production report is used here.
+
+#### Focused Verification
+
+The first-tranche working tree passed 45 focused tests (one timing probe ignored
+in that suite); the probe then passed separately. Reproduction commands:
+
+```bash
+cargo test -q -j 1 --lib -- command_execution::tests:: routine_and_agent_assistant_ui::command_tests:: background_engine::tests:: workflow_progress_ transactional_rollback_ shared_history_rebase_ blast_async_store_ agent_prompt_direct_shell_command_ runtime_status::tests:: --test-threads=2
+cargo test -q -j 1 --lib detached_execution_snapshot_cost_probe -- --ignored --nocapture
+```
+
+The GUI tests exercise shared Run/prompt handlers, held-worker inspection,
+cancellation and project replacement programmatically, not live desktop clicks.
+The local preparation test uses generated FASTA/GTF files, missing-tool overrides
+and two cold/warm runs; it does not download or prepare a production genome.
+
+The debug-build probe on this development machine used a synthetic 1-Mbp state
+and three samples per journal size. Concurrent builds were present; these are
+observations, not a CI timing threshold or representative biological benchmark.
+
+| Journal records | Snapshot/read-lock range (ms) | No-op commit-lock range (ms) |
+| --- | --- | --- |
+| 0 | 0.051-0.126 | 0.009-0.094 |
+| 100 | 2.022-2.595 | 0.041-0.057 |
+| 1,000 | 19.419-24.922 | 0.048-0.094 |
+| 10,000 | 189.222-271.554 | 0.050-0.053 |
+
+Journal-copy cost is demonstrably nonconstant and remains an optimization target.
+This probe excludes expensive real annotation payloads and nontrivial commit
+rebasing; it does not close the live responsiveness acceptance gate. The linker
+emitted the known macOS large `__eh_frame` warning but exited successfully.
 
 ### Reconciliation Verification
 

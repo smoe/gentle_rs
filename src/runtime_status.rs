@@ -163,6 +163,8 @@ pub struct RuntimeStatusFrame {
     pub phase: Option<String>,
     pub detail: Option<String>,
     pub state: RuntimeStatusFrameState,
+    /// Request only; terminal cancellation requires worker acknowledgement.
+    pub cancel_requested: bool,
     pub started_at_unix_ms: u128,
     pub updated_at_unix_ms: u128,
     pub progress_percent: Option<f64>,
@@ -181,6 +183,7 @@ impl Default for RuntimeStatusFrame {
             phase: None,
             detail: None,
             state: RuntimeStatusFrameState::Running,
+            cancel_requested: false,
             started_at_unix_ms: 0,
             updated_at_unix_ms: 0,
             progress_percent: None,
@@ -357,6 +360,7 @@ impl RuntimeStatusRegistry {
             phase: None,
             detail,
             state: RuntimeStatusFrameState::Running,
+            cancel_requested: false,
             started_at_unix_ms: now,
             updated_at_unix_ms: now,
             progress_percent: None,
@@ -384,6 +388,13 @@ impl RuntimeStatusRegistry {
             frame.updated_at_unix_ms = now_unix_ms();
             self.generation.fetch_add(1, Ordering::Release);
         }
+    }
+
+    pub(crate) fn request_frame_cancel(&self, frame_id: &str) {
+        self.update_frame(frame_id, |frame| {
+            frame.cancel_requested = true;
+            frame.phase = Some("cancelling".to_string());
+        });
     }
 
     fn remove_frame(&self, frame_id: &str) {
@@ -523,6 +534,36 @@ impl RuntimeStatusGuard {
 
     pub fn frame_id(&self) -> &str {
         &self.frame_id
+    }
+}
+
+/// Propagate nesting across a worker boundary without moving a frame guard
+/// (whose drop must run on the thread that pushed it).
+pub(crate) struct RuntimeParentScope(Option<String>);
+
+impl RuntimeParentScope {
+    pub(crate) fn capture() -> Option<String> {
+        current_parent_frame_id()
+    }
+
+    pub(crate) fn enter(parent: Option<String>) -> Self {
+        if let Some(id) = &parent {
+            RUNTIME_FRAME_STACK.with(|stack| stack.borrow_mut().push(id.clone()));
+        }
+        Self(parent)
+    }
+}
+
+impl Drop for RuntimeParentScope {
+    fn drop(&mut self) {
+        if let Some(id) = &self.0 {
+            RUNTIME_FRAME_STACK.with(|stack| {
+                let mut stack = stack.borrow_mut();
+                if let Some(index) = stack.iter().rposition(|value| value == id) {
+                    stack.remove(index);
+                }
+            });
+        }
     }
 }
 

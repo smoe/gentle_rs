@@ -6839,6 +6839,8 @@ pub trait Engine {
 /// this type rather than introducing parallel execution layers.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GentleEngine {
+    #[serde(skip)]
+    instance_id: EngineInstanceId,
     state: ProjectState,
     journal: Vec<OperationRecord>,
     op_counter: u64,
@@ -6854,6 +6856,17 @@ pub struct GentleEngine {
     redo_stack: Vec<std::sync::Arc<EngineHistoryCheckpoint>>,
     #[serde(skip, default = "GentleEngine::default_history_limit")]
     history_limit: usize,
+}
+
+/// Process-local ownership, deliberately absent from portable project data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EngineInstanceId(u64);
+
+impl Default for EngineInstanceId {
+    fn default() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
 }
 
 /// Restores only in-memory engine effects on error or unwind. History entries
@@ -6895,6 +6908,7 @@ impl Drop for EngineRollbackGuard<'_> {
 #[derive(Debug)]
 pub(crate) struct DetachedEngineExecution {
     engine: GentleEngine,
+    base_instance_id: EngineInstanceId,
     base_structural_revision: u64,
     base_mutation_revision: u64,
     base_journal_len: usize,
@@ -6926,6 +6940,7 @@ impl DetachedEngineExecution {
     /// Revision identities are rebased onto the live baseline so the final
     /// optimistic commit remains the only mutation of the live engine.
     pub(crate) fn import_checkpoint_engine(&mut self, mut checkpoint: GentleEngine) {
+        checkpoint.instance_id = self.engine.instance_id;
         checkpoint.reconcile_lineage_nodes();
         checkpoint.reconcile_containers();
         checkpoint.reseed_op_counter_from_state();
@@ -7042,6 +7057,10 @@ impl GentleEngine {
         self.structural_revision
     }
 
+    pub(crate) fn instance_id(&self) -> u64 {
+        self.instance_id.0
+    }
+
     pub(crate) fn journal_len(&self) -> usize {
         self.journal.len()
     }
@@ -7053,6 +7072,7 @@ impl GentleEngine {
     /// and commit only their newly-created checkpoints.
     pub(crate) fn clone_without_history(&self) -> Self {
         Self {
+            instance_id: self.instance_id,
             state: self.state.clone(),
             journal: self.journal.clone(),
             op_counter: self.op_counter,
@@ -7093,6 +7113,7 @@ impl GentleEngine {
     pub(crate) fn fork_detached_execution(&self) -> DetachedEngineExecution {
         DetachedEngineExecution {
             engine: self.clone_without_history(),
+            base_instance_id: self.instance_id,
             base_structural_revision: self.structural_revision,
             base_mutation_revision: self.mutation_revision,
             base_journal_len: self.journal.len(),
@@ -7109,12 +7130,13 @@ impl GentleEngine {
         &mut self,
         detached: &mut DetachedEngineExecution,
     ) -> Result<GentleEngine, EngineError> {
-        if self.structural_revision != detached.base_structural_revision
+        if self.instance_id != detached.base_instance_id
+            || self.structural_revision != detached.base_structural_revision
             || self.journal.len() != detached.base_journal_len
         {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
-                message: "Background result became stale because project data or operation history changed while it was running; rerun the operation"
+                message: "Background result became stale because the project instance, project data or operation history changed while it was running; rerun the operation"
                     .to_string(),
                 cause_chain: vec![],
             });
@@ -10235,6 +10257,20 @@ impl GentleEngine {
     {
         let mut results = Vec::new();
         for op in &wf.ops {
+            if !on_progress(OperationProgress::Workflow {
+                completed: results.len(),
+                total: wf.ops.len(),
+            }) {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Workflow cancelled after {} of {} operations",
+                        results.len(),
+                        wf.ops.len()
+                    ),
+                    cause_chain: vec![],
+                });
+            }
             let checkpoint = self.maybe_capture_checkpoint(op);
             let checkpoint_kind = checkpoint.as_ref().map(EngineHistoryCheckpoint::kind);
             let result = self.apply_internal(op.clone(), &wf.run_id, &mut on_progress)?;
@@ -10248,6 +10284,16 @@ impl GentleEngine {
             }
             self.bump_revision_for_checkpoint_kind(checkpoint_kind);
             results.push(result);
+        }
+        if !on_progress(OperationProgress::Workflow {
+            completed: results.len(),
+            total: wf.ops.len(),
+        }) {
+            return Err(EngineError {
+                code: ErrorCode::InvalidInput,
+                message: "Workflow cancelled before result publication".to_string(),
+                cause_chain: vec![],
+            });
         }
         Ok(results)
     }

@@ -73,6 +73,79 @@ mod tests {
     use crate::engine::{Engine, GenomeTrackSource, GenomeTrackSubscription, Operation, Workflow};
 
     #[test]
+    fn detached_commit_rejects_reopened_project_with_identical_revisions() {
+        let mut live = GentleEngine::new();
+        let mut detached = live.fork_detached_execution();
+        let original = live.instance_id();
+        live = GentleEngine::from_state(live.state().clone());
+        assert_ne!(original, live.instance_id());
+        assert_eq!(live.structural_revision(), 0);
+        assert_eq!(live.journal_len(), 0);
+        assert!(
+            live.commit_detached_execution(&mut detached)
+                .unwrap_err()
+                .message
+                .contains("project instance")
+        );
+    }
+
+    #[test]
+    fn detached_instance_is_runtime_only_and_checkpoint_import_preserves_owner() {
+        let mut live = GentleEngine::new();
+        let value = serde_json::to_value(&live).unwrap();
+        assert!(value.get("instance_id").is_none());
+        let imported: GentleEngine = serde_json::from_value(value).unwrap();
+        assert_ne!(live.instance_id(), imported.instance_id());
+        let mut detached = live.fork_detached_execution();
+        detached.import_checkpoint_engine(imported);
+        assert_eq!(detached.engine().instance_id(), live.instance_id());
+        live.commit_detached_execution(&mut detached).unwrap();
+    }
+
+    /// Synthetic scaling probe, deliberately not a timing-sensitive CI gate.
+    #[test]
+    #[ignore = "manual synthetic snapshot-cost measurement"]
+    fn detached_execution_snapshot_cost_probe() {
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::CreateSequenceFromText {
+                sequence_text: "ACGT".repeat(250),
+                output_id: Some("synthetic".into()),
+                name: None,
+                circular: false,
+            })
+            .unwrap();
+        let record = engine.operation_log()[0].clone();
+        let mut encoded = serde_json::to_value(&engine).unwrap();
+        encoded["state"]["sequences"] = serde_json::to_value(std::collections::HashMap::from([(
+            "synthetic",
+            DNAsequence::from_sequence(&"ACGT".repeat(250_000)).unwrap(),
+        )]))
+        .unwrap();
+        for count in [0, 100, 1_000, 10_000] {
+            encoded["journal"] = serde_json::to_value(vec![record.clone(); count]).unwrap();
+            let live: GentleEngine = serde_json::from_value(encoded.clone()).unwrap();
+            let shared = Arc::new(RwLock::new(live));
+            for sample in 0..3 {
+                let start = std::time::Instant::now();
+                let mut fork = shared.read().unwrap().fork_detached_execution();
+                let snapshot_ms = start.elapsed().as_secs_f64() * 1_000.0;
+                let start = std::time::Instant::now();
+                let old = shared
+                    .write()
+                    .unwrap()
+                    .commit_detached_execution(&mut fork)
+                    .unwrap();
+                let commit_ms = start.elapsed().as_secs_f64() * 1_000.0;
+                drop(old);
+                eprintln!(
+                    "snapshot_cost synthetic_bp=1000000 journal={count} sample={sample} read_lock_ms={snapshot_ms:.3} commit_lock_ms={commit_ms:.3}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn detached_fork_excludes_inherited_history_but_keeps_execution_baseline() {
         let mut live = GentleEngine::new();
         live.apply(Operation::CreateSequenceFromText {

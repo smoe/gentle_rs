@@ -1,5 +1,36 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Host Command Execution
+
+The headless `CommandExecutionService` exposes submission, cached status,
+cooperative cancellation and one-time result consumption. Its process-local
+`gentle.command_execution.v1` receipt retains the exact command-text SHA-256,
+owner/result project-instance IDs, existing runtime-frame lifecycle state,
+phase, cancellation request, computed/committed journal-operation counts,
+last completed-step/total counters, output SHA-256 and terminal error.
+`completed_steps` counts workflow operations or macro statements, not seconds.
+Neither admission nor command completion is a biological acceptance verdict.
+`computed_operations` is unavailable (`null`) when a failure/rollback leaves no
+reliable journal count. It must not be read as zero work; `completed_steps` retains
+the last boundary observation even if a transactional macro rolled back that work.
+
+The receipt is host-local, not a persisted operation or approval. Four active
+workers, 32 retained records, a 1 MiB command limit and a 16 MiB retained-output
+limit bound admission. Outputs are consumed once; their receipts remain until
+capacity requires oldest-consumed-terminal eviction. Missing/cancelled/stale
+results are never published as successful partial output. External resource/file
+effects are not rolled back by discarding a detached engine.
+State-replacing commands inside managed macros are rejected before commit: a
+loaded/reconstructed project must not be merged as an ordinary detached delta.
+Explicit project load/import routes retain their existing host handling.
+
+`OperationProgress::Workflow { completed, total }` is an additive progress-event
+variant. The shared workflow and macro paths check callbacks at boundaries;
+returning false raises an error even if the final operation already computed.
+Synchronous nontransactional callers retain their completed engine prefix;
+managed workers publish only after the final cancellation and stale-owner check.
+No operation/request serialization, approval binding or project schema changes.
+
 ## Source-Coherent Transcript Presentation
 
 Locus display/preparation requests and `TssContextSource` accept optional

@@ -1007,6 +1007,11 @@ impl ProgressPrinter {
 
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
+            OperationProgress::Workflow { completed, total } => {
+                self.print_line(&format!(
+                    "progress workflow completed={completed} total={total}"
+                ));
+            }
             OperationProgress::Tfbs(p) => self.on_tfbs_progress(p),
             OperationProgress::GenomePrepare(p) => self.on_genome_prepare_progress(p),
             OperationProgress::GenomeTrackImport(p) => self.on_genome_track_import_progress(p),

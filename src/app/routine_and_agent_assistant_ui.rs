@@ -11,7 +11,226 @@ use crate::agent_feedback::{
     AgentExecutionRevision, AgentExecutionStatus,
 };
 
+pub(super) struct PendingAgentCommand {
+    job_id: u64,
+    feedback_id: String,
+    session_id: String,
+    turn_id: Option<String>,
+    before: Option<AgentExecutionRevision>,
+    index: usize,
+    source: String,
+    text: String,
+    trigger: String,
+    command: ShellCommand,
+    suppress_auto_open: bool,
+    started: Instant,
+}
+
+#[cfg(test)]
+mod command_tests {
+    use super::*;
+
+    fn workflow_command() -> String {
+        let workflow = crate::engine::Workflow {
+            run_id: "gui-test".into(),
+            ops: vec![Operation::CreateSequenceFromText {
+                sequence_text: "ATGC".into(),
+                output_id: Some("gui-test".into()),
+                name: None,
+                circular: false,
+            }],
+        };
+        format!("workflow '{}'", serde_json::to_string(&workflow).unwrap())
+    }
+
+    fn drain(app: &mut GENtleApp) {
+        let ctx = egui::Context::default();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !app.agent_pending_commands.is_empty() {
+            app.poll_agent_commands(&ctx);
+            assert!(
+                Instant::now() < deadline,
+                "pending GUI command did not finish"
+            );
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    #[test]
+    fn run_and_prompt_submit_exact_command_without_changing_draft() {
+        for prompt in [false, true] {
+            let mut app = GENtleApp::default();
+            app.agent_prompt = "keep my draft".into();
+            let command = workflow_command();
+            assert_eq!(
+                GENtleApp::agent_prompt_direct_shell_command(&command),
+                Some(command.as_str())
+            );
+            if prompt {
+                app.execute_agent_prompt_command(&command);
+            } else {
+                app.execute_agent_suggested_command(1, &command, "manual");
+            }
+            assert_eq!(app.agent_pending_commands.len(), 1);
+            let id = app.agent_pending_commands[0].job_id;
+            app.agent_pending_commands[0].turn_id = Some("original-turn".into());
+            assert_eq!(
+                app.agent_command_service.status(id).unwrap().command_sha256,
+                crate::digest_utils::sha256_prefixed_str(&command)
+            );
+            assert_eq!(app.agent_prompt, "keep my draft");
+            assert!(!app.agent_status.contains(&command));
+            drain(&mut app);
+            assert_eq!(app.engine.read().unwrap().journal_len(), 1);
+            let receipt = app
+                .agent_execution_log
+                .last()
+                .unwrap()
+                .feedback
+                .as_ref()
+                .unwrap();
+            assert_eq!(receipt.status, AgentExecutionStatus::Completed);
+            assert_eq!(receipt.turn_id.as_deref(), Some("original-turn"));
+        }
+    }
+
+    #[test]
+    fn held_gui_command_allows_inspection_navigation_and_cancellation() {
+        let mut app = GENtleApp::default();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let id = app
+            .agent_command_service
+            .submit_work(app.engine.clone(), "held-fixture".into(), move |_, _| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: serde_json::json!({}),
+                })
+            })
+            .unwrap();
+        app.agent_pending_commands.push(PendingAgentCommand {
+            job_id: id,
+            feedback_id: "synthetic-held-receipt".into(),
+            session_id: app.agent_execution_session_id.clone(),
+            turn_id: Some("held-turn".into()),
+            before: app.agent_execution_revision(),
+            index: 1,
+            source: "Held test".into(),
+            text: "synthetic held work".into(),
+            trigger: "manual".into(),
+            command: ShellCommand::StateSummary,
+            suppress_auto_open: true,
+            started: Instant::now(),
+        });
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        app.execute_agent_prompt_command("/list");
+        assert!(app.agent_last_command_output.is_some());
+        app.open_help_doc(HelpDoc::Shell);
+        assert!(app.show_help_dialog);
+        app.engine
+            .write()
+            .unwrap()
+            .auxiliary_metadata_mut()
+            .insert("concurrent-user-edit".into(), serde_json::json!(true));
+        assert!(app.agent_command_service.cancel(id));
+        release_tx.send(()).unwrap();
+        drain(&mut app);
+        assert_eq!(
+            app.agent_execution_log
+                .last()
+                .unwrap()
+                .feedback
+                .as_ref()
+                .unwrap()
+                .status,
+            AgentExecutionStatus::Cancelled
+        );
+        assert!(!app.agent_execution_log.last().unwrap().state_changed);
+        assert_eq!(
+            app.engine.read().unwrap().state().metadata["concurrent-user-edit"],
+            serde_json::json!(true)
+        );
+        assert_eq!(app.engine.read().unwrap().journal_len(), 0);
+    }
+
+    #[test]
+    fn direct_commands_remain_submittable_during_model_request() {
+        assert!(GENtleApp::agent_submission_available(
+            true, false, false, true, false
+        ));
+        assert!(!GENtleApp::agent_submission_available(
+            true, false, true, false, true
+        ));
+        assert!(GENtleApp::agent_submission_available(
+            false, false, true, false, true
+        ));
+    }
+
+    #[test]
+    fn replacing_gui_project_cancels_work_on_the_retired_engine_arc() {
+        let mut app = GENtleApp::default();
+        let old_engine = app.engine.clone();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let id = app
+            .agent_command_service
+            .submit_work(old_engine.clone(), "retired-owner".into(), move |_, _| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: serde_json::json!({}),
+                })
+            })
+            .unwrap();
+        app.agent_pending_commands.push(PendingAgentCommand {
+            job_id: id,
+            feedback_id: "retired-feedback".into(),
+            session_id: app.agent_execution_session_id.clone(),
+            turn_id: None,
+            before: None,
+            index: 0,
+            source: "Retired test".into(),
+            text: "synthetic".into(),
+            trigger: "manual".into(),
+            command: ShellCommand::StateSummary,
+            suppress_auto_open: true,
+            started: Instant::now(),
+        });
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        app.reset_to_empty_project();
+        assert!(!Arc::ptr_eq(&old_engine, &app.engine));
+        assert!(
+            app.agent_command_service
+                .status(id)
+                .unwrap()
+                .cancel_requested
+        );
+        release_tx.send(()).unwrap();
+        drain(&mut app);
+        assert_eq!(
+            app.agent_command_service.status(id).unwrap().state,
+            crate::runtime_status::RuntimeStatusFrameState::Cancelled
+        );
+        assert!(app.agent_last_command_output.is_none());
+    }
+}
+
 impl GENtleApp {
+    fn agent_submission_available(
+        running: bool,
+        capture_pending: bool,
+        selected_available: bool,
+        direct_command: bool,
+        attachment_supported: bool,
+    ) -> bool {
+        (!running || direct_command)
+            && !capture_pending
+            && (selected_available || direct_command)
+            && (direct_command || attachment_supported)
+    }
     const AGENT_MODEL_SELECTION_REQUIRED_MESSAGE: &'static str =
         "Connection established, please select the model to use in the drop-down box.";
     const AGENT_SCREENSHOT_CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -1842,6 +2061,12 @@ impl GENtleApp {
         if trimmed.starts_with('/') || matches!(trimmed, "capabilities" | "help" | "state-summary")
         {
             Some(trimmed)
+        } else if trimmed.len() <= 1024 * 1024
+            && parse_shell_line(trimmed).is_ok_and(|command| {
+                crate::command_execution::CommandExecutionService::manages(&command)
+            })
+        {
+            Some(trimmed)
         } else {
             None
         }
@@ -2664,6 +2889,80 @@ impl GENtleApp {
             allow_agent_commands: false,
             progress_callback: None,
         };
+        if crate::command_execution::CommandExecutionService::manages(&command) {
+            match self.agent_command_service.submit(
+                self.engine.clone(),
+                trimmed.to_string(),
+                options,
+            ) {
+                Ok(job_id) => {
+                    self.record_agent_execution(
+                        before,
+                        AgentExecutionStatus::Running,
+                        AgentCommandExecutionRecord {
+                            index_1based,
+                            command: trimmed.to_string(),
+                            trigger: trigger.to_string(),
+                            ok: false,
+                            state_changed: false,
+                            summary: format!("Command {job_id} admitted; completion pending"),
+                            executed_at_unix_ms: Self::now_unix_ms(),
+                            feedback: None,
+                        },
+                        None,
+                    );
+                    let feedback = self
+                        .agent_execution_log
+                        .last_mut()
+                        .unwrap()
+                        .feedback
+                        .as_mut()
+                        .unwrap();
+                    feedback.job_id_sha256 = Some(crate::digest_utils::sha256_prefixed_str(
+                        &format!("command:{job_id}"),
+                    ));
+                    let feedback_id = feedback.receipt_id.clone();
+                    self.agent_pending_commands.push(PendingAgentCommand {
+                        job_id,
+                        feedback_id,
+                        session_id: self.agent_execution_session_id.clone(),
+                        turn_id: self
+                            .agent_conversation
+                            .turns
+                            .last()
+                            .and_then(|t| t.turn_id.clone()),
+                        before,
+                        index: index_1based,
+                        source: source_label.to_string(),
+                        text: trimmed.to_string(),
+                        trigger: trigger.to_string(),
+                        command,
+                        suppress_auto_open,
+                        started: Instant::now(),
+                    });
+                    self.agent_status = format!("{source_label}: command {job_id}");
+                }
+                Err(error) => {
+                    self.agent_status = format!("{source_label}: {error}");
+                    self.record_agent_execution(
+                        before,
+                        AgentExecutionStatus::Blocked,
+                        AgentCommandExecutionRecord {
+                            index_1based,
+                            command: trimmed.to_string(),
+                            trigger: trigger.to_string(),
+                            ok: false,
+                            state_changed: false,
+                            summary: error,
+                            executed_at_unix_ms: Self::now_unix_ms(),
+                            feedback: None,
+                        },
+                        None,
+                    );
+                }
+            }
+            return;
+        }
         let run = {
             match self.engine.write() {
                 Ok(mut guard) => execute_shell_command_with_options(&mut guard, &command, &options),
@@ -2699,6 +2998,95 @@ impl GENtleApp {
                     None,
                 );
             }
+        }
+    }
+
+    pub(super) fn poll_agent_commands(&mut self, ctx: &egui::Context) {
+        if self.agent_pending_commands.is_empty() {
+            return;
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
+        let Some(instance) = self.engine.try_read().ok().map(|e| e.instance_id()) else {
+            return;
+        };
+        let mut index = 0;
+        while index < self.agent_pending_commands.len() {
+            let id = self.agent_pending_commands[index].job_id;
+            let Some(result) = self.agent_command_service.take_result(id) else {
+                index += 1;
+                continue;
+            };
+            let task = self.agent_pending_commands.remove(index);
+            let receipt = self
+                .agent_command_service
+                .status(id)
+                .expect("retained command receipt");
+            if task.session_id != self.agent_execution_session_id
+                || receipt.result_instance.unwrap_or(receipt.owner_instance) != instance
+            {
+                // The host retains the receipt; never attribute it to a new project/turn.
+                continue;
+            }
+            let command_state_changed = result.as_ref().is_ok_and(|run| run.state_changed);
+            match result {
+                Ok(run) => self.finish_agent_shell_run(
+                    task.before,
+                    task.index,
+                    &task.source,
+                    &task.text,
+                    &task.trigger,
+                    &task.command,
+                    run,
+                    task.suppress_auto_open,
+                ),
+                Err(error) => {
+                    self.agent_status = format!("{}: {error}", task.source);
+                    let status = if receipt.state
+                        == crate::runtime_status::RuntimeStatusFrameState::Cancelled
+                    {
+                        AgentExecutionStatus::Cancelled
+                    } else {
+                        AgentExecutionStatus::Failed
+                    };
+                    self.record_agent_execution(
+                        task.before,
+                        status,
+                        AgentCommandExecutionRecord {
+                            index_1based: task.index,
+                            command: task.text,
+                            trigger: task.trigger,
+                            ok: false,
+                            state_changed: false,
+                            summary: error,
+                            executed_at_unix_ms: Self::now_unix_ms(),
+                            feedback: None,
+                        },
+                        None,
+                    );
+                }
+            }
+            if let Some(record) = self.agent_execution_log.last_mut() {
+                // Concurrent user edits are not effects of this command.
+                record.state_changed = command_state_changed;
+                if let Some(feedback) = record.feedback.as_mut() {
+                    feedback.turn_id = task.turn_id;
+                    feedback.session_id = task.session_id;
+                    feedback.job_id_sha256 = Some(crate::digest_utils::sha256_prefixed_str(
+                        &format!("command:{id}"),
+                    ));
+                }
+            }
+            self.agent_execution_log.retain(|row| {
+                row.feedback
+                    .as_ref()
+                    .is_none_or(|feedback| feedback.receipt_id != task.feedback_id)
+            });
+        }
+    }
+
+    pub(super) fn cancel_agent_commands_for_project_change(&self) {
+        for task in &self.agent_pending_commands {
+            self.agent_command_service.cancel(task.job_id);
         }
     }
 
@@ -2829,7 +3217,7 @@ impl GENtleApp {
 
     fn agent_execution_revision(&self) -> Option<AgentExecutionRevision> {
         self.engine
-            .read()
+            .try_read()
             .ok()
             .map(|engine| AgentExecutionRevision::capture(&engine))
     }
@@ -2860,6 +3248,7 @@ impl GENtleApp {
             AgentExecutionStatus::Blocked
                 | AgentExecutionStatus::Failed
                 | AgentExecutionStatus::Partial
+                | AgentExecutionStatus::Cancelled
         ) {
             receipt.bind_error(&record.summary);
         }
@@ -5993,10 +6382,13 @@ impl GENtleApp {
                 .as_ref()
                 .map(|system| system.supports_image_attachments)
                 .unwrap_or(false);
-        let can_submit_prompt = !running
-            && self.agent_screenshot_capture.is_none()
-            && (selected_available || direct_prompt_command.is_some())
-            && (direct_prompt_command.is_some() || selected_supports_pending_attachment);
+        let can_submit_prompt = Self::agent_submission_available(
+            running,
+            self.agent_screenshot_capture.is_some(),
+            selected_available,
+            direct_prompt_command.is_some(),
+            selected_supports_pending_attachment,
+        );
         if prompt_submit_shortcut && can_submit_prompt {
             if let Some(command) = direct_prompt_command.as_deref() {
                 self.execute_agent_prompt_command(command);
@@ -6056,6 +6448,37 @@ impl GENtleApp {
                 self.agent_last_command_output = None;
             }
         });
+        for task in &self.agent_pending_commands {
+            if task.started.elapsed() < Duration::from_millis(200) {
+                continue;
+            }
+            if let Some(receipt) = self.agent_command_service.status(task.job_id) {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spinner();
+                    let mut preview: String = task.text.chars().take(160).collect();
+                    if preview.len() < task.text.len() {
+                        preview.push_str("...");
+                    }
+                    ui.label(format!("#{} {}: {}", task.job_id, receipt.phase, preview));
+                    if let Some(total) = receipt.total_steps {
+                        ui.label(format!(
+                            "{}/{}",
+                            receipt.completed_steps.unwrap_or(0),
+                            total
+                        ));
+                    }
+                    if ui
+                        .add_enabled(
+                            !receipt.cancel_requested,
+                            egui::Button::new(self.tr("button.cancel")),
+                        )
+                        .clicked()
+                    {
+                        self.agent_command_service.cancel(task.job_id);
+                    }
+                });
+            }
+        }
         let mut stop_agent_request = false;
         if let Some(task) = &self.agent_task {
             ui.horizontal(|ui| {
