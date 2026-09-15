@@ -923,6 +923,15 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "primers import-external-pairs" => {
             Some("primers import-external-pairs out.json demo 1 --specificity-target-genome demo")
         }
+        // Synthetic parser-only request; no locus file is read or scientifically validated.
+        "promoters fragment-candidates" => Some(concat!(
+            "promoters fragment-candidates '",
+            r#"{"schema":"gentle.reporter_fragment_selection_request.v1","#,
+            r#""locus":{"path":"synthetic locus.json","sha256":"sha256:parser-only","#,
+            r#""panel_id":"synthetic","annotation_release":"synthetic"},"#,
+            r#""anchors":[{"transcript_id":"TX_SYN.1"}]}"#,
+            "'",
+        )),
         // Parser-only synthetic proposal; execution still requires a reviewed design.
         "promoters regulatory-products-materialize" => Some(concat!(
             "promoters regulatory-products-materialize '",
@@ -1133,6 +1142,39 @@ fn glossary_flag_smoke_preserves_quoted_file_paths() {
     let mut expected = split_shell_words(base).unwrap();
     expected.extend(["--formats".into(), "svg,pdf".into()]);
     assert_eq!(split_shell_words(&line).unwrap(), expected);
+}
+
+#[test]
+fn glossary_fragment_candidates_smoke_retains_typed_request_and_output_path() {
+    let base = smoke_command_override("promoters fragment-candidates").expect("typed fixture");
+    for expected_output in [None, Some("report with spaces.json")] {
+        let line = match expected_output {
+            Some(path) => shell_command_line_with_option(base, "--path", Some(path)).unwrap(),
+            None => base.to_string(),
+        };
+        let ShellCommand::PromotersFragmentCandidates { request, output } =
+            parse_shell_line(&line).expect("fragment candidates parser fixture")
+        else {
+            panic!("expected the typed fragment-candidates route");
+        };
+        assert_eq!(
+            request.schema,
+            crate::engine::FRAGMENT_SELECTION_REQUEST_SCHEMA
+        );
+        assert_eq!(request.locus.path, "synthetic locus.json");
+        assert_eq!(request.locus.sha256, "sha256:parser-only");
+        assert_eq!(request.anchors.len(), 1);
+        assert_eq!(request.anchors[0].transcript_id, "TX_SYN.1");
+        assert_eq!(output.as_deref(), expected_output);
+    }
+
+    for line in [
+        "promoters fragment-candidates '{}'",
+        "promoters fragment-candidates '{}' --path out.json",
+    ] {
+        let error = parse_shell_line(line).expect_err("an empty object is not a typed request");
+        assert!(error.contains("missing field `schema`"), "{error}");
+    }
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {

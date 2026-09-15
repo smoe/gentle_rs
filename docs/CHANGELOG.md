@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+## 2026-09-15 - Fragment-Candidate Glossary Smoke Fixture
+
+- Give both CLI glossary smoke checks a synthetic typed request for
+  `promoters fragment-candidates` instead of the generic empty JSON object.
+  Cover the base route, quoted request/output paths, and continued rejection
+  of `{}`. No parser validation, scientific behavior or generated artifacts change.
+
 ## 2026-09-15 - Transaction And BLAST Status Prerequisites
 
 - Transactional workflow/candidate macros restore the pre-run project, journal
