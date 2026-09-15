@@ -1,0 +1,20 @@
+{
+  "kind": "tp73_promoter_collaboration",
+  "schema_version": 1,
+  "state": "complete",
+  "assembly": "GRCh38",
+  "taxon_id": 9606,
+  "coordinate_mode": "bed_0based_half_open",
+  "complete_genome_scan": false,
+  "chromosomes": ["1", "2"],
+  "distance_bands": ["overlap", "adjacent_0_5", "gap_6_20", "gap_21_50", "gap_51_100", "gap_101_150"],
+  "panel": [{"motif_id": "MA9000.1"}],
+  "source_score_floor": -1,
+  "positive_threshold": 0,
+  "score_configuration": {"genome_id": "synthetic_reference", "score_mode": "log2_relative_risk", "pseudocount": "1", "pseudocount_scheme": "additive_per_base"},
+  "retention": "one strongest physical locus per included anchor/motif/exclusive band",
+  "h3k4me3_model_effects": "not_included",
+  "requested_genes": [{"gene": "SYNTHETIC-MISSING", "group": "synthetic", "motif_ids": [], "status": "no_exact_name_in_result"}],
+  "identity": {"plan_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "files": []
+}

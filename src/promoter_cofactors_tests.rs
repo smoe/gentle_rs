@@ -1,6 +1,7 @@
 //! Synthetic package contract tests; real Parquet execution is explicit opt-in.
 
 use super::*;
+use crate::engine::Engine;
 use serde_json::json;
 
 fn write_json(path: &Path, value: &Value) {
@@ -21,12 +22,12 @@ fn publish(root: &Path) {
         "cofactor_distance_isoform_comparison.parquet",
     ];
     let mut files = inventory(root, &names);
-    let identity = json!({"plan_sha256":"a".repeat(64)});
-    let manifest = json!({"kind":"tp73_promoter_collaboration","schema_version":1,"state":"complete","assembly":"GRCh38","taxon_id":9606,"coordinate_mode":"bed_0based_half_open","complete_genome_scan":false,
-        "chromosomes":["1","2"],"distance_bands":BANDS,"panel":[{"motif_id":"MA9000.1"}],
-        "source_score_floor":-1,"positive_threshold":0,"score_configuration":{"genome_id":"synthetic_reference","score_mode":"log2_relative_risk","pseudocount":"1","pseudocount_scheme":"additive_per_base"},
-        "retention":"one strongest physical locus per included anchor/motif/exclusive band","h3k4me3_model_effects":"not_included",
-        "requested_genes":[{"gene":"SYNTHETIC-MISSING","group":"synthetic","motif_ids":[],"status":"no_exact_name_in_result"}],"identity":identity,"files":files});
+    let mut manifest: Value = serde_json::from_str(include_str!(
+        "../test_files/fixtures/promoter_cofactors/manifest.template.json"
+    ))
+    .unwrap();
+    manifest["files"] = json!(files);
+    let identity = manifest["identity"].clone();
     write_json(&root.join("manifest.json"), &manifest);
     files.extend(inventory(root, &["manifest.json"]));
     write_json(
@@ -58,6 +59,201 @@ fn request(root: &Path) -> PromoterCofactorRequest {
         package_path: root.display().to_string(),
         ..Default::default()
     }
+}
+
+/// Hand-crafted, complete report for transport tests; no production package.
+pub(crate) fn handoff_report() -> PromoterCofactorReport {
+    let p = package();
+    let mut report = query(&request(p.path())).unwrap();
+    report.anchors = vec![serde_json::from_value(json!({"anchor_id":1,"chrom":"1","anchor_start":100,"anchor_end":116,"anchor_score":0.25,
+        "supported_tp73_saos2_TA":true,"depth_tp73_saos2_TA":9,"depth_negative_control_saos2_TA":0})).unwrap()];
+    report.details = vec![serde_json::from_value(json!({"anchor_id":1,"motif_id":"MA9000.1","distance_band":"gap_6_20","hit_start":133,"hit_end":148,"best_score":4.25,
+        "plus_score":4.25,"minus_score":-0.5,"best_strand":"+","interval_distance_bp":17,"genomic_side":"right","n_source_loci":2,"n_score_zero_loci":1,"present_at_requested_threshold":true})).unwrap()];
+    report.promoters = vec![serde_json::from_value(json!({"regulatory_feature_id":"synthetic-promoter","chrom":"1","extended_start":90,"extended_end":140,
+        "gene_links":[{"gene_id":"GENE-A","link_source":"synthetic","annotation_release":"toy"},{"gene_id":"GENE-B","link_source":"synthetic","annotation_release":"toy"}]})).unwrap()];
+    report.memberships = vec![
+        serde_json::from_value(json!({"anchor_id":1,"regulatory_feature_id":"synthetic-promoter"}))
+            .unwrap(),
+    ];
+    report
+}
+
+fn hit_target() -> CofactorRegionTarget {
+    CofactorRegionTarget::Hit {
+        anchor_id: 1,
+        motif_id: "MA9000.1".into(),
+        distance_band: "gap_6_20".into(),
+    }
+}
+
+#[test]
+fn promoter_cofactors_capture_uses_shared_shell_and_preserves_both_orientations() {
+    use crate::engine::{GentleEngine, Operation};
+    use gentle_protocol::*;
+    let source = handoff_report();
+    let original = serde_json::to_value(&source).unwrap();
+    for (orientation, start, end, strand) in [
+        ("+", 33, 48, GenomicRegionStrand::Plus),
+        ("-", 52, 67, GenomicRegionStrand::Minus),
+    ] {
+        let mut engine = GentleEngine::default();
+        engine.state_mut().sequences.insert(
+            "demo".into(),
+            crate::dna_sequence::DNAsequence::from_sequence(&"ACGT".repeat(25)).unwrap(),
+        );
+        engine.state_mut().metadata.insert("provenance".into(), json!({"genome_extractions":[{"seq_id":"demo","genome_id":"GRCh38","chromosome":"1","start_1based":101,"end_1based":200,"anchor_strand":orientation,"anchor_verified":true}]}));
+        let request = GenomicRegionCaptureRequest {
+            set_id: "cofactors".into(),
+            source: GenomicRegionCaptureSource::PromoterCofactor {
+                report: Box::new(source.clone()),
+                target: hit_target(),
+                seq_id: Some("demo".into()),
+            },
+            ..Default::default()
+        };
+        let line = format!(
+            "regions capture '{}'",
+            serde_json::to_string(&request).unwrap()
+        );
+        let command = crate::engine_shell::parse_shell_line(&line).unwrap();
+        let output = crate::engine_shell::execute_shell_command(&mut engine, &command).unwrap();
+        assert!(output.state_changed);
+        let inspected = engine
+            .apply(Operation::ListGenomicRegions {
+                request: Default::default(),
+            })
+            .unwrap();
+        let json = serde_json::to_value(inspected.genomic_region_operation.unwrap()).unwrap();
+        assert!(json.to_string().contains("cofactors"));
+        let store = engine.genomic_region_store_snapshot().unwrap();
+        let region = &store.sets[0].regions[0];
+        assert_eq!(
+            (
+                region.interval.start_0based,
+                region.interval.end_0based_exclusive
+            ),
+            (133, 148)
+        );
+        assert_eq!(region.interval.strand, GenomicRegionStrand::Plus);
+        let projection = region.local_projection.as_ref().unwrap();
+        assert_eq!(
+            (
+                projection.local_start_0based,
+                projection.local_end_0based_exclusive,
+                projection.local_strand
+            ),
+            (start, end, strand)
+        );
+        assert_eq!(region.evidence[0].source_record.as_ref(), Some(&original));
+        assert_eq!(region.evidence[0].associated_gene_ids, ["GENE-A", "GENE-B"]);
+        assert!(region.evidence[0].max_signal_value.is_none());
+        let encoded = serde_json::to_vec(&original).unwrap();
+        assert_eq!(
+            region.evidence[0].source_sha256.as_deref(),
+            Some(format!("sha256:{}", sha256_hex_bytes(&encoded)).as_str())
+        );
+        assert_eq!(engine.state().sequences["demo"].features().len(), 0);
+        let mut wrong = request.clone();
+        if let GenomicRegionCaptureSource::PromoterCofactor { report, .. } = &mut wrong.source {
+            report.request.assembly = "mm10".into();
+        }
+        assert!(
+            engine
+                .apply(Operation::CaptureGenomicRegion { request: wrong })
+                .is_err()
+        );
+        for genome_id in ["GRCh37", "Human GRCh38 Ensembl 116"] {
+            engine.state_mut().metadata.get_mut("provenance").unwrap()["genome_extractions"][0]["genome_id"] =
+                json!(genome_id);
+            let mut mismatch = request.clone();
+            mismatch.set_id = "must_not_create".into();
+            assert!(
+                engine
+                    .apply(Operation::CaptureGenomicRegion { request: mismatch })
+                    .is_err()
+            );
+            assert_eq!(
+                engine.genomic_region_store_snapshot().unwrap().sets.len(),
+                1
+            );
+        }
+    }
+    assert_eq!(serde_json::to_value(source).unwrap(), original);
+}
+
+#[test]
+fn promoter_cofactors_region_rejects_tampered_source_record() {
+    use crate::engine::{GentleEngine, Operation};
+    use gentle_protocol::*;
+    let (interval, mut evidence) =
+        capture_region_evidence(&handoff_report(), &hit_target()).unwrap();
+    evidence.source_record.as_mut().unwrap()["details"][0]["best_score"] = json!(300);
+    let mut engine = GentleEngine::default();
+    let err = engine
+        .apply(Operation::CreateGenomicRegion {
+            request: GenomicRegionCreateRequest {
+                set_id: "tampered".into(),
+                interval,
+                evidence: vec![evidence],
+                ..Default::default()
+            },
+        })
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("source record digest mismatch"),
+        "{err}"
+    );
+    assert!(
+        engine
+            .genomic_region_store_snapshot()
+            .unwrap()
+            .sets
+            .is_empty()
+    );
+}
+
+#[test]
+fn promoter_cofactors_capture_rejects_absence_bad_geometry_and_failed_evidence() {
+    let report = handoff_report();
+    for target in [
+        CofactorRegionTarget::Anchor { anchor_id: 1 },
+        CofactorRegionTarget::Promoter {
+            regulatory_feature_id: "synthetic-promoter".into(),
+        },
+    ] {
+        let (interval, _) = capture_region_evidence(&report, &target).unwrap();
+        assert_eq!(
+            interval.strand,
+            gentle_protocol::GenomicRegionStrand::Unstranded
+        );
+    }
+    let mut absent = report.clone();
+    absent.details[0].hit_start = None;
+    absent.details[0].hit_end = None;
+    assert!(capture_region_evidence(&absent, &hit_target()).is_err());
+    let mut bad = report.clone();
+    bad.details[0].hit_end = Some(149);
+    bad.details[0].interval_distance_bp = Some(18);
+    assert!(capture_region_evidence(&bad, &hit_target()).is_err());
+    let mut bad = report.clone();
+    bad.availability = CofactorAvailability::QueryFailed;
+    assert!(capture_region_evidence(&bad, &hit_target()).is_err());
+    let mut tie = report.clone();
+    tie.details[0].minus_score = Some(4.25);
+    tie.details[0].best_strand = Some(".".into());
+    assert_eq!(
+        capture_region_evidence(&tie, &hit_target())
+            .unwrap()
+            .0
+            .strand,
+        gentle_protocol::GenomicRegionStrand::Unstranded
+    );
+    let mut r = PromoterCofactorRequest::default();
+    assert_eq!(r.timeout_seconds, 30);
+    r.timeout_seconds = 120;
+    assert!(validate_request(&r).is_ok());
+    r.timeout_seconds = 121;
+    assert!(validate_request(&r).is_err());
 }
 
 #[test]
@@ -316,6 +512,9 @@ fn promoter_cofactors_real_parquet_queries() {
     );
     publish(dir.path());
     let mut r = request(dir.path());
+    // Includes integrity verification and several bounded DuckDB subprocesses.
+    // Loaded developer/CI hosts get the existing maximum, not a product change.
+    r.timeout_seconds = 120;
     r.duckdb_executable = Some(executable);
     r.query = CofactorQuery::AnchorDetail;
     r.anchor_id = Some(1);

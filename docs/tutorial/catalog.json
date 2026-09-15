@@ -1407,6 +1407,28 @@
       "notes": "Offline synthetic PATZ1 follow-up after qPCR exon junctions and transcript panels: terminal-exon RT primer pool geometry, differential junction selection and missing threshold provenance, transcript-assay specificity planning/finalization, and gene-isoform study orchestration with two separate approval stages. GUI PCR Designer and shared Shell continuation; deterministic Python fixture checks and optional supplied-binary replay. External manifest-backed specificity is optional and not executed; no vendor submission, validated assay, or human scientific/GUI approval is claimed.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-11"
+    },
+    {
+      "id": "promoter_cofactor_browser",
+      "title": "Explore promoter cofactors: from TA/DN associations to a saved motif region",
+      "path": "docs/tutorial/08-14_promoter_cofactor_browser.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 14,
+      "decimal_id": "08.14",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "regulatory_analysis"
+      ],
+      "notes": "Offline synthetic promoter-cofactor package walkthrough, starting with an empty project and no genome installed. Inspect DuckDB/Parquet coverage; compare TA/DN adjusted odds ratios, uncertainty, BH q and positive/eligible anchor frequency in six distance bands. Inspect strongest TP73-associated motif hits, raw log2-relative-risk scores, strand, promoter ownership and separate sample/control summaries. Explain source floor -1 versus presence threshold 0, missing versus zero, overview-only motifs and unchanged cohort statistics. Save report-bound evidence through regions capture, inspect genomic regions, optionally project onto an exact anchored sequence, and copy the displayed request through CLI/MCP without stale-form drift. Optional local IRF9 example found by GRCh38 coordinates, not anchor ID. Replay: scripts/promoter_cofactor_tutorial.py; ui open tutorial-guide promoter_cofactor_browser. codex source review 2026-09-15: wet-lab readability and reproducibility; live GUI and human scientific approval pending.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-15"
     }
   ]
 }

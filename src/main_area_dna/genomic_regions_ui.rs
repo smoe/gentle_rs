@@ -841,7 +841,13 @@ impl MainAreaDna {
                                         "{} ({})",
                                         availability.as_str(),
                                         region.evidence.len()
-                                    ));
+                                    )).on_hover_ui(|ui| {
+                                        for evidence in &region.evidence {
+                                            ui.label(&evidence.evidence_statement);
+                                            if let Some(id) = &evidence.report_id { ui.monospace(id); }
+                                            if let Some(sha) = &evidence.source_sha256 { ui.monospace(sha); }
+                                        }
+                                    });
                                     // The picker reports a change every frame
                                     // it is dragged, and each engine operation
                                     // captures a full project checkpoint, so

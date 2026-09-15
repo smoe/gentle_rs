@@ -225,6 +225,215 @@ impl Package {
     }
 }
 
+/// Project a selected report row into the existing portable-region contract.
+/// Original scores and support stay in the bound source record, never a BED score
+/// or an invented CUT&RUN coverage track. No source files are opened here.
+pub fn capture_region_evidence(
+    report: &PromoterCofactorReport,
+    target: &CofactorRegionTarget,
+) -> Result<
+    (
+        gentle_protocol::GenomicRegionInterval,
+        gentle_protocol::GenomicRegionEvidenceReference,
+    ),
+    String,
+> {
+    use gentle_protocol::{
+        GenomicRegionEvidenceReference, GenomicRegionInterval, GenomicRegionReference,
+        GenomicRegionStrand,
+    };
+    validate_request(&report.request)?;
+    let c = report.coverage.as_ref().ok_or("Missing package coverage")?;
+    let is_sha256 = |s: &str| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit());
+    if report.schema != PROMOTER_COFACTOR_SCHEMA
+        || report.availability != CofactorAvailability::Available
+        || c.assembly != report.request.assembly
+        || report.report_id.is_empty()
+        || report
+            .package_manifest_sha256
+            .as_ref()
+            .is_none_or(|s| !is_sha256(s))
+        || report
+            .completion_sha256
+            .as_ref()
+            .is_none_or(|s| !is_sha256(s))
+        || report.verified_file_sha256.is_empty()
+        || report.verified_file_sha256.values().any(|s| !is_sha256(s))
+    {
+        return Err(
+            "Capture requires an available, assembly-consistent, provenance-bound cofactor report"
+                .into(),
+        );
+    }
+    let anchor = |id| {
+        report
+            .anchors
+            .iter()
+            .find(|a| a.anchor_id == id)
+            .ok_or("Selected anchor is not in the report")
+    };
+    let (chrom, start, end, strand, factor, row_id, promoter_ids) = match target {
+        CofactorRegionTarget::Anchor { anchor_id } => {
+            let a = anchor(*anchor_id)?;
+            if !a.anchor_score.is_finite() {
+                return Err("Invalid anchor score".into());
+            }
+            // Anchor orientation is not declared by the reduced package contract.
+            (
+                a.chrom.clone(),
+                a.anchor_start,
+                a.anchor_end,
+                GenomicRegionStrand::Unstranded,
+                Some("TP73".into()),
+                format!("anchor:{anchor_id}"),
+                report
+                    .memberships
+                    .iter()
+                    .filter(|m| m.anchor_id == *anchor_id)
+                    .map(|m| m.regulatory_feature_id.clone())
+                    .collect::<Vec<_>>(),
+            )
+        }
+        CofactorRegionTarget::Hit {
+            anchor_id,
+            motif_id,
+            distance_band,
+        } => {
+            let a = anchor(*anchor_id)?;
+            if !c.detailed_motif_ids.contains(motif_id) || !c.distance_bands.contains(distance_band)
+            {
+                return Err("Selected motif/band has no positional coverage".into());
+            }
+            let d = report
+                .details
+                .iter()
+                .find(|d| {
+                    d.anchor_id == *anchor_id
+                        && d.motif_id == *motif_id
+                        && d.distance_band == *distance_band
+                })
+                .ok_or("Selected hit is not in the report")?;
+            validate_detail(a, d)?;
+            let (Some(start), Some(end)) = (d.hit_start, d.hit_end) else {
+                return Err(
+                    "No retained locus to capture; a zero-complete band is not an annotation"
+                        .into(),
+                );
+            };
+            let strand = match d.best_strand.as_deref() {
+                Some("+") => GenomicRegionStrand::Plus,
+                Some("-") => GenomicRegionStrand::Minus,
+                Some(".") => GenomicRegionStrand::Unstranded,
+                _ => return Err("Unknown hit strand".into()),
+            };
+            (
+                a.chrom.clone(),
+                start,
+                end,
+                strand,
+                Some(motif_id.clone()),
+                format!("hit:{anchor_id}:{motif_id}:{distance_band}"),
+                report
+                    .memberships
+                    .iter()
+                    .filter(|m| m.anchor_id == *anchor_id)
+                    .map(|m| m.regulatory_feature_id.clone())
+                    .collect(),
+            )
+        }
+        CofactorRegionTarget::Promoter {
+            regulatory_feature_id,
+        } => {
+            let p = report
+                .promoters
+                .iter()
+                .find(|p| p.regulatory_feature_id == *regulatory_feature_id)
+                .ok_or("Selected promoter is not in the report")?;
+            (
+                p.chrom.clone(),
+                p.extended_start,
+                p.extended_end,
+                GenomicRegionStrand::Unstranded,
+                None,
+                format!("promoter:{regulatory_feature_id}"),
+                vec![regulatory_feature_id.clone()],
+            )
+        }
+    };
+    if !c.chromosomes.contains(&chrom) || start >= end || end > i64::MAX as u64 {
+        return Err("Selected interval is outside valid declared coverage".into());
+    }
+    let mut genes = report
+        .promoters
+        .iter()
+        .filter(|p| promoter_ids.contains(&p.regulatory_feature_id))
+        .flat_map(|p| p.gene_links.iter().map(|g| g.gene_id.clone()))
+        .collect::<Vec<_>>();
+    genes.sort();
+    genes.dedup();
+    let raw_score = match target {
+        CofactorRegionTarget::Anchor { anchor_id } => Some(anchor(*anchor_id)?.anchor_score),
+        CofactorRegionTarget::Hit {
+            anchor_id,
+            motif_id,
+            distance_band,
+        } => report
+            .details
+            .iter()
+            .find(|d| {
+                d.anchor_id == *anchor_id
+                    && d.motif_id == *motif_id
+                    && d.distance_band == *distance_band
+            })
+            .and_then(|d| d.best_score),
+        CofactorRegionTarget::Promoter { .. } => None,
+    };
+    let statement = format!(
+        "{row_id}; raw motif score: {}; score mode: {}; promoter links: {}. Original coordinates, strand scores and separate sample/control summaries are in source_record. Not a coverage track or occupancy claim.",
+        raw_score
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "not applicable".into()),
+        c.score_configuration
+            .get("score_mode")
+            .and_then(Value::as_str)
+            .unwrap_or("unspecified by source"),
+        promoter_ids.join(", ")
+    );
+    let source_record = serde_json::to_value(report).map_err(|e| e.to_string())?;
+    let bytes = serde_json::to_vec(&source_record).map_err(|e| e.to_string())?;
+    if bytes.len() > 8 * 1024 * 1024 {
+        return Err("Cofactor source report exceeds 8 MiB capture limit".into());
+    }
+    Ok((
+        GenomicRegionInterval {
+            reference: GenomicRegionReference {
+                assembly_name: c.assembly.clone(),
+                contig_name: chrom,
+                taxon_id: Some(u32::try_from(c.taxon_id).map_err(|_| "Invalid taxon ID")?),
+                ..Default::default()
+            },
+            start_0based: start,
+            end_0based_exclusive: end,
+            strand,
+            ..Default::default()
+        },
+        GenomicRegionEvidenceReference {
+            evidence_id: format!("{}:{row_id}", report.report_id),
+            source_kind: "promoter_cofactor_query".into(),
+            source_id: report.package_manifest_sha256.clone().unwrap(),
+            source_sha256: Some(format!("sha256:{}", sha256_hex_bytes(&bytes))),
+            report_id: Some(report.report_id.clone()),
+            source_record: Some(source_record),
+            feature_or_window_id: Some(row_id),
+            factor,
+            associated_gene_ids: genes,
+            evidence_statement: statement,
+            non_claims: report.non_claims.clone(),
+            ..Default::default()
+        },
+    ))
+}
+
 pub fn validate_request(r: &PromoterCofactorRequest) -> Result<(), String> {
     if !matches!(
         r.query,
@@ -699,4 +908,4 @@ pub fn query(r: &PromoterCofactorRequest) -> Result<PromoterCofactorReport, Stri
 
 #[cfg(test)]
 #[path = "promoter_cofactors_tests.rs"]
-mod tests;
+pub(crate) mod tests;

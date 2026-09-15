@@ -1018,6 +1018,21 @@ retains content-bound parent identities. Canonical JSON is lossless; BED
 round-trips require a sidecar binding the complete region set to the exact BED
 bytes and coordinate contract.
 
+Promoter-cofactor handoff reuses this ledger, not a parallel annotation store.
+An explicit `promoter_cofactor` capture preserves the selected span and a bounded
+original query `source_record`, checked against its canonical-JSON SHA-256.
+This binds copied evidence to the displayed result; it does not authenticate
+the producer or re-query/revalidate an unavailable source package. Raw motif
+scores, selected-site presence, cohort statistics and sample/control depth
+summaries stay distinct. Maxima cannot reconstruct a coverage track or establish
+cofactor occupancy. Unspecified anchor/promoter orientation stays unstranded.
+
+The initial useful handoff is a saved genomic region with optional existing
+exact-anchor local projection. Native DNA-feature materialization is deferred
+until catalog/assembly/contig identity can be verified end to end and evidence
+can be attached explicitly. No heuristic catalog-label alias, implicit download,
+assembly switch or inferred CUT&RUN coverage is allowed to bridge that gap.
+
 ## DEC-046: Regulatory-Fragment Panels Are Exact Contrast Plans
 
 Status: active

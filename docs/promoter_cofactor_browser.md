@@ -2,6 +2,8 @@
 
 This browser joins existing cohort statistics, strongest motif matches and
 promoter ownership. It does not scan DNA, refit a model or download data.
+Start with the registered [empty-project synthetic tutorial](tutorial/08-14_promoter_cofactor_browser.md)
+for GUI steps, worked numbers, CLI replay and an optional coordinate-selected IRF9 example.
 DuckDB and the package are optional. Only explicit queries need DuckDB:
 `duckdb` on PATH, `GENTLE_DUCKDB_BIN`, or request `duckdb_executable`.
 The browser's **Query limits > DuckDB executable** field supplies an explicit
@@ -40,6 +42,42 @@ path when the desktop application's PATH differs from the terminal's.
 7. **Copy exact request** copies the request that produced the displayed
    result, even after form edits. **Copy report JSON** retains full diagnostics,
    source hashes and interpretation limits for collaborators or agents.
+   Form edits now show a stale-result warning; the displayed-result line retains
+   the actual motif, band and presence threshold instead of adopting edited values.
+8. **Save evidence region** on an anchor, retained-hit or promoter row uses
+   `regions capture` to save an assembly-bound region in set `promoter_cofactors`.
+   **Copy region request** copies that same report-bound request. This works
+   without a reference; it preserves evidence, not DNA features. Use **Open hit
+   region...** for explicit reference retrieval of the retained motif span.
+
+### Portable Evidence Handoff
+
+The existing `CaptureGenomicRegion` request accepts
+`source: {"source_kind":"promoter_cofactor","report":REPORT,"target":TARGET}`.
+`REPORT` is the entire displayed query report. Targets are
+`{"kind":"anchor","anchor_id":ID}`,
+`{"kind":"hit","anchor_id":ID,"motif_id":"ACCESSION","distance_band":"BAND"}`,
+or `{"kind":"promoter","regulatory_feature_id":"ID"}`. Use the existing
+`regions capture @request.json` route or its typed operation; no new query or
+SQL implementation is introduced.
+
+Saved evidence retains the original report as `source_record`, bound by SHA-256
+of its compact key-sorted JSON representation. The report contains manifest,
+completion and Parquet digests, request, raw strand scores, source coordinates,
+promoter/gene links and separate support summaries. Capture validates coverage,
+selected geometry and score/strand consistency; it does not reopen the package
+or independently authenticate producer claims. Source records are capped at
+8 MiB per capture. A report checksum is not a new experimental observation.
+The generic signal-intensity field remains empty: raw motif scores are not depth.
+
+Optional source `seq_id` requests existing checked local projection. It requires
+an exact verified anchor, matching assembly/contig and full containment; the
+sequence digest and strand transform are retained, and genomic coordinates are
+unchanged. Catalog labels merely containing an assembly token are not silently
+treated as aliases. Leave the GUI sequence-ID field empty to save portable
+regions when that exact reference binding is unavailable. Native feature
+attachment needs a further checked reference identity/materialization handoff;
+see [DEC-045](decisions.md#dec-045-portable-genomic-regions-are-assembly-bound-evidence-ledgers).
 
 This can nominate sites for testing whether a defined sequence change reduces
 luciferase activity in an otherwise identical reporter. A cohort association

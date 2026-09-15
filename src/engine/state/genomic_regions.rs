@@ -336,6 +336,16 @@ fn validate_region_digest(region: &gp::GenomicRegionOfInterest) -> Result<(), En
         if let Some(digest) = evidence.source_sha256.as_deref() {
             validate_sha256(digest, "evidence.source_sha256")?;
         }
+        if let Some(record) = &evidence.source_record {
+            let digest =
+                sha256_prefixed_str(&serialize_for_digest(record, "evidence source record")?);
+            if evidence.source_sha256.as_deref() != Some(digest.as_str()) {
+                return Err(region_error(
+                    ErrorCode::InvalidInput,
+                    "Evidence source record digest mismatch",
+                ));
+            }
+        }
     }
     if let Some(derivation) = region.derivation.as_ref() {
         if derivation.parents.is_empty() {
@@ -1082,6 +1092,26 @@ impl GentleEngine {
         request: gp::GenomicRegionCaptureRequest,
     ) -> Result<gp::GenomicRegionOperationReport, EngineError> {
         let (interval, local_projection, selection_method, evidence) = match request.source {
+            gp::GenomicRegionCaptureSource::PromoterCofactor {
+                report,
+                target,
+                seq_id,
+            } => {
+                let (interval, evidence) =
+                    crate::promoter_cofactors::capture_region_evidence(&report, &target)
+                        .map_err(EngineError::invalid_input)?;
+                validate_interval(&interval)?;
+                let projection = seq_id
+                    .as_deref()
+                    .map(|id| self.local_projection_for_interval(id, &interval))
+                    .transpose()?;
+                (
+                    interval,
+                    projection,
+                    gp::GenomicRegionSelectionMethod::ProviderAnnotation,
+                    vec![evidence],
+                )
+            }
             gp::GenomicRegionCaptureSource::SequenceSelection {
                 seq_id,
                 local_start_0based,

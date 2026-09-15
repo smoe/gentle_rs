@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-15 - Report-Bound Promoter-Cofactor Regions And Tutorial
+
+- Reuse `regions capture` for selected cofactor anchors, retained hits and
+  promoters. Preserve raw scores, source coordinates, strand, promoter/gene
+  links and separate sample/control summaries in digest-bound source reports;
+  support existing exact-anchor forward/reverse projection without downloads.
+- Flag edited query forms while retaining the actual displayed threshold and
+  report-bound copy/save behavior. Keep overview/detail, original statistics,
+  fixed-floor counts and missing-versus-zero semantics explicit.
+- Give only the opt-in real-Parquet correctness test a 120-second request
+  budget; production defaults, limits and fail-closed deadlines are unchanged.
+- Register group 08 tutorial 08-14 with shared synthetic fixture metadata and a
+  real CLI/Parquet replay, plus an optional coordinate-selected IRF9 appendix.
+  Native GUI/human acceptance and explicit DNA-feature attachment remain pending;
+  summarized depth is not reconstructed as coverage.
+
 ## 2026-09-15 - `.10` Notes And Scientific Regeneration Input Gate
 
 - Refresh the `.10` draft with corrected TFBS tails/scaling, imported-hit

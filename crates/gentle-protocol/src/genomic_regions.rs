@@ -190,6 +190,10 @@ pub struct GenomicRegionEvidenceReference {
     pub source_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub report_id: Option<String>,
+    /// Optional original source record. Its canonical JSON is bound by
+    /// source_sha256; source-specific scores are not generic signal intensities.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_record: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub feature_or_window_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -337,6 +341,13 @@ pub enum GenomicRegionEnsemblIntervalKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "source_kind", rename_all = "snake_case")]
 pub enum GenomicRegionCaptureSource {
+    /// Capture retained cofactor evidence without querying, rescoring or downloading.
+    PromoterCofactor {
+        report: Box<crate::promoter_cofactors::PromoterCofactorReport>,
+        target: crate::promoter_cofactors::CofactorRegionTarget,
+        #[serde(default)]
+        seq_id: Option<String>,
+    },
     SequenceSelection {
         seq_id: String,
         local_start_0based: u64,

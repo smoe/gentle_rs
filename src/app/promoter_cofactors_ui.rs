@@ -20,6 +20,8 @@ pub(super) struct CofactorBrowser {
     report_json: String,
     task: Option<mpsc::Receiver<Result<OpResult, EngineError>>>,
     status: String,
+    submitted_form: Option<Value>,
+    projection_seq_id: String,
 }
 
 impl Default for CofactorBrowser {
@@ -40,7 +42,53 @@ impl Default for CofactorBrowser {
             report_json: String::new(),
             task: None,
             status: String::new(),
+            submitted_form: None,
+            projection_seq_id: String::new(),
         }
+    }
+}
+
+impl CofactorBrowser {
+    fn form_snapshot(&self) -> Value {
+        serde_json::json!({"request":self.request,"motif":self.motif_filter,
+            "gene":self.gene_filter,"species":self.species_filter,"duckdb":self.duckdb_executable,
+            "chromosome":self.chromosome,"start":self.start,"end":self.end,
+            "q_filter":self.q_filter,"q_value":self.q_value})
+    }
+
+    fn report_is_stale(&self) -> bool {
+        self.report.is_some() && self.submitted_form.as_ref() != Some(&self.form_snapshot())
+    }
+
+    fn region_request(
+        &self,
+        target: CofactorRegionTarget,
+    ) -> Option<gentle_protocol::GenomicRegionCaptureRequest> {
+        Some(gentle_protocol::GenomicRegionCaptureRequest {
+            set_id: "promoter_cofactors".into(),
+            set_label: Some("Selected promoter-cofactor evidence".into()),
+            label: Some(format!("{target:?}")),
+            source: gentle_protocol::GenomicRegionCaptureSource::PromoterCofactor {
+                report: Box::new(self.report.as_ref()?.clone()),
+                target,
+                seq_id: (!self.projection_seq_id.trim().is_empty())
+                    .then(|| self.projection_seq_id.trim().into()),
+            },
+            ..Default::default()
+        })
+    }
+}
+
+fn region_buttons(
+    ui: &mut egui::Ui,
+    target: CofactorRegionTarget,
+    action: &mut Option<(CofactorRegionTarget, bool)>,
+) {
+    if ui.button("Save evidence region").on_hover_text("Save the displayed interval and its original report in this project; no DNA or coverage import").clicked() {
+        *action = Some((target.clone(), false));
+    }
+    if ui.button("Copy region request").clicked() {
+        *action = Some((target, true));
     }
 }
 
@@ -107,6 +155,7 @@ impl GENtleApp {
             let _ = tx.send(result);
         });
         state.task = Some(rx);
+        state.submitted_form = Some(state.form_snapshot());
         state.status = "Verifying package and querying bounded evidence...".into();
         state.report = None;
         state.report_json.clear();
@@ -157,6 +206,7 @@ impl GENtleApp {
         );
         let mut action = None;
         let mut navigate = None;
+        let mut region_action = None;
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let s = &mut self.cofactor_browser;
             ui.add_enabled_ui(s.task.is_none(), |ui| {
@@ -301,12 +351,24 @@ impl GENtleApp {
                     ui.ctx().copy_text(json);
                 }
             });
+            if s.report_is_stale() {
+                ui.colored_label(ui.visuals().warn_fg_color,
+                    "Form changed: results below belong to the previous request. Rerun the query to update them. Copy/save actions use the displayed report, not the edited form.");
+            }
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Optional loaded sequence ID for saved-region projection");
+                ui.text_edit_singleline(&mut s.projection_seq_id);
+            });
             ui.separator();
             egui::ScrollArea::both()
                 .id_salt("cofactor_report")
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                 let Some(report) = &s.report else { return; };
+                ui.label(format!("Displayed result: {:?}; motif {}; band {}; presence threshold >= {}",
+                    report.request.query, report.request.motif.as_deref().unwrap_or("not filtered"),
+                    report.request.distance_band.as_deref().unwrap_or("all"), report.request.presence_threshold));
+                ui.label("Presence threshold changes only the selected-site presence flag. Cohort statistics and counts at -1 / 0 remain original. Unavailable is not zero.");
                 if let Some(c) = &report.coverage {
                     ui.label(format!(
                         "{} | {} | source floor {} | positive >= {} | positional detail: {} motifs",
@@ -397,6 +459,7 @@ impl GENtleApp {
                         if ui.button("Open region...").clicked() {
                             navigate = Some((anchor.chrom.clone(), anchor.anchor_start, anchor.anchor_end, report.coverage.clone()));
                         }
+                        region_buttons(ui, CofactorRegionTarget::Anchor { anchor_id: anchor.anchor_id }, &mut region_action);
                     });
                     egui::Grid::new(("cofactor_support", anchor.anchor_id)).striped(true).show(ui, |ui| {
                         for heading in ["Sample / series", "TP73 support / max depth", "Control support / max depth"] {
@@ -419,7 +482,7 @@ impl GENtleApp {
                 if !report.details.is_empty() {
                     egui::Grid::new("cofactor_detail").striped(true).show(ui, |ui| {
                         for h in ["Band", "Full BED interval", "Score / strand", "Gap / genomic side",
-                            "Counts >=-1 / >=0", "Presence at requested threshold"]
+                            "Counts >=-1 / >=0", "Presence at displayed threshold", "Selected evidence"]
                         {
                             ui.strong(h);
                         }
@@ -435,6 +498,18 @@ impl GENtleApp {
                                 d.genomic_side.as_deref().unwrap_or("unavailable")));
                             ui.label(format!("{} / {}", d.n_source_loci, d.n_score_zero_loci));
                             ui.label(d.present_at_requested_threshold.to_string());
+                            if d.hit_start.is_some() {
+                                ui.horizontal_wrapped(|ui| {
+                                    region_buttons(ui, CofactorRegionTarget::Hit { anchor_id: d.anchor_id,
+                                        motif_id: d.motif_id.clone(), distance_band: d.distance_band.clone() }, &mut region_action);
+                                    if ui.button("Open hit region...").clicked()
+                                        && let Some(anchor) = report.anchors.iter().find(|a| a.anchor_id == d.anchor_id)
+                                        && let (Some(start), Some(end)) = (d.hit_start, d.hit_end)
+                                    {
+                                        navigate = Some((anchor.chrom.clone(), start, end, report.coverage.clone()));
+                                    }
+                                });
+                            } else { ui.label("No retained locus to save"); }
                             ui.end_row();
                         }
                     });
@@ -445,6 +520,7 @@ impl GENtleApp {
                         if ui.button("Open region...").clicked() {
                             navigate = Some((p.chrom.clone(), p.extended_start, p.extended_end, report.coverage.clone()));
                         }
+                        region_buttons(ui, CofactorRegionTarget::Promoter { regulatory_feature_id: p.regulatory_feature_id.clone() }, &mut region_action);
                     });
                     for g in &p.gene_links {
                         ui.label(format!("{} | {} | {}", g.gene_id, g.link_source, g.annotation_release));
@@ -459,6 +535,23 @@ impl GENtleApp {
         self.cofactor_browser.open = open;
         if let Some((kind, anchor)) = action {
             self.start_cofactor_query(kind, anchor);
+        }
+        if let Some((target, copy)) = region_action
+            && let Some(request) = self.cofactor_browser.region_request(target)
+        {
+            if copy {
+                if let Ok(json) = serde_json::to_string(&request) {
+                    ctx.copy_text(json);
+                }
+            } else {
+                let command = ShellCommand::GenomicRegions {
+                    operation: Operation::CaptureGenomicRegion { request },
+                };
+                self.cofactor_browser.status = match self.execute_shared_shell_command_json(&command) {
+                    Ok(_) => "Saved in region set promoter_cofactors. Inspect through regions inspect or the DNA window's Saved genomic regions. No DNA annotations or coverage were imported.".into(),
+                    Err(error) => error,
+                };
+            }
         }
         if let Some((chrom, start, end, Some(coverage))) = navigate {
             self.open_reference_genome_retrieve_dialog();
@@ -484,6 +577,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn promoter_cofactors_form_edits_mark_results_stale_but_keep_copy_and_capture_bound() {
+        let mut browser = CofactorBrowser::default();
+        browser.submitted_form = Some(browser.form_snapshot());
+        let report = crate::promoter_cofactors::tests::handoff_report();
+        let original = serde_json::to_value(&report.request).unwrap();
+        browser.report = Some(report);
+        assert!(!browser.report_is_stale());
+        browser.request.presence_threshold = 10.0;
+        assert!(browser.report_is_stale());
+        assert_eq!(
+            serde_json::to_value(&browser.report.as_ref().unwrap().request).unwrap(),
+            original
+        );
+        let request = browser
+            .region_request(CofactorRegionTarget::Anchor { anchor_id: 1 })
+            .unwrap();
+        let gentle_protocol::GenomicRegionCaptureSource::PromoterCofactor { report, .. } =
+            request.source
+        else {
+            panic!("capture source")
+        };
+        assert_eq!(report.request.presence_threshold, 0.0);
+        browser.request.presence_threshold = 0.0;
+        assert!(!browser.report_is_stale());
+        browser.motif_filter = "another motif".into();
+        assert!(browser.report_is_stale());
+    }
+
+    #[test]
     fn promoter_cofactors_browser_opens_without_genome_or_runtime() {
         let mut app = GENtleApp::default();
         let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
@@ -505,5 +627,19 @@ mod tests {
             serde_json::to_value(app.engine.read().unwrap().state()).unwrap()
         );
         assert_eq!(app.cofactor_browser.q_value, 0.05);
+        app.cofactor_browser.submitted_form = Some(app.cofactor_browser.form_snapshot());
+        app.cofactor_browser.report = Some(crate::promoter_cofactors::tests::handoff_report());
+        app.cofactor_browser.request.presence_threshold = 5.0;
+        assert!(app.cofactor_browser.report_is_stale());
+        ctx.begin_pass(egui::RawInput::default());
+        app.render_promoter_cofactor_browser(&ctx);
+        let mut output = ctx.end_pass();
+        output.textures_delta.clear();
+        assert!(!output.shapes.is_empty());
+        assert!(app.cofactor_browser.task.is_none());
+        assert_eq!(
+            before,
+            serde_json::to_value(app.engine.read().unwrap().state()).unwrap()
+        );
     }
 }

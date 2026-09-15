@@ -17,6 +17,12 @@ background-loaded collaborator-package browser, independent of loaded genomes.
 It compares TA/DN cohort statistics and inspects strongest-per-band motif hits,
 sample support/depth and promoter/gene ownership. See the
 [wet-lab walkthrough and limits](promoter_cofactor_browser.md).
+Selected anchors, retained motif hits and promoters can explicitly **Save evidence
+region** through the existing region ledger, or **Copy region request**. Edited
+controls flag stale results; copy/save remains bound to the displayed report.
+The [registered synthetic tutorial](tutorial/08-14_promoter_cofactor_browser.md)
+explains reference-free inspection, optional exact-anchor projection and the
+remaining native DNA-annotation limitation.
 
 ### Accession-Pinned TSS Profiles
 

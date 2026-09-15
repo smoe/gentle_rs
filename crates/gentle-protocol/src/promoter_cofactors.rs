@@ -7,6 +7,23 @@ use std::collections::BTreeMap;
 
 pub const PROMOTER_COFACTOR_SCHEMA: &str = "gentle.promoter_cofactor_query.v1";
 
+/// Select one physical interval from a retained report, not from live form fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum CofactorRegionTarget {
+    Anchor {
+        anchor_id: u64,
+    },
+    Hit {
+        anchor_id: u64,
+        motif_id: String,
+        distance_band: String,
+    },
+    Promoter {
+        regulatory_feature_id: String,
+    },
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CofactorQuery {

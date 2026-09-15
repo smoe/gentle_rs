@@ -57,6 +57,15 @@ Physical anchors, promoter memberships and many-to-many gene ownership are
 separate. Legacy operation results deserialize with this field absent.
 See [coordinate, sparse-zero and runtime contracts](promoter_cofactor_browser.md).
 
+`CaptureGenomicRegion` also accepts capture source `promoter_cofactor` with a
+typed `report`, `target` (anchor, hit or promoter), and optional `seq_id` for
+existing exact-anchor projection. The existing `regions capture` route owns
+validation/persistence. Optional `GenomicRegionEvidenceReference.source_record`
+retains original source JSON, bound by `source_sha256` over compact key-sorted
+JSON. Older evidence omits the field unchanged. Import/save rejects a mismatched
+record digest. This is a portable evidence handoff, not feature materialization
+or a new interpretation of imported scores.
+
 ## Accession-Pinned TSS Profiles
 
 `ComputeTssTfbsProfiles {request, export?}` validates a transcript-oriented
