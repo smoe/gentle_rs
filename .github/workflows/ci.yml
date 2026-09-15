@@ -343,7 +343,7 @@ jobs:
         run: cargo test -q workflow_examples -- --test-threads=1
 
       - name: Full test suite
-        run: cargo test -q --locked --workspace
+        run: cargo test --locked --workspace -j1
 
       - name: Tutorial core CLI runtime smoke
         run: |
