@@ -79,9 +79,10 @@ pub(super) fn parse_tss_profiles_command(tokens: &[String]) -> Result<ShellComma
             "svg" => Ok(TssExportFormat::Svg),
             "png" => Ok(TssExportFormat::Png),
             "pdf" => Ok(TssExportFormat::Pdf),
+            "vector_pdf" => Ok(TssExportFormat::VectorPdf),
             "genbank" => Ok(TssExportFormat::Genbank),
             "embl" => Ok(TssExportFormat::Embl),
-            _ => Err("--formats accepts svg,png,pdf,genbank,embl".to_string()),
+            _ => Err("--formats accepts svg,png,pdf,vector_pdf,genbank,embl".to_string()),
         })
         .collect::<Result<Vec<_>, _>>()?;
     for (i, format) in formats.iter().enumerate() {
@@ -284,7 +285,7 @@ mod tests {
             "--context-manifest",
             "context with spaces.json",
             "--formats",
-            "svg,genbank,embl",
+            "svg,vector_pdf,genbank,embl",
         ]
         .map(str::to_string);
         let ShellCommand::Op { payload } = parse_tss_profiles_command(&tokens).unwrap() else {
@@ -303,6 +304,7 @@ mod tests {
             request.formats,
             vec![
                 TssExportFormat::Svg,
+                TssExportFormat::VectorPdf,
                 TssExportFormat::Genbank,
                 TssExportFormat::Embl
             ]

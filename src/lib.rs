@@ -217,6 +217,8 @@ pub mod shell_docs;
 pub mod svg_pdf;
 /// Deterministic SVG-to-PNG rasterization helpers for headless adapters.
 pub mod svg_png;
+/// Selectable-text vector PDF projection of engine-owned SVG output.
+pub mod svg_vector_pdf;
 /// Standalone RNA-seq target-region rescue screen for CLI calibration runs.
 pub mod target_rescue;
 /// Hidden shared support helpers for internal tests across library and binaries.

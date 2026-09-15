@@ -670,7 +670,7 @@ pub fn validate_tss_profile_report(report: &TssProfileReport) -> Result<(), Engi
 
 fn validate_options(request: &ExportTssProfilesRequest) -> Result<(), EngineError> {
     if request.formats.is_empty()
-        || request.formats.len() > 5
+        || request.formats.len() > 6
         || request
             .formats
             .iter()
@@ -680,7 +680,7 @@ fn validate_options(request: &ExportTssProfilesRequest) -> Result<(), EngineErro
         || request.rendering.panels_per_page > 32
     {
         return Err(invalid(
-            "choose unique SVG/PNG/PDF/GenBank/EMBL formats and 1..=32 panels per page",
+            "choose unique SVG/PNG/raster-PDF/vector-PDF/GenBank/EMBL formats and 1..=32 panels per page",
         ));
     }
     Ok(())
@@ -1475,7 +1475,7 @@ fn validate_pages(
     genes: &[Gene<'_>],
     raster: bool,
 ) -> Result<(), EngineError> {
-    if pages.is_empty() || pages.len() > MAX_OUTPUT_FILES / 3 {
+    if pages.is_empty() || pages.len() > MAX_OUTPUT_FILES / 4 {
         return Err(invalid("renderer returned an empty or excessive page set"));
     }
     let mut total = 0usize;
@@ -1586,11 +1586,11 @@ fn raster_metadata(
         "font_loading_policy": "system fonts plus GENTLE_SVG_FONT_FILE and GENTLE_SVG_FONT_DIR; generic family overrides honored by svg_png",
         "font_reproducibility": "recorded_not_enforced_or_replayed",
     });
-    validate_raster_font_metadata(&metadata)?;
+    validate_render_font_metadata(&metadata)?;
     Ok(metadata)
 }
 
-fn validate_raster_font_metadata(metadata: &Value) -> Result<(), EngineError> {
+fn validate_render_font_metadata(metadata: &Value) -> Result<(), EngineError> {
     let identities = metadata
         .get("font_identities")
         .and_then(Value::as_array)
@@ -1613,7 +1613,7 @@ fn validate_raster_font_metadata(metadata: &Value) -> Result<(), EngineError> {
             != Some("recorded_not_enforced_or_replayed")
     {
         return Err(invalid(
-            "missing or inconsistent glyph-used font audit for a text-bearing TSS raster",
+            "missing or inconsistent glyph-used font audit for a text-bearing TSS rendering",
         ));
     }
     let mut seen = BTreeSet::new();
@@ -1752,6 +1752,41 @@ fn write_page(
         metadata.push(entry);
         files.push(name);
     }
+    if formats.contains(&TssExportFormat::VectorPdf) {
+        checkpoint(should_continue)?;
+        let rendered =
+            crate::svg_vector_pdf::render_svg_to_vector_pdf_bytes_audited(&page.svg, options)
+                .map_err(|e| invalid(format!("vector PDF rendering failed: {e}")))?;
+        let name = format!("{prefix}.vector.pdf");
+        let entry = json!({
+            "format": "vector_pdf", "output_path": name, "source_svg_path": source_file,
+            "source_svg_sha256": svg_hash,
+            "backend": "in-process svg2pdf via audited crate::svg_vector_pdf",
+            "svg2pdf_version": root_dependency_version("svg2pdf"),
+            "backend_lockfile_sha256": sha256_hex_bytes(LOCKFILE.as_bytes()),
+            "scale": 1.0, "drop_dotplot_metadata": false,
+            "width": rendered.width, "height": rendered.height,
+            "page_width_pt": rendered.page_width_pt,
+            "page_height_pt": rendered.page_height_pt,
+            "pdf_representation": "single-page static vector PDF with embedded selectable text; SVG hover titles are not preserved by PDF viewers",
+            "embedded_text": rendered.embedded_text,
+            "svg_interactivity_preserved": false,
+            "svg_uri_links_preserved": false,
+            "uri_link_count": 0,
+            "font_face_count": rendered.font_face_count,
+            "used_font_face_count": rendered.font_identities.len(),
+            "font_identities": rendered.font_identities,
+            "font_identity_status": FONT_IDENTITY_STATUS,
+            "font_digest_convention": FONT_DIGEST_CONVENTION,
+            "font_audit_scope": "selected positioned-glyph layout fonts, including fallback and nested SVG trees; not proof of visible pixels or complete glyph coverage",
+            "font_loading_policy": "system fonts plus GENTLE_SVG_FONT_FILE and GENTLE_SVG_FONT_DIR; generic family overrides honored by svg_vector_pdf",
+            "font_reproducibility": "recorded_not_enforced_or_replayed",
+        });
+        validate_render_font_metadata(&entry)?;
+        inventory.bytes(&name, &rendered.bytes)?;
+        metadata.push(entry);
+        files.push(name);
+    }
     Ok(PageIndex {
         page_number: page.page_number,
         page_count: page.page_count,
@@ -1861,10 +1896,14 @@ Skip these lines before reading the column header. TSV text escapes backslash, t
 as \\\\, \\t, \\r and \\n respectively; a leading # in a text cell is escaped as \\#.\n\n\
 ## Rendering And Replay\n\n\
 SVG pages use gentle_render::tss_profiles::render_tss_profile_pages. Optional PNG uses in-process\n\
-resvg at scale 1 with metadata stripping disabled. PDF is a single-page raster-backed RGB image,\n\
-not a vector PDF. Its FlateDecode/zlib compression preserves every RGB pixel and the resolution.\n\
-Receipt metadata records that encoding, actual dimensions, available font-face counts and the\n\
-root's locked resvg version. Audited PNG/PDF helpers inspect positioned glyphs in the same parsed\n\
+resvg at scale 1 with metadata stripping disabled. The compatibility PDF is a single-page\n\
+raster-backed RGB image; its FlateDecode/zlib compression preserves every RGB pixel and the\n\
+resolution. The optional vector_pdf peer preserves vector geometry and embeds selectable text,\n\
+but it is a static PDF: portable PDF viewers do not preserve SVG title-hover interaction. Keep or\n\
+publish the SVG peer when hover details are required. SVG features unsupported by PDF can be\n\
+locally rasterized by the vector backend; the receipt identifies that backend and its settings.\n\
+Receipt metadata records the representation, actual dimensions, available font-face counts and the\n\
+root's locked backend version. Audited PNG/PDF helpers inspect positioned glyphs in the same parsed\n\
 rendering tree, including fallback and nested SVG trees. Each font_identities entry records its\n\
 family names, PostScript name, face_index and lowercase SHA-256 of the complete font source/container\n\
 bytes. The face index is recorded separately, not mixed into that digest. used_font_face_count counts\n\
@@ -2169,9 +2208,9 @@ pub fn validate_tss_profile_receipt(receipt: &TssProfileReceipt) -> Result<(), E
         validate_metadata(value)?;
         if matches!(
             value.get("format").and_then(Value::as_str),
-            Some("png" | "pdf")
+            Some("png" | "pdf" | "vector_pdf")
         ) {
-            validate_raster_font_metadata(value)?;
+            validate_render_font_metadata(value)?;
         }
     }
     bounded_json(receipt, MAX_METADATA_BYTES)
@@ -2401,6 +2440,7 @@ pub fn verify_tss_profile_receipt(
                 (TssExportFormat::Svg, "svg"),
                 (TssExportFormat::Png, "png"),
                 (TssExportFormat::Pdf, "pdf"),
+                (TssExportFormat::VectorPdf, "vector.pdf"),
             ]
             .into_iter()
             .filter(|(format, _)| request.formats.contains(format))
@@ -2434,7 +2474,12 @@ pub fn verify_tss_profile_receipt(
                 "render metadata contains duplicate or unknown outputs",
             ));
         }
-        if metadata.get("format").and_then(Value::as_str) != name.rsplit('.').next() {
+        let expected_format = if name.ends_with(".vector.pdf") {
+            Some("vector_pdf")
+        } else {
+            name.rsplit('.').next()
+        };
+        if metadata.get("format").and_then(Value::as_str) != expected_format {
             return Err(invalid("render metadata format does not match its file"));
         }
     }
@@ -3528,7 +3573,7 @@ pub(crate) mod tests {
             metadata["font_reproducibility"],
             "recorded_not_enforced_or_replayed"
         );
-        validate_raster_font_metadata(&metadata).unwrap();
+        validate_render_font_metadata(&metadata).unwrap();
         let mutations: Vec<Box<dyn Fn(&mut Value)>> = vec![
             Box::new(|value| value["font_identities"] = Value::Null),
             Box::new(|value| value["font_identities"] = json!([])),
@@ -3554,7 +3599,7 @@ pub(crate) mod tests {
         for mutate in mutations {
             let mut altered = metadata.clone();
             mutate(&mut altered);
-            assert!(validate_raster_font_metadata(&altered).is_err());
+            assert!(validate_render_font_metadata(&altered).is_err());
         }
         assert!(
             raster_metadata(
@@ -3624,10 +3669,43 @@ pub(crate) mod tests {
         }
     }
 
-    /// Opt-in visual review artifact, using the real SVG/PNG/PDF helpers. The
+    #[test]
+    fn vector_pdf_export_is_receipt_bound_and_not_a_whole_page_image() {
+        let (_temp, root) = temporary_root();
+        let output = root.join("vector-pdf-export");
+        let request = ExportTssProfilesRequest {
+            genomic_motif_evidence: vec![],
+            context_manifest: None,
+            output_dir: output.to_str().unwrap().into(),
+            rendering: TssProfileRenderOptions::default(),
+            formats: vec![TssExportFormat::VectorPdf],
+        };
+        let receipt = export_tss_profiles(&synthetic_report(), &request).unwrap();
+        verify_tss_profile_receipt(&output, &receipt).unwrap();
+        let entries = receipt
+            .render_metadata
+            .iter()
+            .filter(|entry| entry["format"] == "vector_pdf")
+            .collect::<Vec<_>>();
+        assert_eq!(entries.len(), receipt.page_count);
+        assert!(!entries.is_empty());
+        for entry in entries {
+            assert_eq!(entry["embedded_text"], true);
+            assert_eq!(entry["svg_interactivity_preserved"], false);
+            let bytes = fs::read(output.join(entry["output_path"].as_str().unwrap())).unwrap();
+            assert!(bytes.starts_with(b"%PDF-"));
+            assert!(
+                !bytes
+                    .windows(b"/Subtype /Image".len())
+                    .any(|window| window == b"/Subtype /Image")
+            );
+        }
+    }
+
+    /// Opt-in visual review artifact, using the real SVG/PNG/raster-PDF/vector-PDF helpers. The
     /// caller supplies a fresh absolute destination so the example is retained.
     #[test]
-    #[ignore = "set GENTLE_TSS_EXPORT_EXAMPLE_DIR to a fresh directory; generates retained SVG/PNG/PDF artifacts"]
+    #[ignore = "set GENTLE_TSS_EXPORT_EXAMPLE_DIR to a fresh directory; generates retained SVG/PNG/raster-PDF/vector-PDF artifacts"]
     fn write_synthetic_export_example() {
         let output_dir = std::env::var("GENTLE_TSS_EXPORT_EXAMPLE_DIR")
             .expect("set GENTLE_TSS_EXPORT_EXAMPLE_DIR");
@@ -3640,6 +3718,7 @@ pub(crate) mod tests {
                 TssExportFormat::Svg,
                 TssExportFormat::Png,
                 TssExportFormat::Pdf,
+                TssExportFormat::VectorPdf,
             ],
         };
         let receipt = export_tss_profiles(&synthetic_report(), &request).unwrap();
@@ -3652,7 +3731,7 @@ pub(crate) mod tests {
                 .find(|v| v["output_path"] == name.as_str());
             if name.ends_with(".png") || name.ends_with(".pdf") {
                 let metadata = metadata.unwrap();
-                validate_raster_font_metadata(metadata).unwrap();
+                validate_render_font_metadata(metadata).unwrap();
                 let identities = metadata["font_identities"].as_array().unwrap();
                 assert!(!identities.is_empty());
                 for identity in identities {
@@ -3670,6 +3749,22 @@ pub(crate) mod tests {
                         .unwrap()
                         .starts_with(b"\x89PNG\r\n\x1a\n")
                 );
+            } else if name.ends_with(".vector.pdf") {
+                let bytes = fs::read(output.join(name)).unwrap();
+                assert!(bytes.starts_with(b"%PDF-"));
+                assert!(
+                    !bytes
+                        .windows(b"/Subtype /Image".len())
+                        .any(|window| window == b"/Subtype /Image")
+                );
+                let metadata = receipt
+                    .render_metadata
+                    .iter()
+                    .find(|v| v["output_path"] == name.as_str())
+                    .unwrap();
+                assert_eq!(metadata["format"], "vector_pdf");
+                assert_eq!(metadata["embedded_text"], true);
+                assert_eq!(metadata["svg_interactivity_preserved"], false);
             } else if name.ends_with(".pdf") {
                 assert!(
                     fs::read(output.join(name))

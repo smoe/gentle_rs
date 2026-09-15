@@ -48,7 +48,11 @@ floating-point bits exactly so export-only replay does not change results. See t
 
 Presentation-size reductions must not discard scores, change sampling or weaken
 receipt checks. Raster-backed PDF image compression is lossless; encoding and
-output hashes are recorded. CLI summaries are adapter-only projections of
+output hashes are recorded. The separate `vector_pdf` representation preserves
+vector geometry and embeds selectable text, while remaining a static PDF; SVG
+title-hover interaction belongs to the SVG/HTML peer and is not promised across
+PDF viewers. Receipts bind the exact PDF backend, lockfile, geometry and used
+font-source identities. CLI summaries are adapter-only projections of
 successful exports, with an explicit full-JSON opt-in. Compute-only results
 remain complete when there is no persisted report. GUI/MCP and the shared
 engine contract are unchanged, and verification non-claims remain visible.

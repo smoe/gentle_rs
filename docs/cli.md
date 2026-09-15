@@ -27,6 +27,10 @@ These shared-parser routes also work in the GUI Shell and through typed MCP
 Both accept `--context-manifest FILE` for sequence-verified CUT&RUN/chromatin,
 exon/CDS/translation-marker and TATA rows on detailed pages, without rescoring.
 See the [context example and input contract](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
+Use `--formats svg,vector_pdf` for an interactive SVG peer plus a static vector
+PDF with selectable embedded text. The existing `pdf` token remains the
+lossless raster-backed compatibility format; PDF viewers do not portably retain
+SVG title-hover behavior.
 Repeat `--genomic-motif-evidence FILE` to attach saved DuckDB-query reports as
 separate [strand/span/score triangle lanes](tss_tfbs_profiles.md#imported-duckdb-motif-hits)
 and a complete imported-hit TSV, without rescoring or querying the package.

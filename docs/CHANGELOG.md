@@ -180,6 +180,16 @@
   Native GUI/human acceptance and explicit DNA-feature attachment remain pending;
   summarized depth is not reconstructed as coverage.
 
+## 2026-09-15 - Audited Vector TSS PDF Peer
+
+- Add explicit `vector_pdf` TSS-profile export alongside the unchanged
+  raster-backed `pdf` compatibility path. The new representation keeps vector
+  geometry and embeds selectable text, with backend, dimensions, source SVG,
+  lockfile and used-font identities recorded in the receipt.
+- Keep interaction claims representation-specific: SVG retains per-hit title
+  hover, while the PDF is static. A PDF may locally rasterize SVG features its
+  backend cannot represent; it is not advertised as a browser substitute.
+
 ## 2026-09-15 - `.10` Notes And Scientific Regeneration Input Gate
 
 - Refresh the `.10` draft with corrected TFBS tails/scaling, imported-hit
