@@ -80,6 +80,21 @@
   Remaining command families, durable jobs, pure cached BLAST observation and
   real T2T/GUI acceptance remain explicitly pending in the responsive-command plan.
 
+## 2026-09-15 - Shared TSS Geometry And Bound Peak Seeds
+
+- Move fixed TSS-window bounds, connected stretches and feature intersections
+  into stateless `ComputeTssWindowGeometry` in the shared core. The similarity
+  preparation script requires that operation and retains request/report/binary
+  hashes; fixed similarity windows are not replaced by adaptive reporter inserts.
+- Add optional explicit called-peak BED sources to reporter boundary proposals,
+  bound to source lanes, hashes, assembly, cell line and declared caller/control
+  settings. Stale/missing sources fail closed. Raw coverage and overlap labels
+  never become seeds automatically; peak retention is not an independent vote.
+- Keep all candidate variants transcript-oriented, including compact alternatives
+  seeded from unstranded intervals. Add synthetic orientation, provenance,
+  source-protection, legacy and real-CLI preparation regressions. No peak caller,
+  private-data QA or regeneration of accepted scientific bundles is implied.
+
 ## 2026-09-15 - Transaction And BLAST Status Prerequisites
 
 - Transactional workflow/candidate macros restore the pre-run project, journal

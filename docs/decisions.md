@@ -1031,6 +1031,14 @@ modify approved downstream products. Raw coverage is not an enrichment claim;
 optimizing insert boundaries cannot retrospectively validate them with the
 same broad-window signal.
 
+Fixed-window similarity searches use the shared core geometry operation, not
+an adapter-owned window/union/intersection algorithm or the adaptive selector.
+Called-peak seeds require explicit file and source-lane hashes plus declared
+caller/version/parameters and sample/control provenance. Coverage labels or
+overlap counts cannot promote a source to that tier. Peak retention is a
+presence flag, not an independent-source count, and is not independent of the
+source coverage. Neither a valid hash nor declared settings certify peak QA.
+
 A regulatory-fragment panel consumes exact persisted genomic regions rather
 than rediscovering or substituting candidate biology. Requests bind region-set
 content, ROI identity and content, current sequence projection, assembly,

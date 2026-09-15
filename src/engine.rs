@@ -5818,6 +5818,10 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    /// Stateless fixed-window geometry, not adaptive reporter insert selection.
+    ComputeTssWindowGeometry {
+        request: Box<gentle_protocol::tss_window_geometry::TssWindowGeometryRequest>,
+    },
     ComposeRegulatoryReporterStudy {
         request: Box<RegulatoryReporterStudyRequest>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -10085,6 +10089,7 @@ impl GentleEngine {
                 | Operation::PlanReporterConstructHandoff { .. }
                 | Operation::PlanPromoterReporterPanel { .. }
                 | Operation::PlanEvidenceGuidedFragmentCandidates { .. }
+                | Operation::ComputeTssWindowGeometry { .. }
                 | Operation::PlanRegulatoryFragmentPanel { .. }
                 | Operation::PlanRegulatoryFragmentMaterialization { .. }
                 | Operation::RenderRegulatoryFragmentPanelSvg { .. }

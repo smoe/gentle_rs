@@ -8,7 +8,9 @@ from collections import defaultdict
 import hashlib
 import json
 from pathlib import Path
+import shlex
 import subprocess
+from tempfile import TemporaryDirectory
 from typing import Any
 
 try:
@@ -38,31 +40,46 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def selected_window(tss: int, strand: str, upstream: int, downstream: int) -> tuple[int, int]:
-    if strand == "+":
-        return tss - upstream, tss + downstream
-    if strand == "-":
-        return tss - downstream, tss + upstream
-    raise ValueError(f"unsupported transcript strand: {strand!r}")
+def compute_geometry(gentle: Path, request: dict[str, Any]) -> dict[str, Any]:
+    """Use the stateless shared engine. No Python geometry fallback is permitted."""
+    with TemporaryDirectory(prefix="gentle-tss-geometry-") as tmp:
+        operation = Path(tmp) / "operation.json"
+        operation.write_text(json.dumps({"ComputeTssWindowGeometry": {"request": request}}), encoding="utf-8")
+        try:
+            run = subprocess.run([str(gentle), "--state", str(Path(tmp) / "empty-state.json"),
+                                  "shell", f"op {shlex.quote('@' + str(operation))}"],
+                                 check=True, capture_output=True, text=True, timeout=120)
+        except subprocess.CalledProcessError as error:
+            raise RuntimeError(f"GENtle window geometry failed: {error.stderr.strip()}") from error
+    report = json.loads(run.stdout)["result"]["tss_window_geometry"]
+    require(report.get("schema") == "gentle.tss_window_geometry.v1" and report.get("request") == request,
+            "GENtle returned missing or differently bound window geometry")
+    return report
 
 
-def connected_stretches(windows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    require(len({(row.get("chromosome"), row.get("strand")) for row in windows}) <= 1,
-            "TSS stretches must share a chromosome and strand")
-    stretches: list[dict[str, Any]] = []
-    for window in sorted(windows, key=lambda row: (row["start_1based"], row["end_1based"])):
-        if not stretches or window["start_1based"] > stretches[-1]["end_1based"] + 1:
-            stretches.append({
-                "start_1based": window["start_1based"],
-                "end_1based": window["end_1based"],
-                "tss_windows": [window],
-            })
-        else:
-            stretches[-1]["end_1based"] = max(
-                stretches[-1]["end_1based"], window["end_1based"]
-            )
-            stretches[-1]["tss_windows"].append(window)
-    return stretches
+def geometry_request(selected, windows, reference, reports, assembly, upstream, downstream):
+    groups = []
+    for gene in sorted(selected):
+        anchors = []
+        for row in selected[gene]:
+            source = windows[row["promoterome_id"]]
+            anchors.append({"anchor_id": row["promoterome_id"], "source": {
+                "chromosome": source["chromosome"], "strand": source["strand"],
+                "tss_1based": int(source["tss_1based"]),
+                "start_1based": int(source["start_0based"]) + 1,
+                "end_1based": int(source["end_0based_exclusive"]),
+                "upstream_bp": reference["upstream_bp"], "downstream_bp": reference["downstream_bp"],
+            }})
+        groups.append({"group_id": gene, "chromosome": selected[gene][0]["chromosome"],
+                       "strand": selected[gene][0]["strand"],
+                       "anchors": sorted(anchors, key=lambda a: a["anchor_id"]),
+                       "features": sorted([
+                           {"feature_id": f["feature_id"], "start_1based": f["core_genomic_start_1based"],
+                            "end_1based": f["core_genomic_end_1based"]}
+                           for f in reports[gene][1]["ensembl_regulation"]["rows"]
+                       ], key=lambda f: f["feature_id"])})
+    return {"schema": "gentle.tss_window_geometry_request.v1", "assembly": assembly,
+            "upstream_bp": upstream, "downstream_bp": downstream, "groups": groups}
 
 
 def reverse_complement(sequence: str) -> str:
@@ -99,10 +116,8 @@ def validate_selected_region(row, reference, windows, transcripts, sequences) ->
     strand = window["strand"]
     require(strand in {"+", "-"} and 0 <= start < end,
             "invalid receipt-bound promoter geometry")
-    expected_start, expected_end = selected_window(
-        tss, strand, reference["upstream_bp"], reference["downstream_bp"])
-    require((start + 1, end) == (expected_start, expected_end)
-            and str(window.get("boundary_clipped", "")).lower() == "false"
+    # Strand-aware source/window consistency is checked by ComputeTssWindowGeometry.
+    require(str(window.get("boundary_clipped", "")).lower() == "false"
             and promoter_id == window_id(window["chromosome"], start, end, strand),
             "receipt-bound promoter identity, clipping or TSS geometry mismatch")
     expected = dict(genome_id=reference["genome_id"], chromosome=window["chromosome"],
@@ -184,11 +199,14 @@ def main() -> None:
     parser.add_argument("--source-revision", required=True)
     parser.add_argument("--upstream-bp", type=int, default=500)
     parser.add_argument("--downstream-bp", type=int, default=200)
+    parser.add_argument("--gentle", type=Path, required=True,
+                        help="Built gentle_cli providing ComputeTssWindowGeometry; no legacy fallback")
     args = parser.parse_args()
     if args.upstream_bp < 0 or args.downstream_bp < 0:
         raise SystemExit("window spans must be non-negative")
 
     output = args.output.resolve()
+    gentle = args.gentle.resolve(strict=True)
     require(not output.exists() or not any(output.iterdir()),
             "Output directory must be absent or empty")
     promoterome = args.promoterome.resolve(strict=True)
@@ -220,20 +238,12 @@ def main() -> None:
     for row in selected["regions"]:
         extraction = row["genome_extraction"]
         validate_selected_region(row, reference, windows, transcripts, promoter_sequences)
-        start, end = selected_window(
-            extraction["tss_1based"], extraction["strand"],
-            args.upstream_bp, args.downstream_bp,
-        )
-        require(extraction["start_1based"] <= start <= end <= extraction["end_1based"],
-                "requested TSS window exceeds the selected promoter")
         selected_by_gene[row["gene_query"]].append({
             "tss_1based": extraction["tss_1based"],
             "strand": extraction["strand"],
             "chromosome": extraction["chromosome"],
             "transcript_ids": row["transcript_ids"],
             "promoterome_id": row["promoterome_id"],
-            "start_1based": start,
-            "end_1based": end,
         })
 
     reports = {}
@@ -244,7 +254,6 @@ def main() -> None:
         if gene in reports:
             raise SystemExit(f"duplicate locus report for {gene}")
         require(gene in selected_by_gene, f"unexpected locus report for {gene}")
-        validate_locus_reference(report, selected_by_gene[gene], args.assembly_id)
         binding = report["ensembl_regulation"]["source_binding"]
         if binding["content_identity_verified"] is not True or binding["truncated"] is not False:
             raise SystemExit(f"unverified or truncated Ensembl evidence for {gene}")
@@ -257,6 +266,19 @@ def main() -> None:
     missing = sorted(set(selected_by_gene) - set(reports))
     if missing:
         raise SystemExit(f"missing locus reports: {missing}")
+
+    request = geometry_request(selected_by_gene, windows, reference, reports,
+                               args.assembly_id, args.upstream_bp, args.downstream_bp)
+    binary_sha256 = sha256_file(gentle)
+    geometry = compute_geometry(gentle, request)
+    require(sha256_file(gentle) == binary_sha256, "GENtle binary changed during geometry computation")
+    geometry_groups = {group["group_id"]: group for group in geometry["groups"]}
+    for gene, selected_windows in selected_by_gene.items():
+        computed = {row["anchor_id"]: row for row in geometry_groups[gene]["windows"]}
+        for row in selected_windows:
+            bounds = computed[row["promoterome_id"]]
+            row.update(start_1based=bounds["start_1based"], end_1based=bounds["end_1based"])
+        validate_locus_reference(reports[gene][1], selected_windows, args.assembly_id)
 
     svg_hashes = {}
     for value in args.locus_svg:
@@ -280,24 +302,27 @@ def main() -> None:
                                            for transcript in gene_transcripts),
                 f"selected transcript identity disagrees with gene {gene}")
         gene_id = next(iter(gene_ids))
-        for stretch_index, stretch in enumerate(connected_stretches(selected_by_gene[gene]), 1):
+        group = geometry_groups[gene]
+        selected_windows = {row["promoterome_id"]: row for row in selected_by_gene[gene]}
+        features = {row["feature_id"]: row for row in rows}
+        for stretch_index, computed_stretch in enumerate(group["stretches"], 1):
+            stretch = {"start_1based": computed_stretch["start_1based"],
+                       "end_1based": computed_stretch["end_1based"],
+                       "tss_windows": [selected_windows[id] for id in computed_stretch["anchor_ids"]]}
             chromosome = stretch["tss_windows"][0]["chromosome"]
             require(all(window["chromosome"] == chromosome for window in stretch["tss_windows"]),
                     "connected TSS stretch crosses chromosomes")
             stretch_id = f"{gene}_tss_stretch_{stretch_index}"
             stretches_out.append({"stretch_id": stretch_id, "gene": gene, **stretch})
-            for feature in rows:
+            for intersection in group["intersections"]:
+                if intersection["stretch_index_1based"] != stretch_index:
+                    continue
+                feature = features[intersection["feature_id"]]
                 feature_start = feature["core_genomic_start_1based"]
                 feature_end = feature["core_genomic_end_1based"]
-                start = max(stretch["start_1based"], feature_start)
-                end = min(stretch["end_1based"], feature_end)
-                if start > end:
-                    continue
+                start, end = intersection["start_1based"], intersection["end_1based"]
                 region_id = f"{gene}_{stretch_id}_{feature['feature_id']}"
-                containing = [window for window in stretch["tss_windows"]
-                              if int(windows[window["promoterome_id"]]["start_0based"]) <= start - 1
-                              and end <= int(windows[window["promoterome_id"]]["end_0based_exclusive"])]
-                require(containing, f"no receipt-bound promoter contains {region_id}")
+                containing = [selected_windows[id] for id in intersection["containing_anchor_ids"]]
                 extracted = {
                     assembly_forward_slice(
                         promoter_sequences[window["promoterome_id"]],
@@ -375,7 +400,7 @@ def main() -> None:
 
     payload = {
         "schema": SCHEMA,
-        "dataset_id": "selected_gene_ensembl_regulation_intersections_tss_500_200_v1",
+        "dataset_id": f"selected_gene_ensembl_regulation_intersections_tss_{args.upstream_bp}_{args.downstream_bp}_v1",
         "source_revision": revision,
         "window_policy": {
             "coordinate_basis": "transcript_oriented_tss",
@@ -392,6 +417,9 @@ def main() -> None:
             "promoterome_receipt_sha256": sha256_file(promoterome / "receipt.json"),
             "promoterome_fasta_sha256": reference["artifacts"]["promoter_windows.fa"],
             "producer_sha256": sha256_file(Path(__file__)),
+            "geometry_engine_binary_sha256": binary_sha256,
+            "geometry_request_sha256": geometry["request_sha256"],
+            "geometry_report_sha256": sha256_bytes(json.dumps(geometry, sort_keys=True).encode("utf-8")),
             "locus_reports": {
                 gene: f"sha256:{digest}" for gene, digest in sorted(report_hashes.items())
             },
@@ -399,6 +427,7 @@ def main() -> None:
         },
     }
     output.mkdir(parents=True, exist_ok=True)
+    (output / "window_geometry.json").write_text(json.dumps(geometry, sort_keys=True), encoding="utf-8")
     (output / "candidate_regions.json").write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

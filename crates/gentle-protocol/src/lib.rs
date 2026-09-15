@@ -34,6 +34,8 @@ pub mod transcript_presentation;
 pub mod tss_motif_evidence;
 /// Accession-pinned, transcript-oriented TSS TFBS profile documents.
 pub mod tss_profiles;
+/// Fixed TSS-window and regulatory-intersection requests, distinct from insert proposals.
+pub mod tss_window_geometry;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -5638,6 +5640,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PlanReporterConstructHandoff",
     "PlanPromoterReporterPanel",
     "PlanEvidenceGuidedFragmentCandidates",
+    "ComputeTssWindowGeometry",
     "ComposeRegulatoryReporterStudy",
     "PlanRegulatoryFragmentPanel",
     "PlanRegulatoryFragmentMaterialization",

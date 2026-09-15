@@ -40097,6 +40097,7 @@ impl GentleEngine {
             promoter_reporter_panel_proposal: None,
             regulatory_reporter_study: None,
             reporter_fragment_selection: None,
+            tss_window_geometry: None,
             regulatory_fragment_panel_plan: None,
             regulatory_fragment_materialization_proposal: None,
             regulatory_fragment_materialization_receipt: None,
@@ -51468,11 +51469,23 @@ impl GentleEngine {
                     result.promoter_reporter_panel_readiness = Some(Box::new(readiness));
                     result.regulatory_reporter_study = Some(Box::new(report));
                 }
+                Operation::ComputeTssWindowGeometry { request } => {
+                    result.tss_window_geometry = Some(Box::new(
+                        gentle_engine::tss_window_geometry::compute(*request)?,
+                    ));
+                }
                 Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
                     let report = self.plan_reporter_fragment_selection(*request)?;
                     if let Some(path) = path.as_deref() {
                         if let Ok(output) = std::fs::canonicalize(path) {
                             let mut inputs = vec![report.request.locus.path.as_str()];
+                            inputs.extend(
+                                report
+                                    .request
+                                    .called_peak_sources
+                                    .iter()
+                                    .map(|s| s.path.as_str()),
+                            );
                             if let Some(vector) = &report.vector {
                                 inputs.push(&vector.validation.helper_catalog_path);
                             }

@@ -8,7 +8,6 @@ use gentle_protocol::EngineError;
 use gentle_protocol::tss_profiles::{
     BUNDLE_SCHEMA, JasparTargetPanel, PANEL_SCHEMA, SELECTION_SCHEMA, TssBundleManifest,
     TssCalibrationState, TssGeometry, TssRecord, TssReference, TssScaleMode, TssSelection,
-    TssStrand,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -80,14 +79,13 @@ pub fn validate_geometry(geometry: &TssGeometry) -> Result<(), EngineError> {
     };
     let length = geometry.length().ok_or_else(invalid)?;
     i64::try_from(length).map_err(|_| invalid())?;
-    let upstream = u64::try_from(geometry.upstream_bp).map_err(|_| invalid())?;
-    let downstream = u64::try_from(geometry.downstream_bp).map_err(|_| invalid())?;
-    let (left, right) = match geometry.strand {
-        TssStrand::Plus => (upstream, downstream),
-        TssStrand::Minus => (downstream, upstream),
-    };
-    let start = geometry.tss_1based.checked_sub(left).ok_or_else(invalid)?;
-    let end = geometry.tss_1based.checked_add(right).ok_or_else(invalid)?;
+    let (start, end) = crate::tss_window_geometry::window_bounds(
+        geometry.tss_1based,
+        geometry.strand,
+        geometry.upstream_bp,
+        geometry.downstream_bp,
+    )
+    .map_err(|_| invalid())?;
     if start == 0 || geometry.start_1based != start || geometry.end_1based != end {
         return Err(invalid());
     }
@@ -358,7 +356,9 @@ pub fn validate_panel(panel: &JasparTargetPanel) -> Result<(), EngineError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gentle_protocol::tss_profiles::{JasparPanelTrack, TssSelectedRecord, TssStrandPolicy};
+    use gentle_protocol::tss_profiles::{
+        JasparPanelTrack, TssSelectedRecord, TssStrand, TssStrandPolicy,
+    };
 
     fn geometry(strand: TssStrand, upstream: usize, downstream: usize) -> TssGeometry {
         let (left, right) = match strand {

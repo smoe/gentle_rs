@@ -27486,6 +27486,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "registry": registry_metadata_for_introspection("promoters fragment-candidates")
         }),
         json!({
+            "id": "ComputeTssWindowGeometry", "kind": "operation", "mutating": "false", "requires_confirmation": false,
+            "args": [{"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.tss_window_geometry_request.v1; bounded fixed windows and annotation intersections"}],
+            "reads": [], "effects": [], "precondition_expr": {"all": []}, "annotation_status": "fact_annotated",
+            "description": "Compute fixed TSS windows, connected stretches and regulatory intersections without loading or mutating a project; not reporter insert selection.",
+            "registry": registry_metadata_for_introspection("ComputeTssWindowGeometry")
+        }),
+        json!({
             "id": "PlanEvidenceGuidedFragmentCandidates", "kind": "operation", "mutating": "false", "requires_confirmation": false,
             "args": [{"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "gentle.reporter_fragment_selection_request.v1"},
                 {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional JSON report path"}],
@@ -64845,6 +64852,7 @@ fn execute_op_command(
             | Operation::ExportGelImageAnalysis { .. }
             | Operation::ComputeTssTfbsProfiles { .. }
             | Operation::ExportTssTfbsProfiles { .. }
+            | Operation::ComputeTssWindowGeometry { .. }
     ) {
         let state_changed = matches!(
             &op,

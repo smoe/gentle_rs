@@ -7701,9 +7701,15 @@ cargo run --quiet --bin gentle_cli -- --state STATE.json \
 For read-only, variable-length boundary proposals from a composed locus, use
 `promoters fragment-candidates REQUEST_JSON_OR_@FILE --path candidates.json`.
 It supports explained adjustments at either end, a soft compact-length target,
-fixed-envelope signal comparisons and optional validated-vector MCS checks.
+fixed-envelope signal comparisons, explicit provenance-bound called-peak BED
+sources and optional validated-vector MCS checks. Coverage alone never seeds.
 See [Evidence-Guided Reporter Boundaries](reporter_fragment_selection.md).
 This is upstream of exact-ROI planning; it does not save regions or approve constructs.
+For fixed-window similarity geometry instead, use
+`gentle_cli shell 'op @geometry_op.json'` with `ComputeTssWindowGeometry`.
+The [operation example](reporter_fragment_selection.md#fixed-window-similarity-geometry)
+returns bounded, strand-aware windows/unions/intersections without a project;
+the preparation script requires `--gentle /path/to/gentle_cli`, with no Python fallback.
 
 `promoters compose-study` is the multi-gene front-half route. Its
 `gentle.regulatory_reporter_study_request.v1` input accepts exactly one of a

@@ -37,20 +37,18 @@ fn envelope(
     upstream: usize,
     downstream: usize,
 ) -> Result<gp::GenomicRegionInterval, EngineError> {
-    let (left, right) = if tss.strand == gp::GenomicRegionStrand::Minus {
-        (downstream, upstream)
-    } else {
-        (upstream, downstream)
+    let strand = match tss.strand {
+        gp::GenomicRegionStrand::Plus => gp::tss_profiles::TssStrand::Plus,
+        gp::GenomicRegionStrand::Minus => gp::tss_profiles::TssStrand::Minus,
+        _ => return Err(invalid("TSS must have an explicit strand")),
     };
-    let start = tss
-        .start_0based
-        .checked_sub(left as u64)
-        .ok_or_else(|| invalid("Search envelope crosses the beginning of the contig"))?;
-    let end = tss
-        .end_0based_exclusive
-        .checked_add(right as u64)
-        .ok_or_else(|| invalid("Search envelope overflows genomic coordinates"))?;
-    Ok(span(tss.clone(), start, end))
+    let (start, end) = gentle_engine::tss_window_geometry::window_bounds(
+        tss.end_0based_exclusive,
+        strand,
+        upstream,
+        downstream,
+    )?;
+    Ok(span(tss.clone(), start - 1, end))
 }
 
 fn digest<T: Serialize>(value: &T) -> Result<String, EngineError> {
@@ -78,6 +76,7 @@ fn normalize(
         || request.anchors.len() > 64
         || request.adjustments.len() > 128
         || request.signal_comparisons.len() > 64
+        || request.called_peak_sources.len() > 16
         || p.upstream_bp > 100_000
         || p.downstream_bp > 100_000
         || p.maximum_extension_bp > 10_000
@@ -162,6 +161,57 @@ fn normalize(
     {
         return Err(invalid("Duplicate signal comparison id"));
     }
+    request
+        .called_peak_sources
+        .sort_by(|a, b| a.source_id.cmp(&b.source_id));
+    let mut ids = BTreeSet::new();
+    let mut hashes = BTreeSet::new();
+    for source in &request.called_peak_sources {
+        for value in [
+            &source.source_id,
+            &source.path,
+            &source.assembly,
+            &source.chromosome,
+            &source.caller,
+            &source.caller_version,
+            &source.cell_line,
+        ] {
+            text(value, "called-peak provenance")?;
+        }
+        if !ids.insert(&source.source_id)
+            || !hashes.insert(&source.sha256)
+            || !GentleEngine::regulatory_fragment_valid_sha256(&source.sha256)
+            || source.parameters.is_empty()
+            || source.parameters.len() > 64
+        {
+            return Err(invalid(
+                "Duplicate or invalid called-peak source provenance",
+            ));
+        }
+        for (key, value) in &source.parameters {
+            text(key, "peak caller parameter")?;
+            text(value, "peak caller parameter value")?;
+        }
+        let mut bindings = vec![&source.sample];
+        match &source.control {
+            FragmentPeakControl::Matched { control } => {
+                if control.lane_id == source.sample.lane_id
+                    || control.source_sha256 == source.sample.source_sha256
+                {
+                    return Err(invalid("Peak sample and control must be distinct sources"));
+                }
+                bindings.push(control);
+            }
+            FragmentPeakControl::NotUsed { reason } => text(reason, "peak no-control reason")?,
+        }
+        for binding in bindings {
+            text(&binding.lane_id, "peak lane id")?;
+            text(&binding.replicate_id, "peak replicate declaration")?;
+            if !GentleEngine::regulatory_fragment_valid_sha256(&binding.source_sha256) {
+                return Err(invalid("Invalid peak lane source hash"));
+            }
+        }
+    }
     Ok(request)
 }
 
@@ -186,8 +236,14 @@ impl GentleEngine {
                 "Load a locus of at most 2 Mb before fragment selection",
             ));
         }
-        let evidence =
+        let mut evidence =
             self.fragment_selection_evidence(locus, &request.locus, p.maximum_evidence_intervals)?;
+        self.append_fragment_called_peaks(
+            locus,
+            &request.called_peak_sources,
+            &mut evidence,
+            p.maximum_evidence_intervals,
+        )?;
         let transcripts = self.fragment_selection_transcripts(locus)?;
         let vector = request
             .vector
@@ -311,7 +367,7 @@ impl GentleEngine {
                 seeds = vec![(region.region_id.clone(), region.interval.clone(), false)];
             }
             if seeds.is_empty() {
-                anchor.findings.push("No annotation/model seed within the envelope; raw coverage alone does not define a regulatory boundary.".into());
+                anchor.findings.push("No annotation/model/called-peak seed within the envelope; raw coverage alone does not define a regulatory boundary.".into());
             }
             for (seed_id, seed, protect_seed) in seeds {
                 let mut requirements = required.clone();
@@ -471,13 +527,14 @@ impl GentleEngine {
                 Reverse(c.ranking.descriptive_enrichment_supported),
                 Reverse(c.ranking.retains_annotation),
                 Reverse(c.ranking.retains_model_site),
+                Reverse(c.ranking.retains_called_peak),
                 c.ranking.bisected_feature_count,
                 Reverse(c.ranking.fits_preferred_length),
                 c.ranking.length_bp,
                 c.candidate_id.clone(),
             )
         });
-        findings.push("Ranking compares explicit preserved-context, descriptive-support (any declared comparison passing), annotation, model, biological-feature bisection, compactness, length and stable-ID keys; raw signal-bin boundaries do not affect ranking. No independent-source count or composite biological score.".into());
+        findings.push("Ranking compares explicit preserved-context, descriptive-support (any declared comparison passing), annotation, model, called-peak presence, biological-feature bisection, compactness, length and stable-ID keys; raw signal-bin boundaries do not affect ranking. No independent-source count or composite biological score. Called peaks and raw coverage can share the same sample source; presence flags are not independent confirmations.".into());
         if request.signal_comparisons.is_empty() {
             findings.push("CUT&RUN enrichment not_evaluated: no explicit matched-control comparison supplied. Raw coverage remains inspectable.".into());
         }
@@ -519,7 +576,7 @@ impl GentleEngine {
         required: &[gp::GenomicRegionInterval],
         seed_id: &str,
         variant: &str,
-        interval: gp::GenomicRegionInterval,
+        mut interval: gp::GenomicRegionInterval,
         parent: Option<String>,
         mut reasons: Vec<String>,
         enriched: bool,
@@ -527,6 +584,8 @@ impl GentleEngine {
         vector: Option<&FragmentSelectionVectorResult>,
     ) -> Result<ReporterFragmentCandidate, EngineError> {
         let p = &request.policy;
+        // Every variant is a transcript-oriented insert, even when its seed is unstranded.
+        interval.strand = anchor.search_envelope.strand;
         let mut blockers = Vec::new();
         let outer = span(
             anchor.search_envelope.clone(),
@@ -582,7 +641,15 @@ impl GentleEngine {
                     source_id: e.source_id.clone(),
                     source_sha256: Some(e.source_sha256.clone()),
                     report_id: Some(request.locus.panel_id.clone()),
-                    source_release: Some(request.locus.annotation_release.clone()),
+                    source_release: if e.kind == FragmentEvidenceKind::CalledPeak {
+                        request
+                            .called_peak_sources
+                            .iter()
+                            .find(|s| s.source_id == e.source_id)
+                            .map(|s| s.caller_version.clone())
+                    } else {
+                        Some(request.locus.annotation_release.clone())
+                    },
                     availability: if e.available {
                         gp::GenomicRegionEvidenceAvailability::Available
                     } else {
@@ -661,6 +728,7 @@ impl GentleEngine {
             descriptive_enrichment_supported: enriched,
             retains_annotation: retains(FragmentEvidenceKind::Annotation),
             retains_model_site: retains(FragmentEvidenceKind::ModelSite),
+            retains_called_peak: retains(FragmentEvidenceKind::CalledPeak),
             bisected_feature_count: evidence
                 .iter()
                 .filter(|e| {
@@ -964,6 +1032,130 @@ impl GentleEngine {
             },
         )
         .map(|(_, _, audit)| audit)
+    }
+
+    fn append_fragment_called_peaks(
+        &self,
+        locus: &gp::GeneLocusEvidenceDisplayReport,
+        sources: &[FragmentCalledPeakSource],
+        rows: &mut Vec<FragmentSelectionEvidence>,
+        limit: usize,
+    ) -> Result<(), EngineError> {
+        let (basis, _) = self.interval_and_projection_from_local(
+            &locus.seq_id,
+            0,
+            1,
+            gp::GenomicRegionStrand::Unstranded,
+            None,
+        )?;
+        for source in sources {
+            if source.assembly != locus.isoform_evidence.assembly
+                || !Self::chromosomes_match(&source.chromosome, &basis.reference.contig_name)
+                || locus
+                    .isoform_evidence
+                    .chromosome
+                    .as_deref()
+                    .is_some_and(|chromosome| {
+                        !Self::chromosomes_match(&source.chromosome, chromosome)
+                    })
+            {
+                return Err(invalid("Called-peak assembly/chromosome mismatch"));
+            }
+            let check_lane = |binding: &FragmentPeakLaneBinding| -> Result<(), EngineError> {
+                let matches = locus
+                    .occupancy_groups
+                    .iter()
+                    .flat_map(|g| &g.lanes)
+                    .filter(|l| l.lane.lane_id == binding.lane_id)
+                    .collect::<Vec<_>>();
+                if matches.len() != 1 {
+                    return Err(invalid("Missing or ambiguous called-peak source lane"));
+                }
+                let lane = matches[0];
+                if lane.state != gp::GeneLocusOccupancyLaneState::Available
+                    || lane.source_sha256.as_deref() != Some(&binding.source_sha256)
+                    || lane.source_assembly.as_deref() != Some(&source.assembly)
+                    || lane.cell_line_label.as_deref() != Some(&source.cell_line)
+                {
+                    return Err(invalid(
+                        "Called-peak source lane is unavailable or hash/assembly/cell-line binding disagrees",
+                    ));
+                }
+                Ok(())
+            };
+            check_lane(&source.sample)?;
+            if let FragmentPeakControl::Matched { control } = &source.control {
+                check_lane(control)?;
+            }
+            let mut bytes = Vec::new();
+            std::fs::File::open(&source.path)
+                .map_err(|e| invalid(e.to_string()))?
+                .take(8 * 1024 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|e| invalid(e.to_string()))?;
+            if bytes.len() > 8 * 1024 * 1024
+                || crate::digest_utils::sha256_prefixed_bytes(&bytes) != source.sha256
+            {
+                return Err(invalid(
+                    "Called-peak file hash mismatch or size limit exceeded",
+                ));
+            }
+            let contents = std::str::from_utf8(&bytes).map_err(|e| invalid(e.to_string()))?;
+            let mut count = 0;
+            for (line_index, line) in contents.lines().enumerate() {
+                let line = line.trim();
+                if line.is_empty()
+                    || line.starts_with('#')
+                    || line.starts_with("track ")
+                    || line.starts_with("browser ")
+                {
+                    continue;
+                }
+                let record = Self::parse_bed_record(line).map_err(|e| {
+                    invalid(format!("Called-peak BED line {}: {e}", line_index + 1))
+                })?;
+                if line
+                    .split_whitespace()
+                    .nth(5)
+                    .is_some_and(|s| !matches!(s, "+" | "-" | "."))
+                {
+                    return Err(invalid("Invalid called-peak BED strand"));
+                }
+                if !Self::chromosomes_match(&record.chromosome, &source.chromosome)
+                    || record.score.is_some_and(|s| !s.is_finite())
+                {
+                    return Err(invalid(
+                        "Called-peak BED chromosome mismatch or non-finite score",
+                    ));
+                }
+                let mut interval = span(
+                    basis.clone(),
+                    record.start_0based as u64,
+                    record.end_0based as u64,
+                );
+                interval.strand = match record.strand {
+                    Some('+') => gp::GenomicRegionStrand::Plus,
+                    Some('-') => gp::GenomicRegionStrand::Minus,
+                    _ => gp::GenomicRegionStrand::Unstranded,
+                };
+                // Preserve the complete called boundary; do not promote clipped signal bins.
+                self.local_projection_for_interval(&locus.seq_id, &interval)?;
+                if rows.len() >= limit {
+                    return Err(invalid("Called-peak evidence interval budget exceeded"));
+                }
+                rows.push(FragmentSelectionEvidence {
+                    evidence_id: format!("peak:{}:{}", source.source_id, line_index+1), kind: FragmentEvidenceKind::CalledPeak,
+                    label: record.name.unwrap_or_else(|| source.source_id.clone()), interval, source_sha256: source.sha256.clone(), source_id: source.source_id.clone(), available: true, may_seed_boundary: true, score: record.score,
+                    statement: format!("Caller-declared peak from {} {}; source/sample/control/settings bound in called_peak_sources. BED score is caller-defined, not calibrated confidence. Not independent of the source coverage and not proof of reporter activity.", source.caller, source.caller_version),
+                });
+                count += 1;
+            }
+            if count == 0 {
+                return Err(invalid("Called-peak file contains no peak intervals"));
+            }
+        }
+        rows.sort_by(|a, b| a.evidence_id.cmp(&b.evidence_id));
+        Ok(())
     }
 
     fn fragment_selection_locus(
@@ -1339,6 +1531,7 @@ mod tests {
         };
         locus.isoform_evidence = gp::GeneIsoformEvidenceReport {
             assembly: "GRCh38".into(),
+            chromosome: Some("chr7".into()),
             annotation_release: Some("synthetic-1".into()),
             transcripts: vec![gp::GeneIsoformTranscriptRow {
                 transcript_id: "TX_A.1".into(),
@@ -1429,6 +1622,7 @@ mod tests {
             policy: Default::default(),
             adjustments: vec![],
             signal_comparisons: vec![],
+            called_peak_sources: vec![],
             vector: None,
         };
         let mut f = Fixture {
@@ -1724,6 +1918,252 @@ mod tests {
             r.evidence
                 .iter()
                 .all(|e| e.kind == FragmentEvidenceKind::RawCoverage && !e.may_seed_boundary)
+        );
+    }
+
+    fn add_synthetic_peaks(f: &mut Fixture) {
+        let point =
+            f.engine.fragment_selection_transcripts(&f.locus).unwrap()["TX_A.1"].start_0based;
+        let bytes = format!("chr7\t{}\t{}\tcalled_A\t15\t.\n", point - 60, point + 20);
+        let path = f.temp.path().join("synthetic-peaks.bed");
+        std::fs::write(&path, &bytes).unwrap();
+        let lane = |id: &str| FragmentPeakLaneBinding {
+            lane_id: id.into(),
+            source_sha256: crate::digest_utils::sha256_prefixed_bytes(id.as_bytes()),
+            replicate_id: "synthetic-replicate-1".into(),
+        };
+        f.request
+            .called_peak_sources
+            .push(FragmentCalledPeakSource {
+                source_id: "synthetic-peak-set".into(),
+                path: path.display().to_string(),
+                sha256: crate::digest_utils::sha256_prefixed_bytes(bytes.as_bytes()),
+                assembly: "GRCh38".into(),
+                chromosome: "7".into(),
+                caller: "synthetic-test-caller".into(),
+                caller_version: "1".into(),
+                parameters: BTreeMap::from([(
+                    "fixture".into(),
+                    "hand-crafted BED; not experimentally called".into(),
+                )]),
+                cell_line: "synthetic cells".into(),
+                sample: lane("sample"),
+                control: FragmentPeakControl::Matched {
+                    control: lane("control"),
+                },
+            });
+        f.request.anchors[0].seed_evidence_ids.clear();
+        f.locus.regulatory_score_tracks.clear();
+        f.locus.ensembl_regulation = None;
+        f.bind();
+    }
+
+    #[test]
+    fn reporter_fragment_selection_called_peaks_seed_on_both_strands_without_independence_claims() {
+        for (reverse_anchor, reverse_transcript) in
+            [(false, false), (true, false), (false, true), (true, true)]
+        {
+            let mut f = fixture(reverse_anchor, reverse_transcript);
+            add_synthetic_peaks(&mut f);
+            f.request.policy.preferred_length_bp = 170;
+            let before = serde_json::to_value(f.engine.state()).unwrap();
+            let r = f.plan();
+            let peaks = r
+                .evidence
+                .iter()
+                .filter(|e| e.kind == FragmentEvidenceKind::CalledPeak)
+                .collect::<Vec<_>>();
+            assert_eq!(peaks.len(), 1);
+            assert!(peaks[0].may_seed_boundary);
+            assert_eq!(
+                peaks[0].interval.end_0based_exclusive - peaks[0].interval.start_0based,
+                80
+            );
+            assert!(
+                r.evidence
+                    .iter()
+                    .filter(|e| e.kind == FragmentEvidenceKind::RawCoverage)
+                    .all(|e| !e.may_seed_boundary)
+            );
+            assert!(!r.candidates.is_empty());
+            assert_eq!(r.proposed_region_set.regions.len(), r.candidates.len());
+            assert!(
+                r.candidates
+                    .iter()
+                    .any(|c| c.variant == "compact_without_optional_flanks")
+            );
+            for candidate in &r.candidates {
+                assert_eq!(
+                    candidate.region.interval.strand,
+                    r.anchors[0].search_envelope.strand
+                );
+                let local = f
+                    .engine
+                    .local_projection_for_interval("source", &candidate.region.interval)
+                    .unwrap();
+                let dna = f.engine.state.sequences["source"].get_forward_string();
+                let expected = &dna
+                    [local.local_start_0based as usize..local.local_end_0based_exclusive as usize];
+                let expected = if reverse_transcript {
+                    GentleEngine::reverse_complement(expected)
+                } else {
+                    expected.to_string()
+                };
+                assert_eq!(candidate.sequence_5prime_to_3prime, expected);
+                let reference = candidate
+                    .region
+                    .evidence
+                    .iter()
+                    .find(|e| e.source_kind == "CalledPeak")
+                    .unwrap();
+                assert_eq!(reference.source_release.as_deref(), Some("1"));
+            }
+            assert!(
+                r.candidates.iter().all(|c| c.ranking.retains_called_peak
+                    && !c.ranking.descriptive_enrichment_supported)
+            );
+            assert!(
+                r.findings
+                    .iter()
+                    .any(|f| f.contains("not independent confirmations"))
+            );
+            assert_eq!(before, serde_json::to_value(f.engine.state()).unwrap());
+            let roundtrip: FragmentSelectionReport =
+                serde_json::from_slice(&serde_json::to_vec(&r).unwrap()).unwrap();
+            assert_eq!(r.proposal_sha256, roundtrip.proposal_sha256);
+            assert_eq!(
+                r.request.called_peak_sources[0].sha256,
+                peaks[0].source_sha256
+            );
+        }
+    }
+
+    #[test]
+    fn reporter_fragment_selection_called_peaks_fail_closed_on_missing_or_stale_provenance() {
+        for case in 0..11 {
+            let mut f = fixture(false, false);
+            add_synthetic_peaks(&mut f);
+            let source = &mut f.request.called_peak_sources[0];
+            match case {
+                0 => source.assembly = "wrong".into(),
+                1 => source.caller_version.clear(),
+                2 => {
+                    source.sample.source_sha256 = crate::digest_utils::sha256_prefixed_str("wrong")
+                }
+                3 => source.cell_line = "wrong".into(),
+                4 => {
+                    source.control = FragmentPeakControl::Matched {
+                        control: source.sample.clone(),
+                    }
+                }
+                5 => std::fs::write(&source.path, "changed").unwrap(),
+                6 => source.parameters.clear(),
+                7 => {
+                    f.locus.occupancy_groups[0].lanes[0].state =
+                        gp::GeneLocusOccupancyLaneState::NotPrepared
+                }
+                8 => source.sample.replicate_id.clear(),
+                9 => source.path = f.temp.path().join("missing.bed").display().to_string(),
+                _ => {
+                    source.control = FragmentPeakControl::NotUsed {
+                        reason: String::new(),
+                    }
+                }
+            }
+            f.bind();
+            assert!(
+                f.engine
+                    .plan_reporter_fragment_selection(f.request)
+                    .is_err(),
+                "case {case}"
+            );
+        }
+    }
+
+    #[test]
+    fn reporter_fragment_selection_control_free_peaks_are_explicit_not_enrichment() {
+        let mut f = fixture(false, false);
+        add_synthetic_peaks(&mut f);
+        f.request.called_peak_sources[0].control = FragmentPeakControl::NotUsed {
+            reason: "Synthetic control-free caller result; no enrichment test".into(),
+        };
+        let report = f.plan();
+        assert!(report.fixed_comparisons.is_empty());
+        assert!(
+            report
+                .candidates
+                .iter()
+                .all(|c| !c.ranking.descriptive_enrichment_supported)
+        );
+        let duplicated = f.request.called_peak_sources[0].clone();
+        f.request.called_peak_sources.push(duplicated);
+        assert!(
+            f.engine
+                .plan_reporter_fragment_selection(f.request)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn reporter_fragment_selection_called_peaks_reject_bad_geometry_and_protect_input_files() {
+        for line in [
+            "7\t10\t10",
+            "2\t11000\t11010",
+            "7\t11000\t11010\tp\tNaN",
+            "7\t11000\t11010\tp\t1\tbad",
+            "7\t0\t1",
+            "# empty",
+        ] {
+            let mut f = fixture(false, false);
+            add_synthetic_peaks(&mut f);
+            let source = &mut f.request.called_peak_sources[0];
+            std::fs::write(&source.path, line).unwrap();
+            source.sha256 = crate::digest_utils::sha256_prefixed_str(line);
+            assert!(
+                f.engine
+                    .plan_reporter_fragment_selection(f.request)
+                    .is_err(),
+                "{line}"
+            );
+        }
+        let mut f = fixture(false, false);
+        add_synthetic_peaks(&mut f);
+        let path = f.request.called_peak_sources[0].path.clone();
+        let before = std::fs::read(&path).unwrap();
+        assert!(
+            f.engine
+                .apply(Operation::PlanEvidenceGuidedFragmentCandidates {
+                    request: Box::new(f.request),
+                    path: Some(path.clone())
+                })
+                .is_err()
+        );
+        assert_eq!(before, std::fs::read(path).unwrap());
+    }
+
+    #[test]
+    fn reporter_fragment_selection_legacy_requests_remain_raw_coverage_only() {
+        let f = fixture(false, false);
+        let mut old = serde_json::to_value(&f.request).unwrap();
+        old.as_object_mut().unwrap().remove("called_peak_sources");
+        let legacy: FragmentSelectionRequest = serde_json::from_value(old).unwrap();
+        assert!(legacy.called_peak_sources.is_empty());
+        let report = f.engine.plan_reporter_fragment_selection(legacy).unwrap();
+        assert!(
+            report
+                .evidence
+                .iter()
+                .all(|e| e.kind != FragmentEvidenceKind::CalledPeak)
+        );
+        let mut ranking = serde_json::to_value(&report.candidates[0].ranking).unwrap();
+        ranking
+            .as_object_mut()
+            .unwrap()
+            .remove("retains_called_peak");
+        assert!(
+            !serde_json::from_value::<FragmentCandidateRanking>(ranking)
+                .unwrap()
+                .retains_called_peak
         );
     }
 

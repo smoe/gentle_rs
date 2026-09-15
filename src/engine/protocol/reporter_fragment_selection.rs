@@ -31,7 +31,7 @@ pub enum FragmentSelectionPurpose {
 #[serde(default, deny_unknown_fields)]
 pub struct FragmentSelectionAnchor {
     pub transcript_id: String,
-    /// Empty means all annotation/model seed intervals in this anchor's envelope.
+    /// Empty means all annotation/model/called-peak seeds in this anchor's envelope.
     pub seed_evidence_ids: Vec<String>,
     pub required_evidence_ids: Vec<String>,
     /// Optional exact prior ROI, for revisiting a human-selected boundary.
@@ -138,6 +138,40 @@ pub struct FragmentSignalComparison {
     pub missing_policy: FragmentSignalMissingPolicy,
 }
 
+/// Caller-declared replicate, bound to one available source lane in the locus report.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FragmentPeakLaneBinding {
+    pub lane_id: String,
+    pub source_sha256: String,
+    pub replicate_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FragmentPeakControl {
+    Matched { control: FragmentPeakLaneBinding },
+    NotUsed { reason: String },
+}
+
+/// Explicitly declared BED peak calls, never inferred from generic coverage or labels.
+/// Caller settings and replicate identities are provenance declarations, not verified QA.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FragmentCalledPeakSource {
+    pub source_id: String,
+    pub path: String,
+    pub sha256: String,
+    pub assembly: String,
+    pub chromosome: String,
+    pub caller: String,
+    pub caller_version: String,
+    pub parameters: std::collections::BTreeMap<String, String>,
+    pub cell_line: String,
+    pub sample: FragmentPeakLaneBinding,
+    pub control: FragmentPeakControl,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FragmentSelectionRequest {
@@ -150,6 +184,8 @@ pub struct FragmentSelectionRequest {
     pub adjustments: Vec<FragmentBoundaryAdjustment>,
     #[serde(default)]
     pub signal_comparisons: Vec<FragmentSignalComparison>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub called_peak_sources: Vec<FragmentCalledPeakSource>,
     #[serde(default)]
     pub vector: Option<FragmentSelectionVector>,
 }
@@ -160,6 +196,7 @@ pub enum FragmentEvidenceKind {
     Annotation,
     ModelSite,
     RawCoverage,
+    CalledPeak,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,6 +252,9 @@ pub struct FragmentCandidateRanking {
     pub descriptive_enrichment_supported: bool,
     pub retains_annotation: bool,
     pub retains_model_site: bool,
+    /// Presence only; shares sample provenance with coverage, not an independent vote.
+    #[serde(default)]
+    pub retains_called_peak: bool,
     pub bisected_feature_count: usize,
     pub fits_preferred_length: bool,
     pub length_bp: usize,

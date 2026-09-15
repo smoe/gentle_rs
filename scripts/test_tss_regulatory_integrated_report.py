@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Focused deterministic tests for the TSS-local integrated report helpers."""
+"""Deterministic TSS report tests; preparation uses a real GENTLE_TEST_CLI binary.
+
+Preparation tests explicitly skip without a built CLI; rendering remains pure Python.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +12,7 @@ from copy import deepcopy
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -116,8 +120,17 @@ def source_fixture(root, strand="+"):
     return selected, report, svg
 
 
+def geometry_cli():
+    binary = Path(os.environ.get("GENTLE_TEST_CLI", ROOT.parent / "target/debug/gentle_cli"))
+    if not binary.is_file():
+        if "GENTLE_TEST_CLI" in os.environ:
+            raise RuntimeError(f"Configured GENTLE_TEST_CLI is missing: {binary}")
+        raise unittest.SkipTest("Build gentle_cli or set GENTLE_TEST_CLI for real engine integration")
+    return binary.resolve()
+
+
 def run_preparation(root, assembly_id="GRCh38"):
-    argv = ["prepare", "--selected-tss", str(root / "selected.json"),
+    argv = ["prepare", "--gentle", str(geometry_cli()), "--selected-tss", str(root / "selected.json"),
             "--locus-report", str(root / "report.json"), "--locus-svg", f"TOY={root / 'base.svg'}",
             "--promoterome", str(root / "reference"), "--source-revision", "synthetic-revision",
             "--assembly-id", assembly_id,
@@ -176,6 +189,11 @@ class SourceBindingTests(unittest.TestCase):
                 self.assertEqual(len(candidates["regions"]), 1)
                 sequence = "".join((root / "output/candidate_regions.fa").read_text().splitlines()[1:])
                 self.assertEqual(sequence, expected_base * 201)
+                geometry_path = root / "output/window_geometry.json"
+                geometry = json.loads(geometry_path.read_text())
+                self.assertEqual(candidates["source_bindings"]["geometry_report_sha256"], sha256(geometry_path))
+                self.assertEqual(candidates["source_bindings"]["geometry_request_sha256"], geometry["request_sha256"])
+                self.assertEqual(candidates["source_bindings"]["geometry_engine_binary_sha256"], sha256(geometry_cli()))
 
     def test_selected_identity_mismatches_fail_before_output(self):
         for defect in ("chromosome", "strand", "tss", "span", "transcript", "empty_transcripts",
@@ -257,7 +275,8 @@ class SourceBindingTests(unittest.TestCase):
             with self.subTest(assembly_id=assembly_id), TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 source_fixture(root)
-                argv = ["prepare", "--selected-tss", str(root / "selected.json"),
+                argv = ["prepare", "--gentle", str(geometry_cli()),
+                        "--selected-tss", str(root / "selected.json"),
                         "--locus-report", str(root / "report.json"),
                         "--locus-svg", f"TOY={root / 'base.svg'}",
                         "--promoterome", str(root / "reference"),
@@ -367,22 +386,30 @@ class SourceBindingTests(unittest.TestCase):
 
 
 class TssWindowTests(unittest.TestCase):
+    def compute(self, strand, positions):
+        request = {"schema": "gentle.tss_window_geometry_request.v1", "assembly": "synthetic",
+                   "upstream_bp": 500, "downstream_bp": 200,
+                   "groups": [{"group_id": "toy", "chromosome": "1", "strand": strand,
+                               "features": [], "anchors": [
+                                   {"anchor_id": str(i), "source": {
+                                       "chromosome": "1", "strand": strand, "tss_1based": pos,
+                                       "start_1based": pos - 800, "end_1based": pos + 800,
+                                       "upstream_bp": 800, "downstream_bp": 800}}
+                                   for i, pos in enumerate(positions)]}]}
+        return PREPARE.compute_geometry(geometry_cli(), request)["groups"][0]
+
     def test_transcript_oriented_windows(self) -> None:
-        self.assertEqual(PREPARE.selected_window(1_000, "+", 500, 200), (500, 1_200))
-        self.assertEqual(PREPARE.selected_window(1_000, "-", 500, 200), (800, 1_500))
-        with self.assertRaises(ValueError):
-            PREPARE.selected_window(1_000, ".", 500, 200)
+        for strand, bounds in [("+", (500, 1200)), ("-", (800, 1500))]:
+            window = self.compute(strand, [1000])["windows"][0]
+            self.assertEqual((window["start_1based"], window["end_1based"]), bounds)
+        with self.assertRaises(RuntimeError):
+            self.compute(".", [1000])
 
     def test_connected_stretches_merge_only_touching_windows(self) -> None:
-        windows = [
-            {"start_1based": 900, "end_1based": 1_200, "name": "b"},
-            {"start_1based": 500, "end_1based": 900, "name": "a"},
-            {"start_1based": 1_202, "end_1based": 1_500, "name": "c"},
-        ]
-        stretches = PREPARE.connected_stretches(windows)
+        stretches = self.compute("+", [1000, 1701, 2403])["stretches"]
         self.assertEqual([(row["start_1based"], row["end_1based"])
-                          for row in stretches], [(500, 1_200), (1_202, 1_500)])
-        self.assertEqual([row["name"] for row in stretches[0]["tss_windows"]], ["a", "b"])
+                          for row in stretches], [(500, 1901), (1903, 2603)])
+        self.assertEqual(stretches[0]["anchor_ids"], ["0", "1"])
 
     def test_receipt_bound_window_slice_is_assembly_forward(self) -> None:
         window = {"start_0based": "100", "end_0based_exclusive": "110", "strand": "+"}

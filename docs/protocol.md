@@ -4147,7 +4147,22 @@ Sequencing-trace evidence notes:
   validated vector/MCS identity and per-candidate restriction checks are separate.
   Only eligible candidates enter the proposed portable region set, which is not
   persisted. See [the contract and workflow](reporter_fragment_selection.md).
+  Optional `called_peak_sources` binds locus-scoped BED calls to exact available
+  sample/control source lanes, file hashes, caller/version/settings and declared
+  replicates. Only these explicit sources enter `called_peak` seed evidence;
+  raw coverage is never upgraded automatically. Peak presence is not independent
+  of coverage and its caller-defined score is not calibrated confidence.
   The existing exact-ROI/approval semantics are unchanged.
+- `ComputeTssWindowGeometry { request }` is stateless/read-only. The shared core
+  accepts `gentle.tss_window_geometry_request.v1` (assembly label, flanks,
+  same-strand/chromosome anchor groups with prepared `TssGeometry` sources and
+  feature intervals). It emits `gentle.tss_window_geometry.v1` in
+  `tss_window_geometry`, binding the normalized request hash, individual windows,
+  connected stretches and source-contained feature intersections. All bounds
+  are 1-based inclusive. Invalid/missing source geometry or excessive work fails
+  without mutation or file writes. This preserves fixed-window similarity-search
+  semantics, not evidence-guided insert selection. See the
+  [executable operation example](reporter_fragment_selection.md#fixed-window-similarity-geometry).
 - `PlanRegulatoryFragmentMaterialization { plan, output_prefix }` is read-only.
   It emits `gentle.regulatory_fragment_materialization_proposal.v1`, binding
   the current plan, exact ordered products, uppercase DNA hashes, topology,

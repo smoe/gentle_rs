@@ -41,7 +41,8 @@ contains the exact report returned in `OpResult.reporter_fragment_selection`.
 
 The default search envelope is TSS -700/+300, **1,001 bp including the TSS**.
 It is a discovery envelope, not the insert. Available Ensembl regulatory core
-intervals and already-scored TFBS site footprints may seed proposals. Raw
+intervals, already-scored TFBS site footprints and explicitly supplied,
+provenance-bound called peaks may seed proposals. Raw
 CUT&RUN coverage alone does not constitute a peak or a regulatory boundary.
 To limit alternatives, supply `seed_evidence_ids` from the returned inventory.
 `required_evidence_ids` specifies context that no eligible alternative may lose.
@@ -65,11 +66,14 @@ The source must cover the proposed geometry; no sequence is downloaded or
 silently invented beyond the loaded locus.
 
 Ranking is lexicographic and exposed in `ranking`: preserve required context,
-declared descriptive support, retained annotation, retained model site, fewer
+declared descriptive support, retained annotation, retained model site, retained
+called peak, fewer
 bisected biological features, compactness, length, stable ID. It is not a
 weighted biological confidence score. Signal-bin boundaries do not influence
 the bisection rank. `blockers` controls eligibility; a high-ranked row with a
 hard-limit blocker must not be treated as an accepted insert.
+These are presence flags, not independent votes. Several overlapping peaks do
+not contribute more votes, and a called peak is not independent of its coverage.
 
 ## Revising Either End
 
@@ -141,6 +145,63 @@ cloning feasibility remain separate questions.
 
 ## CUT&RUN And Historical Selection
 
+### Explicit Called Peaks
+
+Optionally add `called_peak_sources` to the selection request. Each source is
+a **locus-scoped BED** file of existing peak calls, with 0-based half-open
+coordinates, a file SHA-256, assembly/chromosome and peak-caller provenance:
+
+```json
+{
+  "source_id": "reviewed_peak_subset",
+  "path": "locus_peaks.bed",
+  "sha256": "sha256:REPLACE_WITH_PEAK_FILE_HASH",
+  "assembly": "GRCh38",
+  "chromosome": "chr7",
+  "caller": "YOUR_PEAK_CALLER",
+  "caller_version": "EXACT_VERSION",
+  "parameters": {"threshold": "EXACT_SETTING", "subset": "EXACT_LOCUS_SELECTION"},
+  "cell_line": "EXACT_LOCUS_CELL_LINE",
+  "sample": {
+    "lane_id": "EXACT_SAMPLE_LANE",
+    "source_sha256": "sha256:EXACT_SAMPLE_SOURCE_HASH",
+    "replicate_id": "DECLARED_SAMPLE_REPLICATE"
+  },
+  "control": {"mode": "matched", "control": {
+    "lane_id": "EXACT_CONTROL_LANE",
+    "source_sha256": "sha256:EXACT_CONTROL_SOURCE_HASH",
+    "replicate_id": "DECLARED_CONTROL_REPLICATE"
+  }}
+}
+```
+
+GENtle requires exactly one available source lane per binding and checks its
+hash, assembly and cell-line label against the bound locus report. Matched
+sample/control sources must differ. A control-free call must explicitly use
+`{"mode":"not_used","reason":"YOUR_REASON"}`; it does not acquire an
+enrichment claim. Caller version, nonempty parameter map and replicate labels
+are mandatory declarations, not independently verified experimental QA. No
+peak caller is run here. Use the hash of the lane's actual retained source,
+not a BAM hash substituted for a lane sourced from BigWig.
+
+Missing/stale files, invalid intervals/strands/non-finite scores, another
+chromosome or any interval outside the loaded locus fail before a proposal is
+returned. Calls are not silently clipped. BED3 through extended BED files are
+accepted; column 5 is retained as a caller-defined score, never interpreted as
+calibrated confidence. Limits are 16 sources, 8 MiB per file and the configured
+combined evidence budget. Duplicate source IDs or file hashes are rejected.
+
+The report preserves the full request and exposes `called_peak` evidence with
+stable `peak:SOURCE_ID:LINE_NUMBER` IDs and `may_seed_boundary=true`.
+Exported ROI references retain the peak caller's version, not the locus's
+annotation release, and link the complete selection request by its digest.
+Raw coverage, a `Strong` label and `overlapping_peak_count > 0` do **not** enter
+this tier automatically. Peak retention cannot establish direct binding,
+independent replication or reporter activity. Legacy requests with no
+`called_peak_sources` retain coverage-only behavior.
+
+### Fixed-Envelope Comparisons
+
 Without `signal_comparisons`, enrichment is `not_evaluated`. An optional
 comparison names sample/control lane IDs, cell line, replicate IDs, compatible
 units, a `minimum_mean_difference`, and `missing_policy` (`require_complete`
@@ -186,3 +247,45 @@ Conservation, motif scores, annotation and occupancy motivate reporter tests;
 none proves autonomous promoter activity or predicts a measured decrease in
 luciferase activity. Existing fixed-window, manual ROI and exact-panel routes
 remain available as alternatives.
+
+## Fixed-Window Similarity Geometry
+
+Fixed similarity-search windows are not adaptive reporter inserts. The shared,
+stateless `ComputeTssWindowGeometry { request }` operation owns strand-aware
+window bounds, touching/overlapping unions and regulatory-feature intersections.
+Its `gentle.tss_window_geometry_request.v1` request declares an assembly label,
+upstream/downstream lengths and groups of same-chromosome/same-strand anchors.
+Each anchor binds its existing `TssGeometry` source window. Coordinates are
+1-based inclusive; -500/+200 is 701 bp. Gaps are never bridged. Each intersection
+must fit a single prepared source, whose anchor IDs remain in the result.
+The pure operation checks geometry, not FASTA hashes or assembly authenticity;
+the importing/preparation adapter must verify those source bindings separately.
+
+For example, save this operation as `geometry_op.json`:
+
+```json
+{"ComputeTssWindowGeometry":{"request":{
+  "schema":"gentle.tss_window_geometry_request.v1","assembly":"synthetic",
+  "upstream_bp":500,"downstream_bp":200,"groups":[{
+    "group_id":"toy","chromosome":"1","strand":"-",
+    "anchors":[{"anchor_id":"T1","source":{
+      "chromosome":"1","strand":"-","tss_1based":1000,
+      "start_1based":200,"end_1based":1800,"upstream_bp":800,"downstream_bp":800
+    }}],"features":[{"feature_id":"E1","start_1based":990,"end_1based":1010}]
+  }]
+}}}
+```
+
+Run `gentle_cli shell 'op @geometry_op.json'` or `op @geometry_op.json` in GUI
+Shell; MCP `op` and operation-based scripting use the identical contract. The
+result in `result.tss_window_geometry` is `gentle.tss_window_geometry.v1`, with
+normalized request/hash, per-anchor windows, connected stretches and feature
+intersections. This example returns window 800..1500, not 500..1200.
+Duplicate IDs, unavailable source span, mixed strand/chromosome or excessive
+work fail explicitly. No project is required or changed, and no files are written.
+
+`scripts/prepare_tss_regulatory_similarity_candidates.py --gentle PATH ...`
+now consumes that operation via a built `gentle_cli`. It retains
+`window_geometry.json`, its hash, the request hash and the engine binary hash.
+It still verifies/extracts from the bound promoterome FASTA; there is no Python
+geometry fallback and no silent switch to evidence-guided reporter selection.

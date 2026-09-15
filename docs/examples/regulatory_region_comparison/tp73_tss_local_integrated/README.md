@@ -147,6 +147,7 @@ python3 scripts/prepare_tp73_cutrun_promoter_candidates.py \
   --source-revision "$(git rev-parse HEAD)"
 
 python3 scripts/prepare_tss_regulatory_similarity_candidates.py \
+  --gentle /path/to/built/gentle_cli \
   --selected-tss /path/to/run/selected-tss/candidate_regions.json \
   --promoterome /path/to/human-grch38-ensembl116-promoterome \
   --catalog /path/to/exact/genomes.json \
@@ -176,6 +177,13 @@ path. Assembly identity comes from the selected entry's Ensembl `file_stem`
 or NCBI `ncbi_assembly_name`, never an arbitrary word in the catalog label.
 Missing, conflicting or nonmatching assembly metadata is rejected.
 
+The built CLI must provide `ComputeTssWindowGeometry`. Preparation now delegates
+fixed-window geometry, connected stretches and feature intersections to that
+shared stateless operation and retains `window_geometry.json` plus request,
+report and binary hashes. It does not substitute adaptive reporter boundaries
+or provide a Python geometry fallback. These new receipts require a fresh,
+separate output directory; existing published example artifacts are not rewritten.
+
 Render a tall report and its bound PDF/PNG derivatives (repeat for each gene):
 
 ```bash
@@ -198,10 +206,17 @@ PDF renderer does. Focused offline regression tests, including synthetic source
 mismatches, both axis directions and dense-footer geometry, run with:
 
 ```bash
+cargo build --locked --bin gentle_cli
+GENTLE_TEST_CLI=/path/to/built/gentle_cli \
 python3 -m unittest \
   scripts.test_tss_regulatory_integrated_report \
   scripts.test_tp73_locus_cutrun_lane_validation
 ```
+
+Preparation tests use the real CLI. Without a built default `target/debug/gentle_cli`
+or `GENTLE_TEST_CLI`, those tests explicitly skip; this is not integration acceptance.
+Pure rendering tests still run without Rust. Shared geometry tests also run with
+`cargo test -p gentle-engine --locked tss_window_geometry`.
 
 ## Interpretation boundary
 

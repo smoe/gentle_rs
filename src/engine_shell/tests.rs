@@ -166,6 +166,75 @@ fn reporter_catalog_path() -> String {
 }
 
 #[test]
+fn tss_window_geometry_shared_op_is_stateless_and_typed() {
+    use gentle_protocol::{AdapterSurfacing, CapabilityAdapter, capability_registry};
+    let registry = capability_registry();
+    let descriptor = registry
+        .iter()
+        .find(|d| d.name == "ComputeTssWindowGeometry")
+        .unwrap();
+    for adapter in [
+        CapabilityAdapter::Gui,
+        CapabilityAdapter::Cli,
+        CapabilityAdapter::Mcp,
+        CapabilityAdapter::Js,
+        CapabilityAdapter::Lua,
+    ] {
+        assert_eq!(
+            descriptor.surfacing_for_adapter(adapter),
+            AdapterSurfacing::ShellPassthrough
+        );
+    }
+    let mut engine = GentleEngine::default();
+    let before = serde_json::to_value(engine.snapshot()).unwrap();
+    let operation = json!({"ComputeTssWindowGeometry": {"request": {
+        "schema": "gentle.tss_window_geometry_request.v1", "assembly": "synthetic",
+        "upstream_bp": 500, "downstream_bp": 200,
+        "groups": [{"group_id": "toy", "chromosome": "1", "strand": "-",
+            "features": [{"feature_id": "E1", "start_1based": 990, "end_1based": 1010}],
+            "anchors": [{"anchor_id": "T1", "source": {
+                "chromosome": "1", "strand": "-", "tss_1based": 1000,
+                "start_1based": 200, "end_1based": 1800,
+                "upstream_bp": 800, "downstream_bp": 800
+            }}]
+        }]
+    }}});
+    let command = parse_shell_line(&format!("op '{}'", operation)).unwrap();
+    let result = execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!result.state_changed);
+    let report = &result.output["result"]["tss_window_geometry"];
+    assert_eq!(report["groups"][0]["windows"][0]["start_1based"], 800);
+    assert_eq!(report["groups"][0]["windows"][0]["end_1based"], 1500);
+    assert_eq!(
+        report["groups"][0]["intersections"][0]["containing_anchor_ids"],
+        json!(["T1"])
+    );
+    let typed: gentle_protocol::tss_window_geometry::TssWindowGeometryReport =
+        serde_json::from_value(report.clone()).unwrap();
+    assert_eq!(serde_json::to_value(typed).unwrap(), *report);
+    let mut invalid = operation;
+    invalid["ComputeTssWindowGeometry"]["request"]["groups"][0]["anchors"][0]["source"]["strand"] =
+        json!("+");
+    let command = parse_shell_line(&format!("op '{}'", invalid)).unwrap();
+    assert!(execute_shell_command(&mut engine, &command).is_err());
+    assert_eq!(before, serde_json::to_value(engine.snapshot()).unwrap());
+    let introspection = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect capabilities").unwrap(),
+    )
+    .unwrap();
+    let descriptor = introspection.output["capabilities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "ComputeTssWindowGeometry")
+        .unwrap();
+    assert_eq!(descriptor["requires_confirmation"], false);
+    assert_eq!(descriptor["mutating"], "false");
+    assert_eq!(descriptor["precondition_expr"], json!({"all": []}));
+}
+
+#[test]
 fn parse_and_execute_genomic_region_shell_routes_share_typed_operations() {
     let create = parse_shell_line(
         r#"regions create '{"set_id":"shared","region_id":"roi_1","label":"Promoter candidate","interval":{"reference":{"species_scientific_name":"Homo sapiens","taxon_id":9606,"assembly_name":"GRCh38","assembly_accession":"GCA_000001405.15","contig_name":"chr7"},"start_0based":100,"end_0based_exclusive":101,"strand":"plus","coordinate_convention":"zero_based_half_open"},"purpose":"promoter_region","selection_method":"manual_span"}'"#,

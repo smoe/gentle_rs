@@ -5603,6 +5603,9 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reporter_fragment_selection: Option<Box<FragmentSelectionReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_window_geometry:
+        Option<Box<gentle_protocol::tss_window_geometry::TssWindowGeometryReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulatory_fragment_panel_plan: Option<Box<RegulatoryFragmentPanelPlan>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regulatory_fragment_materialization_proposal:

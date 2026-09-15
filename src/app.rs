@@ -12427,6 +12427,7 @@ Error: `{err}`"
                 promoter_reporter_panel_proposal: None,
                 regulatory_reporter_study: None,
                 reporter_fragment_selection: None,
+                tss_window_geometry: None,
                 regulatory_fragment_panel_plan: None,
                 regulatory_fragment_materialization_proposal: None,
                 regulatory_fragment_materialization_receipt: None,

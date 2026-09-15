@@ -6230,9 +6230,13 @@ Tutorial projects:
       causal regulation
     - before fixing the ROI, GUI Shell also accepts `promoters fragment-candidates`
       for [evidence-guided boundaries](reporter_fragment_selection.md), including
-      explained extension/shortening and optional exact-vector MCS checks.
+      explained extension/shortening, provenance-bound called-peak BED sources
+      and optional exact-vector MCS checks. Generic coverage is not a peak seed.
       This is a read-only proposal, not a new graphical drag editor; saving a
       proposed region and approving its construct remain separate actions.
+      For fixed similarity windows, GUI Shell `op @geometry_op.json` uses the
+      same stateless `ComputeTssWindowGeometry` as CLI/MCP, rather than selecting
+      adaptive inserts. Neither route requires or introduces a new GUI editor.
     - the executable offline tutorial
       `08-11_regulatory_fragment_panel_planning_offline` walks through the
       region selectors, exact A/B geometry, independent evidence states, and
