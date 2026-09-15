@@ -7,6 +7,9 @@ docs/tutorial/generated/** export-ignore
 # against their xref tables.
 *.pdf binary
 
+# Cross-platform candidate receipts bind the lockfile's exact bytes.
+Cargo.lock text eol=lf
+
 # Keep the hashed TP73 BLAST fixture byte-identical on Windows checkouts.
 test_files/fixtures/blast_tp73_isoforms/*.fasta text eol=lf
 

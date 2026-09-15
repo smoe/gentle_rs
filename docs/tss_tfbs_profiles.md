@@ -599,10 +599,65 @@ The pre-refresh artifacts remain in Git at `e489cfaf`. Reproduce and verify with
 `cargo run --locked --bin gentle_examples_docs -- tutorial-check`.
 This synthetic replay does not validate or refresh private scientific reports.
 
-The private original five-gene scored inputs are not available in this checkout.
-The published PDF/selected-FASTA bundle is not enough to reconstruct all TSSs,
-matrices and source context. Glen should use the original hash-bound manifest,
-full FASTA inputs, exact panel and selection, with the corrected binary:
+### Check Input Completeness Before Regeneration
+
+First inventory and hash the original manifest, **all** TSS FASTAs, exact panel,
+selection and reference identities. Match them to the original scoring request
+and receipt, including resolved PFM counts/digests, pseudocount and background
+settings. An accession alone does not establish byte-identical matrix input.
+Derived PDFs, selected-window FASTAs and annotated GenBank/EMBL files do **not**
+qualify as the full input set. Stop on missing or mismatched inputs; do not
+silently reduce the TSS universe, infer missing sequences or fetch newer PFMs.
+
+For the requested before/after comparison, also require the previous complete
+machine-readable `report.json` and its receipt. A figure cannot supply the old
+arrays, ranked peaks or comparisons. Record these as unavailable rather than
+presenting a fresh run as a verified regeneration of that prior analysis.
+Integrated overview/detail regeneration additionally needs the original locus
+requests, source report JSON and bound signal/context inputs. Retained SVGs or
+their hashes are not substitutes for those inputs.
+
+**Local inventory, 2026-09-15:** the documented historical Git commit
+`a106cbbd5223f8c4be55a7d846b8416bc4b3ae33` is locally available. Under
+`docs/examples/regulatory_region_comparison/` it contains:
+
+- `target_tss_fastas/bundle/`: manifest, checksum inventory and five FASTAs,
+  with CD44 31, TGFB1 6, SERPINE1 4, PATZ1 5 and TP73 12 TSS records.
+  All five FASTA file hashes, 58 sequence bindings, 701-bp lengths and
+  strand-aware TSS geometry were checked read-only against the manifest. This is bundle consistency,
+  not independent genome re-extraction.
+- `five_target_tss_integrated/jaspar_30_track_panel.json`: 30 exact-accession
+  background-tail tracks, with independent display scaling as the original
+  panel default; it does not itself contain the resolved PFMs.
+- `five_target_tss_integrated/selected_tss_candidate_regions.json`: 13 selected
+  promoter identities that join to the 58-window bundle. Its original
+  -2,000/+200 selection intervals are not the -500/+200 scoring windows;
+  preserve the checked promoter/TSS join, not equality of their DNA hashes.
+
+| Historical input | SHA-256 of Git blob bytes |
+| --- | --- |
+| TSS manifest | `0b49d16dcb7442b1a644b46422ec38f4bf5e9255159387124ba33767c9ad0728` |
+| 30-track panel | `8ba6888c35f4479f375117b7145eb80b555e92ef384bee699fc874cfe22a374e` |
+| Selection | `4fe2bf3f489da067fabe05a0a833ab1c9308151ea5e1c358aeb0def9ee957c6f` |
+
+This qualifies the earlier "inputs unavailable" note: the full sequence bundle
+is recoverable from Git, but the **complete original scored-run evidence** has
+not been located here. The inspected historical directories do not include the
+prior TSS `report.json`, its scoring receipt or the bound locus JSON (the
+overview receipts cite its digest only). Access to local Downloads was denied
+by macOS, so no independent inventory of that directory is claimed. No
+scientific report was regenerated or overwritten during this audit.
+
+Glen's next handoff should provide those missing machine-readable reports,
+receipts, original requests and exact matrix/source bindings, or perform the
+following conditional replay on the host retaining them. First check whether
+the prior report already carries the corrected method: an already-corrected
+report needs no second rescore solely to change presentation. Keep undeclared
+annotation-release metadata unknown rather than deriving it from a dataset name.
+
+### Conditional Replay And Acceptance
+
+Only after the completeness and identity checks pass, use a corrected binary:
 
 ```sh
 gentle_cli features tss-tfbs-profiles \
@@ -622,8 +677,20 @@ tracks first, keeping their original source evidence; then supply the newly
 hash-bound `--context-manifest` and follow the
 [integrated report regeneration checklist](integrated_locus_tss_profiles.md#refreshing-the-september-10-bundle).
 Use a fresh destination; retain the old report/receipts for comparison. Verify
-the scoring-method marker, matrix/sequence hashes, TP73 maximum regression,
-both strands and common numeric ranges before publishing replacement figures.
+the new bundle's stored `uniform_iid_quantized_conservative_survival_v2` method
+marker, unchanged matrix/sequence hashes, coordinates and ambiguity handling,
+and recomputed maxima, ranked peaks and comparisons against the old report.
+Compare raw LLR values only where exact inputs/settings match. Check both
+strands and one common range per exact matrix across the **full** supplied TSS
+set, with `shared_across_tss` visible and retained in export receipts. Inspect
+representative detailed pages and sparse overview peaks before publication.
+
+The TP73 maximizer regression above is an **engine smoke test**, not evidence
+that this bundle was regenerated. Deliverable acceptance requires inspecting
+the new report and receipts themselves, reporting changed scores/peak rankings
+and preserved inputs. If the old report is unavailable, no before/after
+scientific comparison can be claimed. Keep numerical rescoring, presentation
+re-export, and independent reference verification as separate verdicts.
 
 ## Outputs And Limits
 

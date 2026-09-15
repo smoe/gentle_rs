@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-09-15 - `.10` Notes And Scientific Regeneration Input Gate
+
+- Refresh the `.10` draft with corrected TFBS tails/scaling, imported-hit
+  triangles, annotated-format parity and reference/agent hardening. Distinguish
+  implemented features from pending final-SHA, installed-package and scientific
+  acceptance. Tagging, workflow dispatch and publication remain owner actions.
+- Address Claude's supplied regeneration review by requiring a complete,
+  hash-bound input set and the previous machine-readable report before a
+  before/after claim. Audit the historical 58-window/30-track/13-selection Git
+  inputs without restoring scientific outputs; document the still-missing
+  original scoring and locus bindings. No scores or published bundles change.
+
+## 2026-09-15 - Cross-Platform Release Lockfile Identity
+
+- Pin `Cargo.lock` to LF so raw-byte candidate receipts survive Windows-style
+  checkout conversion. Preserve the dependency graph and strict digest checks;
+  no dependency update or lockfile-content change is involved.
+- Test both checkout policies using the repository's actual attributes, plus
+  deliberate missing-rule and post-checkout modification failures. Clarify that
+  retagging triggers container checks, while desktop installer validation needs
+  explicit dispatch and defaults to no publication.
+
 ## 2026-09-15 - Windows PATZ1 Tutorial Evidence Identity
 
 - Pin the PATZ1 probe and composed isoform-evidence JSON fixtures to LF on

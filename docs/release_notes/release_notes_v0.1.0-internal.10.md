@@ -1,7 +1,11 @@
 # Release Notes / Changelog: `v0.1.0-internal.10` (unreleased candidate)
 
-Status: **unreleased; awaiting Glen's readiness verdict and release-owner
-approval**. The existing tag at `052cf125` is not evidence of release approval
+Updated: 2026-09-15, ahead of owner-managed tagging and publication.
+
+Status: **unreleased; preparation approved, exact-candidate acceptance and
+release-owner publication approval pending**. Glen's earlier successful runs
+are historical evidence, not a verdict on a newly selected SHA.
+The existing tag at `052cf125` is not evidence of release approval
 and does not identify the current development candidate. It remains unchanged;
 reconciling it with an accepted candidate SHA requires explicit owner approval.
 The premature `.11` designation is withdrawn. Its intended work and pending
@@ -11,10 +15,10 @@ unrecorded checks have not been retroactively marked passed.
 
 | Release field | Value |
 | --- | --- |
-| Status | Unreleased; Glen's readiness verdict and release-owner approval pending |
+| Status | Unreleased; preparation approved, final-SHA/package acceptance and owner publication approval pending |
 | Target date | After exact-candidate acceptance; no release date committed |
 | Previous tag | `v0.1.0-internal.9` (2026-06-05) |
-| Primary story | Genome-anchored TP73 evidence viewer and transcript-aware primer workflows |
+| Primary story | Genome-anchored evidence, transcript-aware assays and auditable promoter/TSS reporter design |
 | Manual GUI smoke | Required before release approval; exact candidate revision pending |
 
 This internal release covers the work after `v0.1.0-internal.9`, tagged on
@@ -53,17 +57,79 @@ expensive GUI work that runs safely away from the egui thread.
 - Resolve hash-bound external locus/reporter evidence before proposing
   regulatory-fragment panels. Separately approve exact, atomic multi-fragment
   products with explicit source, annotation and sequence provenance.
+- Compare exact-matrix TSS profiles with corrected inclusive background-tail
+  scores and optional shared ranges across TSSs. Compressed overview traces
+  retain narrow peaks without joining them into apparent plateaus.
+- Attach saved DuckDB motif-query evidence as separate detailed-panel triangles:
+  base spans the TFBS, up/down indicates displayed orientation, and height
+  represents the imported score. Labels retain bp, score and genomic direction;
+  sparse or truncated query results are not evidence of absent binding sites.
+- Export annotated TSS sequences in GenBank or EMBL alongside FASTA and
+  integrated SVG/PNG/PDF reports. Fixed-column GenBank headers and shared
+  annotation serialization improve interoperability without changing scores.
+  Lossless PDF compression reduces raster storage; CLI exports print a concise
+  summary while retaining complete `report.json` and explicit `--full-report`
+  stdout access. Large score/TSV bundles still require deliberate storage.
+- Inspect source-coherent Ensembl/RefSeq transcript context. Hardened NCBI
+  parsing preserves repeated alignments, child-before-parent records and shared
+  exon/CDS parents. Correct Ensembl discovery URLs and genome-bound progress
+  avoid associating an active preparation with a newly selected genome.
+- Learn PWM/PSSM, raw LLR and tail-score interpretation through the
+  [motif-to-promoter tutorial](../tutorial/08-13_motif_logo_to_promoter_trace.md),
+  discoverable by the inner agent. Imported JASPAR-mapping scores and GENtle's
+  native scoring remain distinct provenance paths.
 - Reproduce branch/reverse-complement, digest and Simple-PCR tutorials through
   ordinary Linux X11 input with native-window/coordinate binding and retained
   screenshot provenance. Starter projects must not contain completed results.
-- Distribute a downloadable Linux x64 tarball alongside the Windows ZIP,
-  macOS DMG and separate Linux CLI/GUI GHCR images.
+- Build a Linux x64 tarball, Windows ZIP and macOS DMG at one declared candidate
+  SHA, with separate Linux CLI/GUI GHCR images. Download availability and
+  installed-package acceptance remain pending; see the ledger below.
+- Check generated tutorials in both LF and CRLF local checkouts on every
+  sampled native CI host. Byte-hashed fixtures and `Cargo.lock` retain LF;
+  receipt verification remains strict rather than normalizing away changes.
 
 Glen's `c7f3f005` runner fixes are integrated. The Simple-PCR starter now uses
 the same 800-base TP73 extract as its scripted oracle, with core [200, 600)
 and at most 200 bases per flank. The full source locus is retained for
 provenance. This bounds the input rather than relaxing scientific gates or
 raising the ten-minute compute timeout. A new live run is still required.
+
+## Important TFBS Score Correction
+
+The background-tail correction in `8b7b6b47` fixes accumulated per-column
+rounding error and cancellation in small survival probabilities. For the TP73
+MA0861.2 maximizer `ACATGTCTGGACATGT`, raw LLR remains **19.543680326691 bits**,
+but the former displayed **300** becomes **9.632959861247**, from the inclusive
+uniform-background tail `4^-16`. This is `-log10(P(score >= observed))`, **not**
+biochemical binding probability, raw LLR bits or a quantile. Pseudocount policy
+is unchanged. The documented conservative discretization can overestimate the
+tail and therefore underestimate its negative-log score.
+
+Detailed panels explicitly label their scale policy. Use
+`--scale-mode shared_across_tss` for one common range per exact matrix across
+all TSSs and both strands in the supplied report; independent scaling remains
+available and is not cross-TSS peak-height comparability. Neither policy
+calibrates biological affinity between different matrices. Overview pixel
+buckets show separate-strand min/max ranges and mean marks, not connected
+maxima; original arrays remain intact.
+
+**Existing reports are not silently repaired.** Background-derived TSS,
+TFBS-track, cohort and locus/reporter results need explicit rescoring from the
+same sequence/PFM inputs, including dependent peaks and comparisons. Pure
+presentation changes and GenBank/EMBL exports need only re-export when the
+stored scores and required context are already correct. The three affected
+synthetic tutorial datasets were explicitly refreshed; this does not certify
+the private five-gene bundle.
+
+Follow the [input-completeness gate and regeneration procedure](../tss_tfbs_profiles.md#check-input-completeness-before-regeneration).
+The historical 58-window FASTAs, 30-track panel and 13 selections are recoverable
+from Git, but do not establish identity with a prior scored run on their own.
+Before/after acceptance also requires its complete `report.json`, receipt and
+exact matrix bindings; integrated pages need the original bound locus inputs.
+Selected FASTAs, annotated sequence files and PDFs cannot replace that set.
+No private scientific bundle was rescored or republished by this release-note
+update. Earlier producer reports of successful replay remain attributed to
+their exact revision, not promoted to current-candidate acceptance.
 
 ## Exact-Candidate Gate Ledger
 
@@ -83,13 +149,15 @@ commits. After a fix, select the new candidate and rerun its gates.
 | `cargo check -q --locked` and `cargo test --locked --workspace` | Glen / CI | Pending |
 | Release-shaped `script-interfaces` build and every published entrypoint smoke | Glen / platform CI | Pending |
 | Examples, tutorial generation/manifest/catalog checks, interface parity | Glen / CI | Pending |
+| LF/CRLF checkout replay and raw lockfile identity | Glen / CI | Pending at final SHA; focused local regression evidence below |
 | All three Linux tutorial GUI smoke chapters, including bounded Simple PCR | Glen | Pending; new runtime measurement required |
 | TP73/PATZ1 graphical inspection and Conservation navigation/cancellation | Glen | Pending |
 | Copied-state IRF9/Q00978 acceptance | Glen, private copied-state evidence | Pending |
 | GUI and specificity benchmark acceptance | Glen | Pending |
 | TP73 CUT&RUN/evidence-viewer and PATZ1 locus-composer proof | Glen / CI | Pending |
 | Both Docker targets, `runtime-cli` and `runtime-gui` | Container CI | Pending |
-| Linux tarball, Windows ZIP and macOS DMG from the exact tag candidate | Release CI | Pending |
+| Linux tarball, Windows ZIP and macOS DMG from the exact candidate | Release CI | Pending; build-only dispatch does not require retagging |
+| Extracted/copied desktop package launch, resources and tutorial availability away from the checkout | Native Windows/macOS testers | Pending; current workflow archive checks do not establish this |
 | macOS optional `screenshot-capture` compilation | macOS CI | Pending; Linux cannot validate this |
 | Clean tree, version/tag/SHA consistency and generated-artifact checks | Release owner | Pending; existing tag is not the current candidate |
 | Explicit readiness verdict and release authorization | Glen / release owner | Pending |
@@ -107,6 +175,13 @@ The copied-state assay acceptance must retain the expected one-of-three linked
 cDNA / two-of-four linked-record coverage, with only the actual patch record
 genomically unassessed. GUI/report evidence must not rewrite that scientific
 oracle to obtain a pass.
+
+Local evidence for the 2026-09-15 checkout/lockfile changes: 29 offline Python
+release-policy and checkout-harness tests passed, including real LF/CRLF Git
+clones and rejection of changed lockfile bytes. Locked offline `cargo check`
+and the release-version consistency test also passed locally. The earlier `343ff4aa` tutorial
+fix was exercised with full LF/CRLF tutorial replay. These scoped checks are
+not native Windows/macOS installer acceptance or final-candidate certification.
 
 ## Candidate Acceptance Limits
 
@@ -474,6 +549,23 @@ approves the exact-candidate evidence.
 - The macOS bundle identifier remains the interim `com.example.gentle` value
   pending coordination with Magnus Manske on a stable project identity and
   URL. Changing it is intentionally deferred from this tag.
+- Desktop packaging is not yet proven self-contained: the Windows ZIP recipe
+  currently includes only `gentle.exe`, not external assets, tutorials or the
+  CLI/MCP companions. The macOS bundle includes resources, but tutorial lookup
+  and fixture availability still need installed-location validation. Current
+  CI checks mount/extract the archives; they do not launch those installed
+  desktop copies. No signing/notarization acceptance is claimed.
+- Pushing or moving a tag does not trigger `Release Installers`. The owner must
+  use the [explicit candidate workflow](../release.md#build-only-candidate-verification)
+  for build-only downloadable Actions artifacts; release publication is a
+  separate approved action. This document neither moves tags nor uploads files.
+- Existing NCBI caches are not automatically rewritten by the hardened parser.
+  Use **Reindex Using Cached Files** before relying on the new transcript joins;
+  retain original reference and report evidence.
+- General nonblocking command submission remains incomplete. Background-job
+  progress, cancellation and rollback improvements do not mean every command
+  can be admitted or observed without waiting; the
+  [responsive-command plan](../asynchronous_command_execution_plan.md) remains active.
 - The committed TP73 proof uses tiny local fixtures. Full UCSC `rmsk`, raw CEL,
   full SRA, BigWig, prepared genomes, and vendor resources remain optional
   external inputs.
@@ -497,23 +589,25 @@ approves the exact-candidate evidence.
 
 ## Suggested Pre-Tag Validation
 
-Run the complete workspace suite when time permits, then retain the focused
-release-story checks in the tag record:
+Run the complete locked workspace suite for the selected candidate, then retain
+the focused release-story checks in its evidence record. These local commands
+do not tag, dispatch CI or publish:
 
 ```bash
-cargo check -q
-cargo test -q --test release_version_consistency
-cargo test -q terminal_exon_rt_primer_pool --lib
-cargo test -q transcript_assay --lib
-cargo test -q primer3 --lib
-cargo test --workspace --no-fail-fast
-cargo run --quiet --bin gentle_examples_docs -- --check
-cargo run --quiet --bin gentle_examples_docs -- tutorial-check
-cargo test -q workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features
-cargo test -q workflow_examples_patz1_locus_evidence_preserves_visual_evidence_classes
+python3 -m unittest scripts.test_release_candidate scripts.test_tutorial_checkouts -v
+cargo check -q --locked
+cargo test -q --locked --test release_version_consistency
+cargo test -q --locked terminal_exon_rt_primer_pool --lib
+cargo test -q --locked transcript_assay --lib
+cargo test -q --locked primer3 --lib
+cargo test --locked --workspace --no-fail-fast
+cargo run --locked --quiet --bin gentle_examples_docs -- --check
+cargo run --locked --quiet --bin gentle_examples_docs -- tutorial-check
+cargo test -q --locked workflow_examples_tp73_cutrun_release_proof_writes_artifacts_and_features
+cargo test -q --locked workflow_examples_patz1_locus_evidence_preserves_visual_evidence_classes
 python3 -m pytest -q tests/test_codex_agent_bridge.py
-cargo run --release --bin gentle -- --version
-cargo run --release --bin gentle_cli -- capabilities
+cargo run --locked --release --bin gentle -- --version
+cargo run --locked --release --bin gentle_cli -- capabilities
 git diff --check
 ```
 

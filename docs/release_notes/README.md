@@ -7,7 +7,7 @@ Keep one Markdown file per internal tag in this directory.
 
 | Version | Release status / date | Primary focus |
 | --- | --- | --- |
-| [`v0.1.0-internal.10`](release_notes_v0.1.0-internal.10.md) | Unreleased; awaiting Glen's readiness verdict and release-owner approval | TP73 genome evidence, saved-region Conservation, evidence-bound reporter designs, live tutorial acceptance and Linux download |
+| [`v0.1.0-internal.10`](release_notes_v0.1.0-internal.10.md) | Unreleased; preparation approved, final-SHA/package acceptance and owner publication approval pending | Genome evidence, corrected TFBS/TSS profiles, transcript-aware assays, annotated GenBank/EMBL export and cross-platform packages |
 | [`v0.1.0-internal.9`](release_notes_v0.1.0-internal.9.md) | 2026-06-05 | macOS child windows, GUI profiling, ClawBio envelopes, and rack/plate exports |
 | [`v0.1.0-internal.8`](release_notes_v0.1.0-internal.8.md) | 2026-05-28 | agent-surface formalization, workspace extraction, and interim stabilization |
 | [`v0.1.0-internal.7`](release_notes_v0.1.0-internal.7.md) | 2026-05-11 | pre-refactor stability and adapter consolidation |

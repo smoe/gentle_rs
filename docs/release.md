@@ -75,6 +75,10 @@ candidate, not merely with the other receipts; missing, stale, mixed-mode or
 modified packages fail closed. Docker retains its existing `release-fast`
 profile and Debian `forky` build arguments, distinct from the installers'
 `release` profile. Neither profile nor production optimization is changed here.
+`.gitattributes` keeps `Cargo.lock` byte-identical under LF and CRLF checkouts;
+candidate receipts continue to hash actual bytes, not normalized text. The
+offline release-policy tests exercise both Git checkout policies and reject
+unprotected conversion or subsequent lockfile edits.
 
 Only after Glen's readiness verdict and release-owner approval may an owner
 explicitly request `publish=true`, with the same SHA and an already-existing tag
@@ -244,14 +248,19 @@ Release-workflow assumptions to re-check before tagging:
 
 Use Actions → `Release Installers` → `Run workflow` and provide:
 
-- `tag`: an existing tag (for example `v0.1.0`)
+- `tag`: the version label matching the candidate's `Cargo.toml`
+- `candidate_sha`: the full 40-character commit to rebuild
+- `publish`: leave `false` for build-only downloadable Actions artifacts
 - `linux_distribution`: `tarball` (the only implemented Linux download format)
 
-This rebuilds installers and updates assets on that tag’s release.
+Only an explicitly approved `publish=true` run updates release assets; its tag
+must already point to the candidate SHA. A build-only run does not require a
+tag to exist and never creates, moves or publishes one.
 
-Container publishing remains tag-driven through `.github/workflows/container.yml`
-rather than the desktop-installer release workflow, so the tag push should
-still happen before or alongside release publication.
+A tag push triggers container build checks, not `Release Installers`. To rebuild
+Windows/macOS/Linux packages after retagging, dispatch this workflow explicitly
+with the intended SHA and mode. Container publication remains separate and
+requires its own approved publication event.
 
 ## Smoke Checks in Release Workflow
 

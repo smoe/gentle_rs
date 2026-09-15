@@ -20,6 +20,7 @@ import unittest
 from unittest.mock import patch
 
 from scripts import release_candidate as policy
+from scripts import check_tutorial_checkouts as checkouts
 
 
 class ReleaseCandidateTests(unittest.TestCase):
@@ -127,6 +128,39 @@ class ReleaseCandidateTests(unittest.TestCase):
             policy.prepare(self.root, self.env)
         with self.assertRaisesRegex(ValueError, "Cargo.lock"):
             policy.validate_checkout(self.root, self.tag, self.sha, record["cargo_lock_sha256"])
+
+    def checkout_policy_fixture(self, attributes: bytes) -> dict:
+        self.git("config", "core.autocrlf", "false")
+        (self.root / "Cargo.lock").write_bytes(b"# Synthetic lockfile\nversion = 4\n")
+        (self.root / ".gitattributes").write_bytes(attributes)
+        self.git("add", "Cargo.lock", ".gitattributes")
+        self.git("commit", "-qm", "synthetic checkout policy")
+        self.sha = self.git("rev-parse", "HEAD")
+        return policy.prepare(self.root, {**self.env, "CANDIDATE_SHA": self.sha})
+
+    def test_repo_checkout_policy_preserves_candidate_lockfile_on_both_modes(self) -> None:
+        attributes = (Path(__file__).resolve().parents[1] / ".gitattributes").read_bytes()
+        candidate = self.checkout_policy_fixture(attributes)
+        for mode in checkouts.MODES:
+            with self.subTest(mode=mode[0]):
+                checkout = self.root / f"checkout-{mode[0]}"
+                checkouts.prepare_checkout(self.root, checkout, mode, revision=self.sha)
+                record = policy.validate_checkout(
+                    checkout, self.tag, self.sha, candidate["cargo_lock_sha256"]
+                )
+                self.assertEqual(record["cargo_lock_sha256"], candidate["cargo_lock_sha256"])
+                with (checkout / "Cargo.lock").open("ab") as stream:
+                    stream.write(b"# changed after checkout\n")
+                with self.assertRaisesRegex(ValueError, "Cargo.lock"):
+                    policy.validate_checkout(checkout, self.tag, self.sha, candidate["cargo_lock_sha256"])
+
+    def test_unprotected_crlf_lockfile_is_not_silently_normalized(self) -> None:
+        candidate = self.checkout_policy_fixture(b"# Deliberately missing LF rule\n")
+        checkout = self.root / "checkout-crlf"
+        checkouts.prepare_checkout(self.root, checkout, checkouts.MODES[1], revision=self.sha)
+        self.assertIn(b"\r\n", (checkout / "Cargo.lock").read_bytes())
+        with self.assertRaisesRegex(ValueError, "Cargo.lock no longer matches"):
+            policy.validate_checkout(checkout, self.tag, self.sha, candidate["cargo_lock_sha256"])
 
     def test_workflow_cli_writes_receipt_and_typed_job_outputs(self) -> None:
         script = Path(policy.__file__).resolve()

@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-15 - async prerequisites hardened; nonblocking submission remains pending.
+Last session: 2026-09-15 - `.10` notes prepared; final-SHA/package acceptance remains pending.
 Glen approved `.10` preparation; final-SHA/package acceptance and owner publication approval remain pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -84,8 +84,8 @@ Pre-release finishing scope:
 1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and
    TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots.
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
-   Keep tutorial 08.13's live GUI capture and real Parquet acceptance separate from the [synthetic TSS tutorial replay](tss_tfbs_profiles.md#rescoring-existing-reports) and mocked tests; private five-gene rescoring remains pending.
-3. Run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval.
+   Keep tutorial 08.13's live GUI capture and real Parquet acceptance separate from the [synthetic TSS tutorial replay](tss_tfbs_profiles.md#rescoring-existing-reports) and mocked tests. For private five-gene rescoring, first obtain the old scored report/receipt and exact matrix/context bindings; the [historical input inventory](tss_tfbs_profiles.md#check-input-completeness-before-regeneration) alone is not acceptance.
+3. Owner: run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval. Validate extracted/copied Windows/macOS apps away from the checkout, including assets and tutorials; Windows currently packages only the GUI executable. Tagging and upload remain owner-managed.
 4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
 5. Have Glen validate the [promoter-cofactor browser](promoter_cofactor_browser.md), live navigation and interpretation; keep raw coverage-block/annotation export separate.
    Validate DuckDB boundaries/limits, scan filters and selected-package GUI staleness; have Glen inspect [imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) on both strands. Native TSS follow-up (not an added `.10` gate): GUI acceptance, full report-bound traces/hits/reporters, direct locus navigation and native export; retain [flat-file limits and readability plan](tss_annotated_sequence_readability_plan.md). Glen: regenerate [source-coherent Ensembl/RefSeq pages](transcript_source_presentation.md) from one enriched locus and verify mappings/PDF/SVG/HTML receipts; synthetic coverage is not real-data acceptance. Keep the [standalone comparison](transcript_source_presentation.md#standalone-comparison-review) deferred rather than adding a second source-join implementation.
