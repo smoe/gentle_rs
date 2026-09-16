@@ -5724,6 +5724,15 @@ mod tests {
         let _guard = crate::engine_shell::BLAST_ASYNC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // Synthetic missing tools: deferred preflight must not depend on host BLAST.
+        let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            "GENTLE_BLASTN_BIN",
+            "__gentle_mcp_async_missing_blastn__",
+        );
+        let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+            "GENTLE_MAKEBLASTDB_BIN",
+            "__gentle_mcp_async_missing_makeblastdb__",
+        );
         crate::engine_shell::clear_blast_async_jobs_for_test();
         let started = run_tool(
             DEFAULT_MCP_STATE_PATH,
@@ -5738,6 +5747,14 @@ mod tests {
             started.pointer("/result/isError").and_then(Value::as_bool),
             Some(false)
         );
+        assert_eq!(
+            started["result"]["structuredContent"]["schema"],
+            "gentle.blast_async_start.v2"
+        );
+        assert_eq!(
+            started["result"]["structuredContent"]["binary_preflight_status"],
+            "pending"
+        );
         let job_id = started
             .pointer("/result/structuredContent/job/job_id")
             .and_then(Value::as_str)
@@ -5748,7 +5765,7 @@ mod tests {
         // Wait until the async job reaches a terminal state to avoid racey
         // running->failed transitions between MCP and shared-shell snapshots.
         let mut expected_status: Option<Value> = None;
-        for _ in 0..50 {
+        for _ in 0..300 {
             let status = run_shared_shell_command(vec![
                 "helpers".to_string(),
                 "blast-status".to_string(),
@@ -5758,20 +5775,18 @@ mod tests {
                 .pointer("/job/state")
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
-            if state != "running" {
+            if matches!(state, "completed" | "failed" | "cancelled") {
                 expected_status = Some(status);
                 break;
             }
             thread::sleep(Duration::from_millis(10));
         }
 
-        let expected_status = expected_status.unwrap_or_else(|| {
-            run_shared_shell_command(vec![
-                "helpers".to_string(),
-                "blast-status".to_string(),
-                job_id.clone(),
-            ])
-        });
+        let expected_status = expected_status.expect("missing-tool preflight must terminate");
+        assert_eq!(
+            expected_status["job"]["binary_preflight"]["blastn"]["executable"],
+            "__gentle_mcp_async_missing_blastn__"
+        );
 
         let mcp_status = run_tool(
             DEFAULT_MCP_STATE_PATH,

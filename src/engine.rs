@@ -9281,6 +9281,63 @@ impl GentleEngine {
         blast_external_binary_preflight_report()
     }
 
+    /// Capture only the project inputs read by the BLAST options resolver.
+    /// No sequences, journal, history, file reads or executable probes belong
+    /// in async admission. Files referenced by these settings resolve on the worker.
+    pub(crate) fn blast_execution_snapshot(&self) -> Result<Self, EngineError> {
+        let mut snapshot = Self::new();
+        snapshot.instance_id = self.instance_id;
+        for key in [
+            BLAST_OPTIONS_DEFAULTS_PATH_METADATA_KEY,
+            BLAST_OPTIONS_OVERRIDE_METADATA_KEY,
+        ] {
+            if let Some(value) = self.state.metadata.get(key) {
+                Self::validate_blast_async_json_budget(value)
+                    .map_err(EngineError::invalid_input)?;
+                snapshot
+                    .state
+                    .metadata
+                    .insert(key.to_string(), value.clone());
+            }
+        }
+        Ok(snapshot)
+    }
+
+    pub(crate) fn validate_blast_async_json_budget(
+        value: &serde_json::Value,
+    ) -> Result<(), String> {
+        fn visit(value: &serde_json::Value, remaining: &mut usize, depth: usize) -> Option<()> {
+            if depth > 32 {
+                return None;
+            }
+            *remaining = remaining.checked_sub(1)?;
+            match value {
+                serde_json::Value::String(s) => *remaining = remaining.checked_sub(s.len())?,
+                serde_json::Value::Array(rows) => {
+                    if rows.len() > *remaining {
+                        return None;
+                    }
+                    for row in rows {
+                        visit(row, remaining, depth + 1)?;
+                    }
+                }
+                serde_json::Value::Object(rows) => {
+                    if rows.len() > *remaining {
+                        return None;
+                    }
+                    for (key, row) in rows {
+                        *remaining = remaining.checked_sub(key.len())?;
+                        visit(row, remaining, depth + 1)?;
+                    }
+                }
+                _ => {}
+            }
+            Some(())
+        }
+        visit(value, &mut 65_536, 0)
+            .ok_or_else(|| "Async BLAST options exceed the 64-KiB/32-level admission budget".into())
+    }
+
     pub fn blast_reference_genome_with_project_and_request_options(
         &self,
         catalog_path: Option<&str>,

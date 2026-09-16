@@ -3231,8 +3231,19 @@ The host accepts at most four active commands and retains 32 results/receipts.
 If the project lock or capacity is unavailable, submission reports that it was
 not admitted, rather than waiting. Results above 16 MiB require a file-export
 workflow. These are initial audited routes, not a claim that every shell command
-is nonblocking. BLAST status/probe migration and other command families remain
+is nonblocking. Broader command/adapter migration remains
 in the [responsive-command plan](asynchronous_command_execution_plan.md).
+
+Agent Assistant additionally submits `genomes blast` / `helpers blast` through
+the shared BLAST job scheduler, for both Run buttons and typed commands. The
+query/options are unchanged; the response is an admitted job, not a completed
+search. Explicit `blast-start`, `blast-status`, `blast-list` and `blast-cancel`
+commands use the same lifecycle and remain available during a model request.
+Tool preflight happens on the worker, with diagnostics exposed by status.
+The BLAST FIFO allows 64 waiting jobs beyond the configured running slots;
+the general four-worker command service above still has no waiting queue.
+Use `blast-status JOB_ID --with-report` for the final result. Compact project
+receipts do not retain that full report, so export it before closing the host.
 
 Conceptual/tutorial companion:
 

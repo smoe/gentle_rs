@@ -67,6 +67,7 @@ impl AgentExecutionStatus {
         match output.get("schema").and_then(Value::as_str) {
             Some(
                 "gentle.blast_async_start.v1"
+                | "gentle.blast_async_start.v2"
                 | "gentle.blast_async_status.v1"
                 | "gentle.blast_async_cancel.v1",
             ) => match output.pointer("/job/state").and_then(Value::as_str) {
@@ -291,13 +292,14 @@ mod tests {
 
     #[test]
     fn agent_feedback_async_start_is_not_completion() {
-        for state in ["queued", "running", "future_state"] {
-            let output =
-                serde_json::json!({"schema":"gentle.blast_async_start.v1", "job":{"state":state}});
-            assert_ne!(
-                AgentExecutionStatus::from_shell_output(&output),
-                AgentExecutionStatus::Completed
-            );
+        for schema in ["gentle.blast_async_start.v1", "gentle.blast_async_start.v2"] {
+            for state in ["queued", "running", "future_state"] {
+                let output = serde_json::json!({"schema":schema, "job":{"state":state}});
+                assert_ne!(
+                    AgentExecutionStatus::from_shell_output(&output),
+                    AgentExecutionStatus::Completed
+                );
+            }
         }
         for (state, expected) in [
             ("completed", AgentExecutionStatus::Completed),

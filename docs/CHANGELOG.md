@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-16 - BLAST Admission, Queue And Cached Status
+
+- Move async BLAST executable preflight onto the worker, using bounded,
+  cancellable probes. Capture only bounded BLAST settings, not the full project,
+  journal or undo/redo. Start v2 explicitly reports preflight pending; final
+  diagnostics and request/result hashes remain inspectable through status.
+- Agent Assistant Run and typed BLAST commands select the shared async route
+  with unchanged query/options. Preserve synchronous CLI/script behavior.
+- Bound the existing FIFO to 64 waiting jobs; use numeric same-time ordering,
+  advance on worker completion/failure, and distinguish requested cancellation
+  from termination. Do not publish success after pre-publication cancellation.
+- Make BLAST status/list observation-only, including saved interrupted receipts.
+  Start/cancel persist compact receipts without copying full search reports;
+  retrieve/export results before host exit. Keep legacy receipts readable and
+  process-scoped MCP continuation intact; no durable resumption is claimed.
+- Add synthetic admission, queue, options, cancellation, observation and agent
+  feedback regressions. Compilation/test execution is deferred to main at the
+  owner's request; general command queuing and live GUI acceptance remain open.
+
 ## 2026-09-16 - Node 24 GitHub Actions Runtime
 
 - Migrate CI, release-candidate, installer and container action references to

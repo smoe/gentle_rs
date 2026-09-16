@@ -1516,6 +1516,15 @@ fn with_blast_async_test_overrides<R>(
     let _guard = BLAST_ASYNC_TEST_MUTEX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Deliberately absent executables keep scheduler tests independent of host tools.
+    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        "GENTLE_BLASTN_BIN",
+        "__gentle_async_missing_blastn__",
+    );
+    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        "GENTLE_MAKEBLASTDB_BIN",
+        "__gentle_async_missing_makeblastdb__",
+    );
     let previous_max =
         BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.swap(max_concurrent, Ordering::SeqCst);
     let previous_delay =
@@ -1526,6 +1535,7 @@ fn with_blast_async_test_overrides<R>(
     }
     impl Drop for ResetGuard {
         fn drop(&mut self) {
+            *BLAST_ASYNC_WORKER_TEST_GATE.lock().unwrap() = None;
             clear_blast_async_jobs_for_test();
             BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.store(self.previous_delay, Ordering::SeqCst);
             BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE.store(self.previous_max, Ordering::SeqCst);
@@ -22957,6 +22967,14 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     let _guard = BLAST_ASYNC_TEST_MUTEX
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        "GENTLE_BLASTN_BIN",
+        "__gentle_async_missing_blastn__",
+    );
+    let _makeblastdb = crate::tool_overrides::ScopedToolOverrideGuard::set(
+        "GENTLE_MAKEBLASTDB_BIN",
+        "__gentle_async_missing_makeblastdb__",
+    );
     clear_blast_async_jobs_for_test();
     let mut engine = GentleEngine::new();
     let start = execute_shell_command(
@@ -22975,10 +22993,9 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     )
     .expect("start async blast");
     assert!(start.state_changed);
-    assert_eq!(
-        start.output["binary_preflight"]["schema"].as_str(),
-        Some("gentle.blast_external_binary_preflight.v1")
-    );
+    assert_eq!(start.output["schema"], "gentle.blast_async_start.v2");
+    assert!(start.output["binary_preflight"].is_null());
+    assert_eq!(start.output["binary_preflight_status"], "pending");
     let job_id = start
         .output
         .get("job")
@@ -22989,7 +23006,7 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
     assert!(!job_id.is_empty());
 
     let mut terminal_state = String::new();
-    for _ in 0..40 {
+    for _ in 0..600 {
         let status = execute_shell_command(
             &mut engine,
             &ShellCommand::ReferenceBlastAsyncStatus {
@@ -23020,6 +23037,267 @@ fn execute_async_blast_start_and_status_reports_failure_for_missing_genome() {
         terminal_state
     );
     clear_blast_async_jobs_for_test();
+}
+
+// Synthetic jobs and channels only: no private genome, BLAST index, network or model.
+// Recreated in each test; the worker gate proves admission/control before any tool probe.
+#[test]
+fn blast_async_admits_before_probe_and_observation_never_changes_state() {
+    with_blast_async_test_overrides(1, 0, || {
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        *BLAST_ASYNC_WORKER_TEST_GATE.lock().unwrap() = Some(BlastAsyncWorkerTestGate {
+            entered: entered_tx,
+            release: Arc::new(Mutex::new(release_rx)),
+        });
+        let mut engine = GentleEngine::new();
+        let command = parse_shell_line("helpers blast-start synthetic ACGT").unwrap();
+        let start = execute_shell_command(&mut engine, &command).unwrap();
+        let id = start.output["job"]["job_id"].as_str().unwrap().to_string();
+        entered_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert!(start.output["binary_preflight"].is_null());
+        assert!(
+            start.output["job"]["request_sha256"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let revisions = (
+            engine.execution_revision(),
+            engine.mutation_revision(),
+            engine.structural_revision(),
+        );
+        for command in [
+            format!("helpers blast-status {id}"),
+            "helpers blast-list".into(),
+        ] {
+            let result =
+                execute_shell_command(&mut engine, &parse_shell_line(&command).unwrap()).unwrap();
+            assert!(!result.state_changed);
+        }
+        assert_eq!(before, serde_json::to_value(engine.state()).unwrap());
+        assert_eq!(
+            revisions,
+            (
+                engine.execution_revision(),
+                engine.mutation_revision(),
+                engine.structural_revision()
+            )
+        );
+        let second = execute_shell_command(&mut engine, &command).unwrap();
+        assert_eq!(second.output["job"]["state"], "queued");
+        assert_eq!(second.output["job"]["queue_position"], 1);
+        let second_id = second.output["job"]["job_id"].as_str().unwrap();
+        let cancelled = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("helpers blast-cancel {second_id}")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cancelled.output["job"]["state"], "cancelled");
+        assert!(cancelled.output["job"]["started_at_unix_ms"].is_null());
+        assert!(cancelled.output["job"]["binary_preflight"].is_null());
+        let cancel = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("helpers blast-cancel {id}")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cancel.output["job"]["state"], "running");
+        assert_eq!(cancel.output["job"]["phase"], "cancelling");
+        release_tx.send(()).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            let status = observe_blast_async_jobs(&engine, Some(true), Some(&id), true)
+                .unwrap()
+                .remove(0)
+                .0;
+            if status.state == "cancelled" {
+                assert!(!status.result_available);
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+    });
+}
+
+#[test]
+fn blast_async_snapshot_copies_only_bounded_blast_settings() {
+    let mut engine = transaction_history_test_engine();
+    engine
+        .auxiliary_metadata_mut()
+        .insert("blast_options_override".into(), json!({"task":"blastn"}));
+    engine
+        .auxiliary_metadata_mut()
+        .insert("private_unrelated".into(), json!("not copied"));
+    let snapshot = engine.blast_execution_snapshot().unwrap();
+    assert!(snapshot.state().sequences.is_empty());
+    assert_eq!(snapshot.journal_len(), 0);
+    assert_eq!(snapshot.undo_available(), 0);
+    assert_eq!(snapshot.redo_available(), 0);
+    assert_eq!(snapshot.state().metadata.len(), 1);
+    engine.auxiliary_metadata_mut().insert(
+        "blast_options_override".into(),
+        json!({"task":"blastn-short"}),
+    );
+    assert_eq!(
+        snapshot.state().metadata["blast_options_override"]["task"],
+        "blastn"
+    );
+    engine
+        .auxiliary_metadata_mut()
+        .insert("blast_options_override".into(), json!("x".repeat(65_537)));
+    assert!(engine.blast_execution_snapshot().is_err());
+}
+
+#[test]
+fn blast_async_cache_does_not_dispatch_or_drain_a_worker_and_queue_is_bounded() {
+    with_blast_async_test_overrides(1, 0, || {
+        let engine = GentleEngine::new();
+        let (tx, rx) = mpsc::channel();
+        let mut running = synthetic_async_job("running");
+        running.receiver = Some(rx);
+        {
+            let mut jobs = BLAST_ASYNC_JOBS.lock().unwrap();
+            jobs.insert("synthetic-history-job".into(), running);
+            tx.send(BlastAsyncWorkerMessage::Done(Err(
+                "exact synthetic failure".into(),
+            )))
+            .unwrap();
+            for index in 0..BLAST_ASYNC_MAX_QUEUED {
+                let mut job = synthetic_async_job("queued");
+                job.status.job_id = format!("queued-{index}");
+                jobs.insert(job.status.job_id.clone(), job);
+            }
+            let error = start_blast_async_job(
+                &mut jobs,
+                engine.blast_execution_snapshot().unwrap(),
+                false,
+                "synthetic",
+                "ACGT",
+                5,
+                true,
+                None,
+                None,
+                None,
+                None,
+            )
+            .unwrap_err();
+            assert!(error.contains("not admitted"));
+        }
+        let rows =
+            observe_blast_async_jobs(&engine, None, Some("synthetic-history-job"), false).unwrap();
+        assert_eq!(
+            rows[0].0.state, "running",
+            "observation must not consume pending worker messages"
+        );
+        let mut jobs = BLAST_ASYNC_JOBS.lock().unwrap();
+        assert_eq!(
+            jobs.values()
+                .filter(|job| job.status.state == "queued")
+                .count(),
+            BLAST_ASYNC_MAX_QUEUED
+        );
+        let record = jobs.get_mut("synthetic-history-job").unwrap();
+        refresh_blast_async_job_record(record);
+        assert_eq!(
+            record.status.error.as_deref(),
+            Some("exact synthetic failure")
+        );
+    });
+}
+
+#[test]
+fn blast_async_fifo_is_numeric_and_terminal_cancellation_is_inert() {
+    let mut nine = synthetic_async_job("completed");
+    nine.status.job_id = "blast-job-9".into();
+    let mut ten = synthetic_async_job("completed");
+    ten.status.job_id = "blast-job-10".into();
+    assert!(blast_async_fifo_key(&nine.status) < blast_async_fifo_key(&ten.status));
+    let before = serde_json::to_value(&nine.status).unwrap();
+    let mut jobs = HashMap::from([("blast-job-9".into(), nine)]);
+    let cancelled = cancel_blast_async_job(&mut jobs, "blast-job-9").unwrap();
+    assert_eq!(before, serde_json::to_value(cancelled).unwrap());
+}
+
+#[test]
+fn blast_async_interactive_conversion_preserves_the_exact_request() {
+    for scope in ["genomes", "helpers"] {
+        let suffix = "toy ACGT --max-hits 17 --task blastn --options-json '{\"thresholds\":{\"min_identity_percent\":80}}' --catalog toy.json --cache-dir toy-cache";
+        let interactive = parse_shell_line(&format!("{scope} blast {suffix}"))
+            .unwrap()
+            .into_interactive_blast();
+        let explicit = parse_shell_line(&format!("{scope} blast-start {suffix}")).unwrap();
+        assert_eq!(format!("{interactive:?}"), format!("{explicit:?}"));
+        assert!(interactive.is_blast_job_command());
+    }
+}
+
+#[test]
+fn blast_async_cancel_wins_before_publication_and_saved_reports_are_explicit() {
+    let report: GenomeBlastReport = serde_json::from_value(json!({
+        "genome_id":"synthetic", "query_length":4, "max_hits":5, "task":"blastn",
+        "blastn_executable":"synthetic", "blast_db_prefix":"synthetic", "command":[],
+        "hit_count":0, "hits":[], "warnings":[], "stderr":""
+    }))
+    .unwrap();
+    for cancel in [false, true] {
+        let (tx, rx) = mpsc::channel();
+        let mut record = synthetic_async_job("running");
+        record.receiver = Some(rx);
+        record.cancel_requested.store(cancel, Ordering::Relaxed);
+        tx.send(BlastAsyncWorkerMessage::Done(Ok(report.clone())))
+            .unwrap();
+        refresh_blast_async_job_record(&mut record);
+        assert_eq!(
+            record.status.state,
+            if cancel { "cancelled" } else { "completed" }
+        );
+        assert_eq!(record.report.is_some(), !cancel);
+        assert_eq!(record.status.result_available, !cancel);
+        let jobs = HashMap::from([("synthetic-history-job".into(), record)]);
+        let persisted = blast_async_store_from_jobs(&jobs);
+        assert!(
+            persisted.jobs[0].report.is_none(),
+            "start/cancel must not copy full result payloads"
+        );
+        assert!(!persisted.jobs[0].status.result_available);
+    }
+}
+
+#[test]
+fn blast_async_compact_receipts_preserve_legacy_embedded_reports() {
+    with_blast_async_test_overrides(1, 0, || {
+        let mut engine = GentleEngine::new();
+        let mut status = synthetic_async_job("completed").status;
+        status.result_available = true;
+        let report = json!({"genome_id":"synthetic", "query_length":4, "max_hits":5,
+            "task":"blastn", "blastn_executable":"synthetic", "blast_db_prefix":"synthetic",
+            "command":[], "hit_count":0, "hits":[], "warnings":[], "stderr":""});
+        let legacy = json!({"schema":"gentle.blast_async_job_store.v1", "next_job_counter":900,
+            "jobs":[{"status":status, "report":report}]});
+        engine
+            .auxiliary_metadata_mut()
+            .insert(BLAST_ASYNC_LEGACY_STORE_METADATA_KEY.into(), legacy.clone());
+        let mut jobs = HashMap::new();
+        hydrate_blast_async_jobs_from_engine(&mut jobs, &engine);
+        assert!(
+            jobs.is_empty(),
+            "legacy results must not be cloned into the scheduler"
+        );
+        let mut new = synthetic_async_job("failed");
+        new.status.job_id = "new-receipt".into();
+        jobs.insert("new-receipt".into(), new);
+        persist_blast_async_jobs_to_engine(&mut engine, &jobs).unwrap();
+        assert_eq!(
+            engine.state().metadata[BLAST_ASYNC_LEGACY_STORE_METADATA_KEY],
+            legacy
+        );
+        let rows =
+            observe_blast_async_jobs(&engine, None, Some("synthetic-history-job"), true).unwrap();
+        assert!(rows[0].0.result_available);
+        assert_eq!(rows[0].1.as_ref().unwrap().genome_id, "synthetic");
+    });
 }
 
 #[test]
@@ -23498,7 +23776,10 @@ fn execute_async_blast_restart_recovery_marks_orphaned_nonterminal_job_failed() 
             },
         )
         .expect("status after restart");
-        assert!(status.state_changed);
+        assert!(
+            !status.state_changed,
+            "saved observations do not rewrite the project"
+        );
         assert_eq!(
             status.output["job"]["job_id"].as_str(),
             Some(job_id.as_str())
