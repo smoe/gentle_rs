@@ -23,6 +23,24 @@
   JSON assertions. Placeholder formatting never reinterprets braces in inserted
   user/provider text.
 
+## 2026-09-16 - Preview-Bound TSS Sequence Collections
+
+- Add exact annotated-start inventory, approved atomic derivation and persisted
+  collection inspection through shared engine/shell/MCP operations. Retain gene,
+  source, strand and transcript membership; block incomplete flanks, ambiguous
+  annotations, stale previews and collisions rather than guessing or overwriting.
+- Add a DNA-viewer preview/selection workspace and collection-targeted native TSS
+  window intents, with background validation/loading and existing-window reuse.
+  Inner-agent guidance names this route for German and English TSS requests.
+- Add an explicit, bounded preview-to-prompt handoff so the agent can use returned
+  IDs/digests without silently disclosing command output or approving execution.
+- Preserve transcript-oriented DNA, readable coordinate titles, projected exons,
+  genomic anchors and parent lineage without claiming verified report provenance.
+  Existing TFBS collection scans remain optional. Loaded-locus annotation scope
+  is explicit; no whole-genome enumeration or new generic map executor was added.
+- Add synthetic engine/shell/GUI regressions and a focused
+  [walkthrough](tss_workspace.md). Real TP73 GUI/agent acceptance remains external.
+
 ## 2026-09-15 - Report-Bound Promoter-Cofactor Regions And Tutorial
 
 - Reuse `regions capture` for selected cofactor anchors, retained hits and

@@ -36,6 +36,8 @@ pub mod tss_motif_evidence;
 pub mod tss_profiles;
 /// Fixed TSS-window and regulatory-intersection requests, distinct from insert proposals.
 pub mod tss_window_geometry;
+/// Exact annotated TSS inventory and preview-bound project collection derivation.
+pub mod tss_workspace;
 
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Value, json};
@@ -5641,6 +5643,9 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PlanPromoterReporterPanel",
     "PlanEvidenceGuidedFragmentCandidates",
     "ComputeTssWindowGeometry",
+    "InspectTssInventory",
+    "MaterializeTssWindows",
+    "GetTssCollection",
     "ComposeRegulatoryReporterStudy",
     "PlanRegulatoryFragmentPanel",
     "PlanRegulatoryFragmentMaterialization",

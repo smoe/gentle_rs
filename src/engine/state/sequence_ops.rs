@@ -1622,6 +1622,21 @@ impl GentleEngine {
                 ..ProjectFact::default()
             });
         }
+        if let Some(collections) = self
+            .state
+            .metadata
+            .get("tss_collections_v1")
+            .and_then(|v| v.as_object())
+        {
+            for (id, report) in collections {
+                facts.push(ProjectFact {
+                    fact: "tss_collection.exists".into(),
+                    subject: fact_subject(FactSubjectKind::Other, id.clone()),
+                    value: Some(serde_json::json!({"member_count":report.get("members").and_then(|v| v.as_array()).map(Vec::len), "source_seq_id":report.pointer("/inventory/request/seq_id")})),
+                    ..ProjectFact::default()
+                });
+            }
+        }
         for template in self.list_workflow_macro_templates() {
             facts.push(ProjectFact {
                 fact: "workflow_macro_template.exists".to_string(),
@@ -2298,6 +2313,12 @@ impl GentleEngine {
             file_paths: vec![],
         };
         match op {
+            Operation::InspectTssInventory { request } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.seq_id);
+            }
+            Operation::MaterializeTssWindows { request } => {
+                Self::push_unique_token(&mut summary.sequence_ids, &request.inventory.seq_id);
+            }
             Operation::LoadFile { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }

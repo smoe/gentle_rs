@@ -221,6 +221,7 @@ const UI_INTENT_ARGUMENT_CONFIGURATION_SECTION: UiIntentArgument = UiIntentArgum
 };
 const UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT: [&str; 1] = ["genome_id"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_NONE: [&str; 0] = [];
+const UI_INTENT_OPTIONAL_ARGUMENTS_TSS: [&str; 1] = ["collection_id"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION: [&str; 1] = ["section"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "genome_id",
@@ -233,6 +234,11 @@ const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
 ];
 const UI_INTENT_ARGUMENTS_DEFAULT: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_GENOME_ID];
 const UI_INTENT_ARGUMENTS_NONE: [UiIntentArgument; 0] = [];
+const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 1] = [UiIntentArgument {
+    name: "collection_id",
+    required: false,
+    detail: "Use --collection COLLECTION_ID for a materialized TSS collection; opens/focuses/closes up to 32 explicit member windows instead of using the active viewer.",
+}];
 const UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID: [UiIntentArgument; 1] =
     [UI_INTENT_ARGUMENT_RECENT_OR_CHAPTER_ID];
 const UI_INTENT_ARGUMENTS_TUTORIAL_ID: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_TUTORIAL_ID];
@@ -410,7 +416,7 @@ impl UiIntentTarget {
                 "Mark imported gel lanes and bands, confirm ladder sizes, and export measured results."
             }
             Self::TssView => {
-                "Inspect the active DNA viewer's GENtle annotated TSS EMBL/GenBank window as grouped transcript, signal and stored motif lanes. Close returns to Standard map; no rescoring."
+                "Inspect the active annotated TSS DNA window, or use --collection ID to open/focus/close up to 32 materialized TSS windows without active-viewer dependence. Argument-free close returns to Standard map; collection-close retains sequence records; no rescoring."
             }
             Self::OpenSequence => "Open a FASTA, GenBank, EMBL, SnapGene, or XML sequence file.",
             Self::RecentProject => {
@@ -457,7 +463,7 @@ impl UiIntentTarget {
         match self {
             Self::GelImageEditor => "gel image agarose western SDS ladder band sizing bp kDa",
             Self::TssView => {
-                "tss promoter regulatory cutrun chromatin motif annotated sequence viewer"
+                "tss transcript starts collection promoter regulatory cutrun chromatin motif annotated sequence viewer Transkriptionsstartstellen"
             }
             Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
             Self::RecentProject => "open recent previous saved project continue",
@@ -544,13 +550,14 @@ impl UiIntentTarget {
     /// Stable optional arguments accepted by the target's discoverability contract.
     pub fn optional_arguments(self) -> &'static [&'static str] {
         match self {
+            Self::TssView => &UI_INTENT_OPTIONAL_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
             Self::Configuration => &UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION,
             Self::RecentProject
             | Self::TutorialProject
             | Self::TutorialGuide
             | Self::GelImageEditor => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
-            Self::FeatureLocationEditor | Self::SavedGenomicRegions | Self::TssView => {
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions => {
                 &UI_INTENT_OPTIONAL_ARGUMENTS_NONE
             }
             _ => &UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT,
@@ -560,16 +567,16 @@ impl UiIntentTarget {
     /// Structured argument contract accepted by this target.
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
+            Self::TssView => &UI_INTENT_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
             Self::RecentProject | Self::TutorialProject => {
                 &UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID
             }
             Self::TutorialGuide => &UI_INTENT_ARGUMENTS_TUTORIAL_ID,
             Self::Configuration => &UI_INTENT_ARGUMENTS_CONFIGURATION,
-            Self::FeatureLocationEditor
-            | Self::SavedGenomicRegions
-            | Self::GelImageEditor
-            | Self::TssView => &UI_INTENT_ARGUMENTS_NONE,
+            Self::FeatureLocationEditor | Self::SavedGenomicRegions | Self::GelImageEditor => {
+                &UI_INTENT_ARGUMENTS_NONE
+            }
             Self::OpenSequence
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -856,7 +863,9 @@ mod tests {
                 // A display-mode transition lives in the DNA toolbar, not a new global menu.
                 assert_eq!(row.menu_path, "DNA viewer");
                 assert_eq!(row.actions, ["open", "focus", "close"]);
-                assert!(row.arguments.is_empty());
+                assert_eq!(row.arguments.len(), 1);
+                assert_eq!(row.arguments[0].name, "collection_id");
+                assert!(!row.arguments[0].required);
             } else {
                 assert!(
                     known_menus.contains(row.menu_path),

@@ -2428,6 +2428,27 @@
          "usage": "promoters tata-screen REQUEST_JSON_OR_@FILE [--output REPORT.json]"
       },
       {
+         "aliases": [], "engine_operations": ["InspectTssInventory"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-inventory",
+         "summary": "Preview all exact annotated starts for a gene on a loaded anchored locus, preserving shared transcript membership and refusing clipped flanks.",
+         "usage": "promoters tss-inventory REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["MaterializeTssWindows"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-materialize",
+         "summary": "Derive selected, preview-approved TSS windows into a named project collection atomically; no overwrites or biological coordinate guessing.",
+         "usage": "promoters tss-materialize REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [], "engine_operations": ["GetTssCollection"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "promoters tss-collection",
+         "summary": "Inspect a persisted TSS collection and its explicit ProjectSequences subject for optional collection scans.",
+         "usage": "promoters tss-collection COLLECTION_ID"
+      },
+      {
          "aliases": [],
          "engine_operations": ["MaterializeTataBoxFeatures"],
          "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],

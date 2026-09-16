@@ -12,6 +12,61 @@
 use super::*;
 
 #[test]
+fn tss_workspace_shell_preview_apply_collection_and_window_intent() {
+    let mut engine = crate::engine::synthetic_tss_engine(false);
+    let approved = crate::engine::synthetic_tss_approval(&engine);
+    let preview_line = format!(
+        "promoters tss-inventory '{}'",
+        serde_json::to_string(&approved.inventory).unwrap()
+    );
+    let preview =
+        execute_shell_command(&mut engine, &parse_shell_line(&preview_line).unwrap()).unwrap();
+    assert!(!preview.state_changed);
+    assert!(
+        preview
+            .output
+            .to_string()
+            .contains(&approved.expected_approval_sha256)
+    );
+    let apply_line = format!(
+        "promoters tss-materialize '{}'",
+        serde_json::to_string(&approved).unwrap()
+    );
+    let apply =
+        execute_shell_command(&mut engine, &parse_shell_line(&apply_line).unwrap()).unwrap();
+    assert!(apply.state_changed);
+    let show = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("promoters tss-collection toy_tss").unwrap(),
+    )
+    .unwrap();
+    assert!(!show.state_changed);
+    assert!(show.output.to_string().contains("project_sequences"));
+    let readiness = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect readiness GetTssCollection --arg COLLECTION_ID=toy_tss")
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(readiness.output["readiness"][0]["readiness"], "ready");
+    for action in ["open", "focus", "close"] {
+        let intent =
+            parse_shell_line(&format!("ui {action} tss-view --collection toy_tss")).unwrap();
+        let result = execute_shell_command(&mut engine, &intent).unwrap();
+        assert_eq!(result.output["applied"], false);
+        assert_eq!(result.output["members"].as_array().unwrap().len(), 2);
+        assert!(!result.state_changed);
+    }
+    for invalid in [
+        "ui open tss-view --collection",
+        "ui open tss-view --collection toy --all",
+        "ui open tss-view --unknown x",
+    ] {
+        assert!(parse_shell_line(invalid).is_err());
+    }
+}
+
+#[test]
 fn workflow_progress_cancels_between_short_operations_without_successful_partial_result() {
     let mut engine = GentleEngine::new();
     let wf = Workflow {
@@ -46745,6 +46800,6 @@ fn tss_view_ui_intent_is_discoverable_and_headless_does_not_claim_display() {
         assert_eq!(result.output["applied"], false);
     }
     let target = UiIntentTarget::parse("tss-view").unwrap();
-    assert!(target.arguments().is_empty());
+    assert_eq!(target.arguments()[0].name, "collection_id");
     assert!(target.detail().contains("No rescoring") || target.detail().contains("no rescoring"));
 }

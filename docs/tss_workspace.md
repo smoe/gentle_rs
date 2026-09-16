@@ -1,0 +1,123 @@
+# From A Locus To TSS Windows
+
+GENtle can enumerate exact annotated transcript starts on an anchored project
+locus, derive selected windows as a named sequence collection, and open one
+native TSS viewer per distinct start. This is annotation interpretation, not
+evidence of experimentally established transcription initiation.
+
+## DNA Viewer
+
+1. Open an annotated locus with its genome anchor. Prefer an already prepared
+   local reference. Include enough flanking DNA for the requested windows.
+2. Choose **TFBS scan > Transcript starts / TSS windows...**.
+3. Enter the gene symbol or gene ID, a new collection ID, and upstream/downstream
+   sizes (defaults: 500/200 bp). Click **Inspect starts (no changes)**.
+4. Review the coordinates, strands and transcript memberships. Select the
+   desired rows, then **Approve and create selected windows**.
+5. Click **Open TSS collection**. Up to 32 member windows open in the background;
+   existing or still-loading windows are reused. Larger inventories can be
+   materialized as smaller, explicitly selected collections.
+
+Missing flanks are shown as unavailable, never silently clipped. Extend the
+anchored parent locus and preview again, or explicitly choose smaller flanks.
+Missing transcript annotation, fuzzy/partial locations, or absent gene linkage
+produce an explanatory error, not an empty biological conclusion. A CDS alone
+does not establish a TSS. Annotation support is based on imported transcript
+features, including GenBank/EMBL features, not an assumption that every genome
+annotation format has a transcript index.
+
+## Shared Shell And Inner Agent
+
+For an existing anchored `tp73_locus` sequence:
+
+```text
+promoters tss-inventory '{"seq_id":"tp73_locus","gene_query":"TP73","collection_id":"tp73_tss","upstream_bp":500,"downstream_bp":200}'
+```
+
+The result contains `tss_inventory`, including `approval_sha256`, the effective
+`request`, and rows with exact `tss_id` values. The next command must use these
+returned values, not guessed identifiers. In the Agent Assistant, click
+**Use TSS preview in next prompt**, review the draft and send it. This explicitly
+shares the gene, coordinates, transcript IDs and approval digest, not DNA bases;
+the prompt is retained with the conversation. Execution receipts alone do not
+disclose command results. This action neither sends a request nor approves
+materialization; large previews are refused intact rather than truncated.
+For example, a materialization
+request file contains:
+
+```json
+{
+  "inventory": {
+    "seq_id": "tp73_locus",
+    "gene_query": "TP73",
+    "collection_id": "tp73_tss",
+    "upstream_bp": 500,
+    "downstream_bp": 200
+  },
+  "expected_approval_sha256": "COPY_THE_PREVIEW_DIGEST",
+  "selected_tss_ids": ["COPY_AN_EXACT_TSS_ID_FROM_THE_PREVIEW"]
+}
+```
+
+The placeholders above are explanatory, not executable approvals.
+
+```text
+promoters tss-materialize @approved_tss_windows.json
+promoters tss-collection tp73_tss
+ui open tss-view --collection tp73_tss
+ui focus tss-view --collection tp73_tss
+ui close tss-view --collection tp73_tss
+```
+
+Collection-targeted close closes member windows but retains their sequences.
+The original argument-free `ui close tss-view` instead returns the active viewer
+to Standard map. Headless UI commands return `applied=false`; only the GUI can
+open windows. CLI, MCP and script adapters can use the same `InspectTssInventory`,
+`MaterializeTssWindows`, and `GetTssCollection` typed operations through `op`.
+
+The inner agent is explicitly guided to use this staged route for requests such
+as "alle TSS von TP73, jeweils einen in einem Fenster". When no appropriate
+locus is loaded, it must first compose existing local genome extraction/extension
+commands (or ask permission for retrieval). It must not calculate coordinates,
+invent a loop, guess an approval hash, or claim window-opening completion while
+the host still reports a queued request.
+
+## Scientific And State Boundaries
+
+- Starts group only when gene identity, annotation source, genomic reference,
+  coordinate and strand agree. All source transcript feature memberships remain.
+- Local and genomic strands are independent. Each output reads transcript
+  5-prime to 3-prime, with TSS at local base `upstream_bp + 1`; negative-strand
+  genomic labels therefore decrease along that output.
+- The preview binds source DNA/annotations/anchor, effective flanks, memberships
+  and output IDs. Source or parameter changes require another preview. All
+  selected rows and collisions are checked before any sequences are inserted.
+- Repeating the same approved selection reuses its sequences. A different
+  selection requires another collection ID. No records are overwritten.
+- Collections and parent-child lineage persist with the project. Edited or
+  missing members cannot silently reuse stale geometry through collection
+  navigation; inspect such records individually and derive a new collection.
+- The `subject` is an explicit `project_sequences` collection accepted by
+  `ScanTfbsHitsCollection`. Its read-only scan is optional. No motif, occupancy,
+  reporter or cross-source consensus analysis is implied by derivation.
+- Existing annotations are retained, with supporting transcript exons projected
+  into the window. Metadata says **project annotation derivation**, not verified
+  external report bundle. No new reference authentication is claimed.
+
+Inventory limits: 20 Mb source locus, 100,000 features, 10,000 matching transcript
+features, 256 distinct starts, 2 Mb per window and 32 Mb total candidate windows.
+The inventory is exhaustive only for the transcript annotations in that loaded
+source, not for all databases or every possible biological start.
+Materialization also limits features to 100,000 per window and 250,000 total.
+
+## Acceptance
+
+Deterministic synthetic tests exercise shared/opposite-strand starts, overlapping
+genes, missing/partial annotation, flank refusal, all four local/genomic strand
+combinations, stale/collision refusal, persistence/reuse, optional TFBS collection
+scanning, shell parsing and deferred/reused GUI window requests.
+
+Glen's live TP73 acceptance remains separate: use the exact candidate binary and
+loaded reference, compare inventory membership to source transcripts, repeat
+opening without duplicates, inspect both strands and confirm UI responsiveness.
+Synthetic tests are not a live GUI or real-data scientific sign-off.

@@ -56,7 +56,7 @@ impl GentleEngine {
         out
     }
 
-    fn feature_matches_identifier(
+    pub(super) fn feature_matches_identifier(
         feature: &gb_io::seq::Feature,
         feature_id: usize,
         query: &str,
@@ -89,7 +89,7 @@ impl GentleEngine {
         }
     }
 
-    fn transcript_gene_metadata(
+    pub(super) fn transcript_gene_metadata(
         dna: &DNAsequence,
         transcript_feature: &gb_io::seq::Feature,
         _transcript_feature_id: usize,
