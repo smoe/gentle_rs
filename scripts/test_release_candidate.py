@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import textwrap
@@ -283,6 +284,40 @@ class ReleaseCandidateTests(unittest.TestCase):
 
 
 class WorkflowWiringTests(unittest.TestCase):
+    def test_workflows_use_reviewed_node24_compatible_actions(self) -> None:
+        # Upstream action.yml runtimes were checked on 2026-09-16. The two
+        # composite actions use shell steps or Node 24 sub-actions already.
+        reviewed_actions = {
+            "actions/checkout@v5",
+            "actions/setup-python@v6",
+            "actions/cache@v5",
+            "actions/upload-artifact@v6",
+            "actions/download-artifact@v7",
+            "actions/attest-build-provenance@v3",
+            "docker/setup-buildx-action@v4",
+            "docker/build-push-action@v7",
+            "docker/login-action@v4",
+            "docker/metadata-action@v6",
+            "softprops/action-gh-release@v3",
+            "dtolnay/rust-toolchain@stable",
+        }
+        root = Path(__file__).resolve().parents[1]
+        for workflow in sorted((root / ".github/workflows").iterdir()):
+            if workflow.suffix not in (".yml", ".yaml"):
+                continue
+            text = workflow.read_text()
+            with self.subTest(workflow=workflow.name):
+                self.assertNotRegex(
+                    text,
+                    r"(?m)^\s*(?:ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION|"
+                    r"FORCE_JAVASCRIPT_ACTIONS_TO_NODE24):",
+                )
+                for reference in re.findall(r"(?m)^\s*(?:-\s+)?uses:\s+(\S+)", text):
+                    reference = reference.strip("\"'")
+                    if not reference.startswith("./"):
+                        self.assertIn(reference, reviewed_actions,
+                                      "Review upstream runs.using before changing action versions")
+
     def test_publication_jobs_are_explicit_and_default_permissions_are_read_only(self) -> None:
         root = Path(__file__).resolve().parents[1]
         for name, job in (("release.yml", "publish-release"), ("container.yml", "container-publish")):

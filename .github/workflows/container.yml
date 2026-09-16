@@ -52,11 +52,11 @@ jobs:
       CANDIDATE_MODE: ${{ needs.candidate.outputs.mode }}
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.candidate.outputs.revision }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -64,11 +64,11 @@ jobs:
         run: python3 scripts/release_candidate.py verify
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build CLI container image (no push)
         id: check-cli
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -85,7 +85,7 @@ jobs:
 
       - name: Build GUI container image (no push)
         id: check-gui
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -144,7 +144,7 @@ jobs:
           pathlib.Path("container-build.json").write_text(json.dumps(record, indent=2) + "\n")
           PY
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: container-evidence-${{ needs.candidate.outputs.revision }}
           path: container-build.json
@@ -171,12 +171,12 @@ jobs:
       CANDIDATE_MODE: publish
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.candidate.outputs.revision }}
           persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -184,10 +184,10 @@ jobs:
         run: python3 scripts/release_candidate.py verify
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -195,7 +195,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for CLI image
         id: meta-cli
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -209,7 +209,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for GUI image
         id: meta-gui
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -225,7 +225,7 @@ jobs:
 
       - name: Build and push CLI Docker image
         id: push-cli
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -242,7 +242,7 @@ jobs:
 
       - name: Build and push GUI Docker image
         id: push-gui
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile

@@ -22,6 +22,26 @@ packaging remain deferred. `linux_distribution=tarball` records the artifact
 actually built, not a future intention. Until that workflow has passed on the
 tag candidate, Linux download packaging remains an unverified release gate.
 
+## Actions Runtime
+
+CI, candidate resolution, installers and containers use action versions that
+declare Node 24, rather than forcing Node 20 actions onto a different runtime.
+The selected action versions require Actions Runner 2.327.1 or newer; the
+GitHub-hosted runner observed during `.10` validation was 2.337.0.
+Self-hosted runners must also satisfy the Node 24 OS/architecture requirements.
+These are CI runner requirements, not new requirements for the GENtle binaries.
+See [GitHub's Node 20 retirement notice](https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/).
+
+This runtime-only migration uses `checkout@v5`, `setup-python@v6`, `cache@v5`,
+`upload-artifact@v6`, `download-artifact@v7`, Docker setup/login v4, build/push v7,
+metadata v6 and `softprops/action-gh-release@v3`. Artifact upload v5 and download
+v6 only had preliminary Node 24 support and still declared Node 20. The existing
+attestation v3 already delegates to Node 24 actions; the Rust-toolchain action
+uses shell steps. Both remain unchanged. Artifact names, extraction layout,
+cache keys, build profiles, candidate checks and publication approval remain
+unchanged. The offline workflow-wiring test guards these reviewed references;
+actual execution and package validation remain GitHub's responsibility.
+
 ## Candidate Approval
 
 `v0.1.0-internal.10` remains unreleased pending Glen's exact-candidate readiness

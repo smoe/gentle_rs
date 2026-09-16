@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-09-16 - Node 24 GitHub Actions Runtime
+
+- Migrate CI, release-candidate, installer and container action references to
+  verified Node 24 major versions, including Docker and GitHub Release actions.
+  Keep the already-compatible attestation and Rust-toolchain actions unchanged.
+- Preserve build flags, artifact layout, cache keys, permissions and explicit
+  publication gates; do not enable insecure Node 20 fallback or runtime forcing.
+- Add an offline workflow-reference guard and document runner requirements.
+  Local builds/tests are deferred to GitHub at the owner's request; hosted
+  packaging acceptance is still pending.
+
 ## 2026-09-16 - Agent Interface Translations
 
 - Extend all eight GUI language catalogs across Agent Assistant and Agent

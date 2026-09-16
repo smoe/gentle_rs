@@ -77,7 +77,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ needs.candidate.outputs.revision }}
 
@@ -87,7 +87,7 @@ jobs:
           toolchain: stable
 
       - name: Set up Python for release receipts
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -108,7 +108,7 @@ jobs:
             libxcursor-dev libxinerama-dev libxkbcommon-dev libxi-dev libxrandr-dev
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -389,7 +389,7 @@ jobs:
           PY
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.artifact_name }}-${{ needs.candidate.outputs.revision }}
           path: |
@@ -408,16 +408,16 @@ jobs:
       WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
       CANDIDATE_MODE: ${{ needs.candidate.outputs.mode }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.candidate.outputs.revision }}
       - name: Set up Python for release receipts
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       - name: Download installer artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: dist
 
@@ -431,7 +431,7 @@ jobs:
             --output "dist/release-meta/gentle-${RELEASE_TAG}-release-attributes.json"
 
       - name: Retain packaging metadata
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-metadata-${{ needs.candidate.outputs.revision }}
           path: dist/release-meta/*.json
@@ -454,20 +454,20 @@ jobs:
       WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
       CANDIDATE_MODE: publish
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.candidate.outputs.revision }}
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
       - name: Recheck tag and package receipts immediately before publication
         run: python3 scripts/release_candidate.py collect --artifacts dist
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.candidate.outputs.tag }}
           files: |

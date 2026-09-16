@@ -28,8 +28,8 @@ jobs:
     name: Release candidate safety checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - run: python3 -m unittest scripts.test_release_candidate -v
@@ -67,7 +67,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -75,7 +75,7 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -110,7 +110,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Tutorial review badges use per-file Git history during drift checks.
           fetch-depth: 0
@@ -121,7 +121,7 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -251,7 +251,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Tutorial review badges use per-file Git history during drift checks.
           fetch-depth: 0
@@ -294,7 +294,7 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -421,7 +421,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Tutorial review badges use per-file Git history during drift checks.
           fetch-depth: 0
@@ -432,7 +432,7 @@ jobs:
           toolchain: stable
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry

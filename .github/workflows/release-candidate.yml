@@ -42,10 +42,10 @@ jobs:
       mode: ${{ steps.identity.outputs.mode }}
       publish: ${{ steps.identity.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.candidate_sha || github.sha }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Validate candidate and publication authority
@@ -60,7 +60,7 @@ jobs:
           CANDIDATE_REF: ${{ github.ref }}
           WORKFLOW_REVISION: ${{ github.workflow_sha }}
         run: python3 scripts/release_candidate.py prepare --output release-candidate.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: release-candidate
           path: release-candidate.json
