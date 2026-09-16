@@ -13341,17 +13341,20 @@ Async BLAST shell contract (agent/MCP-ready baseline):
   - `blast-cancel JOB_ID`
   - `blast-list`
 - Deterministic job payload schemas:
-  - `gentle.blast_async_start.v1`
+  - `gentle.blast_async_start.v2` (deferred preflight; legacy v1 remains readable)
   - `gentle.blast_async_status.v1`
   - `gentle.blast_async_cancel.v1`
   - `gentle.blast_async_list.v1`
 - External-binary preflight payload:
-  - `blast-start` responses now include `binary_preflight` with schema
-    `gentle.blast_external_binary_preflight.v1`.
-  - payload includes deterministic `blastn` and `makeblastdb` probe rows with:
-    `found`, `version`, `executable`, and resolved `path` diagnostics.
-  - equivalent preflight payload is also emitted by synchronous shared-shell
-    routes `prepare`, `blast`, and `blast-track`.
+  - Start v2 returns `binary_preflight: null` and
+    `binary_preflight_status: pending`. Acceptance is not tool readiness.
+  - The worker publishes `job.binary_preflight` (also at the top level of
+    `blast-status`) using `gentle.blast_external_binary_preflight.v1`.
+    Probes have a five-second child-execution timeout each and cooperative
+    cancellation; their diagnostics are retained on failure.
+  - Synchronous `prepare`, `blast`, and `blast-track` retain their existing
+    preflight behavior. Consumers requiring eager start-v1 diagnostics must
+    migrate to status observation, not interpret null as a passing preflight.
 - Job status contract:
   - `job_id` stable per process
   - non-terminal states: `queued | running`
@@ -13362,9 +13365,20 @@ Async BLAST shell contract (agent/MCP-ready baseline):
     - `queued_jobs`
     - `queue_position` (present while state is `queued`)
   - optional final `report` on `blast-status --with-report`
+  - additive `phase` (`queued`, `preflight`, `search`, `cancelling`, terminal),
+    `updated_at_unix_ms`, `observation`, `max_queued_jobs`, `request_sha256`,
+    `result_sha256`, and informational `owner_instance_id`
+  - The request digest binds the supplied query, options, project BLAST settings,
+    catalog/cache paths and explicit/default option choices. Referenced files
+    and tools resolve on execution; this is not an approval or database digest.
+    Effective options and invocation remain in the final search report.
+  - Cancelling a queued job does not probe tools; cancelling a running job is
+    a request until the worker stops. Cancellation before result publication
+    discards the result; cancellation after completion cannot relabel success.
 - Durability/restart semantics:
-  - BLAST async status snapshots are persisted in project metadata as
-    `blast_async_jobs` (`gentle.blast_async_job_store.v1`).
+  - Start/cancel persist compact status receipts in project metadata as
+    `blast_async_receipts` (`gentle.blast_async_job_store.v2`). Legacy
+    `blast_async_jobs` v1 records and embedded reports are left unchanged.
     Changed stores advance auxiliary mutation/execution identity and clear
     redo, not structural identity. Identical stores do not change revisions.
     Detached commits preserve disjoint live metadata through the existing
@@ -13373,16 +13387,24 @@ Async BLAST shell contract (agent/MCP-ready baseline):
     longer have an active worker context are normalized deterministically:
     - `cancel_requested=true` -> `cancelled`
     - otherwise -> `failed` with explicit restart/reload interruption reason.
-  - `blast-start`, `blast-status`, `blast-cancel`, and `blast-list` may mark
-    shell state as changed when they persist updated async job snapshots.
+  - New compact receipts omit full BLAST reports and mark saved result
+    availability false. Retrieve/export `blast-status --with-report` while
+    the issuing process is alive. Legacy embedded reports remain inspectable.
+    Observation does not save later progress: a saved running receipt can
+    correctly appear interrupted after restart, even if that run later finished.
+  - Only start/cancel may mark shell state changed. Status/list never schedule,
+    drain worker messages, prune or persist; they read cached live status or
+    label a saved-only observation `persisted` / `persisted_interrupted`.
+  - Live jobs retain the existing process scope, including MCP adapters that
+    rehydrate an engine per call. The owner ID is attribution, not an access
+    token. Process exit stops supervision; no restart resumption is implied.
 - Introspection:
   - Read-only async BLAST status/list rows (`genomes blast-status`,
     `helpers blast-status`, `genomes blast-list`, `helpers blast-list`,
     `blast_async_status`, `blast_async_list`) are fact-annotated with no
     project-state preconditions.
-  - These rows may refresh async-job metadata while polling/listing, but they
-    declare no hard biological project effects; job ids and optional terminal
-    reports remain execution-time validation concerns.
+  - These rows are non-mutating cached observations; job ids and optional
+    terminal reports remain execution-time validation concerns.
   - Async BLAST start/cancel and synchronous BLAST execution remain
     registry-only until their external-binary, prepared-index, cancellation,
     and report/materialization semantics are modeled explicitly.
@@ -13391,6 +13413,13 @@ Async BLAST shell contract (agent/MCP-ready baseline):
   - default concurrency uses host CPU parallelism
   - optional override via environment variable
     `GENTLE_BLAST_ASYNC_MAX_CONCURRENT` (clamped to `1..256`)
+  - at most 64 additional waiting jobs; excess requests are rejected without
+    a job ID. Numeric admission order breaks same-millisecond FIFO ties.
+  - Admission copies only the two BLAST project settings, never sequences,
+    journal or history; query <=1 MiB, each path/id <=4096 bytes, and each JSON
+    option tree <=64 KiB of string/node budget with depth <=32.
+  - Workers dispatch the next waiting job on completion, including failure;
+    status polling is not required to make the queue progress.
 - `gentle_mcp` exposes equivalent tool routes:
   - `blast_async_start`
   - `blast_async_status`

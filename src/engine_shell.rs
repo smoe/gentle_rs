@@ -255,11 +255,14 @@ fn protein_expression_geneart_quote_shell_line() -> String {
 }
 
 const BLAST_ASYNC_JOB_SCHEMA: &str = "gentle.blast_async_job_status.v1";
-const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v1";
-const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_jobs";
+const BLAST_ASYNC_STORE_SCHEMA: &str = "gentle.blast_async_job_store.v2";
+const BLAST_ASYNC_STORE_METADATA_KEY: &str = "blast_async_receipts";
+const BLAST_ASYNC_LEGACY_STORE_METADATA_KEY: &str = "blast_async_jobs";
 const BLAST_ASYNC_JOB_HISTORY_LIMIT: usize = 200;
 const BLAST_ASYNC_MAX_CONCURRENT_ENV: &str = "GENTLE_BLAST_ASYNC_MAX_CONCURRENT";
 const BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT: usize = 256;
+const BLAST_ASYNC_MAX_QUEUED: usize = 64;
+const BLAST_ASYNC_MAX_QUERY_BYTES: usize = 1024 * 1024;
 const BLAST_ASYNC_RESTART_INTERRUPTED_ERROR: &str =
     "BLAST async job interrupted by restart/reload before completion";
 static BLAST_ASYNC_JOB_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -276,6 +279,7 @@ pub type ShellProgressCallback = Arc<Mutex<Box<dyn FnMut(OperationProgress) -> b
 
 #[derive(Debug)]
 enum BlastAsyncWorkerMessage {
+    Preflight(Value),
     Done(Result<GenomeBlastReport, String>),
 }
 
@@ -300,6 +304,8 @@ struct BlastAsyncLaunchSpec {
     request_options_json: Option<Value>,
     resolved_catalog: Option<String>,
     cache_dir: Option<String>,
+    #[cfg(test)]
+    scoped_tool_overrides: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -325,6 +331,14 @@ struct BlastAsyncJobStatus {
     running_jobs: usize,
     queued_jobs: usize,
     queue_position: Option<usize>,
+    phase: String,
+    updated_at_unix_ms: Option<u128>,
+    owner_instance_id: Option<u64>,
+    observation: String,
+    binary_preflight: Option<Value>,
+    request_sha256: Option<String>,
+    result_sha256: Option<String>,
+    max_queued_jobs: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -362,6 +376,15 @@ pub(crate) static BLAST_ASYNC_TEST_MUTEX: Mutex<()> = Mutex::new(());
 static BLAST_ASYNC_MAX_CONCURRENT_TEST_OVERRIDE: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
 static BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+#[derive(Clone)]
+struct BlastAsyncWorkerTestGate {
+    entered: mpsc::Sender<()>,
+    release: Arc<Mutex<mpsc::Receiver<()>>>,
+}
+#[cfg(test)]
+static BLAST_ASYNC_WORKER_TEST_GATE: Mutex<Option<BlastAsyncWorkerTestGate>> = Mutex::new(None);
 
 #[cfg(test)]
 pub(crate) fn clear_blast_async_jobs_for_test() {
@@ -7084,6 +7107,46 @@ fn format_optional_span(start: Option<usize>, end_exclusive: Option<usize>) -> S
 }
 
 impl ShellCommand {
+    /// Interactive hosts select the existing async lifecycle without changing
+    /// the query or options. Synchronous CLI/scripting dispatch stays unchanged.
+    pub(crate) fn into_interactive_blast(self) -> Self {
+        match self {
+            Self::ReferenceBlast {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                catalog_path,
+                cache_dir,
+            } => Self::ReferenceBlastAsyncStart {
+                helper_mode,
+                genome_id,
+                query_sequence,
+                max_hits,
+                max_hits_explicit,
+                task,
+                request_options_json,
+                catalog_path,
+                cache_dir,
+            },
+            other => other,
+        }
+    }
+
+    pub(crate) fn is_blast_job_command(&self) -> bool {
+        matches!(
+            self,
+            Self::ReferenceBlast { .. }
+                | Self::ReferenceBlastAsyncStart { .. }
+                | Self::ReferenceBlastAsyncStatus { .. }
+                | Self::ReferenceBlastAsyncCancel { .. }
+                | Self::ReferenceBlastAsyncList { .. }
+        )
+    }
+
     pub fn preview(&self) -> String {
         match self {
             Self::Help {
@@ -14601,6 +14664,9 @@ fn refresh_blast_async_orphaned_non_terminal_record(record: &mut BlastAsyncJobRe
     }
     record.status.result_available = false;
     record.report = None;
+    record.status.phase = record.status.state.clone();
+    record.status.observation = "persisted_interrupted".into();
+    record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
 }
 
 fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
@@ -14609,10 +14675,26 @@ fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
         return;
     };
     match receiver.try_recv() {
+        Ok(BlastAsyncWorkerMessage::Preflight(preflight)) => {
+            record.status.binary_preflight = Some(preflight);
+            record.status.phase = if record.cancel_requested.load(Ordering::Relaxed) {
+                "cancelling"
+            } else {
+                "search"
+            }
+            .into();
+            record.status.updated_at_unix_ms = Some(shell_now_unix_ms());
+            refresh_blast_async_job_record(record);
+        }
         Ok(BlastAsyncWorkerMessage::Done(result)) => {
             record.status.done_queries = 1;
             record.status.total_queries = 1;
             record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+            let result = if record.cancel_requested.load(Ordering::Relaxed) {
+                Err("BLAST search cancelled by caller; unpublished result discarded".into())
+            } else {
+                result
+            };
             match result {
                 Ok(report) => {
                     record.status.state = "completed".to_string();
@@ -14631,6 +14713,8 @@ fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
                     record.report = None;
                 }
             }
+            record.status.phase = record.status.state.clone();
+            record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
             record.receiver = None;
         }
         Err(mpsc::TryRecvError::Empty) => {}
@@ -14641,6 +14725,8 @@ fn refresh_blast_async_job_record(record: &mut BlastAsyncJobRecord) {
             record.status.result_available = false;
             record.report = None;
             record.receiver = None;
+            record.status.phase = "failed".into();
+            record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
         }
     }
 }
@@ -14670,56 +14756,116 @@ fn spawn_blast_async_worker(record: &mut BlastAsyncJobRecord) {
     let (tx, rx) = mpsc::channel::<BlastAsyncWorkerMessage>();
     let started_at = shell_now_unix_ms();
     record.status.state = "running".to_string();
+    record.status.phase = "preflight".into();
     record.status.started_at_unix_ms = Some(started_at);
+    record.status.updated_at_unix_ms = Some(started_at);
     record.receiver = Some(rx);
 
-    thread::spawn(move || {
-        #[cfg(test)]
-        {
-            let delay_ms = BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.load(Ordering::SeqCst);
-            if delay_ms > 0 {
-                thread::sleep(Duration::from_millis(delay_ms));
+    let job_id = record.status.job_id.clone();
+    #[cfg(test)]
+    let test_gate = BLAST_ASYNC_WORKER_TEST_GATE.lock().unwrap().clone();
+    #[cfg(test)]
+    let test_delay = BLAST_ASYNC_WORKER_DELAY_MS_TEST_OVERRIDE.load(Ordering::SeqCst);
+    let spawn = thread::Builder::new()
+        .name(format!("gentle-{job_id}"))
+        .spawn(move || {
+            #[cfg(test)]
+            let _scoped_tool_overrides =
+                crate::tool_overrides::ScopedToolOverridesSnapshotGuard::install(
+                    spec.scoped_tool_overrides.clone(),
+                );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                #[cfg(test)]
+                {
+                    if let Some(gate) = test_gate {
+                        let _ = gate.entered.send(());
+                        gate.release
+                            .lock()
+                            .unwrap()
+                            .recv_timeout(Duration::from_secs(5))
+                            .map_err(|e| e.to_string())?;
+                    }
+                    if test_delay > 0 {
+                        thread::sleep(Duration::from_millis(test_delay));
+                    }
+                }
+                let mut should_cancel = || cancel_for_thread.load(Ordering::Relaxed);
+                if should_cancel() {
+                    return Err("BLAST search cancelled before preflight".to_string());
+                }
+                let preflight = crate::genomes::blast_external_binary_preflight_report_with_cancel(
+                    &mut should_cancel,
+                );
+                let ready = preflight.blastn.version_probe_ok;
+                let preflight =
+                    serde_json::to_value(preflight).map_err(|error| error.to_string())?;
+                let _ = tx.send(BlastAsyncWorkerMessage::Preflight(preflight));
+                kick_blast_async_scheduler();
+                if should_cancel() {
+                    return Err("BLAST search cancelled during preflight".to_string());
+                }
+                if !ready {
+                    return Err(
+                        "BLAST executable preflight failed; inspect job.binary_preflight".into(),
+                    );
+                }
+                let result = if spec.helper_mode {
+                    spec.engine_snapshot
+                        .blast_helper_genome_with_project_and_request_options_and_cancel(
+                            &spec.genome_id,
+                            &spec.query_sequence,
+                            spec.request_options_json.as_ref(),
+                            spec.task.as_deref(),
+                            if spec.max_hits_explicit {
+                                Some(spec.max_hits)
+                            } else {
+                                None
+                            },
+                            spec.resolved_catalog.as_deref(),
+                            spec.cache_dir.as_deref(),
+                            &mut should_cancel,
+                        )
+                } else {
+                    spec.engine_snapshot
+                        .blast_reference_genome_with_project_and_request_options_and_cancel(
+                            spec.resolved_catalog.as_deref(),
+                            &spec.genome_id,
+                            &spec.query_sequence,
+                            spec.request_options_json.as_ref(),
+                            spec.task.as_deref(),
+                            if spec.max_hits_explicit {
+                                Some(spec.max_hits)
+                            } else {
+                                None
+                            },
+                            spec.cache_dir.as_deref(),
+                            &mut should_cancel,
+                        )
+                };
+                result.map_err(|e| e.to_string())
+            }))
+            .unwrap_or_else(|_| Err("BLAST async worker panicked".into()));
+            let result_hash = result
+                .as_ref()
+                .ok()
+                .and_then(|report| serde_json::to_vec(report).ok())
+                .map(|bytes| crate::digest_utils::sha256_prefixed_bytes(&bytes));
+            if let Ok(mut jobs) = BLAST_ASYNC_JOBS.lock()
+                && let Some(record) = jobs.get_mut(&job_id)
+            {
+                record.status.result_sha256 = result_hash;
             }
-        }
-        let mut should_cancel = || cancel_for_thread.load(Ordering::Relaxed);
-        let result = if spec.helper_mode {
-            spec.engine_snapshot
-                .blast_helper_genome_with_project_and_request_options_and_cancel(
-                    &spec.genome_id,
-                    &spec.query_sequence,
-                    spec.request_options_json.as_ref(),
-                    spec.task.as_deref(),
-                    if spec.max_hits_explicit {
-                        Some(spec.max_hits)
-                    } else {
-                        None
-                    },
-                    spec.resolved_catalog.as_deref(),
-                    spec.cache_dir.as_deref(),
-                    &mut should_cancel,
-                )
-        } else {
-            spec.engine_snapshot
-                .blast_reference_genome_with_project_and_request_options_and_cancel(
-                    spec.resolved_catalog.as_deref(),
-                    &spec.genome_id,
-                    &spec.query_sequence,
-                    spec.request_options_json.as_ref(),
-                    spec.task.as_deref(),
-                    if spec.max_hits_explicit {
-                        Some(spec.max_hits)
-                    } else {
-                        None
-                    },
-                    spec.cache_dir.as_deref(),
-                    &mut should_cancel,
-                )
-        };
-        let _ = tx.send(BlastAsyncWorkerMessage::Done(
-            result.map_err(|e| e.to_string()),
-        ));
-        kick_blast_async_scheduler();
-    });
+            let _ = tx.send(BlastAsyncWorkerMessage::Done(result));
+            kick_blast_async_scheduler();
+        });
+    if let Err(error) = spawn {
+        record.receiver = None;
+        record.status.state = "failed".into();
+        record.status.phase = "failed".into();
+        record.status.error = Some(format!("Could not start BLAST worker: {error}"));
+        record.status.finished_at_unix_ms = Some(shell_now_unix_ms());
+        record.status.updated_at_unix_ms = record.status.finished_at_unix_ms;
+    }
 }
 
 fn refresh_and_dispatch_blast_async_jobs_locked(jobs: &mut HashMap<String, BlastAsyncJobRecord>) {
@@ -14743,7 +14889,15 @@ fn refresh_and_dispatch_blast_async_jobs_locked(jobs: &mut HashMap<String, Blast
                 }
             })
             .collect();
-        queued_job_ids.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+        queued_job_ids.sort_by(|left, right| {
+            left.0
+                .cmp(&right.0)
+                .then_with(|| {
+                    blast_async_next_counter_from_job_id(&left.1)
+                        .cmp(&blast_async_next_counter_from_job_id(&right.1))
+                })
+                .then(left.1.cmp(&right.1))
+        });
         for (_, job_id) in queued_job_ids {
             if running_jobs >= max_concurrent {
                 break;
@@ -14775,7 +14929,15 @@ fn refresh_and_dispatch_blast_async_jobs_locked(jobs: &mut HashMap<String, Blast
             }
         })
         .collect();
-    queued_job_ids.sort_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
+    queued_job_ids.sort_by(|left, right| {
+        left.0
+            .cmp(&right.0)
+            .then_with(|| {
+                blast_async_next_counter_from_job_id(&left.1)
+                    .cmp(&blast_async_next_counter_from_job_id(&right.1))
+            })
+            .then(left.1.cmp(&right.1))
+    });
     let queued_jobs = queued_job_ids.len();
     let mut queue_positions: HashMap<String, usize> = HashMap::new();
     for (index, (_, job_id)) in queued_job_ids.into_iter().enumerate() {
@@ -14799,12 +14961,11 @@ fn blast_async_store_from_jobs(
             status.cancel_requested =
                 status.cancel_requested || record.cancel_requested.load(Ordering::Relaxed);
             normalize_blast_async_status(&mut status);
+            // Admission/cancellation persist small receipts, never copy every
+            // completed HSP report under the project/registry locks.
+            status.result_available = false;
             BlastAsyncPersistedJob {
-                report: if status.result_available {
-                    record.report.clone()
-                } else {
-                    None
-                },
+                report: None,
                 status,
             }
         })
@@ -14834,51 +14995,63 @@ fn hydrate_blast_async_jobs_from_engine(
     jobs: &mut HashMap<String, BlastAsyncJobRecord>,
     engine: &GentleEngine,
 ) {
-    let Some(raw_store) = engine
-        .state()
-        .metadata
-        .get(BLAST_ASYNC_STORE_METADATA_KEY)
-        .cloned()
-    else {
-        return;
-    };
-    let Ok(mut store) = serde_json::from_value::<BlastAsyncPersistedStore>(raw_store) else {
-        return;
-    };
-
-    blast_async_update_counter_floor(store.next_job_counter.max(1));
-    for mut persisted in store.jobs.drain(..) {
-        normalize_blast_async_status(&mut persisted.status);
-        let job_id = persisted.status.job_id.trim().to_string();
-        if job_id.is_empty() {
+    for key in [
+        BLAST_ASYNC_STORE_METADATA_KEY,
+        BLAST_ASYNC_LEGACY_STORE_METADATA_KEY,
+    ] {
+        let Some(raw_store) = engine.state().metadata.get(key) else {
             continue;
-        }
-        persisted.status.job_id = job_id.clone();
-        if let Some(next_counter) = blast_async_next_counter_from_job_id(&job_id) {
-            blast_async_update_counter_floor(next_counter);
-        }
-        if let Some(existing) = jobs.get_mut(&job_id) {
-            if existing.report.is_none() && persisted.status.result_available {
-                existing.report = persisted.report.clone();
-            }
+        };
+        let Some(rows) = raw_store.get("jobs").and_then(Value::as_array) else {
             continue;
-        }
-        let cancel_requested = persisted.status.cancel_requested;
-        let result_available = persisted.status.result_available;
-        jobs.insert(
-            job_id,
-            BlastAsyncJobRecord {
-                status: persisted.status,
-                cancel_requested: Arc::new(AtomicBool::new(cancel_requested)),
-                receiver: None,
-                launch_spec: None,
-                report: if result_available {
-                    persisted.report
-                } else {
-                    None
-                },
-            },
+        };
+        blast_async_update_counter_floor(
+            raw_store
+                .get("next_job_counter")
+                .and_then(Value::as_u64)
+                .unwrap_or(1),
         );
+        for row in rows.iter().take(
+            BLAST_ASYNC_JOB_HISTORY_LIMIT
+                + BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT
+                + BLAST_ASYNC_MAX_QUEUED,
+        ) {
+            let Ok(mut status) =
+                serde_json::from_value::<BlastAsyncJobStatus>(row["status"].clone())
+            else {
+                continue;
+            };
+            normalize_blast_async_status(&mut status);
+            let job_id = status.job_id.trim().to_string();
+            if job_id.is_empty() {
+                continue;
+            }
+            status.job_id = job_id.clone();
+            if let Some(next_counter) = blast_async_next_counter_from_job_id(&job_id) {
+                blast_async_update_counter_floor(next_counter);
+            }
+            if key == BLAST_ASYNC_LEGACY_STORE_METADATA_KEY
+                && !matches!(status.state.as_str(), "queued" | "running")
+            {
+                continue;
+            }
+            if jobs.contains_key(&job_id) {
+                continue;
+            }
+            let cancel_requested = status.cancel_requested;
+            status.observation = "persisted".into();
+            status.result_available = false;
+            jobs.insert(
+                job_id,
+                BlastAsyncJobRecord {
+                    status,
+                    cancel_requested: Arc::new(AtomicBool::new(cancel_requested)),
+                    receiver: None,
+                    launch_spec: None,
+                    report: None,
+                },
+            );
+        }
     }
 }
 
@@ -14968,12 +15141,11 @@ fn prune_blast_async_jobs_locked(jobs: &mut HashMap<String, BlastAsyncJobRecord>
 }
 
 fn collect_blast_async_job_snapshots(
-    jobs: &mut HashMap<String, BlastAsyncJobRecord>,
+    jobs: &HashMap<String, BlastAsyncJobRecord>,
     helper_mode_filter: Option<bool>,
 ) -> Vec<BlastAsyncJobStatus> {
-    refresh_and_dispatch_blast_async_jobs_locked(jobs);
     let mut statuses: Vec<BlastAsyncJobStatus> = vec![];
-    for record in jobs.values_mut() {
+    for record in jobs.values() {
         if let Some(helper_mode) = helper_mode_filter
             && record.status.helper_mode != helper_mode
         {
@@ -15014,15 +15186,10 @@ pub(crate) fn runtime_status_payload_with_observed_activities(
 fn collect_runtime_blast_async_activities(
     engine: &mut GentleEngine,
 ) -> Result<Vec<BlastAsyncJobStatus>, String> {
-    let mut jobs = BLAST_ASYNC_JOBS
-        .lock()
-        .map_err(|_| "Could not lock BLAST async job registry".to_string())?;
-    hydrate_blast_async_jobs_from_engine(&mut jobs, engine);
-    refresh_and_dispatch_blast_async_jobs_locked(&mut jobs);
-    if jobs.len() > BLAST_ASYNC_JOB_HISTORY_LIMIT {
-        prune_blast_async_jobs_locked(&mut jobs);
-    }
-    Ok(collect_blast_async_job_snapshots(&mut jobs, None))
+    Ok(observe_blast_async_jobs(engine, None, None, false)?
+        .into_iter()
+        .map(|(status, _)| status)
+        .collect())
 }
 
 fn collect_runtime_genome_prepare_activities(
@@ -15159,7 +15326,11 @@ fn runtime_activity_from_blast_async_job(status: &BlastAsyncJobStatus) -> Runtim
         format!("BLAST async job {} ({})", status.job_id, status.genome_id),
         status.state.clone(),
     );
-    activity.phase = Some(status.task.clone());
+    activity.phase = Some(if status.phase.is_empty() {
+        status.task.clone()
+    } else {
+        status.phase.clone()
+    });
     activity.detail = Some(format!(
         "genome={} helper_mode={} queries={}/{} max_hits={}",
         status.genome_id,
@@ -15176,7 +15347,8 @@ fn runtime_activity_from_blast_async_job(status: &BlastAsyncJobStatus) -> Runtim
     activity.started_at_unix_ms = status.started_at_unix_ms;
     activity.updated_at_unix_ms = Some(
         status
-            .finished_at_unix_ms
+            .updated_at_unix_ms
+            .or(status.finished_at_unix_ms)
             .or(status.started_at_unix_ms)
             .unwrap_or(status.created_at_unix_ms),
     );
@@ -15207,13 +15379,12 @@ fn observed_activity_state(
 }
 
 fn get_blast_async_job_snapshot(
-    jobs: &mut HashMap<String, BlastAsyncJobRecord>,
+    jobs: &HashMap<String, BlastAsyncJobRecord>,
     job_id: &str,
     include_report: bool,
 ) -> Result<(BlastAsyncJobStatus, Option<GenomeBlastReport>), String> {
-    refresh_and_dispatch_blast_async_jobs_locked(jobs);
     let record = jobs
-        .get_mut(job_id)
+        .get(job_id)
         .ok_or_else(|| format!("BLAST async job '{}' not found", job_id))?;
     Ok((
         record.status.clone(),
@@ -15225,6 +15396,97 @@ fn get_blast_async_job_snapshot(
     ))
 }
 
+/// Observation never dispatches work, drains receivers, prunes, or persists.
+/// Legacy saved receipts are projected locally. Live jobs retain the existing
+/// process scope, including MCP calls that rehydrate an engine for each request.
+fn observe_blast_async_jobs(
+    engine: &GentleEngine,
+    helper_mode: Option<bool>,
+    job_id: Option<&str>,
+    include_report: bool,
+) -> Result<Vec<(BlastAsyncJobStatus, Option<GenomeBlastReport>)>, String> {
+    let jobs = BLAST_ASYNC_JOBS
+        .lock()
+        .map_err(|_| "BLAST status registry is unavailable".to_string())?;
+    let mut rows = std::collections::BTreeMap::new();
+    for key in [
+        BLAST_ASYNC_LEGACY_STORE_METADATA_KEY,
+        BLAST_ASYNC_STORE_METADATA_KEY,
+    ] {
+        if let Some(saved) = engine
+            .state()
+            .metadata
+            .get(key)
+            .and_then(|store| store.get("jobs"))
+            .and_then(Value::as_array)
+        {
+            for row in saved.iter().take(
+                BLAST_ASYNC_JOB_HISTORY_LIMIT
+                    + BLAST_ASYNC_MAX_CONCURRENT_HARD_LIMIT
+                    + BLAST_ASYNC_MAX_QUEUED,
+            ) {
+                if job_id.is_some_and(|id| row["status"]["job_id"].as_str() != Some(id)) {
+                    continue;
+                }
+                let Ok(mut status) =
+                    serde_json::from_value::<BlastAsyncJobStatus>(row["status"].clone())
+                else {
+                    continue;
+                };
+                if helper_mode.is_some_and(|mode| status.helper_mode != mode) {
+                    continue;
+                }
+                normalize_blast_async_status(&mut status);
+                let report = if include_report {
+                    serde_json::from_value(row["report"].clone()).ok()
+                } else {
+                    None
+                };
+                status.result_available = status.result_available && !row["report"].is_null();
+                status.observation = "persisted".into();
+                if matches!(status.state.as_str(), "queued" | "running") {
+                    status.state = if status.cancel_requested {
+                        "cancelled"
+                    } else {
+                        "failed"
+                    }
+                    .into();
+                    status.phase = "interrupted".into();
+                    status.observation = "persisted_interrupted".into();
+                    status.error = Some(BLAST_ASYNC_RESTART_INTERRUPTED_ERROR.into());
+                    status.result_available = false;
+                }
+                rows.insert(status.job_id.clone(), (status, report));
+            }
+        }
+    }
+    for status in collect_blast_async_job_snapshots(&jobs, helper_mode) {
+        if job_id.is_some_and(|id| id != status.job_id) {
+            continue;
+        }
+        let result = get_blast_async_job_snapshot(&jobs, &status.job_id, include_report)?;
+        rows.insert(status.job_id.clone(), result);
+    }
+    if let Some(id) = job_id
+        && !rows.contains_key(id)
+    {
+        return Err(format!(
+            "BLAST async job '{id}' not found in this process or saved state"
+        ));
+    }
+    let mut rows: Vec<_> = rows.into_values().collect();
+    rows.sort_by(|a, b| blast_async_fifo_key(&a.0).cmp(&blast_async_fifo_key(&b.0)));
+    Ok(rows)
+}
+
+fn blast_async_fifo_key(status: &BlastAsyncJobStatus) -> (u128, u64, &str) {
+    (
+        status.created_at_unix_ms,
+        blast_async_next_counter_from_job_id(&status.job_id).unwrap_or(0),
+        &status.job_id,
+    )
+}
+
 fn cancel_blast_async_job(
     jobs: &mut HashMap<String, BlastAsyncJobRecord>,
     job_id: &str,
@@ -15232,8 +15494,16 @@ fn cancel_blast_async_job(
     let record = jobs
         .get_mut(job_id)
         .ok_or_else(|| format!("BLAST async job '{}' not found", job_id))?;
+    if matches!(
+        record.status.state.as_str(),
+        "completed" | "failed" | "cancelled"
+    ) {
+        return Ok(record.status.clone());
+    }
     record.cancel_requested.store(true, Ordering::Relaxed);
     record.status.cancel_requested = true;
+    record.status.phase = "cancelling".into();
+    record.status.updated_at_unix_ms = Some(shell_now_unix_ms());
     if record.receiver.is_none() {
         if record.status.state == "queued" || record.status.state == "running" {
             record.status.state = "cancelled".to_string();
@@ -15241,6 +15511,7 @@ fn cancel_blast_async_job(
             record.status.error = Some("BLAST search cancelled by caller".to_string());
             record.status.result_available = false;
             record.launch_spec = None;
+            record.status.phase = "cancelled".into();
         }
     } else if record.status.started_at_unix_ms.is_none() {
         record.status.started_at_unix_ms = Some(shell_now_unix_ms());
@@ -15266,6 +15537,21 @@ fn start_blast_async_job(
     catalog_path: Option<String>,
     cache_dir: Option<String>,
 ) -> Result<BlastAsyncJobStatus, String> {
+    if query_sequence.len() > BLAST_ASYNC_MAX_QUERY_BYTES
+        || [
+            Some(genome_id),
+            task.as_deref(),
+            catalog_path.as_deref(),
+            cache_dir.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|s| s.len() > 4096)
+    {
+        return Err(
+            "Async BLAST admission exceeds the 1-MiB query or 4096-byte argument limit".into(),
+        );
+    }
     if genome_id.trim().is_empty() {
         return Err("BLAST async start requires a non-empty genome_id".to_string());
     }
@@ -15275,12 +15561,27 @@ fn start_blast_async_job(
     if max_hits == 0 {
         return Err("BLAST async start requires max_hits >= 1".to_string());
     }
+    if let Some(options) = request_options_json.as_ref() {
+        GentleEngine::validate_blast_async_json_budget(options)?;
+    }
+    if jobs.values().filter(|r| r.status.state == "queued").count() >= BLAST_ASYNC_MAX_QUEUED {
+        return Err(format!(
+            "BLAST queue capacity reached ({BLAST_ASYNC_MAX_QUEUED} waiting jobs); request was not admitted"
+        ));
+    }
 
     let resolved_catalog = resolved_catalog_path(&catalog_path, helper_mode).map(str::to_string);
     let job_id = next_blast_async_job_id();
     let created_at = shell_now_unix_ms();
     let cancel_requested = Arc::new(AtomicBool::new(false));
     let task_name = task.clone().unwrap_or_else(|| "blastn-short".to_string());
+    let owner_instance_id = engine_snapshot.instance_id();
+    let request_sha256 = crate::digest_utils::sha256_prefixed_bytes(&serde_json::to_vec(&json!({
+        "helper_mode": helper_mode, "genome_id": genome_id, "query_sequence": query_sequence,
+        "max_hits": max_hits, "max_hits_explicit": max_hits_explicit, "task": task,
+        "request_options": request_options_json, "catalog": resolved_catalog, "cache": cache_dir,
+        "project_options": engine_snapshot.state().metadata,
+    })).map_err(|error| error.to_string())?);
     let launch_spec = BlastAsyncLaunchSpec {
         engine_snapshot,
         helper_mode,
@@ -15292,6 +15593,8 @@ fn start_blast_async_job(
         request_options_json,
         resolved_catalog,
         cache_dir,
+        #[cfg(test)]
+        scoped_tool_overrides: crate::tool_overrides::scoped_tool_overrides_snapshot(),
     };
 
     let status = BlastAsyncJobStatus {
@@ -15315,6 +15618,14 @@ fn start_blast_async_job(
         running_jobs: 0,
         queued_jobs: 0,
         queue_position: None,
+        phase: "queued".into(),
+        updated_at_unix_ms: Some(created_at),
+        owner_instance_id: Some(owner_instance_id),
+        observation: "live".into(),
+        binary_preflight: None,
+        request_sha256: Some(request_sha256),
+        result_sha256: None,
+        max_queued_jobs: BLAST_ASYNC_MAX_QUEUED,
     };
     jobs.insert(
         job_id,
@@ -29942,7 +30253,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "genomes blast-status",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async reference-genome BLAST job id"},
@@ -29958,7 +30269,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "helpers blast-status",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async helper-genome BLAST job id"},
@@ -29974,33 +30285,33 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "genomes blast-list",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [],
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List known async reference-genome BLAST jobs; refreshing persisted job snapshots may update runtime metadata.",
+            "description": "Observe cached reference-genome BLAST jobs without dispatching work or changing project metadata.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("genomes blast-list")
         }),
         json!({
             "id": "helpers blast-list",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [],
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List known async helper-genome BLAST jobs; refreshing persisted job snapshots may update runtime metadata.",
+            "description": "Observe cached helper-genome BLAST jobs without dispatching work or changing project metadata.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("helpers blast-list")
         }),
         json!({
             "id": "blast_async_status",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "JOB_ID", "required": true, "subject_kind": "other", "detail": "async BLAST job id"},
@@ -30016,7 +30327,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         json!({
             "id": "blast_async_list",
             "kind": "operation",
-            "mutating": "true",
+            "mutating": "false",
             "requires_confirmation": false,
             "args": [
                 {"name": "HELPER_MODE", "required": false, "subject_kind": "other", "detail": "optional helper/reference job-scope filter"}
@@ -30024,7 +30335,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "reads": [],
             "effects": [],
             "precondition_expr": {"all": []},
-            "description": "List known async BLAST jobs through the MCP/tool route; refreshing persisted job snapshots may update runtime metadata.",
+            "description": "Observe cached BLAST jobs through MCP without dispatching work or changing project metadata.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("blast_async_list")
         }),
@@ -55351,8 +55662,9 @@ fn execute_reference_and_track_command(
             catalog_path,
             cache_dir,
         } => {
-            let binary_preflight = engine.blast_external_binary_preflight_report();
-            let engine_snapshot = engine.clone();
+            let engine_snapshot = engine
+                .blast_execution_snapshot()
+                .map_err(|e| e.to_string())?;
             let (status, state_changed) = with_blast_async_registry(engine, true, |jobs| {
                 start_blast_async_job(
                     jobs,
@@ -55371,36 +55683,61 @@ fn execute_reference_and_track_command(
             Ok(ShellRunResult {
                 state_changed,
                 output: json!({
-                    "schema": "gentle.blast_async_start.v1",
-                    "binary_preflight": binary_preflight,
+                    "schema": "gentle.blast_async_start.v2",
+                    "binary_preflight": null,
+                    "binary_preflight_status": "pending",
                     "job": status,
                 }),
             })
         }
         ShellCommand::ReferenceBlastAsyncStatus {
-            helper_mode: _,
+            helper_mode,
             job_id,
             include_report,
         } => {
-            let (status_and_report, state_changed) =
-                with_blast_async_registry(engine, true, |jobs| {
-                    get_blast_async_job_snapshot(jobs, job_id, *include_report)
-                })?;
-            let (status, report) = status_and_report;
+            let (status, report) = observe_blast_async_jobs(
+                engine,
+                Some(*helper_mode),
+                Some(job_id),
+                *include_report,
+            )?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "BLAST job not found".to_string())?;
             Ok(ShellRunResult {
-                state_changed,
+                state_changed: false,
                 output: json!({
                     "schema": "gentle.blast_async_status.v1",
+                    "binary_preflight": status.binary_preflight,
                     "job": status,
                     "report": report,
                 }),
             })
         }
         ShellCommand::ReferenceBlastAsyncCancel {
-            helper_mode: _,
+            helper_mode,
             job_id,
         } => {
+            let observed =
+                observe_blast_async_jobs(engine, Some(*helper_mode), Some(job_id), false)?;
+            if let Some((status, _)) = observed.into_iter().next()
+                && matches!(status.state.as_str(), "completed" | "failed" | "cancelled")
+                && status.observation != "persisted_interrupted"
+            {
+                return Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({
+                        "schema": "gentle.blast_async_cancel.v1", "job": status,
+                    }),
+                });
+            }
             let (status, state_changed) = with_blast_async_registry(engine, false, |jobs| {
+                let record = jobs
+                    .get(job_id)
+                    .ok_or_else(|| format!("BLAST async job '{job_id}' not found"))?;
+                if record.status.helper_mode != *helper_mode {
+                    return Err("BLAST job belongs to another catalog scope".into());
+                }
                 cancel_blast_async_job(jobs, job_id)
             })?;
             Ok(ShellRunResult {
@@ -55412,11 +55749,12 @@ fn execute_reference_and_track_command(
             })
         }
         ShellCommand::ReferenceBlastAsyncList { helper_mode } => {
-            let (jobs, state_changed) = with_blast_async_registry(engine, true, |jobs| {
-                Ok(collect_blast_async_job_snapshots(jobs, Some(*helper_mode)))
-            })?;
+            let jobs: Vec<_> = observe_blast_async_jobs(engine, Some(*helper_mode), None, false)?
+                .into_iter()
+                .map(|(status, _)| status)
+                .collect();
             Ok(ShellRunResult {
-                state_changed,
+                state_changed: false,
                 output: json!({
                     "schema": "gentle.blast_async_list.v1",
                     "helper_mode": helper_mode,

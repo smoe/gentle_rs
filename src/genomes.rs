@@ -2693,6 +2693,56 @@ pub fn blast_external_binary_preflight_report() -> BlastExternalBinaryPreflightR
     )
 }
 
+/// Worker-only bounded, cancellable preflight for an admitted BLAST job.
+pub(crate) fn blast_external_binary_preflight_report_with_cancel(
+    should_cancel: &mut dyn FnMut() -> bool,
+) -> BlastExternalBinaryPreflightReport {
+    let mut probe = |env_var: &str, name: &str, default: &str| {
+        let executable = resolve_tool_executable(env_var, default);
+        let mut report = ExternalBinaryPreflightProbe {
+            tool: name.into(),
+            env_var: env_var.into(),
+            executable: executable.clone(),
+            resolved_path: resolve_executable_path(&executable),
+            ..Default::default()
+        };
+        let mut command = Command::new(&executable);
+        command.arg("-version");
+        match bounded_command_output_with_cancel(
+            &mut command,
+            name,
+            Duration::from_secs(5),
+            should_cancel,
+        ) {
+            Ok(output) => {
+                report.found = true;
+                report.status_code = output.status.code();
+                report.version_probe_ok = output.status.success();
+                let line = first_non_empty_output_line(
+                    &String::from_utf8_lossy(&output.stdout),
+                    &String::from_utf8_lossy(&output.stderr),
+                );
+                if line != "no output" {
+                    report.version = Some(line.clone());
+                }
+                if !report.version_probe_ok {
+                    report.detail = Some(line);
+                }
+            }
+            Err(error) => {
+                report.found = report.resolved_path.is_some();
+                report.error = Some(error);
+            }
+        }
+        report
+    };
+    BlastExternalBinaryPreflightReport {
+        schema: "gentle.blast_external_binary_preflight.v1".into(),
+        blastn: probe(BLASTN_ENV_BIN, "blastn", DEFAULT_BLASTN_BIN),
+        makeblastdb: probe(MAKEBLASTDB_ENV_BIN, "makeblastdb", DEFAULT_MAKEBLASTDB_BIN),
+    }
+}
+
 fn blast_external_binary_preflight_report_with_executables(
     blastn_executable: String,
     makeblastdb_executable: String,
@@ -12207,6 +12257,18 @@ fn bounded_command_output(
     label: &str,
     timeout: Duration,
 ) -> Result<Output, String> {
+    bounded_command_output_with_cancel(command, label, timeout, &mut || false)
+}
+
+fn bounded_command_output_with_cancel(
+    command: &mut Command,
+    label: &str,
+    timeout: Duration,
+    should_cancel: &mut dyn FnMut() -> bool,
+) -> Result<Output, String> {
+    if should_cancel() {
+        return Err(format!("{label} cancelled before spawn"));
+    }
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command
         .spawn()
@@ -12231,6 +12293,13 @@ fn bounded_command_output(
     });
     let started = Instant::now();
     loop {
+        if should_cancel() {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(format!("{label} cancelled during probe"));
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 return Ok(Output {
@@ -14396,6 +14465,39 @@ mod tests {
         let mut perms = fs::metadata(path).expect("script metadata").permissions();
         perms.set_mode(0o755);
         fs::set_permissions(path, perms).expect("set executable permissions");
+    }
+
+    #[test]
+    fn async_blast_probe_cancellation_prevents_spawn() {
+        // Synthetic missing executable; a pre-cancelled probe must not try it.
+        let error = bounded_command_output_with_cancel(
+            &mut Command::new("__gentle_unstarted_probe__"),
+            "synthetic probe",
+            Duration::from_secs(5),
+            &mut || true,
+        )
+        .unwrap_err();
+        assert!(error.contains("cancelled before spawn"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn async_blast_probe_cancellation_reaps_the_running_child() {
+        // Shell built-ins only, no descendant process or external biological tool.
+        let mut command = Command::new("sh");
+        command.args(["-c", "while :; do :; done"]);
+        let mut checks = 0;
+        let error = bounded_command_output_with_cancel(
+            &mut command,
+            "synthetic probe",
+            Duration::from_secs(5),
+            &mut || {
+                checks += 1;
+                checks > 1
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("cancelled during probe"));
     }
 
     #[test]

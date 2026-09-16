@@ -846,7 +846,8 @@ consumed terminal receipts may be evicted at capacity. This is process-local,
 not restart recovery or a new CLI job server. Concurrent structural changes can
 still reject a result, including changes made by another admitted worker.
 
-Remaining: pure cached BLAST observation, BLAST-start full-clone/probe ordering,
+Remaining at this first-tranche checkpoint (the BLAST items are addressed below):
+pure cached BLAST observation, BLAST-start full-clone/probe ordering,
 audited batch/per-operation failure receipts, other GUI command families and
 adapters, cross-process control/recovery, and live T2T acceptance. The synthetic
 1-Mbp/growing-journal cost probe is not a bound for real annotated projects.
@@ -883,7 +884,48 @@ This probe excludes expensive real annotation payloads and nontrivial commit
 rebasing; it does not close the live responsiveness acceptance gate. The linker
 emitted the known macOS large `__eh_frame` warning but exited successfully.
 
-### Reconciliation Verification
+### BLAST Admission And Cached Observation, 2026-09-16
+
+The shared BLAST scheduler now admits a bounded query/options snapshot without
+copying project sequences, journal or history. Start v2 acknowledges pending
+preflight; five-second cancellable executable probes run on the worker and
+publish diagnostics into status. Agent Assistant Run/typed `genomes blast` and
+`helpers blast` select this lifecycle without changing query/options; standalone
+synchronous CLI/script calls keep their existing wait behavior.
+
+The existing FIFO has an explicit 64-waiter cap and numeric admission tie-breaks.
+Workers advance it on completion/failure. Queued cancellation does not probe or
+run tools; cancellation before publication discards a computed result and cannot
+relabel an already completed job. Worker panics/spawn errors become failures.
+Status/list/runtime BLAST observations do not schedule, consume, prune or persist.
+Start/cancel save compact receipts, not accumulated full HSP reports; export
+`blast-status --with-report` before host exit. Existing saved reports remain
+readable. A saved running receipt is not durable job recovery.
+
+Request identity includes supplied options and both project BLAST settings;
+resource/defaults files and tools still resolve on execution. The recorded owner
+instance is attribution, not an isolation token: live jobs retain their existing
+process scope, needed by MCP's per-call engine rehydration. No approval binding,
+primer specificity policy, or biological result algorithm changes.
+
+Focused Rust regressions cover held-worker admission, pure observation, bounded
+queue admission, numeric FIFO, preserved options, terminal/cancellation races,
+probe cancellation, and legacy/new agent feedback. These were added but not run
+locally: the owner requested post-merge compilation/testing on main. Run:
+
+```bash
+cargo test -q -j 1 --lib blast_async -- --test-threads=1
+cargo test -q -j 1 --lib execute_async_blast -- --test-threads=1
+cargo test -q -j 1 --lib async_blast_probe -- --test-threads=1
+cargo test -q -j 1 --lib agent_feedback_async_start_is_not_completion
+```
+
+Still open: general command FIFO/dependency scheduling, durable job recovery,
+audited batch/per-operation failure receipts, adapter state-file I/O latency,
+general engine journal-copy cost and live Glen/T2T acceptance. This is not a
+claim of complete system-wide asynchronous migration or installed-app acceptance.
+
+### Earlier Reconciliation Verification
 
 Checked on `a5b7028157493d44c1812fc8e1f39e1ccbea6f6a`, with documentation edits only:
 

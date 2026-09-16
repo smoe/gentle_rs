@@ -2629,9 +2629,9 @@ Shared shell command:
       - async BLAST status/list routes (`genomes blast-status`,
         `helpers blast-status`, `genomes blast-list`, `helpers blast-list`,
         `blast_async_status`, `blast_async_list`) are fact-annotated with no
-        project-state preconditions. They may refresh persisted async-job
-        metadata while polling/listing, but declare no hard biological project
-        effects; job ids and optional terminal reports remain execution-time
+        project-state preconditions. They observe cached live or saved receipts
+        without dispatching work or rewriting project metadata; job ids and
+        optional terminal reports remain execution-time
         validation concerns. Async start/cancel and synchronous BLAST routes
         remain registry-only in this slice.
       - built-in ladder catalog routes such as `ladders list`,
@@ -6885,11 +6885,21 @@ Genome convenience commands:
   - Starts one async BLAST job and returns a stable `job_id`.
   - Jobs run through a bounded FIFO scheduler and may return initial state
     `queued` or `running` depending on current slot availability.
-  - Start payload includes `binary_preflight` with explicit BLAST tool diagnostics.
+  - Start schema is `gentle.blast_async_start.v2`: `binary_preflight` is null
+    and `binary_preflight_status` is `pending`, never an implied readiness pass.
+    Tool probes run in the worker; status returns their diagnostics.
+  - Up to 64 jobs can wait beyond the configured worker slots
+    (`GENTLE_BLAST_ASYNC_MAX_CONCURRENT`). Excess submissions are rejected.
+    Queued jobs preserve submitted options; cancellation before dispatch does
+    not launch BLAST. Queue progression does not depend on polling.
 - `genomes blast-status JOB_ID [--with-report]`
   - Polls async BLAST job status; `--with-report` includes final report payload when available.
   - Status includes scheduler metadata (`max_concurrent_jobs`, `running_jobs`,
     `queued_jobs`, and `queue_position` while queued).
+  - This is a cached, non-mutating observation, not a refresh or wait. Phase,
+    update time, request/result hashes and preflight diagnostics are available.
+    Retrieve/export the full result while the issuing process is alive: new
+    saved project receipts retain status/hashes, not full BLAST reports.
 - `genomes blast-cancel JOB_ID`
   - Requests cooperative cancellation for one async BLAST job.
 - `genomes blast-list`

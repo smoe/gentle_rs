@@ -817,15 +817,19 @@ choose a special background command to preserve responsiveness.
   each child step is quick; observation/control and conversation remain usable.
 
 Migration status: this invariant governs implementation but is not yet enforced
-universally. GUI genome preparation has a worker, while agent shell dispatch
-still executes synchronously under the engine write lock without a progress
-callback. Expanded-stack shell workers are synchronously joined; they are
+universally. The managed Agent Assistant families and interactive BLAST use
+background workers; unaudited command families can still execute under the
+engine write lock. Expanded-stack shell workers are synchronously joined; they are
 stack protection, not background submission. BLAST-specific async routes are
 existing migration foundations, not a caller obligation or a general solution.
 The first prerequisites preserve complete macro history on rollback and treat
 BLAST job-store transitions as auxiliary metadata, not structural edits.
-They do not yet make status polling observation-only or command execution
-nonblocking; the detached display/metadata merge remains the commit contract.
+BLAST admission now captures only the bounded project BLAST settings; executable
+probes run in workers. Its bounded FIFO progresses independently of observation.
+Status/list read cached observations without dispatch or persistence. Compact
+start/cancel receipts omit full result reports, which must be exported explicitly.
+This remains a process-scoped service, not durable general job admission;
+the detached display/metadata merge remains the project commit contract.
 Track the runtime correction and missing regressions in [roadmap.md](roadmap.md).
 The [review draft](asynchronous_command_execution_plan.md) separates button/text
 submission, presentation timing, workflow supervision and conversation ownership.

@@ -157,6 +157,18 @@ mod command_tests {
 
     #[test]
     fn direct_commands_remain_submittable_during_model_request() {
+        for command in [
+            "genomes blast toy ACGT",
+            "genomes blast-start toy ACGT",
+            "helpers blast-list",
+            "genomes blast-status blast-job-1",
+            "genomes blast-cancel blast-job-1",
+        ] {
+            assert_eq!(
+                GENtleApp::agent_prompt_direct_shell_command(command),
+                Some(command)
+            );
+        }
         assert!(GENtleApp::agent_submission_available(
             true, false, false, true, false
         ));
@@ -2088,6 +2100,7 @@ impl GENtleApp {
         } else if trimmed.len() <= 1024 * 1024
             && parse_shell_line(trimmed).is_ok_and(|command| {
                 crate::command_execution::CommandExecutionService::manages(&command)
+                    || command.is_blast_job_command()
             })
         {
             Some(trimmed)
@@ -2865,7 +2878,7 @@ impl GENtleApp {
             return;
         }
         let command = match parse_shell_line(trimmed) {
-            Ok(command) => command,
+            Ok(command) => command.into_interactive_blast(),
             Err(err) => {
                 self.agent_status = self.trf(
                     "agent.status.command_parse_error",
@@ -3082,9 +3095,18 @@ impl GENtleApp {
             return;
         }
         let run = {
-            match self.engine.write() {
+            let guard = if command.is_blast_job_command() {
+                self.engine
+                    .try_write()
+                    .map_err(|_| "Project is busy; BLAST command was not admitted. Retry shortly.")
+            } else {
+                self.engine
+                    .write()
+                    .map_err(|_| "Project engine lock is unavailable")
+            };
+            match guard {
                 Ok(mut guard) => execute_shell_command_with_options(&mut guard, &command, &options),
-                Err(_) => Err("Project engine lock is unavailable".to_string()),
+                Err(error) => Err(error.to_string()),
             }
         };
         match run {
