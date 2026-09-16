@@ -6,6 +6,7 @@ Fixture origin/recreation: test_files/fixtures/promoter_cofactors/README.md.
 """
 
 import hashlib
+from datetime import date
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,18 @@ from promoter_cofactor_tutorial import ROOT, FIXTURE, prepare, replay
 SOURCE = ROOT / "docs/tutorial/sources/08-14_promoter_cofactor_browser.json"
 BIN_DIR = os.environ.get("GENTLE_TUTORIAL_BIN_DIR")
 DUCKDB = os.environ.get("GENTLE_TEST_DUCKDB")
+
+
+def validate_human_review(review):
+    """Pending and genuine dated sign-offs are both valid; partial claims are not."""
+    reviewed_at = review.get("human_reviewed_at")
+    reviewer = review.get("human_reviewer")
+    if reviewed_at is None and reviewer is None:
+        return
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        raise ValueError("A dated human review requires a named reviewer")
+    if not isinstance(reviewed_at, str) or date.fromisoformat(reviewed_at).isoformat() != reviewed_at:
+        raise ValueError("Human review date must be YYYY-MM-DD")
 
 
 class PromoterCofactorTutorial(unittest.TestCase):
@@ -44,7 +57,15 @@ class PromoterCofactorTutorial(unittest.TestCase):
             self.assertTrue((guide.parent / relative.split("#")[0]).is_file(), relative)
         reviews = json.loads((ROOT / "docs/tutorial/review_manifest.json").read_text(encoding="utf-8"))
         review = next(r for r in reviews["entries"] if r["tutorial_id"] == source["id"])
-        self.assertIsNone(review["human_reviewed_at"])
+        validate_human_review(review)
+
+    def test_human_review_allows_pending_or_complete_signoff(self):
+        validate_human_review({"human_reviewed_at": None, "human_reviewer": None})
+        validate_human_review({"human_reviewed_at": "2026-09-16", "human_reviewer": "synthetic-test-reviewer"})
+        for date_value, reviewer in ((None, "reviewer"), ("2026-09-16", None),
+                                     ("not-a-date", "reviewer"), ("2026-09-16", " ")):
+            with self.subTest(date=date_value, reviewer=reviewer), self.assertRaises(ValueError):
+                validate_human_review({"human_reviewed_at": date_value, "human_reviewer": reviewer})
 
     def test_fixture_template_declares_scope_and_score_family(self):
         template = json.loads((FIXTURE / "manifest.template.json").read_text(encoding="utf-8"))
@@ -84,6 +105,12 @@ class PromoterCofactorTutorial(unittest.TestCase):
             self.assertNotIn("max_signal_value", evidence)
             self.assertEqual(evidence["associated_gene_ids"], ["GENE-A", "GENE-B"])
             receipt = json.loads((output / "replay.json").read_text(encoding="utf-8"))
+            self.assertEqual(receipt["feature_sequences"], ["demo_plus"])
+            for seq_id, strand in (("demo_plus", "plus"),):
+                self.assertTrue((output / f"{seq_id}.preview.state.json").is_file())
+                report = json.loads((output / f"{seq_id}.applied.json").read_text(encoding="utf-8"))
+                self.assertEqual(report["feature_materialization"]["projection"]["local_strand"], strand)
+                self.assertTrue(report["feature_materialization"]["curation"]["applied"])
             for command in receipt["commands"]:
                 self.assertEqual(command[1:3], ["--state", str(output / "tutorial.state.json")])
 

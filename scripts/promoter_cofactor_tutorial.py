@@ -2,7 +2,8 @@
 
 Only repository-authored fixture.sql is executed to create temporary Parquet.
 Queries and capture validation belong to GENtle, not this teaching harness.
-No downloads, production package, genome preparation or external publication.
+No downloads, production package or external publication. The tiny synthetic
+reference is prepared locally to verify explicit DNA-feature attachment.
 """
 
 import argparse
@@ -10,6 +11,7 @@ import hashlib
 import json
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -98,8 +100,39 @@ def replay(output, cli, duckdb):
     assert saved["evidence"][0]["source_record"] == detail
     write_json(output / "inspect_region.request.json", dict(set_id="promoter_cofactors", region_id=saved["region_id"]))
     run("shell", "regions inspect " + shlex.quote("@" + str(output / "inspect_region.request.json")))
+    # A non-palindromic synthetic reference tests orientation, not motif biology.
+    reference = "AACCGT" * 40
+    (output / "toy.fa").write_text(">1\n" + reference + "\n", encoding="utf-8")
+    (output / "toy.gtf").write_text('1\tsynthetic\tgene\t1\t240\t.\t+\t.\tgene_id "GENE-A"; gene_name "GENE-A";\n', encoding="utf-8")
+    catalog = output / "catalog.json"
+    write_json(catalog, {"Cofactor synthetic reference": dict(
+        ncbi_taxonomy_id=9606, ncbi_assembly_name="GRCh38", ncbi_assembly_accession="GCA_000000000.1", sequence_local="toy.fa",
+        annotations_local="toy.gtf", cache_dir=str(output / "cache"))})
+    run("genomes", "prepare", "Cofactor synthetic reference", "--catalog", str(catalog))
+    for seq_id, expected_start, expected_end in [("demo_plus", 33, 48)]:
+        run("genomes", "extract-region", "Cofactor synthetic reference", "1", "101", "200",
+            "--output-id", seq_id, "--annotation-scope", "none", "--catalog", str(catalog))
+        feature_request = dict(set_id="promoter_cofactors", region_id=saved["region_id"],
+                               seq_id=seq_id, expected_region_content_sha256=saved["content_sha256"])
+        preview_path = output / f"{seq_id}.preview.request.json"
+        write_json(preview_path, feature_request)
+        preview = run("shell", "regions preview-feature " + shlex.quote("@" + str(preview_path)))
+        write_json(output / f"{seq_id}.preview.json", preview)
+        feature = preview["feature_materialization"]
+        projection = feature["projection"]
+        assert (projection["local_start_0based"], projection["local_end_0based_exclusive"]) == (expected_start, expected_end)
+        assert projection["local_strand"] == "plus"
+        assert not feature["curation"]["applied"]
+        shutil.copyfile(state, output / f"{seq_id}.preview.state.json")
+        feature_request["expected_approval_sha256"] = feature["approval_sha256"]
+        apply_path = output / f"{seq_id}.apply.request.json"
+        write_json(apply_path, feature_request)
+        applied = run("shell", "regions materialize-feature " + shlex.quote("@" + str(apply_path)))
+        assert applied["feature_materialization"]["curation"]["applied"]
+        write_json(output / f"{seq_id}.applied.json", applied)
     write_json(output / "replay.json", {"status": "passed", "synthetic": True,
-               "commands": commands, "non_claim": "Offline CLI replay, not live GUI or scientific acceptance"})
+               "commands": commands, "feature_sequences": ["demo_plus"],
+               "non_claim": "Offline CLI replay, not live GUI or scientific acceptance"})
     return saved
 
 

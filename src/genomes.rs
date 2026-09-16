@@ -6824,6 +6824,44 @@ impl GenomeCatalog {
         end_1based: usize,
         cache_dir_override: Option<&str>,
     ) -> Result<String, String> {
+        self.read_prepared_sequence_region(
+            genome_id,
+            chromosome,
+            start_1based,
+            end_1based,
+            cache_dir_override,
+            true,
+        )
+    }
+
+    /// Read only this prepared catalog entry; never select a compatible assembly.
+    pub(crate) fn get_exact_sequence_region_with_cache(
+        &self,
+        genome_id: &str,
+        chromosome: &str,
+        start_1based: usize,
+        end_1based: usize,
+        cache_dir_override: Option<&str>,
+    ) -> Result<String, String> {
+        self.read_prepared_sequence_region(
+            genome_id,
+            chromosome,
+            start_1based,
+            end_1based,
+            cache_dir_override,
+            false,
+        )
+    }
+
+    fn read_prepared_sequence_region(
+        &self,
+        genome_id: &str,
+        chromosome: &str,
+        start_1based: usize,
+        end_1based: usize,
+        cache_dir_override: Option<&str>,
+        allow_compatible: bool,
+    ) -> Result<String, String> {
         if start_1based == 0 {
             return Err("Coordinates must be 1-based (start >= 1)".to_string());
         }
@@ -6832,8 +6870,12 @@ impl GenomeCatalog {
                 "Invalid interval: start ({start_1based}) is greater than end ({end_1based})"
             ));
         }
-        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
-        let resolved_genome_id = prepared.resolved_genome_id;
+        let resolved_genome_id = if allow_compatible {
+            self.resolve_prepared_genome_id(genome_id, cache_dir_override)?
+                .resolved_genome_id
+        } else {
+            self.resolve_entry_key(genome_id)?
+        };
         let entry = self.entry(&resolved_genome_id)?;
         let manifest_path = self
             .install_dir(&resolved_genome_id, entry, cache_dir_override)
@@ -7813,6 +7855,16 @@ FASTA index='{}'.{}{}",
         Err(format!(
             "Genome '{genome_id}' is not present in the catalog"
         ))
+    }
+
+    /// Resolve a catalog identifier/declared alias without prepared-genome fallback.
+    pub(crate) fn exact_catalog_entry(
+        &self,
+        genome_id: &str,
+    ) -> Result<(String, &GenomeCatalogEntry), String> {
+        let key = self.resolve_entry_key(genome_id)?;
+        let entry = self.entry(&key)?;
+        Ok((key, entry))
     }
 
     fn entry(&self, genome_id: &str) -> Result<&GenomeCatalogEntry, String> {
@@ -18421,6 +18473,12 @@ mod tests {
             .get_sequence_region("GRCh38.p14", "chr1", 1, 4)
             .expect("extract sequence via fallback");
         assert_eq!(seq, "ACGT");
+        assert!(
+            catalog
+                .get_exact_sequence_region_with_cache("GRCh38.p14", "chr1", 1, 4, None)
+                .is_err(),
+            "evidence attachment must not reuse a compatible entry when the exact entry is unprepared"
+        );
     }
 
     #[test]

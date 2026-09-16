@@ -460,6 +460,10 @@ fn genomic_region_capabilities_are_fact_annotated_and_exports_require_confirmati
         "regions export",
         "CreateGenomicRegion",
         "CaptureGenomicRegion",
+        "regions preview-feature",
+        "PreviewGenomicRegionFeature",
+        "regions materialize-feature",
+        "MaterializeGenomicRegionFeature",
         "ListGenomicRegions",
         "InspectGenomicRegion",
         "UpdateGenomicRegionPresentation",
@@ -486,7 +490,17 @@ fn genomic_region_capabilities_are_fact_annotated_and_exports_require_confirmati
         .expect("operation export descriptor");
     assert_eq!(shell_export["requires_confirmation"].as_bool(), Some(true));
     assert_eq!(op_export["requires_confirmation"].as_bool(), Some(true));
+    for id in [
+        "regions materialize-feature",
+        "MaterializeGenomicRegionFeature",
+    ] {
+        let descriptor = descriptors.iter().find(|d| d["id"] == id).unwrap();
+        assert_eq!(descriptor["mutating"], "true");
+        assert_eq!(descriptor["requires_confirmation"], true);
+    }
     for read_only in [
+        "regions preview-feature",
+        "PreviewGenomicRegionFeature",
         "regions list",
         "regions inspect",
         "ListGenomicRegions",

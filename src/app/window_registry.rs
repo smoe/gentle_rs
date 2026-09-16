@@ -238,6 +238,18 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "regions preview-feature",
+        menu_path: "File > Promoter Cofactors... > Saved motif: DNA annotation",
+        palette_title: "Promoter Cofactors",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "regions materialize-feature",
+        menu_path: "File > Promoter Cofactors... > Saved motif: DNA annotation",
+        palette_title: "Promoter Cofactors",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "regions create",
         menu_path: "Genome > Saved Genomic Regions...",
         palette_title: "Saved Genomic Regions",

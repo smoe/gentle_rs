@@ -1399,6 +1399,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "features tss-tfbs-profiles-export",
             "regions create",
             "regions capture",
+            "regions preview-feature",
+            "regions materialize-feature",
             "regions list",
             "regions inspect",
             "regions update",

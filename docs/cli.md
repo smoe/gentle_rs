@@ -5127,6 +5127,8 @@ Isoform architecture panel workflow:
     family across direct CLI, shared shell, MCP, and adapters:
     - `regions create REQUEST_JSON_OR_@FILE`
     - `regions capture REQUEST_JSON_OR_@FILE`
+    - `regions preview-feature REQUEST_JSON_OR_@FILE`
+    - `regions materialize-feature REQUEST_JSON_OR_@FILE`
     - `regions list [REQUEST_JSON_OR_@FILE]`
     - `regions inspect REQUEST_JSON_OR_@FILE`
     - `regions update REQUEST_JSON_OR_@FILE`
@@ -5139,6 +5141,16 @@ Isoform architecture panel workflow:
     - `region-sets` is accepted as an alias. Create/capture/update/derive/import
       mutate project metadata; list/inspect/export are read-only apart from
       explicit export files
+    - `preview-feature` verifies a saved, stranded cofactor hit against exact
+      prepared local reference DNA without mutation. Request fields: `set_id`,
+      `region_id`, `seq_id`, `expected_region_content_sha256`; optional
+      `catalog_path`/`cache_dir` override anchor provenance. Copy the returned
+      `feature_materialization.approval_sha256` into `expected_approval_sha256`
+      before explicitly calling `materialize-feature`. Apply is undoable and
+      rejects changed evidence, reference, DNA or annotation state and duplicate
+      attachment. No reference fallback/download or occupancy inference occurs.
+      Unstranded evidence stays in the region ledger. See the
+      [offline feature-attachment replay](tutorial/08-14_promoter_cofactor_browser.md).
     - example manual capture:
       `regions capture '{"set_id":"candidates","source":{"source_kind":"sequence_selection","seq_id":"locus","local_start_0based":20,"local_end_0based_exclusive":80,"reference_override":{"species_scientific_name":"Homo sapiens","taxon_id":9606,"assembly_name":"GRCh38","assembly_accession":"GCA_000001405.15","contig_name":"7"}},"purpose":"reporter_candidate"}'`
     - lossless export:

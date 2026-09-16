@@ -25,12 +25,15 @@ python3 scripts/promoter_cofactor_tutorial.py \
 
 On Windows the binary is `gentle_cli.exe`; choose a new local output directory.
 The script creates `package/`, exact request/report JSONs, a saved project,
-`regions.json` and `replay.json`. It executes only repository-authored fixture
+`regions.json`, a tiny local reference/catalog and `replay.json`. It executes only repository-authored fixture
 SQL to prepare data; every biological query and region capture goes through
 GENtle's shared CLI with an explicit temporary project, never the checkout's
 current state. It refuses to overwrite an existing destination. Parquet
 bytes can differ between DuckDB versions; fresh inventories bind the bytes
-actually produced, not a claimed cross-version binary hash.
+actually produced, not a claimed cross-version binary hash. The DNA attachment
+exercise prepares only a 240-base synthetic reference; it downloads nothing.
+Although its teaching assembly label matches the report, its bases are not
+human GRCh38 and do not biologically validate the imported motif score.
 
 The [fixture and origin](../../test_files/fixtures/promoter_cofactors/README.md)
 are artificial: two anchors, two shared promoters, a positional motif
@@ -163,9 +166,42 @@ that merely contains `GRCh38` is not an identity proof: unmatched labels are
 rejected, without guessing aliases or silently switching assembly. Leave the
 field empty to save a portable genomic region without any loaded sequence.
 
-Automatic native DNA-feature attachment needs an additional checked reference
-identity/materialization handoff. It is deliberately not claimed in this slice;
-see the [decision and remaining dependency](../decisions.md#dec-045-portable-genomic-regions-are-assembly-bound-evidence-ledgers).
+### Explicitly Attach A Stranded Motif To DNA
+
+For a prepared GUI practice project, open the companion's
+`demo_plus.preview.state.json` through **File > Open Project...**, then reopen
+**Promoter Cofactors...** and click **Reload saved motifs**. It contains the
+saved hit and verified synthetic DNA but no attached feature. The companion's
+final `tutorial.state.json` already contains the feature and deliberately rejects
+duplicate attachment.
+
+Saving remains separate from annotation. After saving a retained hit, open
+**Saved motif: DNA annotation**, choose a loaded, genome-anchored sequence and
+**Preview DNA annotation**. For the companion's `demo_plus` sequence, genomic
+`[133,148)` projects to local `[33,48)` because the sequence starts at genomic
+100. Review the reference, interval and strand, tick the approval checkbox,
+then **Attach DNA annotation**. Normal project undo removes the new feature.
+After reopening the project, or editing a saved region elsewhere, use
+**Reload saved motifs** and select the saved hit before making a fresh preview.
+
+The engine checks structured catalog assembly/taxon metadata, the exact contig,
+full containment and all anchored DNA bases against the locally prepared
+reference. A reference display label is not evidence. It does not download or
+substitute another genome. Changing DNA, catalog, saved evidence or existing
+annotations invalidates approval and requires a fresh preview. Repeating
+attachment of the same saved region is rejected. Keep the original report;
+the ordinary feature carries its ROI/source-report JSON, score and gene links.
+`gentle_roi_json_base64` encodes that JSON so GenBank line wrapping cannot break
+strings inside it; strip wrapping whitespace before base64 decoding.
+
+The offline CLI companion exercises plus-strand attachment end to end; Rust
+tests also exercise a verified reverse-oriented `[100,200)` view, where the
+same hit is local `[52,67)` on the minus strand. Do not use a newly reverse-
+complemented unanchored sequence as proof of genomic orientation. Anchors,
+promoters and tied/unstranded hits remain saved regions because the simple
+feature editor represents forward/reverse, not unknown orientation. These
+annotations indicate sequence association, never protein occupancy or causality.
+See [the reference-binding decision](../decisions.md#dec-045-portable-genomic-regions-are-assembly-bound-evidence-ledgers).
 
 ## 6. Reproduce Through CLI Or MCP
 
@@ -193,6 +229,14 @@ explicit confirmation for both calls, including the read-only query; do not
 set `confirm` without that consent. No SQL or nested agent call is needed. Both routes execute the
 same engine operations as the GUI.
 
+The script also writes `demo_plus.preview.request.json`, `demo_plus.preview.json`,
+`demo_plus.apply.request.json` and `demo_plus.applied.json`. The apply request
+copies the preview's approval digest; it is not reusable after annotation changes.
+Use `regions preview-feature` and `regions materialize-feature` with these
+request shapes in a fresh matching project. MCP clients use
+`PreviewGenomicRegionFeature` and `MaterializeGenomicRegionFeature` through the
+same confirmed `op` tool. A successful preview alone changes no annotations.
+
 ## Optional: Inspect The Local IRF9 Handoff
 
 This is not a committed dataset or a prerequisite for the tutorial. If you have
@@ -212,7 +256,8 @@ and the production package must remain outside the repository.
 ## Acceptance And Next Experiment
 
 The automated companion checks inspection, ranking, coordinate-selected detail,
-threshold invariants and lossless shared-engine region capture/export. Run:
+threshold invariants, lossless shared-engine region capture/export and exact
+local-reference preview/attachment on synthetic DNA. Run:
 
 ```sh
 GENTLE_TEST_DUCKDB=/absolute/path/to/duckdb \
@@ -222,8 +267,8 @@ GENTLE_TUTORIAL_BIN_DIR=/absolute/path/to/gentle/bin \
 
 For Glen's live acceptance: repeat steps 1-5 in the native GUI, edit a threshold
 without rerunning, verify the old-result warning and copied request, save a hit,
-inspect its evidence, and test matching plus/minus anchors and a mismatched
-assembly. Record exact revision/package hashes. Screenshot capture requires
+inspect its evidence, preview/confirm a motif annotation, undo it, and test
+matching plus/minus anchors and a mismatched assembly. Record exact revision/package hashes. Screenshot capture requires
 the repository's explicit consent policy; a CLI replay is not a screenshot or
 human scientific sign-off.
 

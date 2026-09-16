@@ -19,6 +19,21 @@
   feedback regressions. Compilation/test execution is deferred to main at the
   owner's request; general command queuing and live GUI acceptance remain open.
 
+## 2026-09-16 - Verified Promoter-Cofactor DNA Annotation
+
+- Add shared saved-motif feature preview and explicit digest-approved attachment.
+  Verify source-row provenance, structured catalog assembly/taxon, exact local
+  reference DNA and strand-aware projection; reject stale inputs and duplicate
+  attachment. Reuse ordinary feature curation and undo/redo, retaining raw
+  scores and lossless saved-region evidence. No downloads or coverage inference.
+- Add preview/target/confirmation controls to the existing cofactor browser,
+  with engine-path and rendered-button tests. Keep unstranded evidence as regions
+  because the simple feature editor cannot represent unknown direction.
+- Extend the offline tutorial through local synthetic reference preparation and
+  CLI feature attachment. Let its metadata guard accept both pending and valid
+  named/dated human reviews. Native desktop/IRF9 scientific acceptance remains
+  a human follow-up; automated checks do not sign it off.
+
 ## 2026-09-16 - Node 24 GitHub Actions Runtime
 
 - Migrate CI, release-candidate, installer and container action references to

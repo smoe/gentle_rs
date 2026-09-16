@@ -4452,6 +4452,12 @@ pub enum Operation {
     CaptureGenomicRegion {
         request: gentle_protocol::GenomicRegionCaptureRequest,
     },
+    PreviewGenomicRegionFeature {
+        request: gentle_protocol::GenomicRegionFeatureRequest,
+    },
+    MaterializeGenomicRegionFeature {
+        request: gentle_protocol::GenomicRegionFeatureRequest,
+    },
     ListGenomicRegions {
         #[serde(default)]
         request: gentle_protocol::GenomicRegionListRequest,
@@ -10053,6 +10059,7 @@ impl GentleEngine {
                 | Operation::ExportGelImageAnalysis { .. }
                 | Operation::PreviewFeatureLocationEdit { .. }
                 | Operation::PreviewFeatureRecordCuration { .. }
+                | Operation::PreviewGenomicRegionFeature { .. }
                 | Operation::RenderSequenceSvg { .. }
                 | Operation::RenderDotplotSvg { .. }
                 | Operation::RenderTfbsScoreTracksSvg { .. }

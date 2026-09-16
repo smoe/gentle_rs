@@ -462,9 +462,12 @@ Key properties:
   calling a route
 - `op`, `workflow`, and materialization-style routes require explicit
   confirmation (`confirm=true`) at the tool boundary where supported
-- The complete `regions create|capture|list|inspect|update|derive|import|export`
+- The complete `regions create|capture|preview-feature|materialize-feature|list|inspect|update|derive|import|export`
   family is advertised through the generic typed `op` tool. Import/export keep
   their declared project-mutation and external-file boundaries.
+  Feature preview is read-only; materialization is explicitly confirmed,
+  undoable and requires the fresh preview approval digest. Both use the exact
+  locally prepared reference, never a download or compatible-assembly fallback.
 - `uniprot build-linked-transcript-inventory` and the five
   `splicing cryptic-*` inspection/export routes are advertised through the
   generic typed `op` tool, not through duplicate MCP-only implementations.

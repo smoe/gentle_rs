@@ -75,8 +75,14 @@ an exact verified anchor, matching assembly/contig and full containment; the
 sequence digest and strand transform are retained, and genomic coordinates are
 unchanged. Catalog labels merely containing an assembly token are not silently
 treated as aliases. Leave the GUI sequence-ID field empty to save portable
-regions when that exact reference binding is unavailable. Native feature
-attachment needs a further checked reference identity/materialization handoff;
+regions when that exact reference binding is unavailable. For a saved stranded
+motif hit, **Saved motif: DNA annotation** offers a separate target-DNA selector,
+preview and explicit confirmation. It uses structured assembly/taxon metadata
+and exact prepared-reference bytes, not a catalog display label. The same
+`regions preview-feature` / `regions materialize-feature` routes bind approval
+to evidence, reference, DNA and annotations; changed inputs require a fresh
+preview. The feature retains the lossless ROI/source report and raw score,
+is undoable, and is not attached twice. Unstranded evidence remains a region;
 see [DEC-045](decisions.md#dec-045-portable-genomic-regions-are-assembly-bound-evidence-ledgers).
 
 This can nominate sites for testing whether a defined sequence change reduces
@@ -153,9 +159,10 @@ are streamed through SHA-256 checks, not loaded as whole tables. Rechecks reject
 replacements during queries. Checksums establish consistency, not independent
 authentication of the producer's biological conclusions.
 
-This slice does not materialize annotations, propose sequence edits, export
-GenBank/EMBL or reconstruct >=2-fragment blocks from summarized CUT&RUN depth.
-Those remain separate explicit operations requiring appropriate source evidence.
+Queries never materialize annotations or propose sequence edits. Separate
+preview/approval can attach a retained stranded hit as an ordinary feature;
+normal sequence export can then carry its evidence qualifiers. Summarized
+CUT&RUN depth still cannot reconstruct coverage or >=2-fragment blocks.
 
 ## Verification
 

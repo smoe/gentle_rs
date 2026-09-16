@@ -120,6 +120,22 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["PreviewGenomicRegionFeature"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "regions preview-feature",
+         "summary": "Preview a saved cofactor motif as a DNA feature, verifying the exact prepared local reference without mutation or downloads.",
+         "usage": "regions preview-feature REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["MaterializeGenomicRegionFeature"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "regions materialize-feature",
+         "summary": "Explicitly attach a saved cofactor motif to verified DNA using the fresh approval digest from preview.",
+         "usage": "regions materialize-feature REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "ListGenomicRegions"
          ],

@@ -16968,13 +16968,23 @@ fn parse_gel_image_command(tokens: &[String]) -> Result<ShellCommand, String> {
 fn parse_genomic_regions_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
-            "regions requires: create|capture|list|inspect|update|derive|import|export|homology-screen|render-homology-svg [REQUEST_JSON_OR_@FILE]"
+            "regions requires: create|capture|preview-feature|materialize-feature|list|inspect|update|derive|import|export|homology-screen|render-homology-svg [REQUEST_JSON_OR_@FILE]"
                 .to_string(),
         );
     }
     let action = tokens[1].as_str();
     let payload = tokens.get(2..).unwrap_or_default().join(" ");
     let operation = match action {
+        "preview-feature" | "materialize-feature" => {
+            let request = parse_required_json_payload::<
+                gentle_protocol::GenomicRegionFeatureRequest,
+            >(&payload, "genomic-region feature request")?;
+            if action == "preview-feature" {
+                Operation::PreviewGenomicRegionFeature { request }
+            } else {
+                Operation::MaterializeGenomicRegionFeature { request }
+            }
+        }
         "create" => Operation::CreateGenomicRegion {
             request: parse_required_json_payload::<gentle_protocol::GenomicRegionCreateRequest>(
                 &payload,
@@ -17056,7 +17066,7 @@ fn parse_genomic_regions_command(tokens: &[String]) -> Result<ShellCommand, Stri
         }
         other => {
             return Err(format!(
-                "Unknown regions subcommand '{other}'; expected create, capture, list, inspect, update, derive, import, export, homology-screen, or render-homology-svg"
+                "Unknown regions subcommand '{other}'; expected create, capture, preview-feature, materialize-feature, list, inspect, update, derive, import, export, homology-screen, or render-homology-svg"
             ));
         }
     };
@@ -20962,6 +20972,27 @@ fn genomic_region_capability_descriptor(
     requires_confirmation: bool,
     description: &str,
 ) -> Value {
+    if matches!(
+        id,
+        "regions preview-feature"
+            | "PreviewGenomicRegionFeature"
+            | "regions materialize-feature"
+            | "MaterializeGenomicRegionFeature"
+    ) {
+        let apply = mutating == "true";
+        return json!({
+            "id": id, "kind": "operation", "mutating": mutating,
+            "requires_confirmation": requires_confirmation,
+            "args": [{"name": "REQUEST_JSON_OR_@FILE", "required": true, "subject_kind": "other",
+                "detail": "GenomicRegionFeatureRequest: set_id, region_id, seq_id, expected_region_content_sha256; optional catalog_path/cache_dir; apply requires expected_approval_sha256"}],
+            "reads": [],
+            "effects": if apply { vec![json!({"effect_kind": "may_on_success",
+                "description": "Appends one evidence-qualified DNA feature after exact local-reference and approval checks; undoable."})] } else { vec![] },
+            "precondition_expr": {"all": []},
+            "description": description, "annotation_status": "fact_annotated",
+            "registry": registry_metadata_for_introspection(id)
+        });
+    }
     let effects = match mutating {
         "true" => vec![json!({
             "effect_kind": "may_on_success",
@@ -21265,6 +21296,30 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "true",
             false,
             "Create and persist one assembly-bound genomic region of interest.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions preview-feature",
+            "false",
+            false,
+            "Preview a saved cofactor motif feature against exact prepared reference DNA; no download or mutation.",
+        ),
+        genomic_region_capability_descriptor(
+            "PreviewGenomicRegionFeature",
+            "false",
+            false,
+            "Preview a saved cofactor motif feature with reference and annotation-bound approval.",
+        ),
+        genomic_region_capability_descriptor(
+            "regions materialize-feature",
+            "true",
+            true,
+            "Explicitly attach a previewed cofactor motif feature using a fresh approval digest.",
+        ),
+        genomic_region_capability_descriptor(
+            "MaterializeGenomicRegionFeature",
+            "true",
+            true,
+            "Attach a previewed cofactor motif feature; rejects changed evidence, DNA, reference or annotations.",
         ),
         genomic_region_capability_descriptor(
             "CreateGenomicRegion",
@@ -31250,6 +31305,10 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "CreateGenomicRegion"
         | "regions capture"
         | "CaptureGenomicRegion"
+        | "regions preview-feature"
+        | "PreviewGenomicRegionFeature"
+        | "regions materialize-feature"
+        | "MaterializeGenomicRegionFeature"
         | "regions list"
         | "ListGenomicRegions"
         | "regions inspect"
@@ -62276,6 +62335,7 @@ fn execute_genomic_regions_command(
         operation,
         Operation::CreateGenomicRegion { .. }
             | Operation::CaptureGenomicRegion { .. }
+            | Operation::MaterializeGenomicRegionFeature { .. }
             | Operation::UpdateGenomicRegionPresentation { .. }
             | Operation::DeriveGenomicRegion { .. }
             | Operation::ImportGenomicRegionSet { .. }

@@ -86,6 +86,331 @@ fn hit_target() -> CofactorRegionTarget {
     }
 }
 
+/// Synthetic reference and report only: deterministic local FASTA/GTF, no download.
+pub(crate) fn feature_handoff_engine(
+    orientation: &str,
+) -> (
+    tempfile::TempDir,
+    crate::engine::GentleEngine,
+    gentle_protocol::GenomicRegionFeatureRequest,
+) {
+    use crate::engine::{GentleEngine, Operation};
+    use gentle_protocol::*;
+    let dir = tempfile::tempdir().unwrap();
+    let reference = "AACCGT".repeat(40);
+    fs::write(dir.path().join("toy.fa"), format!(">1\n{reference}\n")).unwrap();
+    fs::write(
+        dir.path().join("toy.gtf"),
+        "1\tsynthetic\tgene\t1\t240\t.\t+\t.\tgene_id \"GENE-A\"; gene_name \"GENE-A\";\n",
+    )
+    .unwrap();
+    let catalog_path = dir.path().join("catalog.json");
+    write_json(
+        &catalog_path,
+        &json!({"Cofactor synthetic reference": {
+        "ncbi_taxonomy_id":9606, "ncbi_assembly_name":"GRCh38", "ncbi_assembly_accession":"GCA_000000000.1",
+            "sequence_local":"toy.fa", "annotations_local":"toy.gtf", "cache_dir":"cache"
+        }}),
+    );
+    if orientation == "-" {
+        let mut catalog: Value = serde_json::from_slice(&fs::read(&catalog_path).unwrap()).unwrap();
+        let entry = catalog["Cofactor synthetic reference"]
+            .as_object_mut()
+            .unwrap();
+        entry.remove("ncbi_assembly_name");
+        entry.remove("ncbi_assembly_accession");
+        entry.insert(
+            "sequence_remote".into(),
+            json!("https://example.invalid/toy.fa"),
+        );
+        entry.insert(
+            "annotations_remote".into(),
+            json!("https://example.invalid/toy.gtf"),
+        );
+        entry.insert(
+            "ensembl_template".into(),
+            json!({"provider":"ensembl", "collection":"vertebrates",
+            "species_dir":"homo_sapiens", "file_stem":"Synthetic_species.GRCh38", "release":116}),
+        );
+        write_json(&catalog_path, &catalog);
+    }
+    let catalog =
+        crate::genomes::GenomeCatalog::from_json_file(catalog_path.to_str().unwrap()).unwrap();
+    catalog
+        .prepare_genome_once("Cofactor synthetic reference")
+        .unwrap();
+    let mut engine = GentleEngine::default();
+    let sequence = if orientation == "-" {
+        GentleEngine::reverse_complement(&reference[100..200])
+    } else {
+        reference[100..200].into()
+    };
+    engine.state_mut().sequences.insert(
+        "demo".into(),
+        crate::dna_sequence::DNAsequence::from_sequence(&sequence).unwrap(),
+    );
+    engine.state_mut().metadata.insert(
+        "provenance".into(),
+        json!({"genome_extractions":[{
+            "seq_id":"demo", "genome_id":"Cofactor synthetic reference", "chromosome":"1",
+            "start_1based":101,"end_1based":200,"anchor_strand":orientation,"anchor_verified":true,
+            "catalog_path":catalog_path,"cache_dir":dir.path().join("cache")
+        }]}),
+    );
+    let region = engine
+        .apply(Operation::CaptureGenomicRegion {
+            request: GenomicRegionCaptureRequest {
+                set_id: "promoter_cofactors".into(),
+                source: GenomicRegionCaptureSource::PromoterCofactor {
+                    report: Box::new(handoff_report()),
+                    target: hit_target(),
+                    seq_id: None,
+                },
+                ..Default::default()
+            },
+        })
+        .unwrap()
+        .genomic_region_operation
+        .unwrap()
+        .region
+        .unwrap();
+    let request = GenomicRegionFeatureRequest {
+        set_id: "promoter_cofactors".into(),
+        region_id: region.region_id,
+        seq_id: "demo".into(),
+        expected_region_content_sha256: region.content_sha256,
+        catalog_path: None,
+        cache_dir: None,
+        expected_approval_sha256: None,
+    };
+    (dir, engine, request)
+}
+
+#[test]
+fn promoter_cofactors_feature_preview_apply_both_strands_and_undo() {
+    use crate::engine::Operation;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use gentle_protocol::*;
+    for (orientation, start, end, strand) in [
+        ("+", 33, 48, GenomicRegionStrand::Plus),
+        ("-", 52, 67, GenomicRegionStrand::Minus),
+    ] {
+        let (_dir, mut engine, mut request) = feature_handoff_engine(orientation);
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let preview_op = Operation::PreviewGenomicRegionFeature {
+            request: request.clone(),
+        };
+        let preview = engine
+            .apply(preview_op.clone())
+            .unwrap()
+            .genomic_region_operation
+            .unwrap()
+            .feature_materialization
+            .unwrap();
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(
+            (
+                preview.projection.local_start_0based,
+                preview.projection.local_end_0based_exclusive,
+                preview.projection.local_strand
+            ),
+            (start, end, strand)
+        );
+        let again = engine
+            .apply(preview_op)
+            .unwrap()
+            .genomic_region_operation
+            .unwrap()
+            .feature_materialization
+            .unwrap();
+        assert_eq!(preview, again);
+        request.expected_approval_sha256 = Some(preview.approval_sha256);
+        let line = format!(
+            "regions materialize-feature '{}'",
+            serde_json::to_string(&request).unwrap()
+        );
+        let out = crate::engine_shell::execute_shell_command(
+            &mut engine,
+            &crate::engine_shell::parse_shell_line(&line).unwrap(),
+        )
+        .unwrap();
+        assert!(out.state_changed);
+        assert_eq!(
+            out.output["feature_materialization"]["curation"]["applied"],
+            true
+        );
+        let feature = &engine.state().sequences["demo"].features()[0];
+        assert!(
+            feature
+                .qualifiers
+                .iter()
+                .any(|(k, v)| &**k == "gentle_raw_motif_score" && v.as_deref() == Some("4.25"))
+        );
+        let retained = feature
+            .qualifiers
+            .iter()
+            .find(|(k, _)| &**k == "gentle_roi_json_base64")
+            .unwrap()
+            .1
+            .as_ref()
+            .unwrap();
+        let saved: GenomicRegionOfInterest =
+            serde_json::from_slice(&STANDARD.decode(retained).unwrap()).unwrap();
+        assert_eq!(saved.evidence[0].associated_gene_ids, ["GENE-A", "GENE-B"]);
+        assert_eq!(
+            saved.evidence[0].source_record.as_ref().unwrap()["details"][0]["plus_score"],
+            4.25
+        );
+        assert!(saved.evidence[0].max_signal_value.is_none());
+        let exported = _dir.path().join("annotated.gb");
+        engine.state().sequences["demo"]
+            .write_genbank_file(exported.to_str().unwrap())
+            .unwrap();
+        let reloaded =
+            crate::dna_sequence::DNAsequence::from_genbank_file(exported.to_str().unwrap())
+                .unwrap();
+        let roundtrip = reloaded[0].features()[0]
+            .qualifiers
+            .iter()
+            .find(|(key, _)| &**key == "gentle_roi_json_base64")
+            .unwrap()
+            .1
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<GenomicRegionOfInterest>(
+                &STANDARD
+                    .decode(
+                        roundtrip
+                            .bytes()
+                            .filter(|b| !b.is_ascii_whitespace())
+                            .collect::<Vec<_>>()
+                    )
+                    .unwrap()
+            )
+            .unwrap(),
+            saved
+        );
+        assert!(
+            engine
+                .apply(Operation::MaterializeGenomicRegionFeature {
+                    request: request.clone()
+                })
+                .unwrap_err()
+                .message
+                .contains("already attached")
+        );
+        engine.undo_last_operation().unwrap();
+        assert!(engine.state().sequences["demo"].features().is_empty());
+        engine.redo_last_operation().unwrap();
+        assert_eq!(engine.state().sequences["demo"].features().len(), 1);
+    }
+}
+
+#[test]
+fn promoter_cofactors_feature_rejects_stale_or_unverified_bindings() {
+    use crate::engine::Operation;
+    for fault in [
+        "approval",
+        "region",
+        "sequence",
+        "orientation",
+        "verified",
+        "assembly",
+        "taxon",
+        "label_only",
+        "contig",
+        "annotation",
+        "unprepared",
+    ] {
+        let (dir, mut engine, mut request) = feature_handoff_engine("+");
+        let preview = engine
+            .apply(Operation::PreviewGenomicRegionFeature {
+                request: request.clone(),
+            })
+            .unwrap()
+            .genomic_region_operation
+            .unwrap()
+            .feature_materialization
+            .unwrap();
+        request.expected_approval_sha256 = Some(preview.approval_sha256);
+        match fault {
+            "approval" => request.expected_approval_sha256 = None,
+            "region" => request.expected_region_content_sha256 = "sha256:stale".into(),
+            "sequence" => {
+                engine.state_mut().sequences.insert(
+                    "demo".into(),
+                    crate::dna_sequence::DNAsequence::from_sequence(&"A".repeat(100)).unwrap(),
+                );
+            }
+            "orientation" => {
+                engine.state_mut().metadata.get_mut("provenance").unwrap()["genome_extractions"]
+                    [0]["anchor_strand"] = json!("-")
+            }
+            "verified" => {
+                engine.state_mut().metadata.get_mut("provenance").unwrap()["genome_extractions"]
+                    [0]["anchor_verified"] = json!(false)
+            }
+            "contig" => {
+                engine.state_mut().metadata.get_mut("provenance").unwrap()["genome_extractions"]
+                    [0]["chromosome"] = json!("2")
+            }
+            "assembly" | "taxon" | "label_only" => {
+                let path = dir.path().join("catalog.json");
+                let mut catalog: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+                if fault == "assembly" {
+                    catalog["Cofactor synthetic reference"]["ncbi_assembly_name"] = json!("GRCh37");
+                } else if fault == "taxon" {
+                    catalog["Cofactor synthetic reference"]["ncbi_taxonomy_id"] = json!(10090);
+                } else {
+                    let entry = catalog["Cofactor synthetic reference"]
+                        .as_object_mut()
+                        .unwrap();
+                    entry.remove("ncbi_assembly_name");
+                    entry.remove("ncbi_assembly_accession");
+                    entry.insert("description".into(), json!("Human GRCh38 Ensembl 116"));
+                }
+                write_json(&path, &catalog);
+            }
+            "annotation" => {
+                engine
+                    .apply(Operation::ApplyFeatureRecordCuration {
+                        request: gentle_protocol::FeatureRecordCurationRequest::Create(
+                            gentle_protocol::FeatureRecordCreateRequest {
+                                seq_id: "demo".into(),
+                                feature_kind: "misc_feature".into(),
+                                start_0based: 0,
+                                end_0based_exclusive: 3,
+                                strand: gentle_protocol::FeatureLocationEditStrand::Forward,
+                                qualifiers: vec![],
+                                expected_annotation_state_fingerprint_sha256: Some(
+                                    crate::feature_record_curation::annotation_state_fingerprint_sha256(
+                                        "demo", 100, false, engine.state().sequences["demo"].features()
+                                    ).unwrap()
+                                ),
+                            },
+                        ),
+                    })
+                    .unwrap();
+            }
+            "unprepared" => fs::remove_dir_all(dir.path().join("cache")).unwrap(),
+            _ => unreachable!(),
+        }
+        let before = serde_json::to_value(engine.state()).unwrap();
+        assert!(
+            engine
+                .apply(Operation::MaterializeGenomicRegionFeature { request })
+                .is_err(),
+            "{fault}"
+        );
+        assert_eq!(
+            serde_json::to_value(engine.state()).unwrap(),
+            before,
+            "{fault}"
+        );
+    }
+}
+
 #[test]
 fn promoter_cofactors_capture_uses_shared_shell_and_preserves_both_orientations() {
     use crate::engine::{GentleEngine, Operation};

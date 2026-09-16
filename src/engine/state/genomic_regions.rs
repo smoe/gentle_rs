@@ -1,6 +1,7 @@
 //! Engine-owned persistence, projection, and interchange for genomic ROIs.
 
 use super::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use gentle_protocol as gp;
 
 const BED_COLUMNS: [&str; 6] = ["chrom", "chromStart", "chromEnd", "name", "score", "strand"];
@@ -580,6 +581,7 @@ fn report_for_region(
         human_copy,
         bed_row,
         canonical_roi_json,
+        feature_materialization: None,
         written_artifacts: vec![],
         warnings: vec![],
     })
@@ -905,6 +907,16 @@ impl GentleEngine {
                 "ROI reference does not match the requested sequence anchor",
             ));
         }
+        self.project_interval_with_verified_anchor(seq_id, interval, anchor)
+    }
+
+    /// Geometry only: callers must first verify the interval's reference identity.
+    fn project_interval_with_verified_anchor(
+        &self,
+        seq_id: &str,
+        interval: &gp::GenomicRegionInterval,
+        anchor: SequenceGenomeAnchorSummary,
+    ) -> Result<gp::GenomicRegionLocalProjection, EngineError> {
         let anchor_start_0based = anchor.start_1based.saturating_sub(1) as u64;
         let anchor_end_0based_exclusive = anchor.end_1based as u64;
         if interval.start_0based < anchor_start_0based
@@ -2246,6 +2258,262 @@ impl GentleEngine {
         }
     }
 
+    fn materialize_region_feature(
+        &mut self,
+        request: gp::GenomicRegionFeatureRequest,
+        apply: bool,
+        result: &mut OpResult,
+    ) -> Result<gp::GenomicRegionOperationReport, EngineError> {
+        let invalid = |message: &str| EngineError::invalid_input(message);
+        let store = self.genomic_region_store()?;
+        let region = store
+            .sets
+            .iter()
+            .find(|set| set.set_id == request.set_id)
+            .and_then(|set| {
+                set.regions
+                    .iter()
+                    .find(|region| region.region_id == request.region_id)
+            })
+            .cloned()
+            .ok_or_else(|| invalid("Saved genomic region not found"))?;
+        validate_region_digest(&region)?;
+        if region.content_sha256 != request.expected_region_content_sha256 {
+            return Err(invalid(
+                "Saved region changed; inspect it and preview again",
+            ));
+        }
+        // Reconstruct the selected source row, not a motif scan or an inferred track.
+        let evidence = region
+            .evidence
+            .first()
+            .filter(|e| region.evidence.len() == 1 && e.source_kind == "promoter_cofactor_query")
+            .ok_or_else(|| {
+                invalid("Feature attachment requires one saved promoter-cofactor motif hit")
+            })?;
+        let source: gp::promoter_cofactors::PromoterCofactorReport = serde_json::from_value(
+            evidence
+                .source_record
+                .clone()
+                .ok_or_else(|| invalid("Missing cofactor source report"))?,
+        )
+        .map_err(|e| invalid(&format!("Invalid cofactor source report: {e}")))?;
+        let hit = source.details.iter().find(|hit| {
+            evidence.feature_or_window_id.as_deref() == Some(format!(
+                "hit:{}:{}:{}", hit.anchor_id, hit.motif_id, hit.distance_band
+            ).as_str())
+        }).ok_or_else(|| invalid("Only retained motif hits can become stranded DNA features; anchors and promoters remain saved regions"))?;
+        let (source_interval, source_evidence) =
+            crate::promoter_cofactors::capture_region_evidence(
+                &source,
+                &gp::promoter_cofactors::CofactorRegionTarget::Hit {
+                    anchor_id: hit.anchor_id,
+                    motif_id: hit.motif_id.clone(),
+                    distance_band: hit.distance_band.clone(),
+                },
+            )
+            .map_err(EngineError::invalid_input)?;
+        if source_interval != region.interval || source_evidence != *evidence {
+            return Err(invalid(
+                "Saved region no longer matches its selected cofactor source row",
+            ));
+        }
+        if region.interval.strand == gp::GenomicRegionStrand::Unstranded {
+            return Err(invalid(
+                "Unstranded evidence cannot be represented as a stranded DNA feature",
+            ));
+        }
+        let anchor = self.latest_genome_anchor_for_seq(&request.seq_id)?;
+        if anchor.anchor_verified != Some(true) || !matches!(anchor.strand, Some('+' | '-')) {
+            return Err(invalid(
+                "DNA feature attachment requires a verified, oriented genome anchor",
+            ));
+        }
+        let catalog_path = request
+            .catalog_path
+            .as_deref()
+            .or(anchor.catalog_path.as_deref());
+        let cache_dir = request.cache_dir.as_deref().or(anchor.cache_dir.as_deref());
+        let (catalog, _) = Self::open_reference_genome_catalog(catalog_path)?;
+        let (catalog_entry_id, entry) = catalog
+            .exact_catalog_entry(&anchor.genome_id)
+            .map_err(EngineError::invalid_input)?;
+        let reference = &region.interval.reference;
+        // Structured provider assembly metadata only; never guess from a display label.
+        let assembly = entry.ncbi_assembly_name.as_deref().or_else(|| {
+            entry.ensembl_template.as_ref().and_then(|template| {
+                template
+                    .file_stem
+                    .split_once('.')
+                    .map(|(_, assembly)| assembly)
+            })
+        });
+        if assembly != Some(reference.assembly_name.as_str())
+            || reference.taxon_id.is_none()
+            || reference.taxon_id != entry.ncbi_taxonomy_id
+            || reference
+                .assembly_accession
+                .as_ref()
+                .is_some_and(|accession| entry.ncbi_assembly_accession.as_ref() != Some(accession))
+        {
+            return Err(invalid(
+                "ROI assembly/taxon does not exactly match structured catalog metadata; no assembly fallback is allowed",
+            ));
+        }
+        if reference.contig_name != anchor.chromosome {
+            return Err(invalid(
+                "ROI contig must exactly match the anchored chromosome; re-extract using its canonical name",
+            ));
+        }
+        let reference_dna = catalog
+            .get_exact_sequence_region_with_cache(
+                &catalog_entry_id,
+                &anchor.chromosome,
+                anchor.start_1based,
+                anchor.end_1based,
+                cache_dir,
+            )
+            .map_err(|e| {
+                invalid(&format!(
+                    "Exact local reference required (no download): {e}"
+                ))
+            })?;
+        let reference_dna = if anchor.strand == Some('-') {
+            Self::reverse_complement_iupac(&reference_dna)?
+        } else {
+            reference_dna
+        };
+        let dna = self
+            .state
+            .sequences
+            .get(&request.seq_id)
+            .ok_or_else(|| invalid("Target DNA sequence not found"))?;
+        if !dna
+            .forward_bytes()
+            .eq_ignore_ascii_case(reference_dna.as_bytes())
+        {
+            return Err(invalid(
+                "Target DNA differs from the exact prepared reference; re-extract or review edits before attachment",
+            ));
+        }
+        let projection = self.project_interval_with_verified_anchor(
+            &request.seq_id,
+            &region.interval,
+            self.sequence_genome_anchor_summary(&request.seq_id)?,
+        )?;
+        if dna.features().iter().any(|feature| {
+            feature.qualifiers.iter().any(|(key, value)| {
+                &**key == "gentle_roi_content_sha256"
+                    && value.as_deref().is_some_and(|value| {
+                        value
+                            .bytes()
+                            .filter(|byte| !byte.is_ascii_whitespace())
+                            .eq(region.content_sha256.bytes())
+                    })
+            })
+        }) {
+            return Err(invalid(
+                "This saved region is already attached to the target DNA",
+            ));
+        }
+        let annotation_sha256 =
+            crate::feature_record_curation::annotation_state_fingerprint_sha256(
+                &request.seq_id,
+                dna.len(),
+                dna.is_circular(),
+                dna.features(),
+            )?;
+        let catalog_entry_sha256 =
+            sha256_prefixed_str(&serialize_for_digest(entry, "catalog entry")?);
+        let reference_sequence_sha256 =
+            sha256_prefixed_bytes(reference_dna.to_ascii_uppercase().as_bytes());
+        let mut qualifiers = vec![];
+        let mut qualifier = |key: &str, value: String| {
+            qualifiers.push(gp::FeatureRecordQualifier {
+                key: key.into(),
+                value: Some(value),
+            })
+        };
+        qualifier("label", format!("{} motif evidence", hit.motif_id));
+        qualifier("note", evidence.evidence_statement.clone());
+        qualifier("note", "Sequence motif association only; not occupancy, affinity or causal regulation. No coverage reconstructed.".into());
+        qualifier("gentle_roi_set_id", request.set_id.clone());
+        qualifier("gentle_roi_id", region.region_id.clone());
+        qualifier("gentle_roi_content_sha256", region.content_sha256.clone());
+        qualifier(
+            "gentle_roi_json_base64",
+            STANDARD.encode(serialize_for_digest(&region, "saved ROI")?),
+        );
+        qualifier("gentle_catalog_entry_sha256", catalog_entry_sha256.clone());
+        qualifier(
+            "gentle_reference_sequence_sha256",
+            reference_sequence_sha256.clone(),
+        );
+        qualifier(
+            "gentle_raw_motif_score",
+            hit.best_score
+                .ok_or_else(|| invalid("Retained motif has no raw score"))?
+                .to_string(),
+        );
+        qualifier("gentle_source_report_id", source.report_id.clone());
+        let feature_request = gp::FeatureRecordCreateRequest {
+            seq_id: request.seq_id.clone(),
+            feature_kind: "misc_feature".into(),
+            start_0based: i64::try_from(projection.local_start_0based)
+                .map_err(|_| invalid("Local coordinate overflow"))?,
+            end_0based_exclusive: i64::try_from(projection.local_end_0based_exclusive)
+                .map_err(|_| invalid("Local coordinate overflow"))?,
+            strand: if projection.local_strand == gp::GenomicRegionStrand::Minus {
+                gp::FeatureLocationEditStrand::Reverse
+            } else {
+                gp::FeatureLocationEditStrand::Forward
+            },
+            qualifiers,
+            expected_annotation_state_fingerprint_sha256: Some(annotation_sha256),
+        };
+        let approval_sha256 = sha256_prefixed_str(&serialize_for_digest(
+            &serde_json::json!({
+                "contract": "cofactor_region_feature_v1", "projection": projection,
+                "catalog_entry_id": catalog_entry_id, "catalog_entry_sha256": catalog_entry_sha256,
+                "reference_sequence_sha256": reference_sequence_sha256, "feature": feature_request,
+            }),
+            "feature approval",
+        )?);
+        if apply && request.expected_approval_sha256.as_deref() != Some(approval_sha256.as_str()) {
+            return Err(invalid(
+                "Missing or stale feature approval digest; preview again before applying",
+            ));
+        }
+        self.execute_feature_record_curation(
+            gp::FeatureRecordCurationRequest::Create(feature_request),
+            apply,
+            result,
+        )?;
+        let mut report = report_for_region(
+            if apply {
+                "materialize_feature"
+            } else {
+                "preview_feature"
+            },
+            None,
+            Some(region),
+        )?;
+        report.feature_materialization = Some(gp::GenomicRegionFeatureReport {
+            approval_sha256,
+            catalog_entry_id,
+            catalog_entry_sha256,
+            reference_sequence_sha256,
+            projection,
+            curation: *result
+                .feature_record_curation_report
+                .clone()
+                .ok_or_else(|| {
+                    region_error(ErrorCode::Internal, "Feature curation returned no report")
+                })?,
+        });
+        Ok(report)
+    }
+
     pub(super) fn apply_genomic_region_operation(
         &mut self,
         op: Operation,
@@ -2254,6 +2522,12 @@ impl GentleEngine {
         let report = match op {
             Operation::CreateGenomicRegion { request } => self.create_region(request)?,
             Operation::CaptureGenomicRegion { request } => self.capture_region(request)?,
+            Operation::PreviewGenomicRegionFeature { request } => {
+                self.materialize_region_feature(request, false, result)?
+            }
+            Operation::MaterializeGenomicRegionFeature { request } => {
+                self.materialize_region_feature(request, true, result)?
+            }
             Operation::ListGenomicRegions { request } => self.list_regions(request)?,
             Operation::InspectGenomicRegion { request } => self.inspect_region(request)?,
             Operation::UpdateGenomicRegionPresentation { request } => {

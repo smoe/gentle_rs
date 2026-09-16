@@ -1027,11 +1027,22 @@ scores, selected-site presence, cohort statistics and sample/control depth
 summaries stay distinct. Maxima cannot reconstruct a coverage track or establish
 cofactor occupancy. Unspecified anchor/promoter orientation stays unstranded.
 
-The initial useful handoff is a saved genomic region with optional existing
-exact-anchor local projection. Native DNA-feature materialization is deferred
-until catalog/assembly/contig identity can be verified end to end and evidence
-can be attached explicitly. No heuristic catalog-label alias, implicit download,
-assembly switch or inferred CUT&RUN coverage is allowed to bridge that gap.
+Saved cofactor motif hits can be attached explicitly as ordinary DNA features
+through preview and digest-approved materialization. The engine verifies the
+saved source row, structured catalog assembly/taxon metadata, exact contig,
+full containment, verified anchor orientation and whole anchored DNA against
+the exact locally prepared entry. Assembly metadata comes from the NCBI name
+or the assembly suffix of the structured Ensembl file stem, never a display
+label. Patch names are not silently equated. No compatible-genome fallback,
+implicit download or inferred CUT&RUN coverage is allowed.
+The approval binds ROI content, catalog entry, oriented reference DNA,
+projection and the ordered annotation state. Mutation rechecks these inputs,
+rejects duplicate attachment and uses the existing undoable feature writer.
+Unstranded hits, anchors and promoters remain regions: the current simple
+feature editor cannot express unknown orientation without implying a strand.
+Features retain the original ROI/source report as a base64-encoded JSON qualifier
+(`gentle_roi_json_base64`; remove flat-file wrapping whitespace to decode); those
+checksums bind evidence but do not authenticate the producer's claims.
 
 ## DEC-046: Regulatory-Fragment Panels Are Exact Contrast Plans
 

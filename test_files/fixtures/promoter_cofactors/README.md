@@ -31,3 +31,16 @@ small synthetic transport records with two gene links, a hit extending outside
 a promoter and distinct TP73/control summaries. No experiment is represented.
 It exercises saved-region provenance, forward/reverse sequence projection,
 assembly rejection and GUI stale-result/copy binding without a DuckDB runtime.
+
+`feature_handoff_engine()` additionally creates a temporary 240-base chromosome
+(`AACCGT` repeated 40 times), one synthetic GTF gene and a local catalog declaring
+the teaching assembly/taxon and fabricated `GCA_000000000.1` accession.
+The tutorial replay creates the same reference.
+The reverse-strand Rust fixture uses structured Ensembl metadata instead, with
+reserved `example.invalid` URLs required by catalog validation; preparation
+always reads the supplied local FASTA/GTF and never retrieves those URLs.
+The label GRCh38 matches the toy report; these are **not human reference bases**
+and are not used to validate the imported motif score. Preparation/extraction
+uses the real genome code offline. Tests bind [133,148) to plus/minus views of
+[100,200), preview/confirm attachment, reject reference/evidence/annotation drift
+and duplicate application, and exercise undo/redo and the GUI action path.

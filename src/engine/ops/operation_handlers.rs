@@ -39403,7 +39403,7 @@ impl GentleEngine {
         Ok(())
     }
 
-    fn execute_feature_record_curation(
+    pub(crate) fn execute_feature_record_curation(
         &mut self,
         request: FeatureRecordCurationRequest,
         apply_change: bool,
@@ -40130,6 +40130,8 @@ impl GentleEngine {
             &op,
             Operation::CreateGenomicRegion { .. }
                 | Operation::CaptureGenomicRegion { .. }
+                | Operation::PreviewGenomicRegionFeature { .. }
+                | Operation::MaterializeGenomicRegionFeature { .. }
                 | Operation::ListGenomicRegions { .. }
                 | Operation::InspectGenomicRegion { .. }
                 | Operation::UpdateGenomicRegionPresentation { .. }
@@ -40236,6 +40238,8 @@ impl GentleEngine {
                 }
                 Operation::CreateGenomicRegion { .. }
                 | Operation::CaptureGenomicRegion { .. }
+                | Operation::PreviewGenomicRegionFeature { .. }
+                | Operation::MaterializeGenomicRegionFeature { .. }
                 | Operation::ListGenomicRegions { .. }
                 | Operation::InspectGenomicRegion { .. }
                 | Operation::UpdateGenomicRegionPresentation { .. }

@@ -576,6 +576,60 @@ pub struct GenomicRegionOperationReport {
     pub bed_row: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub canonical_roi_json: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feature_materialization: Option<GenomicRegionFeatureReport>,
     pub written_artifacts: Vec<String>,
     pub warnings: Vec<String>,
+}
+
+/// Explicit attachment of a saved, stranded cofactor motif to verified local DNA.
+/// Preview is read-only; apply requires the approval digest returned by preview.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GenomicRegionFeatureRequest {
+    pub set_id: String,
+    pub region_id: String,
+    pub seq_id: String,
+    pub expected_region_content_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_approval_sha256: Option<String>,
+}
+
+/// The approval binds the ROI, exact catalog entry, reference DNA and annotations.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GenomicRegionFeatureReport {
+    pub approval_sha256: String,
+    pub catalog_entry_id: String,
+    pub catalog_entry_sha256: String,
+    pub reference_sequence_sha256: String,
+    pub projection: GenomicRegionLocalProjection,
+    pub curation: crate::feature_record_curation::FeatureRecordCurationReport,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn genomic_region_legacy_report_omits_feature_materialization() {
+        let report: GenomicRegionOperationReport = serde_json::from_value(serde_json::json!({
+            "schema": GENOMIC_REGION_OPERATION_REPORT_SCHEMA, "action": "inspect"
+        }))
+        .unwrap();
+        assert!(report.feature_materialization.is_none());
+        assert!(
+            serde_json::to_value(report)
+                .unwrap()
+                .get("feature_materialization")
+                .is_none()
+        );
+        let request: GenomicRegionFeatureRequest = serde_json::from_value(serde_json::json!({
+            "set_id":"test", "region_id":"hit", "seq_id":"dna", "expected_region_content_sha256":"sha256:test"
+        })).unwrap();
+        assert!(request.expected_approval_sha256.is_none());
+    }
 }

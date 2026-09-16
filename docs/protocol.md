@@ -66,6 +66,26 @@ JSON. Older evidence omits the field unchanged. Import/save rejects a mismatched
 record digest. This is a portable evidence handoff, not feature materialization
 or a new interpretation of imported scores.
 
+`PreviewGenomicRegionFeature {request}` and `MaterializeGenomicRegionFeature
+{request}` compose saved cofactor hits with the existing feature-record writer.
+`GenomicRegionFeatureRequest` names `set_id`, `region_id`, `seq_id` and
+`expected_region_content_sha256`; optional `catalog_path`/`cache_dir` default
+to the sequence anchor's provenance. Apply additionally requires the preview's
+`expected_approval_sha256`. The existing v1 region-operation report adds an
+optional `feature_materialization` containing the approval, exact catalog and
+reference hashes, strand-aware projection and feature-curation report. Old
+reports omit it unchanged. Preview is read-only; apply appends one undoable
+`misc_feature`, retaining raw scores, links and original ROI/report qualifiers.
+The lossless payload is `gentle_roi_json_base64` (standard base64 of compact
+JSON); discard ASCII wrapping whitespace before decoding a flat-file qualifier.
+Human-readable score/non-claim qualifiers remain separate. This encoding avoids
+GenBank line wrapping corrupting JSON string values.
+Both revalidate exact structured assembly/taxon, contig, local reference bytes,
+source row and annotation fingerprints. No fallback reference or download is
+allowed. Only retained, explicitly stranded cofactor hits are supported; missing
+and unstranded sites are not fabricated as features. See
+[DEC-045](decisions.md#dec-045-portable-genomic-regions-are-assembly-bound-evidence-ledgers).
+
 ## Accession-Pinned TSS Profiles
 
 `ComputeTssTfbsProfiles {request, export?}` validates a transcript-oriented

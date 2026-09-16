@@ -22,6 +22,11 @@ pub(super) struct CofactorBrowser {
     status: String,
     submitted_form: Option<Value>,
     projection_seq_id: String,
+    saved_feature_region: Option<gentle_protocol::GenomicRegionOfInterest>,
+    saved_feature_regions: Vec<gentle_protocol::GenomicRegionOfInterest>,
+    feature_seq_id: String,
+    feature_preview: Option<gentle_protocol::GenomicRegionFeatureReport>,
+    feature_confirmed: bool,
 }
 
 impl Default for CofactorBrowser {
@@ -44,6 +49,11 @@ impl Default for CofactorBrowser {
             status: String::new(),
             submitted_form: None,
             projection_seq_id: String::new(),
+            saved_feature_region: None,
+            saved_feature_regions: vec![],
+            feature_seq_id: String::new(),
+            feature_preview: None,
+            feature_confirmed: false,
         }
     }
 }
@@ -99,6 +109,103 @@ fn number(value: Option<f64>) -> String {
 }
 
 impl GENtleApp {
+    fn reload_cofactor_feature_regions(&mut self) -> Result<(), String> {
+        let (value, _) = self.execute_shared_shell_command_json(&ShellCommand::GenomicRegions {
+            operation: Operation::ListGenomicRegions {
+                request: gentle_protocol::GenomicRegionListRequest {
+                    set_id: Some("promoter_cofactors".into()),
+                },
+            },
+        })?;
+        let report: gentle_protocol::GenomicRegionOperationReport =
+            serde_json::from_value(value)
+                .map_err(|e| format!("Invalid saved-region response: {e}"))?;
+        let s = &mut self.cofactor_browser;
+        s.saved_feature_regions = report
+            .set
+            .map(|set| set.regions)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|region| {
+                region.evidence.iter().any(|e| {
+                    e.source_kind == "promoter_cofactor_query"
+                        && e.feature_or_window_id
+                            .as_deref()
+                            .is_some_and(|id| id.starts_with("hit:"))
+                })
+            })
+            .collect();
+        s.saved_feature_regions
+            .sort_by(|a, b| a.region_id.cmp(&b.region_id));
+        let selected_id = s
+            .saved_feature_region
+            .as_ref()
+            .map(|r| r.region_id.as_str());
+        s.saved_feature_region = s
+            .saved_feature_regions
+            .iter()
+            .find(|r| Some(r.region_id.as_str()) == selected_id)
+            .or_else(|| s.saved_feature_regions.first())
+            .cloned();
+        s.feature_preview = None;
+        s.feature_confirmed = false;
+        s.status = format!(
+            "Loaded {} saved motif region(s); preview again before attachment.",
+            s.saved_feature_regions.len()
+        );
+        Ok(())
+    }
+
+    fn run_cofactor_feature_action(&mut self, apply: bool) -> Result<(), String> {
+        let s = &self.cofactor_browser;
+        if apply && !s.feature_confirmed {
+            return Err("Confirm the previewed DNA annotation before attaching".into());
+        }
+        let region = s
+            .saved_feature_region
+            .as_ref()
+            .ok_or("Save a retained motif hit first")?;
+        let request = gentle_protocol::GenomicRegionFeatureRequest {
+            set_id: "promoter_cofactors".into(),
+            region_id: region.region_id.clone(),
+            seq_id: s.feature_seq_id.clone(),
+            expected_region_content_sha256: region.content_sha256.clone(),
+            catalog_path: None,
+            cache_dir: None,
+            expected_approval_sha256: if apply {
+                Some(
+                    s.feature_preview
+                        .as_ref()
+                        .ok_or("Preview the DNA annotation first")?
+                        .approval_sha256
+                        .clone(),
+                )
+            } else {
+                None
+            },
+        };
+        self.cofactor_browser.feature_preview = None;
+        self.cofactor_browser.feature_confirmed = false;
+        let operation = if apply {
+            Operation::MaterializeGenomicRegionFeature { request }
+        } else {
+            Operation::PreviewGenomicRegionFeature { request }
+        };
+        let (value, changed) =
+            self.execute_shared_shell_command_json(&ShellCommand::GenomicRegions { operation })?;
+        let report: gentle_protocol::GenomicRegionOperationReport =
+            serde_json::from_value(value).map_err(|e| format!("Invalid feature response: {e}"))?;
+        if changed {
+            self.refresh_sequence_windows_from_engine_state();
+            self.cofactor_browser.status = "Attached motif evidence to DNA. Undo is available; this does not establish occupancy or regulation.".into();
+        } else {
+            self.cofactor_browser.feature_preview = report.feature_materialization;
+            self.cofactor_browser.status =
+                "Reference verified; review the proposed annotation before attaching.".into();
+        }
+        Ok(())
+    }
+
     fn start_cofactor_query(&mut self, query: CofactorQuery, anchor_id: Option<u64>) {
         let state = &mut self.cofactor_browser;
         if state.task.is_some() {
@@ -207,8 +314,113 @@ impl GENtleApp {
         let mut action = None;
         let mut navigate = None;
         let mut region_action = None;
+        let mut feature_action = None;
+        let mut reload_features = false;
+        let mut sequence_ids = self
+            .engine
+            .read()
+            .ok()
+            .map(|engine| engine.state().sequences.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        sequence_ids.sort();
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
             let s = &mut self.cofactor_browser;
+            ui.horizontal_wrapped(|ui| {
+                reload_features = ui.button("Reload saved motifs").clicked();
+                if !s.saved_feature_regions.is_empty() {
+                    egui::ComboBox::from_id_salt("cofactor_saved_feature")
+                        .selected_text(
+                            s.saved_feature_region
+                                .as_ref()
+                                .map(|r| r.label.as_deref().unwrap_or(&r.region_id))
+                                .unwrap_or("Saved motif"),
+                        )
+                        .show_ui(ui, |ui| {
+                            for region in &s.saved_feature_regions {
+                                if ui
+                                    .selectable_label(
+                                        s.saved_feature_region
+                                            .as_ref()
+                                            .is_some_and(|r| r.region_id == region.region_id),
+                                        region.label.as_deref().unwrap_or(&region.region_id),
+                                    )
+                                    .clicked()
+                                {
+                                    s.saved_feature_region = Some(region.clone());
+                                    s.feature_preview = None;
+                                    s.feature_confirmed = false;
+                                }
+                            }
+                        });
+                }
+            });
+            if let Some(region) = &s.saved_feature_region {
+                ui.collapsing("Saved motif: DNA annotation", |ui| {
+                    if let Some(label) = &region.label {
+                        ui.strong(label);
+                    }
+                    ui.label(format!(
+                        "{} | {}:[{}, {})",
+                        region.region_id,
+                        region.interval.reference.contig_name,
+                        region.interval.start_0based,
+                        region.interval.end_0based_exclusive
+                    ));
+                    for evidence in &region.evidence {
+                        ui.label(&evidence.evidence_statement);
+                    }
+                    let before = s.feature_seq_id.clone();
+                    egui::ComboBox::from_id_salt("cofactor_feature_sequence")
+                        .selected_text(if s.feature_seq_id.is_empty() {
+                            "Target DNA"
+                        } else {
+                            &s.feature_seq_id
+                        })
+                        .show_ui(ui, |ui| {
+                            for id in &sequence_ids {
+                                ui.selectable_value(&mut s.feature_seq_id, id.clone(), id);
+                            }
+                        });
+                    if before != s.feature_seq_id {
+                        s.feature_preview = None;
+                        s.feature_confirmed = false;
+                    }
+                    if ui
+                        .add_enabled(
+                            !s.feature_seq_id.is_empty(),
+                            egui::Button::new("Preview DNA annotation"),
+                        )
+                        .clicked()
+                    {
+                        feature_action = Some(false);
+                    }
+                    if let Some(preview) = &s.feature_preview {
+                        ui.label(format!(
+                            "{} | local [{}, {}) | {:?}",
+                            preview.catalog_entry_id,
+                            preview.projection.local_start_0based,
+                            preview.projection.local_end_0based_exclusive,
+                            preview.projection.local_strand
+                        ));
+                        ui.small(
+                            "Motif association evidence only; not occupancy or causal regulation.",
+                        );
+                        ui.checkbox(
+                            &mut s.feature_confirmed,
+                            "I approve this annotation on the selected DNA",
+                        );
+                        if ui
+                            .add_enabled(
+                                s.feature_confirmed,
+                                egui::Button::new("Attach DNA annotation"),
+                            )
+                            .clicked()
+                        {
+                            feature_action = Some(true);
+                        }
+                    }
+                });
+            }
             ui.add_enabled_ui(s.task.is_none(), |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Package");
@@ -533,6 +745,9 @@ impl GENtleApp {
             });
         });
         self.cofactor_browser.open = open;
+        if reload_features && let Err(error) = self.reload_cofactor_feature_regions() {
+            self.cofactor_browser.status = error;
+        }
         if let Some((kind, anchor)) = action {
             self.start_cofactor_query(kind, anchor);
         }
@@ -547,11 +762,36 @@ impl GENtleApp {
                 let command = ShellCommand::GenomicRegions {
                     operation: Operation::CaptureGenomicRegion { request },
                 };
-                self.cofactor_browser.status = match self.execute_shared_shell_command_json(&command) {
-                    Ok(_) => "Saved in region set promoter_cofactors. Inspect through regions inspect or the DNA window's Saved genomic regions. No DNA annotations or coverage were imported.".into(),
+                self.cofactor_browser.status = match self
+                    .execute_shared_shell_command_json(&command)
+                {
+                    Ok((value, _)) => {
+                        self.cofactor_browser.feature_preview = None;
+                        self.cofactor_browser.feature_confirmed = false;
+                        self.cofactor_browser.saved_feature_region = serde_json::from_value::<
+                            gentle_protocol::GenomicRegionOperationReport,
+                        >(
+                            value
+                        )
+                        .ok()
+                        .and_then(|report| report.region)
+                        .filter(|region| {
+                            region.evidence.iter().any(|e| {
+                                e.feature_or_window_id
+                                    .as_deref()
+                                    .is_some_and(|id| id.starts_with("hit:"))
+                            })
+                        });
+                        "Saved in region set promoter_cofactors. No DNA annotations or coverage were imported. Stranded hits can be previewed in Saved motif: DNA annotation.".into()
+                    }
                     Err(error) => error,
                 };
             }
+        }
+        if let Some(apply) = feature_action
+            && let Err(error) = self.run_cofactor_feature_action(apply)
+        {
+            self.cofactor_browser.status = error;
         }
         if let Some((chrom, start, end, Some(coverage))) = navigate {
             self.open_reference_genome_retrieve_dialog();
@@ -575,6 +815,163 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn feature_gui_frame(
+        app: &mut GENtleApp,
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+    ) -> Vec<(String, egui::Pos2)> {
+        fn collect(shape: &egui::epaint::Shape, text: &mut Vec<(String, egui::Pos2)>) {
+            match shape {
+                egui::epaint::Shape::Text(t) => {
+                    text.push((t.galley.text().into(), t.pos + t.galley.size() * 0.5))
+                }
+                egui::epaint::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        collect(shape, text);
+                    }
+                }
+                _ => {}
+            }
+        }
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1400.0, 1000.0),
+            )),
+            events,
+            ..Default::default()
+        });
+        app.render_promoter_cofactor_browser(ctx);
+        let mut text = vec![];
+        for shape in crate::egui_compat::end_test_pass(ctx).shapes {
+            collect(&shape.shape, &mut text);
+        }
+        text
+    }
+
+    fn click_feature_gui_text(app: &mut GENtleApp, ctx: &egui::Context, label: &str) {
+        let mut text = vec![];
+        for _ in 0..3 {
+            text = feature_gui_frame(app, ctx, vec![]);
+        }
+        let pos = text
+            .iter()
+            .find(|(t, _)| t == label)
+            .unwrap_or_else(|| panic!("Missing {label}: {text:?}"))
+            .1;
+        for pressed in [true, false] {
+            feature_gui_frame(
+                app,
+                ctx,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+    }
+
+    #[test]
+    fn promoter_cofactors_rendered_gui_clicks_preview_confirm_and_attach() {
+        let (_dir, engine, request) = crate::promoter_cofactors::tests::feature_handoff_engine("+");
+        let region = engine.genomic_region_store_snapshot().unwrap().sets[0].regions[0].clone();
+        let mut app = GENtleApp::default();
+        *app.engine.write().unwrap() = engine;
+        app.cofactor_browser.open = true;
+        app.cofactor_browser.saved_feature_region = Some(region);
+        app.cofactor_browser.feature_seq_id = request.seq_id;
+        let ctx = egui::Context::default();
+        ctx.style_mut_of(egui::Theme::Dark, |style| style.animation_time = 0.0);
+        ctx.style_mut_of(egui::Theme::Light, |style| style.animation_time = 0.0);
+        app.cofactor_browser.saved_feature_region = None;
+        click_feature_gui_text(&mut app, &ctx, "Reload saved motifs");
+        assert!(app.cofactor_browser.saved_feature_region.is_some());
+        click_feature_gui_text(&mut app, &ctx, "Saved motif: DNA annotation");
+        click_feature_gui_text(&mut app, &ctx, "Preview DNA annotation");
+        assert!(
+            app.cofactor_browser.feature_preview.is_some(),
+            "{}",
+            app.cofactor_browser.status
+        );
+        click_feature_gui_text(&mut app, &ctx, "Attach DNA annotation");
+        assert!(
+            app.engine.read().unwrap().state().sequences["demo"]
+                .features()
+                .is_empty()
+        );
+        click_feature_gui_text(
+            &mut app,
+            &ctx,
+            "I approve this annotation on the selected DNA",
+        );
+        assert!(app.cofactor_browser.feature_confirmed);
+        click_feature_gui_text(&mut app, &ctx, "Attach DNA annotation");
+        assert_eq!(
+            app.engine.read().unwrap().state().sequences["demo"]
+                .features()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn promoter_cofactors_gui_feature_preview_and_confirm_use_shared_engine() {
+        let (_dir, engine, request) = crate::promoter_cofactors::tests::feature_handoff_engine("-");
+        let region = engine.genomic_region_store_snapshot().unwrap().sets[0].regions[0].clone();
+        let mut app = GENtleApp::default();
+        *app.engine.write().unwrap() = engine;
+        app.cofactor_browser.saved_feature_region = Some(region);
+        app.cofactor_browser.feature_seq_id = request.seq_id;
+        assert!(app.run_cofactor_feature_action(true).is_err());
+        app.run_cofactor_feature_action(false).unwrap();
+        let preview = app.cofactor_browser.feature_preview.as_ref().unwrap();
+        assert_eq!(preview.projection.local_start_0based, 52);
+        assert_eq!(
+            preview.projection.local_strand,
+            gentle_protocol::GenomicRegionStrand::Minus
+        );
+        assert!(
+            app.engine.read().unwrap().state().sequences["demo"]
+                .features()
+                .is_empty()
+        );
+        app.cofactor_browser.feature_confirmed = true;
+        app.run_cofactor_feature_action(true).unwrap();
+        assert_eq!(
+            app.engine.read().unwrap().state().sequences["demo"]
+                .features()
+                .len(),
+            1
+        );
+        assert!(app.cofactor_browser.feature_preview.is_none());
+        assert!(!app.cofactor_browser.feature_confirmed);
+    }
+
+    #[test]
+    fn promoter_cofactors_gui_feature_target_change_rejects_stale_preview() {
+        let (_dir, engine, request) = crate::promoter_cofactors::tests::feature_handoff_engine("+");
+        let region = engine.genomic_region_store_snapshot().unwrap().sets[0].regions[0].clone();
+        let mut app = GENtleApp::default();
+        *app.engine.write().unwrap() = engine;
+        app.cofactor_browser.saved_feature_region = Some(region);
+        app.cofactor_browser.feature_seq_id = request.seq_id;
+        app.run_cofactor_feature_action(false).unwrap();
+        app.cofactor_browser.feature_seq_id = "missing".into();
+        app.cofactor_browser.feature_confirmed = true;
+        assert!(app.run_cofactor_feature_action(true).is_err());
+        assert!(app.cofactor_browser.feature_preview.is_none());
+        assert!(
+            app.engine.read().unwrap().state().sequences["demo"]
+                .features()
+                .is_empty()
+        );
+    }
 
     #[test]
     fn promoter_cofactors_form_edits_mark_results_stale_but_keep_copy_and_capture_bound() {
