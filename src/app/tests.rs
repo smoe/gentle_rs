@@ -13670,21 +13670,30 @@ fn approved_agent_screenshot_is_one_shot_and_previews_before_transport() {
 #[test]
 fn unsupported_agent_screenshot_provider_refuses_before_capture() {
     let _ = take_capture_events();
-    let mut app = GENtleApp::default();
-    let ctx = egui::Context::default();
-    ctx.begin_pass(egui::RawInput::default());
-    activate_test_agent_screenshot_request(&mut app, false, "inspect-unsupported");
+    for language in crate::i18n::UiLanguage::ALL {
+        let _language = crate::i18n::TestLanguageGuard::new(language);
+        let mut app = agent_i18n_test_app(language);
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput::default());
+        activate_test_agent_screenshot_request(&mut app, false, "inspect-unsupported");
 
-    app.approve_agent_screenshot_request(&ctx);
+        app.approve_agent_screenshot_request(&ctx);
 
-    let output = crate::egui_compat::end_test_pass(&ctx);
-    assert_eq!(screenshot_commands(&output), 0);
-    assert!(app.agent_screenshot_capture.is_none());
-    assert!(app.agent_pending_image_attachment.is_none());
-    assert!(
-        app.agent_status
-            .contains("cannot receive image attachments")
-    );
+        let output = crate::egui_compat::end_test_pass(&ctx);
+        assert_eq!(screenshot_commands(&output), 0);
+        assert!(app.agent_screenshot_capture.is_none());
+        assert!(app.agent_pending_image_attachment.is_none());
+        assert!(app.agent_task.is_none());
+        assert_eq!(
+            app.agent_status,
+            app.trf(
+                "agent.screenshot_request.unsupported",
+                &[("system", "Image Agent")],
+            ),
+            "unsupported provider refusal in {}",
+            language.id(),
+        );
+    }
 }
 
 #[test]

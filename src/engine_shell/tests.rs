@@ -1127,6 +1127,16 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
         "promoters tata-materialize" => Some(
             r#"promoters tata-materialize '{"screen":{"seq_id":"demo"},"expected_report_sha256":"sha256:parser-only","row_ids":["synthetic"]}'"#,
         ),
+        // Hand-crafted parser-only fixtures; execution still requires a matching TSS preview.
+        "promoters tss-inventory" => Some(
+            r#"promoters tss-inventory '{"seq_id":"demo","gene_query":"SYN","collection_id":"synthetic_tss"}'"#,
+        ),
+        "promoters tss-materialize" => Some(concat!(
+            "promoters tss-materialize '",
+            r#"{"inventory":{"seq_id":"demo","gene_query":"SYN","collection_id":"synthetic_tss"},"#,
+            r#""expected_approval_sha256":"sha256:parser-only","selected_tss_ids":["synthetic"]}"#,
+            "'",
+        )),
         "screenshot-window" => Some("screenshot-window out.png"),
         "cache clear" => Some("cache clear all-prepared-in-cache"),
         "transcripts derive" => Some("transcripts derive seq --feature-id 1"),
@@ -1397,6 +1407,57 @@ fn glossary_fragment_candidates_smoke_retains_typed_request_and_output_path() {
     ] {
         let error = parse_shell_line(line).expect_err("an empty object is not a typed request");
         assert!(error.contains("missing field `schema`"), "{error}");
+    }
+}
+
+#[test]
+fn glossary_tss_smoke_retains_typed_inventory_and_explicit_approval() {
+    let expected = gentle_protocol::tss_workspace::TssInventoryRequest {
+        seq_id: "demo".into(),
+        gene_query: "SYN".into(),
+        collection_id: "synthetic_tss".into(),
+        upstream_bp: 500,
+        downstream_bp: 200,
+    };
+    for path in ["promoters tss-inventory", "promoters tss-materialize"] {
+        let line = smoke_command_override(path).expect("typed TSS fixture");
+        let ShellCommand::Op { payload } = parse_shell_line(line).expect("TSS parser fixture")
+        else {
+            panic!("expected a shared typed operation for {path}");
+        };
+        match serde_json::from_str::<Operation>(&payload).expect("typed TSS operation") {
+            Operation::InspectTssInventory { request } => {
+                assert_eq!(path, "promoters tss-inventory");
+                assert_eq!(request, expected);
+            }
+            Operation::MaterializeTssWindows { request } => {
+                assert_eq!(path, "promoters tss-materialize");
+                assert_eq!(request.inventory, expected);
+                assert_eq!(request.expected_approval_sha256, "sha256:parser-only");
+                assert_eq!(request.selected_tss_ids, vec!["synthetic".to_string()]);
+            }
+            other => panic!("unexpected operation for {path}: {other:?}"),
+        }
+        let error = parse_shell_line(&format!("{path} '{{}}'"))
+            .expect_err("an empty object is not a typed TSS request");
+        assert!(error.contains("missing field"), "{error}");
+    }
+
+    let line = smoke_command_override("promoters tss-materialize").unwrap();
+    let tokens = split_shell_words(line).unwrap();
+    let request: serde_json::Value = serde_json::from_str(&tokens[2]).unwrap();
+    for required in ["expected_approval_sha256", "selected_tss_ids"] {
+        let mut incomplete = request.clone();
+        incomplete.as_object_mut().unwrap().remove(required);
+        let line = format!(
+            "promoters tss-materialize {}",
+            quote_shell_arg(&incomplete.to_string()),
+        );
+        let error = parse_shell_line(&line).expect_err("explicit approval and selection required");
+        assert!(
+            error.contains(&format!("missing field `{required}`")),
+            "{error}"
+        );
     }
 }
 
