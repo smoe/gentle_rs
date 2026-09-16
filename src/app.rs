@@ -3369,6 +3369,10 @@ impl GENtleApp {
         self.i18n.t(key)
     }
 
+    fn trf(&self, key: &str, values: &[(&str, &str)]) -> String {
+        self.i18n.tf(key, values)
+    }
+
     fn write_persisted_configuration_to_disk(&self) -> std::result::Result<(), String> {
         let path = Self::configuration_store_path();
         let payload = self.persisted_configuration_snapshot();
@@ -5393,13 +5397,13 @@ Error: `{err}`"
 
     fn request_agent_task_cancel(&mut self, origin: &str) {
         let Some(task) = self.agent_task.take() else {
-            self.agent_status = "No running agent request to stop".to_string();
+            self.agent_status = self.tr("agent.status.nothing_to_stop");
             return;
         };
         let elapsed = task.started.elapsed().as_secs_f64();
-        self.agent_status = format!(
-            "Agent request stopped after {:.1}s; any late response from this request will be ignored",
-            elapsed
+        self.agent_status = self.trf(
+            "agent.status.stopped",
+            &[("elapsed", &format!("{elapsed:.1}"))],
         );
         self.push_job_event(
             BackgroundJobKind::AgentAssist,
@@ -17194,8 +17198,8 @@ Error: `{err}`"
                     ui.close();
                 }
                 if ui
-                    .button("Agent Interface")
-                    .on_hover_text("Open the agent interface guide (CLI, MCP, and Agent Assistant)")
+                    .button(self.tr("agent.ui.interface"))
+                    .on_hover_text(self.tr("agent.ui.interface_hover"))
                     .clicked()
                 {
                     self.open_help_doc(HelpDoc::AgentInterface);
@@ -23216,18 +23220,21 @@ Error: `{err}`"
             }
 
             ui.separator();
-            ui.strong("Agent Assistant");
+            ui.strong(self.tr("agent.title"));
             let mut cancel_agent_clicked = false;
             if let Some(task) = &self.agent_task {
                 ui.horizontal(|ui| {
                     ui.add(egui::Spinner::new());
-                    ui.label(format!(
-                        "Running ({:.1}s)",
-                        task.started.elapsed().as_secs_f32()
+                    ui.label(self.trf(
+                        "agent.display.running",
+                        &[(
+                            "elapsed",
+                            &format!("{:.1}", task.started.elapsed().as_secs_f32()),
+                        )],
                     ));
                     if ui
-                        .button("Stop")
-                        .on_hover_text("Stop waiting for the current agent request")
+                        .button(self.tr("agent.ui.stop"))
+                        .on_hover_text(self.tr("agent.ui.stop_hover"))
                         .clicked()
                     {
                         cancel_agent_clicked = true;
@@ -23235,11 +23242,11 @@ Error: `{err}`"
                 });
             } else {
                 ui.horizontal(|ui| {
-                    ui.small("Idle");
+                    ui.small(self.tr("agent.ui.idle"));
                     if ui
-                        .button("Retry")
+                        .button(self.tr("agent.ui.retry"))
                         .on_hover_text(
-                            "Run the agent assistant request again with current prompt/settings",
+                            self.tr("agent.ui.retry_hover"),
                         )
                         .clicked()
                     {
@@ -24137,7 +24144,7 @@ Error: `{err}`"
                     active_doc_changed = true;
                 }
                 if ui
-                    .selectable_label(self.help_doc == HelpDoc::AgentInterface, "Agent Interface")
+                    .selectable_label(self.help_doc == HelpDoc::AgentInterface, self.tr("agent.ui.interface"))
                     .clicked()
                 {
                     self.help_doc = HelpDoc::AgentInterface;

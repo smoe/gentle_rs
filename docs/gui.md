@@ -468,8 +468,8 @@ Tabs:
   - The bottom `Cancel` and `Apply` actions are kept in a persistent footer and remain visible while scrolling.
 - `Language`
   - Configure the runtime GUI interface language for visible window chrome,
-    top-level menus, first translated configuration controls, and the main
-    Agent Assistant setup/action surface.
+    top-level menus, first translated configuration controls, and the
+    Agent Assistant conversation and Agent Systems configuration surfaces.
   - The default is `System default (English)`, currently resolved to British
     English (`en-GB`) until platform locale detection is wired.
   - Available catalogs are British English (`en-GB`), US English (`en-US`),
@@ -482,6 +482,12 @@ Tabs:
   - Shared shell commands, saved project data, protocol fields, agent payloads,
     and scientific identifiers stay in deterministic English regardless of the
     GUI language.
+  - Agent controls include tooltips, prompt-template names, bundled provider
+    labels/descriptions, model discovery and setup guidance, screenshot review,
+    response details, command results, and execution-state labels. Custom
+    provider catalog prose, editable prompt/template bodies, provider replies,
+    raw diagnostic records, and copied commands/JSON are not translated.
+    Setup rows wrap to accommodate longer translated labels.
 
 Persistence:
 

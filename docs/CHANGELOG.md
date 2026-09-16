@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-16 - Agent Interface Translations
+
+- Extend all eight GUI language catalogs across Agent Assistant and Agent
+  Systems configuration: controls, tooltips, template names, bundled provider
+  descriptions, setup guidance, screenshot review, response details, command
+  results and execution states. Keep custom catalog prose and machine-facing
+  records unchanged; wrap configuration rows for longer translations.
+- Add catalog/key/placeholder guards and offline rendered-GUI tests across the
+  language set, including unchanged command, preflight, response and clipboard
+  JSON assertions. Placeholder formatting never reinterprets braces in inserted
+  user/provider text.
+
 ## 2026-09-15 - Report-Bound Promoter-Cofactor Regions And Tutorial
 
 - Reuse `regions capture` for selected cofactor anchors, retained hits and

@@ -231,6 +231,23 @@ impl GENtleApp {
             && (selected_available || direct_command)
             && (direct_command || attachment_supported)
     }
+
+    fn agent_catalog_text(&self, system_id: &str, field: &str, text: &str) -> String {
+        self.i18n
+            .catalog_text(&format!("agent.provider.{system_id}.{field}"), text)
+    }
+
+    fn agent_command_source_label(&self, index: usize, source: &str) -> String {
+        if source == format!("Suggestion #{index}") {
+            self.trf(
+                "agent.ui.suggestion_number",
+                &[("index", &index.to_string())],
+            )
+        } else {
+            self.i18n.catalog_text("agent.ui.prompt_command", source)
+        }
+    }
+
     const AGENT_MODEL_SELECTION_REQUIRED_MESSAGE: &'static str =
         "Connection established, please select the model to use in the drop-down box.";
     const AGENT_SCREENSHOT_CAPTURE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -624,9 +641,9 @@ impl GENtleApp {
             return;
         };
         if !system.supports_image_attachments {
-            self.agent_status = format!(
-                "Agent system '{}' cannot receive image attachments. No image was captured.",
-                consent.system_label
+            self.agent_status = self.trf(
+                "agent.screenshot_request.unsupported",
+                &[("system", &consent.system_label)],
             );
             return;
         }
@@ -671,9 +688,9 @@ impl GENtleApp {
             source_window_title: target.title.clone(),
             started: Instant::now(),
         });
-        self.agent_status = format!(
-            "Capturing one user-approved screenshot from '{}'. It will be previewed locally before it can be sent.",
-            target.title
+        self.agent_status = self.trf(
+            "agent.screenshot_request.capturing",
+            &[("window", &target.title)],
         );
         ctx.request_repaint_after(Duration::from_millis(100));
     }
@@ -714,9 +731,7 @@ impl GENtleApp {
                     .any(|entry| entry.native_menu_key == selected)
             })
         {
-            self.invalidate_agent_screenshot_state(Some(
-                "The selected GENtle window closed, so the screenshot request expired.",
-            ));
+            self.invalidate_agent_screenshot_state(Some(&self.tr("agent.status.window_closed")));
             return;
         }
 
@@ -751,7 +766,11 @@ impl GENtleApp {
             ui.strong(self.tr("agent.screenshot_request.title"));
             ui.horizontal_wrapped(|ui| {
                 ui.small(self.tr("agent.screenshot_request.system"));
-                ui.monospace(format!("{} ({})", consent.system_label, consent.system_id));
+                ui.monospace(format!(
+                    "{} ({})",
+                    self.agent_catalog_text(&consent.system_id, "label", &consent.system_label),
+                    consent.system_id
+                ));
             });
             ui.label(
                 self.tr("agent.screenshot_request.reason")
@@ -837,13 +856,13 @@ impl GENtleApp {
                 .unwrap_or(false);
             ui.group(|ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.strong("Attached screenshot");
+                    ui.strong(self.tr("agent.ui.attached_screenshot"));
                     ui.small(
                         attachment
                             .request
                             .source_window_title
                             .as_deref()
-                            .unwrap_or("GENtle window"),
+                            .unwrap_or(&self.tr("agent.ui.window")),
                     );
                     if let (Some(width), Some(height)) = (
                         attachment.request.pixel_width,
@@ -858,7 +877,7 @@ impl GENtleApp {
                             .request
                             .capture_backend
                             .as_deref()
-                            .unwrap_or("capture")
+                            .unwrap_or(&self.tr("agent.ui.capture"))
                     ));
                 });
                 ui.add(
@@ -873,20 +892,17 @@ impl GENtleApp {
                     .max_height(260.0)
                     .shrink_to_fit(),
                 );
-                ui.small(
-                    "The screenshot remains local until you click Ask agent. Only this selected image is attached.",
-                );
+                ui.small(self.tr("agent.ui.screenshot_notice"));
                 if !supports_images {
                     ui.colored_label(
                         egui::Color32::from_rgb(180, 70, 45),
-                        "The selected agent system does not support image attachments. Choose an image-capable system or remove the screenshot.",
+                        self.tr("agent.ui.image_unsupported"),
                     );
                 }
-                let remove_response = ui
-                    .add_enabled(
-                        self.agent_task.is_none(),
-                        egui::Button::new("Remove screenshot"),
-                    );
+                let remove_response = ui.add_enabled(
+                    self.agent_task.is_none(),
+                    egui::Button::new(self.tr("agent.ui.remove_screenshot")),
+                );
                 #[cfg(feature = "gui-test-support")]
                 crate::gui_test_support::register_response(
                     &remove_response,
@@ -898,7 +914,7 @@ impl GENtleApp {
                 );
                 if remove_response.clicked() {
                     self.agent_pending_image_attachment = None;
-                    self.agent_status = "Pending screenshot removed".to_string();
+                    self.agent_status = self.tr("agent.status.removed_screenshot");
                 }
             });
         }
@@ -907,27 +923,28 @@ impl GENtleApp {
             ui.group(|ui| {
                 ui.colored_label(
                     egui::Color32::from_rgb(180, 70, 45),
-                    format!("Screenshot unavailable: {}", failure.message),
+                    self.trf(
+                        "agent.display.screenshot_error",
+                        &[("error", &self.i18n.agent_hint(&failure.message))],
+                    ),
                 );
-                ui.small(format!("Requested for '{}'.", failure.window_title));
+                ui.small(self.trf(
+                    "agent.display.screenshot_window",
+                    &[("window", &(failure.window_title).to_string())],
+                ));
                 if matches!(
                     failure.kind,
                     crate::agent_help::AgentHelpCaptureFailureKind::PermissionRequired
                         | crate::agent_help::AgentHelpCaptureFailureKind::RestartRequired
-                ) && ui.button("Open Screen Recording settings").clicked()
+                ) && ui.button(self.tr("agent.ui.screen_settings")).clicked()
                 {
-                    self.agent_status = match crate::agent_help::open_macos_screen_recording_settings()
-                    {
-                        Ok(()) => {
-                            "Opened macOS Screen Recording settings. Restart GENtle after granting access."
-                                .to_string()
-                        }
-                        Err(error) => error,
-                    };
+                    self.agent_status =
+                        match crate::agent_help::open_macos_screen_recording_settings() {
+                            Ok(()) => self.tr("agent.status.opened_screen_settings"),
+                            Err(error) => error,
+                        };
                 }
-                ui.small(
-                    "The normal Agent help click captures only GENtle's drawn viewport and does not require Screen Recording permission; native full-window capture is optional.",
-                );
+                ui.small(self.tr("agent.ui.screen_permission_note"));
             });
         }
     }
@@ -977,9 +994,12 @@ impl GENtleApp {
                                     &pending.agent_request_id,
                                     &pending.source_window_title,
                                 );
-                                self.agent_status = format!(
-                                    "One screenshot from '{}' requested by '{}' is attached locally. Review the preview and prompt, then click Ask Agent to send it.",
-                                    pending.source_window_title, pending.system_label
+                                self.agent_status = self.trf(
+                                    "agent.status.requested_screenshot_attached",
+                                    &[
+                                        ("window", &pending.source_window_title),
+                                        ("system", &pending.system_label),
+                                    ],
                                 );
                             }
                             Err(message) => {
@@ -1004,8 +1024,9 @@ impl GENtleApp {
                             self.agent_pending_image_attachment = Some(attachment);
                             self.agent_help_capture_failure = None;
                             self.agent_prompt = Self::agent_help_prompt(&window_title);
-                            self.agent_status = format!(
-                                "Screenshot from '{window_title}' is attached locally. Review it and your prompt before asking the agent."
+                            self.agent_status = self.trf(
+                                "agent.status.screenshot_attached",
+                                &[("window", &window_title)],
                             );
                         }
                         Err(message) => {
@@ -1096,9 +1117,9 @@ impl GENtleApp {
 
     pub(super) fn render_openai_quota_links(&self, ui: &mut egui::Ui) {
         ui.horizontal_wrapped(|ui| {
-            ui.small("OpenAI quota links:");
-            ui.hyperlink_to("Usage", OPENAI_USAGE_URL);
-            ui.hyperlink_to("Billing", OPENAI_BILLING_URL);
+            ui.small(self.tr("agent.ui.quota_links"));
+            ui.hyperlink_to(self.tr("agent.ui.usage"), OPENAI_USAGE_URL);
+            ui.hyperlink_to(self.tr("agent.ui.billing"), OPENAI_BILLING_URL);
         });
     }
 
@@ -1109,9 +1130,9 @@ impl GENtleApp {
         monospace: bool,
     ) {
         if monospace {
-            ui.monospace(status.to_string());
+            ui.monospace(self.i18n.agent_hint(status));
         } else {
-            ui.small(status.to_string());
+            ui.small(self.i18n.agent_hint(status));
         }
         if Self::agent_status_mentions_openai_quota(status) {
             self.render_openai_quota_links(ui);
@@ -1252,7 +1273,10 @@ impl GENtleApp {
             return;
         }
         if let Err(err) = self.persist_agent_system_selection_to_disk() {
-            self.agent_status = format!("Could not persist selected agent system: {err}");
+            self.agent_status = self.trf(
+                "agent.status.persist_failed",
+                &[("error", &(err).to_string())],
+            );
         }
     }
 
@@ -1784,7 +1808,7 @@ impl GENtleApp {
             ui.monospace(command);
             if ui
                 .small_button("⧉")
-                .on_hover_text("Copy command to clipboard")
+                .on_hover_text(crate::i18n::tr("agent.ui.copy_command_hover"))
                 .clicked()
             {
                 ui.ctx().copy_text(command.to_string());
@@ -2199,9 +2223,16 @@ impl GENtleApp {
         if raw.is_empty() {
             return Ok(None);
         }
-        let parsed = raw
-            .parse::<u64>()
-            .map_err(|e| format!("Invalid timeout_sec '{}': {}", raw, e))?;
+        let parsed = raw.parse::<u64>().map_err(|e| {
+            self.trf(
+                "agent.status.invalid_number",
+                &[
+                    ("field", "timeout_sec"),
+                    ("value", raw),
+                    ("error", &e.to_string()),
+                ],
+            )
+        })?;
         if parsed == 0 {
             return Ok(None);
         }
@@ -2213,9 +2244,16 @@ impl GENtleApp {
         if raw.is_empty() {
             return Ok(None);
         }
-        let parsed = raw
-            .parse::<u64>()
-            .map_err(|e| format!("Invalid connect_timeout_sec '{}': {}", raw, e))?;
+        let parsed = raw.parse::<u64>().map_err(|e| {
+            self.trf(
+                "agent.status.invalid_number",
+                &[
+                    ("field", "connect_timeout_sec"),
+                    ("value", raw),
+                    ("error", &e.to_string()),
+                ],
+            )
+        })?;
         if parsed == 0 {
             return Ok(None);
         }
@@ -2227,9 +2265,16 @@ impl GENtleApp {
         if raw.is_empty() {
             return Ok(None);
         }
-        let parsed = raw
-            .parse::<u64>()
-            .map_err(|e| format!("Invalid read_timeout_sec '{}': {}", raw, e))?;
+        let parsed = raw.parse::<u64>().map_err(|e| {
+            self.trf(
+                "agent.status.invalid_number",
+                &[
+                    ("field", "read_timeout_sec"),
+                    ("value", raw),
+                    ("error", &e.to_string()),
+                ],
+            )
+        })?;
         if parsed == 0 {
             return Ok(None);
         }
@@ -2241,9 +2286,16 @@ impl GENtleApp {
         if raw.is_empty() {
             return Ok(None);
         }
-        let parsed = raw
-            .parse::<usize>()
-            .map_err(|e| format!("Invalid max_retries '{}': {}", raw, e))?;
+        let parsed = raw.parse::<usize>().map_err(|e| {
+            self.trf(
+                "agent.status.invalid_number",
+                &[
+                    ("field", "max_retries"),
+                    ("value", raw),
+                    ("error", &e.to_string()),
+                ],
+            )
+        })?;
         Ok(Some(parsed))
     }
 
@@ -2252,9 +2304,16 @@ impl GENtleApp {
         if raw.is_empty() {
             return Ok(None);
         }
-        let parsed = raw
-            .parse::<usize>()
-            .map_err(|e| format!("Invalid max_response_bytes '{}': {}", raw, e))?;
+        let parsed = raw.parse::<usize>().map_err(|e| {
+            self.trf(
+                "agent.status.invalid_number",
+                &[
+                    ("field", "max_response_bytes"),
+                    ("value", raw),
+                    ("error", &e.to_string()),
+                ],
+            )
+        })?;
         if parsed == 0 {
             return Ok(None);
         }
@@ -2272,9 +2331,9 @@ impl GENtleApp {
         let discovery_source =
             if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio) {
                 if is_pi_local_agent_system(system) {
-                    "installed Pi CLI".to_string()
+                    self.tr("agent.ui.discovery_pi")
                 } else {
-                    "local Codex model metadata cache".to_string()
+                    self.tr("agent.ui.discovery_codex")
                 }
             } else {
                 let Some(base_url) = self.selected_agent_runtime_base_url(system) else {
@@ -2303,8 +2362,13 @@ impl GENtleApp {
         self.agent_model_discovery_failed_source_key.clear();
         self.agent_model_discovery_source_key = source_key.clone();
         let key_label = self.selected_agent_model_discovery_key_label(system);
-        self.agent_model_discovery_status =
-            format!("Discovering models from {discovery_source} (auth={key_label}) ...");
+        self.agent_model_discovery_status = self.trf(
+            "agent.status.discovery_started",
+            &[
+                ("source", &(discovery_source).to_string()),
+                ("auth", &(key_label).to_string()),
+            ],
+        );
         self.agent_model_discovery_task = None;
         let env_overrides = match self.selected_agent_session_env_overrides(system) {
             Ok(overrides) => overrides,
@@ -2356,11 +2420,14 @@ impl GENtleApp {
         self.refresh_agent_system_catalog();
         self.clear_agent_preflight_output();
         if !self.agent_catalog_error.is_empty() {
-            self.agent_status = format!("Agent catalog error: {}", self.agent_catalog_error);
+            self.agent_status = self.trf(
+                "agent.status.catalog_error",
+                &[("error", &(self.agent_catalog_error).to_string())],
+            );
             return;
         }
         let Some(selected_system) = self.selected_agent_system() else {
-            self.agent_status = "Select an agent system first".to_string();
+            self.agent_status = self.tr("agent.status.select_system");
             return;
         };
         let env_overrides = match self.selected_agent_session_env_overrides(&selected_system) {
@@ -2388,61 +2455,78 @@ impl GENtleApp {
                     .as_ref()
                     .map(|probe| format!(", live={}", probe.status_class.as_str()))
                     .unwrap_or_default();
-                self.agent_status = format!(
-                    "Agent setup preflight: {} (status={}, transport={}{})",
-                    selected_system.id, status, preflight.transport, live_status
+                self.agent_status = self.trf(
+                    "agent.status.preflight",
+                    &[
+                        ("system", &(selected_system.id).to_string()),
+                        ("status", &(status).to_string()),
+                        ("transport", &(preflight.transport).to_string()),
+                        ("live", &(live_status).to_string()),
+                    ],
                 );
                 self.agent_preflight_output = Some(preflight);
             }
             Err(err) => {
-                self.agent_status = format!("Agent setup preflight failed: {err}");
+                self.agent_status = self.trf(
+                    "agent.status.preflight_failed",
+                    &[("error", &(err).to_string())],
+                );
             }
         }
     }
 
     pub(super) fn start_agent_assistant_request(&mut self) {
         if self.agent_task.is_some() {
-            self.agent_status = "Agent request is already running".to_string();
+            self.agent_status = self.tr("agent.status.already_running");
             return;
         }
         self.refresh_agent_system_catalog();
         if !self.agent_catalog_error.is_empty() {
-            self.agent_status = format!("Agent catalog error: {}", self.agent_catalog_error);
+            self.agent_status = self.trf(
+                "agent.status.catalog_error",
+                &[("error", &(self.agent_catalog_error).to_string())],
+            );
             return;
         }
         let system_id = self.agent_system_id.trim().to_string();
         if system_id.is_empty() {
-            self.agent_status = "Select an agent system first".to_string();
+            self.agent_status = self.tr("agent.status.select_system");
             return;
         }
         let Some(selected_system) = self.selected_agent_system() else {
-            self.agent_status = "Selected agent system is not available in catalog".to_string();
+            self.agent_status = self.tr("agent.status.system_missing");
             return;
         };
         if self.agent_pending_image_attachment.is_some()
             && !selected_system.supports_image_attachments
         {
-            self.agent_status = format!(
-                "Selected agent system '{}' does not support image attachments. Choose an image-capable system or remove the screenshot.",
-                selected_system.label
+            self.agent_status = self.trf(
+                "agent.status.image_unsupported",
+                &[("system", &(selected_system.label).to_string())],
             );
             return;
         }
         let (available, reason) = self.selected_agent_system_availability(&selected_system);
         if !available {
-            if let Some(prompt) = self.agent_model_selection_prompt(&selected_system) {
-                self.agent_status = prompt.to_string();
+            if self
+                .agent_model_selection_prompt(&selected_system)
+                .is_some()
+            {
+                self.agent_status = self.tr("agent.status.select_model");
             } else {
-                self.agent_status = format!(
-                    "Selected agent system is unavailable: {}",
-                    reason.unwrap_or_else(|| "unknown reason".to_string())
+                self.agent_status = self.trf(
+                    "agent.status.unavailable",
+                    &[(
+                        "reason",
+                        &(reason.unwrap_or_else(|| self.tr("agent.ui.unknown_reason"))).to_string(),
+                    )],
                 );
             }
             return;
         }
         let prompt = self.agent_prompt.trim().to_string();
         if prompt.is_empty() {
-            self.agent_status = "Agent prompt cannot be empty".to_string();
+            self.agent_status = self.tr("agent.status.empty_prompt");
             return;
         }
         let env_overrides = match self.selected_agent_session_env_overrides(&selected_system) {
@@ -2472,18 +2556,23 @@ impl GENtleApp {
                         .iter()
                         .any(|value| value == &catalog_model)
                 {
-                    self.agent_status = format!(
-                        "Catalog model '{catalog_model}' is not available on current endpoint. Select a discovered model or set Model override."
+                    self.agent_status = self.trf(
+                        "agent.status.catalog_model_missing",
+                        &[("model", &(catalog_model).to_string())],
                     );
                     return;
                 }
             } else {
-                self.agent_status = self
-                    .agent_model_selection_prompt(&selected_system)
-                    .unwrap_or(
-                        "Model is unspecified. Discover models and select one, or set Model override.",
-                    )
-                    .to_string();
+                self.agent_status = self.tr(
+                    if self
+                        .agent_model_selection_prompt(&selected_system)
+                        .is_some()
+                    {
+                        "agent.status.select_model"
+                    } else {
+                        "agent.status.model_unspecified"
+                    },
+                );
                 return;
             }
         }
@@ -2523,14 +2612,19 @@ impl GENtleApp {
         ));
         self.agent_last_command_output = None;
         self.agent_status = if let Some(timeout) = timeout_seconds {
-            format!(
-                "Starting agent '{}' in background (timeout={}s, retries={})",
-                system_id,
-                timeout,
-                max_retries.unwrap_or(2)
+            self.trf(
+                "agent.status.starting_limits",
+                &[
+                    ("system", &(system_id).to_string()),
+                    ("timeout", &(timeout).to_string()),
+                    ("retries", &(max_retries.unwrap_or(2)).to_string()),
+                ],
             )
         } else {
-            format!("Starting agent '{}' in background", system_id)
+            self.trf(
+                "agent.status.starting",
+                &[("system", &(system_id).to_string())],
+            )
         };
         self.push_job_event(
             BackgroundJobKind::AgentAssist,
@@ -2672,7 +2766,7 @@ impl GENtleApp {
         self.agent_pending_image_attachment = None;
         self.agent_help_capture_failure = None;
         self.persist_agent_conversation_to_state();
-        self.agent_status = "Conversation and pending attachment cleared".to_string();
+        self.agent_status = self.tr("agent.status.cleared");
     }
 
     pub(super) fn execute_agent_suggested_command(
@@ -2699,7 +2793,16 @@ impl GENtleApp {
         let before = self.agent_execution_revision();
         if let Some(reason) = self.agent_suggestion_live_blocker(suggestion) {
             let source_label = format!("Suggestion #{index_1based}");
-            self.agent_status = format!("{source_label} not run: {reason}");
+            self.agent_status = self.trf(
+                "agent.status.command_blocked",
+                &[
+                    (
+                        "source",
+                        &self.agent_command_source_label(index_1based, &source_label),
+                    ),
+                    ("reason", &reason),
+                ],
+            );
             self.record_agent_execution(
                 before,
                 AgentExecutionStatus::Blocked,
@@ -2733,9 +2836,11 @@ impl GENtleApp {
     ) {
         let before = self.agent_execution_revision();
         self.agent_last_command_output = None;
+        let display_source = self.agent_command_source_label(index_1based, source_label);
         let trimmed = command_text.trim();
         if trimmed.is_empty() {
-            self.agent_status = format!("{source_label} is empty");
+            self.agent_status =
+                self.trf("agent.status.command_empty", &[("source", &display_source)]);
             return;
         }
         if trigger == "prompt"
@@ -2762,7 +2867,10 @@ impl GENtleApp {
         let command = match parse_shell_line(trimmed) {
             Ok(command) => command,
             Err(err) => {
-                self.agent_status = format!("{source_label} parse error: {err}");
+                self.agent_status = self.trf(
+                    "agent.status.command_parse_error",
+                    &[("source", &display_source), ("error", &err)],
+                );
                 self.record_agent_execution(
                     before,
                     AgentExecutionStatus::Blocked,
@@ -2788,7 +2896,10 @@ impl GENtleApp {
             )
         {
             let summary = AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string();
-            self.agent_status = format!("{source_label} rejected: {summary}");
+            self.agent_status = self.trf(
+                "agent.status.command_rejected",
+                &[("source", &display_source), ("reason", &summary)],
+            );
             self.record_agent_execution(
                 before,
                 AgentExecutionStatus::Blocked,
@@ -2812,8 +2923,12 @@ impl GENtleApp {
                 | ShellCommand::AgentsPlan { .. }
                 | ShellCommand::AgentsExecutePlan { .. }
         ) {
-            self.agent_status = format!(
-                "{source_label} rejected: agent-to-agent 'agents ...' commands are blocked"
+            self.agent_status = self.trf(
+                "agent.status.command_rejected",
+                &[
+                    ("source", &display_source),
+                    ("reason", &self.tr("agent.ui.nested_commands_blocked")),
+                ],
             );
             self.record_agent_execution(
                 before,
@@ -2842,7 +2957,7 @@ impl GENtleApp {
                 _ => unreachable!("history transition match is exhaustive"),
             };
             let summary = self.app_status.clone();
-            self.agent_status = format!("{source_label}: {summary}");
+            self.agent_status = format!("{display_source}: {summary}");
             self.record_agent_execution(
                 before,
                 if state_changed {
@@ -2866,7 +2981,7 @@ impl GENtleApp {
         }
         let suppress_auto_open = Self::agent_command_suppresses_auto_open(trimmed, &command);
         if let Some(summary) = self.try_apply_shell_ui_intent(&command) {
-            self.agent_status = format!("{source_label}: {summary}");
+            self.agent_status = format!("{display_source}: {summary}");
             self.record_agent_execution(
                 before,
                 AgentExecutionStatus::Dispatched,
@@ -2940,10 +3055,13 @@ impl GENtleApp {
                         suppress_auto_open,
                         started: Instant::now(),
                     });
-                    self.agent_status = format!("{source_label}: command {job_id}");
+                    self.agent_status = self.trf(
+                        "agent.status.command_pending",
+                        &[("source", &display_source), ("id", &job_id.to_string())],
+                    );
                 }
                 Err(error) => {
-                    self.agent_status = format!("{source_label}: {error}");
+                    self.agent_status = format!("{display_source}: {error}");
                     self.record_agent_execution(
                         before,
                         AgentExecutionStatus::Blocked,
@@ -2981,7 +3099,10 @@ impl GENtleApp {
                 suppress_auto_open,
             ),
             Err(err) => {
-                self.agent_status = format!("{source_label} failed: {err}");
+                self.agent_status = self.trf(
+                    "agent.status.command_failed",
+                    &[("source", &display_source), ("error", &err)],
+                );
                 self.record_agent_execution(
                     before,
                     AgentExecutionStatus::Failed,
@@ -3040,7 +3161,10 @@ impl GENtleApp {
                     task.suppress_auto_open,
                 ),
                 Err(error) => {
-                    self.agent_status = format!("{}: {error}", task.source);
+                    self.agent_status = format!(
+                        "{}: {error}",
+                        self.agent_command_source_label(task.index, &task.source)
+                    );
                     let status = if receipt.state
                         == crate::runtime_status::RuntimeStatusFrameState::Cancelled
                     {
@@ -3192,7 +3316,10 @@ impl GENtleApp {
         } else {
             label.to_string()
         };
-        self.agent_status = format!("{source_label}: {summary}");
+        self.agent_status = format!(
+            "{}: {summary}",
+            self.agent_command_source_label(index_1based, source_label)
+        );
         self.record_agent_execution(
             before,
             outcome_status,
@@ -4198,9 +4325,12 @@ impl GENtleApp {
             match outcome {
                 Ok(invocation) => {
                     let suggestion_count = invocation.response.suggested_commands.len();
-                    self.agent_status = format!(
-                        "Agent response received in {:.1}s (suggestions={})",
-                        elapsed, suggestion_count
+                    self.agent_status = self.trf(
+                        "agent.status.received",
+                        &[
+                            ("elapsed", &format!("{:.1}", elapsed)),
+                            ("count", &(suggestion_count).to_string()),
+                        ],
                     );
                     self.push_job_event(
                         BackgroundJobKind::AgentAssist,
@@ -4243,8 +4373,13 @@ impl GENtleApp {
                     }
                 }
                 Err(err) => {
-                    self.agent_status =
-                        format!("Agent request failed after {:.1}s: {}", elapsed, err);
+                    self.agent_status = self.trf(
+                        "agent.status.failed",
+                        &[
+                            ("elapsed", &format!("{:.1}", elapsed)),
+                            ("error", &(err).to_string()),
+                        ],
+                    );
                     self.push_job_event(
                         BackgroundJobKind::AgentAssist,
                         BackgroundJobEventPhase::Failed,
@@ -4293,8 +4428,10 @@ impl GENtleApp {
                     self.agent_model_discovery_failed_source_key.clear();
                     self.agent_discovered_models = models;
                     if self.agent_discovered_models.is_empty() {
-                        self.agent_model_discovery_status =
-                            format!("Model discovery returned no models ({:.1}s)", elapsed);
+                        self.agent_model_discovery_status = self.trf(
+                            "agent.status.discovery_empty",
+                            &[("elapsed", &format!("{:.1}", elapsed))],
+                        );
                         self.agent_discovered_model_pick.clear();
                     } else {
                         if let Some(model) = self.selected_agent_discovered_model() {
@@ -4302,16 +4439,21 @@ impl GENtleApp {
                         } else {
                             self.agent_discovered_model_pick.clear();
                         }
-                        self.agent_model_discovery_status =
-                            if self.agent_discovered_model_pick.trim().is_empty() {
-                                Self::AGENT_MODEL_SELECTION_REQUIRED_MESSAGE.to_string()
-                            } else {
-                                format!(
-                                    "Discovered {} model(s) in {:.1}s",
-                                    self.agent_discovered_models.len(),
-                                    elapsed
-                                )
-                            };
+                        self.agent_model_discovery_status = if self
+                            .agent_discovered_model_pick
+                            .trim()
+                            .is_empty()
+                        {
+                            self.tr("agent.status.select_model")
+                        } else {
+                            self.trf(
+                                "agent.status.discovered",
+                                &[
+                                    ("count", &(self.agent_discovered_models.len()).to_string()),
+                                    ("elapsed", &format!("{:.1}", elapsed)),
+                                ],
+                            )
+                        };
                     }
                 }
                 Err(err) => {
@@ -4319,11 +4461,15 @@ impl GENtleApp {
                     self.agent_discovered_model_pick.clear();
                     self.agent_model_discovery_failed_source_key = source_key;
                     let hint = Self::agent_model_discovery_failure_hint(&err)
-                        .map(|hint| format!(" {hint}"))
+                        .map(|hint| format!(" {}", self.i18n.agent_hint(hint)))
                         .unwrap_or_default();
-                    self.agent_model_discovery_status = format!(
-                        "Model discovery failed after {:.1}s: {}{}",
-                        elapsed, err, hint
+                    self.agent_model_discovery_status = self.trf(
+                        "agent.status.discovery_failed",
+                        &[
+                            ("elapsed", &format!("{:.1}", elapsed)),
+                            ("error", &(err).to_string()),
+                            ("hint", &(hint).to_string()),
+                        ],
                     );
                 }
             }
@@ -5120,9 +5266,15 @@ impl GENtleApp {
             .agent_systems
             .iter()
             .find(|system| system.id == self.agent_system_id)
-            .map(|system| format!("{} ({})", system.label, system.id))
+            .map(|system| {
+                format!(
+                    "{} ({})",
+                    self.agent_catalog_text(&system.id, "label", &system.label),
+                    system.id
+                )
+            })
             .unwrap_or_else(|| self.tr("agent.choose_system"));
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(self.tr("agent.system"));
             egui::ComboBox::from_id_salt("agent_system_combo")
                 .selected_text(selected_system_text)
@@ -5130,16 +5282,33 @@ impl GENtleApp {
                     for system in &self.agent_systems {
                         let (available, reason) = self.selected_agent_system_availability(system);
                         let label = if available {
-                            format!("{} ({})", system.label, system.id)
+                            format!(
+                                "{} ({})",
+                                self.agent_catalog_text(&system.id, "label", &system.label),
+                                system.id
+                            )
                         } else {
-                            format!("{} ({}) [unavailable]", system.label, system.id)
+                            self.trf(
+                                "agent.display.unavailable_system",
+                                &[
+                                    (
+                                        "label",
+                                        &self.agent_catalog_text(
+                                            &system.id,
+                                            "label",
+                                            &system.label,
+                                        ),
+                                    ),
+                                    ("id", &(system.id).to_string()),
+                                ],
+                            )
                         };
                         let mut response = ui.add(
                             egui::Button::new(label).selected(self.agent_system_id == system.id),
                         );
                         if !available {
                             response = response.on_hover_text(
-                                reason.unwrap_or_else(|| "agent system unavailable".to_string()),
+                                reason.unwrap_or_else(|| self.tr("agent.ui.unavailable")),
                             );
                         }
                         if response.clicked() {
@@ -5161,68 +5330,61 @@ impl GENtleApp {
                             preferred_openai_agent_system_id(&self.agent_systems)
                             && ui
                                 .button(self.tr("agent.quick_start.openai"))
-                                .on_hover_text(
-                                    "Select the native OpenAI agent profile and use OPENAI_API_KEY for requests",
-                                )
+                                .on_hover_text(self.tr("agent.ui.openai_hover"))
                                 .clicked()
-                            {
-                                self.select_agent_system_and_persist_setup(&openai_system_id);
-                                self.agent_base_url_override.clear();
-                                self.agent_model_override.clear();
-                                self.agent_discovered_model_pick.clear();
-                                self.agent_status = self.tr("agent.status.selected_openai");
-                            }
+                        {
+                            self.select_agent_system_and_persist_setup(&openai_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = self.tr("agent.status.selected_openai");
+                        }
                         if let Some(anthropic_system_id) =
                             preferred_anthropic_agent_system_id(&self.agent_systems)
                             && ui
                                 .button(self.tr("agent.quick_start.claude"))
-                                .on_hover_text(
-                                    "Select the native Anthropic Claude profile and use ANTHROPIC_API_KEY for requests",
-                                )
+                                .on_hover_text(self.tr("agent.ui.claude_hover"))
                                 .clicked()
-                            {
-                                self.select_agent_system_and_persist_setup(&anthropic_system_id);
-                                self.agent_base_url_override.clear();
-                                self.agent_model_override.clear();
-                                self.agent_discovered_model_pick.clear();
-                                self.agent_status = self.tr("agent.status.selected_claude");
-                            }
+                        {
+                            self.select_agent_system_and_persist_setup(&anthropic_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = self.tr("agent.status.selected_claude");
+                        }
                         if let Some(mistral_system_id) =
                             preferred_mistral_agent_system_id(&self.agent_systems)
                             && ui
                                 .button(self.tr("agent.quick_start.mistral"))
-                                .on_hover_text(
-                                    "Select the native Mistral profile and use MISTRAL_API_KEY for requests",
-                                )
+                                .on_hover_text(self.tr("agent.ui.mistral_hover"))
                                 .clicked()
-                            {
-                                self.select_agent_system_and_persist_setup(&mistral_system_id);
-                                self.agent_base_url_override.clear();
-                                self.agent_model_override.clear();
-                                self.agent_discovered_model_pick.clear();
-                                self.agent_status = self.tr("agent.status.selected_mistral");
-                            }
+                        {
+                            self.select_agent_system_and_persist_setup(&mistral_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = self.tr("agent.status.selected_mistral");
+                        }
                         if let Some(local_system_id) =
                             preferred_local_agent_system_id(&self.agent_systems)
                             && ui
                                 .button(self.tr("agent.quick_start.local"))
-                                .on_hover_text(
-                                    "Select a local OpenAI-compatible endpoint such as Msty MLX, Msty gateway, Ollama, or Jan",
-                                )
+                                .on_hover_text(self.tr("agent.ui.local_hover"))
                                 .clicked()
-                            {
-                                self.select_agent_system_and_persist_setup(&local_system_id);
-                                self.agent_base_url_override.clear();
-                                self.agent_model_override.clear();
-                                self.agent_discovered_model_pick.clear();
-                                self.agent_status = self.tr("agent.status.selected_local");
-                            }
-                        if self.agent_systems.iter().any(|system| system.id == "builtin_echo")
+                        {
+                            self.select_agent_system_and_persist_setup(&local_system_id);
+                            self.agent_base_url_override.clear();
+                            self.agent_model_override.clear();
+                            self.agent_discovered_model_pick.clear();
+                            self.agent_status = self.tr("agent.status.selected_local");
+                        }
+                        if self
+                            .agent_systems
+                            .iter()
+                            .any(|system| system.id == "builtin_echo")
                             && ui
                                 .button(self.tr("agent.quick_start.demo"))
-                                .on_hover_text(
-                                    "Select the offline demo assistant that never contacts a remote service",
-                                )
+                                .on_hover_text(self.tr("agent.ui.demo_hover"))
                                 .clicked()
                         {
                             self.select_agent_system_and_persist_setup("builtin_echo");
@@ -5234,11 +5396,11 @@ impl GENtleApp {
             egui::CollapsingHeader::new(self.tr("agent.catalog"))
                 .default_open(false)
                 .show(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.text_edit_singleline(&mut self.agent_catalog_path);
                         if ui
                             .button(self.tr("button.browse"))
-                            .on_hover_text("Browse filesystem and fill this path")
+                            .on_hover_text(self.tr("agent.ui.browse_hover"))
                             .clicked()
                             && let Some(path) = rfd::FileDialog::new()
                                 .add_filter("JSON", &["json"])
@@ -5252,7 +5414,10 @@ impl GENtleApp {
                     if !self.agent_catalog_error.is_empty() {
                         ui.colored_label(
                             egui::Color32::from_rgb(190, 70, 70),
-                            format!("Catalog error: {}", self.agent_catalog_error),
+                            self.trf(
+                                "agent.status.catalog_error",
+                                &[("error", &(self.agent_catalog_error).to_string())],
+                            ),
                         );
                     }
                 });
@@ -5273,7 +5438,7 @@ impl GENtleApp {
                 ));
                 let command = self.external_agent_mcp_command_snippet();
                 if Self::render_copyable_command_line(ui, "", &command) {
-                    self.agent_status = "Copied external MCP command".to_string();
+                    self.agent_status = self.tr("agent.status.copied_mcp");
                 }
             });
         }
@@ -5282,14 +5447,17 @@ impl GENtleApp {
             if let Some(description) = system.description.as_deref() {
                 let trimmed = description.trim();
                 if !trimmed.is_empty() {
-                    ui.small(trimmed);
+                    ui.small(self.agent_catalog_text(&system.id, "description", trimmed));
                 }
             }
-            ui.small(format!("transport: {}", system.transport.as_str()));
+            ui.small(self.trf(
+                "agent.display.transport",
+                &[("transport", &(system.transport.as_str()).to_string())],
+            ));
             if !system.command.is_empty() {
                 let command = system.command.join(" ");
-                if Self::render_copyable_command_line(ui, "command:", &command) {
-                    self.agent_status = "Copied selected agent command".to_string();
+                if Self::render_copyable_command_line(ui, &self.tr("agent.ui.command"), &command) {
+                    self.agent_status = self.tr("agent.status.copied_command");
                 }
             }
             if agent_system_supports_model_selection(&system) {
@@ -5312,13 +5480,17 @@ impl GENtleApp {
                         .as_deref()
                         .map(str::trim)
                         .filter(|value| !value.is_empty())
-                        .unwrap_or("(transport default)");
+                        .map(str::to_string)
+                        .unwrap_or_else(|| self.tr("agent.ui.transport_default"));
                     if self.agent_base_url_override.trim().is_empty() {
-                        ui.small(format!("base URL: {catalog_base_url}"));
+                        ui.small(self.trf(
+                            "agent.display.base_url",
+                            &[("url", &(catalog_base_url).to_string())],
+                        ));
                     } else {
-                        ui.small(format!(
-                            "base URL: {} (session override)",
-                            self.agent_base_url_override.trim()
+                        ui.small(self.trf(
+                            "agent.display.base_url_override",
+                            &[("url", &(self.agent_base_url_override.trim()).to_string())],
                         ));
                     }
                 }
@@ -5336,44 +5508,52 @@ impl GENtleApp {
                         }
                         AgentSystemTransport::ExternalJsonStdio => {
                             if is_pi_local_agent_system(&system) {
-                                "Pi default".to_string()
+                                self.tr("agent.ui.pi_default")
                             } else {
-                                "Codex default".to_string()
+                                self.tr("agent.ui.codex_default")
                             }
                         }
                         _ => OPENAI_COMPAT_UNSPECIFIED_MODEL.to_string(),
                     });
                 let model_override = normalize_agent_model_name(self.agent_model_override.trim());
                 if let Some(model_override) = model_override {
-                    ui.small(format!("model: {model_override} (session override)"));
+                    ui.small(self.trf(
+                        "agent.display.model_override",
+                        &[("model", &(model_override).to_string())],
+                    ));
                 } else if let Some(discovered_model) = self.selected_agent_discovered_model() {
-                    ui.small(format!(
-                        "model: {} (selected discovered model)",
-                        discovered_model
+                    ui.small(self.trf(
+                        "agent.display.model_selected",
+                        &[("model", &(discovered_model).to_string())],
                     ));
                 } else {
-                    ui.small(format!("model: {catalog_model}"));
+                    ui.small(self.trf(
+                        "agent.display.model",
+                        &[("model", &(catalog_model).to_string())],
+                    ));
                 }
             } else {
                 self.clear_agent_model_discovery_snapshot();
             }
             if !available {
-                if let Some(prompt) = self.agent_model_selection_prompt(&system) {
-                    ui.small(prompt);
+                if self.agent_model_selection_prompt(&system).is_some() {
+                    ui.small(self.tr("agent.status.select_model"));
                 } else {
                     ui.colored_label(
                         egui::Color32::from_rgb(190, 70, 70),
-                        format!(
-                            "Unavailable: {}",
-                            reason.unwrap_or_else(|| "unknown reason".to_string())
+                        self.trf(
+                            "agent.display.unavailable",
+                            &[(
+                                "reason",
+                                &(reason.unwrap_or_else(|| self.tr("agent.ui.unknown_reason")))
+                                    .to_string(),
+                            )],
                         ),
                     );
                 }
             }
             if system.id == "builtin_echo" {
-                ui.small(
-                    "Built-in Echo is only a demo bridge. Use one of the quick-start buttons above for a real model-backed assistant.",
-                );
+                ui.small(self.tr("agent.ui.demo_note"));
             }
         } else if self.agent_systems.is_empty() {
             ui.small(self.tr("agent.no_systems_loaded"));
@@ -5386,15 +5566,16 @@ impl GENtleApp {
             if key_field_relevant {
                 let (key_label, key_hint) = match selected_system.transport {
                     AgentSystemTransport::NativeAnthropic => {
-                        (self.tr("agent.key.anthropic"), "sk-ant-...")
+                        (self.tr("agent.key.anthropic"), "sk-ant-...".to_string())
                     }
                     AgentSystemTransport::NativeMistral => {
-                        (self.tr("agent.key.mistral"), "api key")
+                        (self.tr("agent.key.mistral"), self.tr("agent.ui.api_key"))
                     }
-                    AgentSystemTransport::NativeOpenaiCompat => {
-                        (self.tr("agent.key.openai_compatible"), "optional")
-                    }
-                    _ => (self.tr("agent.key.openai"), "sk-..."),
+                    AgentSystemTransport::NativeOpenaiCompat => (
+                        self.tr("agent.key.openai_compatible"),
+                        self.tr("agent.ui.optional"),
+                    ),
+                    _ => (self.tr("agent.key.openai"), "sk-...".to_string()),
                 };
                 ui.horizontal_wrapped(|ui| {
                     ui.label(key_label);
@@ -5406,7 +5587,7 @@ impl GENtleApp {
                     preflight_inputs_changed |= response.changed();
                     if ui
                         .button(self.tr("agent.clear_key"))
-                        .on_hover_text("Clear session-only API key override")
+                        .on_hover_text(self.tr("agent.ui.clear_key_hover"))
                         .clicked()
                     {
                         self.agent_openai_api_key.clear();
@@ -5415,7 +5596,7 @@ impl GENtleApp {
                     if agent_api_key_source(selected_system.transport).is_some()
                         && ui
                             .button(self.tr("agent.credential.reload"))
-                            .on_hover_text("Read provider token files again")
+                            .on_hover_text(self.tr("agent.ui.reload_tokens_hover"))
                             .clicked()
                     {
                         self.refresh_agent_token_file_credentials();
@@ -5432,7 +5613,9 @@ impl GENtleApp {
             }
         }
         let base_url_placeholder = self.selected_agent_base_url_placeholder();
-        ui.horizontal(|ui| {
+        let unspecified_hint = self.tr("agent.ui.unspecified");
+        let default_hint = self.tr("agent.ui.default");
+        ui.horizontal_wrapped(|ui| {
             ui.label(self.tr("agent.base_url_override"));
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_base_url_override)
@@ -5441,22 +5624,23 @@ impl GENtleApp {
             preflight_inputs_changed |= response.changed();
             if ui
                 .button(self.tr("agent.clear_url"))
-                .on_hover_text("Clear session-only base URL override")
+                .on_hover_text(self.tr("agent.ui.clear_url_hover"))
                 .clicked()
             {
                 self.agent_base_url_override.clear();
                 preflight_inputs_changed = true;
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(self.tr("agent.model_override"));
             let response = ui.add(
-                egui::TextEdit::singleline(&mut self.agent_model_override).hint_text("unspecified"),
+                egui::TextEdit::singleline(&mut self.agent_model_override)
+                    .hint_text(&unspecified_hint),
             );
             preflight_inputs_changed |= response.changed();
             if ui
                 .button(self.tr("agent.clear_model"))
-                .on_hover_text("Clear session-only model override")
+                .on_hover_text(self.tr("agent.ui.clear_model_hover"))
                 .clicked()
             {
                 self.agent_model_override.clear();
@@ -5464,41 +5648,41 @@ impl GENtleApp {
                 preflight_inputs_changed = true;
             }
         });
-        ui.horizontal(|ui| {
-            ui.label("timeout_sec");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(self.tr("agent.ui.timeout"));
             let response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_timeout_secs)
                     .desired_width(100.0)
-                    .hint_text("default"),
+                    .hint_text(&default_hint),
             );
             preflight_inputs_changed |= response.changed();
             if ui
                 .button(self.tr("agent.clear_timeout"))
-                .on_hover_text("Use default timeout")
+                .on_hover_text(self.tr("agent.ui.clear_timeout_hover"))
                 .clicked()
             {
                 self.agent_timeout_secs.clear();
                 preflight_inputs_changed = true;
             }
         });
-        ui.horizontal(|ui| {
-            ui.label("connect_timeout_sec");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(self.tr("agent.ui.connect_timeout"));
             let connect_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_connect_timeout_secs)
                     .desired_width(90.0)
-                    .hint_text("default"),
+                    .hint_text(&default_hint),
             );
             preflight_inputs_changed |= connect_response.changed();
-            ui.label("read_timeout_sec");
+            ui.label(self.tr("agent.ui.read_timeout"));
             let read_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_read_timeout_secs)
                     .desired_width(90.0)
-                    .hint_text("default"),
+                    .hint_text(&default_hint),
             );
             preflight_inputs_changed |= read_response.changed();
             if ui
                 .button(self.tr("agent.clear_http_timeouts"))
-                .on_hover_text("Use default connect/read timeouts")
+                .on_hover_text(self.tr("agent.ui.clear_http_hover"))
                 .clicked()
             {
                 self.agent_connect_timeout_secs.clear();
@@ -5506,24 +5690,24 @@ impl GENtleApp {
                 preflight_inputs_changed = true;
             }
         });
-        ui.horizontal(|ui| {
-            ui.label("max_retries");
+        ui.horizontal_wrapped(|ui| {
+            ui.label(self.tr("agent.ui.retries"));
             let retries_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_max_retries)
                     .desired_width(90.0)
-                    .hint_text("default"),
+                    .hint_text(&default_hint),
             );
             preflight_inputs_changed |= retries_response.changed();
-            ui.label("max_response_bytes");
+            ui.label(self.tr("agent.ui.response_bytes"));
             let bytes_response = ui.add(
                 egui::TextEdit::singleline(&mut self.agent_max_response_bytes)
                     .desired_width(120.0)
-                    .hint_text("default"),
+                    .hint_text(&default_hint),
             );
             preflight_inputs_changed |= bytes_response.changed();
             if ui
                 .button(self.tr("agent.clear_limits"))
-                .on_hover_text("Use default retry/response-size limits")
+                .on_hover_text(self.tr("agent.ui.clear_limits_hover"))
                 .clicked()
             {
                 self.agent_max_retries.clear();
@@ -5532,12 +5716,10 @@ impl GENtleApp {
             }
         });
         if let Some(system) = self.selected_agent_system() {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui
                     .button(self.tr("agent.test_setup"))
-                    .on_hover_text(
-                        "Validate the current system, key, endpoint, model, and runtime settings without sending a prompt",
-                    )
+                    .on_hover_text(self.tr("agent.ui.test_hover"))
                     .clicked()
                 {
                     self.run_agent_preflight_probe();
@@ -5545,24 +5727,22 @@ impl GENtleApp {
                 if self.agent_preflight_output.is_some()
                     && ui
                         .button(self.tr("agent.clear_test"))
-                        .on_hover_text("Clear the latest setup-preflight snapshot")
+                        .on_hover_text(self.tr("agent.ui.clear_test_hover"))
                         .clicked()
                 {
                     self.clear_agent_preflight_output();
                 }
                 if agent_system_supports_model_discovery(&system) {
-                    let discovery_hover = if matches!(
-                        system.transport,
-                        AgentSystemTransport::ExternalJsonStdio
-                    ) {
-                        if is_pi_local_agent_system(&system) {
-                            "Read selectable provider/model ids from the installed Pi CLI"
+                    let discovery_hover =
+                        if matches!(system.transport, AgentSystemTransport::ExternalJsonStdio) {
+                            if is_pi_local_agent_system(&system) {
+                                self.tr("agent.ui.discover_pi_hover")
+                            } else {
+                                self.tr("agent.ui.discover_codex_hover")
+                            }
                         } else {
-                            "Read selectable model ids from the local Codex model metadata cache"
-                        }
-                    } else {
-                        "Query local/server model list from current base URL"
-                    };
+                            self.tr("agent.ui.discover_http_hover")
+                        };
                     if ui
                         .button(self.tr("agent.discover_models"))
                         .on_hover_text(discovery_hover)
@@ -5573,11 +5753,14 @@ impl GENtleApp {
                     if let Some(task) = &self.agent_model_discovery_task {
                         ui.add(egui::Spinner::new());
                         let status = if self.agent_model_discovery_status.trim().is_empty() {
-                            "Discovering models".to_string()
+                            self.tr("agent.ui.discovering")
                         } else {
                             self.agent_model_discovery_status.clone()
                         };
-                        ui.small(format!("{status} ({:.1}s)", task.started.elapsed().as_secs_f32()));
+                        ui.small(format!(
+                            "{status} ({:.1}s)",
+                            task.started.elapsed().as_secs_f32()
+                        ));
                     }
                 }
             });
@@ -5588,12 +5771,12 @@ impl GENtleApp {
                     let codex_local = is_codex_local_agent_system(&system);
                     let pi_local = is_pi_local_agent_system(&system);
                     let local_default = if pi_local {
-                        "Pi default"
+                        self.tr("agent.ui.pi_default")
                     } else {
-                        "Codex default"
+                        self.tr("agent.ui.codex_default")
                     };
                     let previous_pick = self.agent_discovered_model_pick.clone();
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label(self.tr("agent.discovered_model"));
                         egui::ComboBox::from_id_salt("agent_discovered_model_combo")
                             .selected_text(if self.agent_discovered_model_pick.trim().is_empty() {
@@ -5628,13 +5811,9 @@ impl GENtleApp {
                         preflight_inputs_changed = true;
                     }
                     if codex_local {
-                        ui.small(
-                            "Models are read from the logged-in Codex CLI metadata cache. Codex default leaves model choice to the CLI.",
-                        );
+                        ui.small(self.tr("agent.ui.codex_models_note"));
                     } else if pi_local {
-                        ui.small(
-                            "Models are read from 'pi --list-models'. Pi default leaves model choice to Pi; authenticate providers in Pi with /login.",
-                        );
+                        ui.small(self.tr("agent.ui.pi_models_note"));
                     } else {
                         ui.small(self.tr("agent.discovered_model_note"));
                     }
@@ -5650,50 +5829,85 @@ impl GENtleApp {
         if let Some(preflight) = &self.agent_preflight_output {
             ui.group(|ui| {
                 ui.strong(self.tr("agent.setup_preflight"));
-                let (overall_label, color) = Self::agent_preflight_overall_label(preflight);
+                let (_, color) = Self::agent_preflight_overall_label(preflight);
+                let overall_label =
+                    self.tr(match Self::agent_preflight_summary_status(preflight) {
+                        "ok" => "agent.ui.ready",
+                        "live_warning" => "agent.ui.live_warning",
+                        "live_failed" => "agent.ui.live_failed",
+                        _ => "agent.ui.unavailable",
+                    });
                 ui.colored_label(
                     color,
-                    format!(
-                        "{} (static={}, transport={})",
-                        overall_label,
-                        if preflight.available { "available" } else { "unavailable" },
-                        preflight.transport,
+                    self.trf(
+                        "agent.display.preflight",
+                        &[
+                            ("status", &(overall_label).to_string()),
+                            (
+                                "available",
+                                &(if preflight.available {
+                                    self.tr("agent.ui.available")
+                                } else {
+                                    self.tr("agent.ui.unavailable")
+                                })
+                                .to_string(),
+                            ),
+                            ("transport", &(preflight.transport).to_string()),
+                        ],
                     ),
                 );
                 if let Some(reason) = preflight.availability_reason.as_deref()
-                    && !reason.trim().is_empty() {
-                        ui.small(format!("detail: {}", reason.trim()));
-                    }
+                    && !reason.trim().is_empty()
+                {
+                    ui.small(self.trf(
+                        "agent.display.detail",
+                        &[("detail", &(reason.trim()).to_string())],
+                    ));
+                }
                 if let Some(base_url) = preflight.base_url.as_deref() {
-                    ui.small(format!("base URL: {base_url}"));
+                    ui.small(self.trf(
+                        "agent.display.base_url",
+                        &[("url", &(base_url).to_string())],
+                    ));
                 }
                 if let Some(model) = preflight.model.as_deref() {
-                    ui.small(format!("model: {model}"));
+                    ui.small(self.trf("agent.display.model", &[("model", &(model).to_string())]));
                 }
-                ui.small(format!(
-                    "runtime: timeout={}s | connect={}s | read={}s | retries={} | max_response_bytes={}",
-                    preflight.timeout_secs,
-                    preflight.connect_timeout_secs,
-                    preflight.read_timeout_secs,
-                    preflight.max_retries,
-                    preflight.max_response_bytes
+                ui.small(self.trf(
+                    "agent.display.runtime",
+                    &[
+                        ("timeout", &(preflight.timeout_secs).to_string()),
+                        ("connect", &(preflight.connect_timeout_secs).to_string()),
+                        ("read", &(preflight.read_timeout_secs).to_string()),
+                        ("retries", &(preflight.max_retries).to_string()),
+                        ("bytes", &(preflight.max_response_bytes).to_string()),
+                    ],
                 ));
                 if !preflight.endpoint_candidates.is_empty() {
-                    ui.small(format!(
-                        "request endpoints: {}",
-                        preflight.endpoint_candidates.join(" | ")
+                    ui.small(self.trf(
+                        "agent.display.request_endpoints",
+                        &[(
+                            "endpoints",
+                            &(preflight.endpoint_candidates.join(" | ")).to_string(),
+                        )],
                     ));
                 }
                 if !preflight.model_endpoint_candidates.is_empty() {
-                    ui.small(format!(
-                        "model discovery endpoints: {}",
-                        preflight.model_endpoint_candidates.join(" | ")
+                    ui.small(self.trf(
+                        "agent.display.discovery_endpoints",
+                        &[(
+                            "endpoints",
+                            &(preflight.model_endpoint_candidates.join(" | ")).to_string(),
+                        )],
                     ));
                 }
                 if !preflight.warnings.is_empty() {
                     ui.colored_label(
                         egui::Color32::from_rgb(180, 120, 50),
-                        format!("warnings: {}", preflight.warnings.join(" | ")),
+                        self.trf(
+                            "agent.display.warnings",
+                            &[("warnings", &(preflight.warnings.join(" | ")).to_string())],
+                        ),
                     );
                 }
                 if let Some(live) = &preflight.live_probe {
@@ -5713,9 +5927,15 @@ impl GENtleApp {
                             egui::Color32::from_rgb(180, 120, 50)
                         }
                     };
-                    ui.colored_label(color, live.status_class.as_str());
+                    ui.colored_label(
+                        color,
+                        self.tr(&format!("agent.probe.{}", live.status_class.as_str())),
+                    );
                     if !live.message.trim().is_empty() {
-                        ui.small(format!("detail: {}", live.message.trim()));
+                        ui.small(self.trf(
+                            "agent.display.detail",
+                            &[("detail", &(live.message.trim()).to_string())],
+                        ));
                     }
                     if Self::agent_status_mentions_openai_quota(&live.message)
                         || (live.status_class == AgentLiveProbeStatusClass::QuotaOrBilling
@@ -5724,30 +5944,83 @@ impl GENtleApp {
                         self.render_openai_quota_links(ui);
                     }
                     match live.probe_kind {
-                        AgentLiveProbeKind::CommandShape => ui.small(format!(
-                            "probe=command_shape | executable_reachable={} | command_shape_ok={}",
-                            live.reachable,
-                            live.status_class == AgentLiveProbeStatusClass::Ok
-                        )),
-                        AgentLiveProbeKind::ModelDiscovery => ui.small(format!(
-                            "probe=model_discovery | reachable={} | auth_ok={} | model_list_ok={} | selected_model_seen={}",
-                            live.reachable,
-                            live.auth_ok,
-                            live.model_list_ok,
-                            live.selected_model_seen
+                        AgentLiveProbeKind::CommandShape => ui.small(
+                            self.trf(
+                                "agent.display.command_probe",
+                                &[
+                                    (
+                                        "reachable",
+                                        &self.tr(if live.reachable {
+                                            "agent.ui.yes"
+                                        } else {
+                                            "agent.ui.no"
+                                        }),
+                                    ),
+                                    (
+                                        "valid",
+                                        &(live.status_class == AgentLiveProbeStatusClass::Ok)
+                                            .to_string(),
+                                    ),
+                                ],
+                            ),
+                        ),
+                        AgentLiveProbeKind::ModelDiscovery => ui.small(self.trf(
+                            "agent.display.model_probe",
+                            &[
+                                (
+                                    "reachable",
+                                    &self.tr(if live.reachable {
+                                        "agent.ui.yes"
+                                    } else {
+                                        "agent.ui.no"
+                                    }),
+                                ),
+                                (
+                                    "auth",
+                                    &self.tr(if live.auth_ok {
+                                        "agent.ui.yes"
+                                    } else {
+                                        "agent.ui.no"
+                                    }),
+                                ),
+                                (
+                                    "list",
+                                    &self.tr(if live.model_list_ok {
+                                        "agent.ui.yes"
+                                    } else {
+                                        "agent.ui.no"
+                                    }),
+                                ),
+                                (
+                                    "selected",
+                                    &self.tr(if live.selected_model_seen {
+                                        "agent.ui.yes"
+                                    } else {
+                                        "agent.ui.no"
+                                    }),
+                                ),
+                            ],
                         )),
                     };
                     if !live.attempted_endpoints.is_empty() {
-                        ui.small(format!(
-                            "attempted endpoints: {}",
-                            live.attempted_endpoints.join(" | ")
+                        ui.small(self.trf(
+                            "agent.display.attempted_endpoints",
+                            &[(
+                                "endpoints",
+                                &(live.attempted_endpoints.join(" | ")).to_string(),
+                            )],
                         ));
                     }
                     if let Some(endpoint) = live.selected_endpoint.as_deref() {
-                        ui.small(format!("selected endpoint: {endpoint}"));
+                        ui.small(self.trf(
+                            "agent.display.selected_endpoint",
+                            &[("endpoint", &(endpoint).to_string())],
+                        ));
                     }
                     if let Some(code) = live.provider_error_code.as_deref() {
-                        ui.small(format!("provider error code: {code}"));
+                        ui.small(
+                            self.trf("agent.display.error_code", &[("code", &(code).to_string())]),
+                        );
                     }
                 }
                 let next_actions = Self::agent_preflight_next_actions(preflight);
@@ -5755,47 +6028,35 @@ impl GENtleApp {
                     ui.separator();
                     ui.strong(self.tr("agent.next_action"));
                     for action in next_actions {
-                        ui.small(action);
+                        ui.small(self.i18n.agent_hint(&action));
                     }
                 }
             });
         }
-        ui.small(
-            "Session only: if set, this key overrides the selected provider API key env var for agent requests started from this GUI window.",
-        );
-        ui.small(
-            "Session only: Base URL override applies to native_openai/native_anthropic/native_mistral/native_openai_compat. For local roots (e.g. http://localhost:11964), GENtle tries /chat/completions and /v1/chat/completions on that same base URL; Msty MLX model servers commonly use http://localhost:11973/v1.",
-        );
-        ui.small(
-            "Session only: Model override applies to native providers and Codex Local, and maps to GENTLE_AGENT_MODEL. The Codex bridge forwards it as codex --model. Value 'unspecified' means no override.",
-        );
-        ui.small(
-            "Session only: timeout_sec maps to GENTLE_AGENT_TIMEOUT_SECS and applies to agent requests (stdio and native transports).",
-        );
-        ui.small(
-            "Session only: connect_timeout_sec/read_timeout_sec map to GENTLE_AGENT_CONNECT_TIMEOUT_SECS/GENTLE_AGENT_READ_TIMEOUT_SECS.",
-        );
-        ui.small(
-            "Session only: max_retries/max_response_bytes map to GENTLE_AGENT_MAX_RETRIES/GENTLE_AGENT_MAX_RESPONSE_BYTES.",
-        );
+        ui.small(self.tr("agent.ui.session_key_note"));
+        ui.small(self.tr("agent.ui.session_url_note"));
+        ui.small(self.tr("agent.ui.session_model_note"));
+        ui.small(self.tr("agent.ui.session_timeout_note"));
+        ui.small(self.tr("agent.ui.session_http_note"));
+        ui.small(self.tr("agent.ui.session_limits_note"));
     }
 
     pub(super) fn agent_sequence_object_commands(seq_id: &str) -> Vec<AgentObjectCommand> {
         let seq_id = Self::shell_quote_command_arg(seq_id);
         vec![
             AgentObjectCommand {
-                label: "Open sequence",
-                detail: "Open this project sequence in its DNA/RNA window.",
+                label: "agent.action.open",
+                detail: "agent.action.open_detail",
                 command: format!("/open sequence-window {seq_id}"),
             },
             AgentObjectCommand {
-                label: "List annotations",
-                detail: "Return a read-only structured list of annotations on this sequence.",
+                label: "agent.action.annotations",
+                detail: "agent.action.annotations_detail",
                 command: format!("features query {seq_id} --limit 100"),
             },
             AgentObjectCommand {
-                label: "Find restriction sites",
-                detail: "Run the shared read-only restriction-site scan on this sequence.",
+                label: "agent.action.restriction",
+                detail: "agent.action.restriction_detail",
                 command: format!("features restriction-scan {seq_id}"),
             },
         ]
@@ -5807,15 +6068,11 @@ impl GENtleApp {
     ) -> AgentObjectCommand {
         let container_id = Self::shell_quote_command_arg(container_id);
         let (label, detail, exclusive) = if declared_contents_exclusive {
-            (
-                "Mark contents as a measured subset",
-                "Match the subset interpretation offered by the main project overview.",
-                false,
-            )
+            ("agent.action.subset", "agent.action.subset_detail", false)
         } else {
             (
-                "Mark contents as exhaustive",
-                "Match the exhaustive-content interpretation offered by the main project overview.",
+                "agent.action.exhaustive",
+                "agent.action.exhaustive_detail",
                 true,
             )
         };
@@ -5833,25 +6090,31 @@ impl GENtleApp {
         pending_command: &mut Option<String>,
     ) {
         ui.set_min_width(440.0);
-        ui.strong(format!("Actions for {object_label}"));
-        ui.small("These are the same parser-validated commands used by GUI Shell and CLI Shell.");
+        ui.strong(crate::i18n::trf(
+            "agent.display.actions",
+            &[("object", &(object_label).to_string())],
+        ));
+        ui.small(crate::i18n::tr("agent.ui.action_commands_note"));
         ui.separator();
         for action in commands {
-            ui.label(egui::RichText::new(action.label).strong());
-            ui.small(action.detail);
+            ui.label(egui::RichText::new(crate::i18n::tr(action.label)).strong());
+            ui.small(crate::i18n::tr(action.detail));
             ui.monospace(&action.command);
             ui.horizontal(|ui| {
-                if ui.button("Run").clicked() {
+                if ui.button(crate::i18n::tr("agent.ui.run")).clicked() {
                     *pending_command = Some(action.command.clone());
                     ui.close();
                 }
-                if ui.button("Copy command").clicked() {
+                if ui
+                    .button(crate::i18n::tr("agent.ui.copy_command"))
+                    .clicked()
+                {
                     ui.ctx().copy_text(action.command.clone());
                 }
             });
             ui.separator();
         }
-        ui.small("Use /help for the complete command catalog.");
+        ui.small(crate::i18n::tr("agent.ui.help_catalog"));
     }
 
     fn render_agent_project_state_summary(
@@ -5860,137 +6123,151 @@ impl GENtleApp {
         summary: &EngineStateSummary,
     ) -> Option<String> {
         let mut pending_command = None;
-        ui.label(format!(
-            "Current project: {} sequence(s), {} container(s), {} arrangement(s).",
-            summary.sequence_count, summary.container_count, summary.arrangement_count
+        ui.label(self.trf(
+            "agent.display.project",
+            &[
+                ("sequences", &(summary.sequence_count).to_string()),
+                ("containers", &(summary.container_count).to_string()),
+                ("arrangements", &(summary.arrangement_count).to_string()),
+            ],
         ));
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button("Show complete project overview")
-                .on_hover_text(
-                    "Focus the main window's table/graph with sequences, analyses, containers, arrangements, and their context menus",
-                )
+                .button(self.tr("agent.ui.project_overview"))
+                .on_hover_text(self.tr("agent.ui.overview_hover"))
                 .clicked()
             {
                 self.focus_project_overview_target(ProjectOverviewTarget::Lineage);
                 self.queue_focus_viewport(egui::ViewportId::ROOT);
-                self.agent_status = "Focused the complete project overview in the main window"
-                    .to_string();
+                self.agent_status = self.tr("agent.status.focused_project");
             }
-            ui.small("Right-click a sequence or container below for its contextual commands.");
+            ui.small(self.tr("agent.ui.project_context_hint"));
         });
         if summary.sequence_count == 0
             && summary.container_count == 0
             && summary.arrangement_count == 0
         {
-            ui.small("No sequences, containers, or arrangements are currently loaded.");
+            ui.small(self.tr("agent.ui.empty_project"));
             return pending_command;
         }
 
         if !summary.sequences.is_empty() {
-            egui::CollapsingHeader::new(format!("Sequences ({})", summary.sequence_count))
-                .default_open(true)
-                .show(ui, |ui| {
-                    for sequence in summary.sequences.iter().take(50) {
-                        let name = sequence
-                            .name
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|name| !name.is_empty() && *name != sequence.id.as_str())
-                            .map(|name| format!(" | {name}"))
-                            .unwrap_or_default();
-                        let response = ui.add(
-                            egui::Label::new(format!(
-                                "{}{} | {} bp | {}",
-                                sequence.id,
-                                name,
-                                sequence.length,
-                                if sequence.circular {
-                                    "circular"
-                                } else {
-                                    "linear"
-                                }
-                            ))
-                            .wrap(),
-                        );
-                        response
-                            .on_hover_text("Right-click for commands that operate on this sequence")
-                            .context_menu(|ui| {
-                                Self::render_agent_object_command_menu(
-                                    ui,
-                                    &sequence.id,
-                                    &Self::agent_sequence_object_commands(&sequence.id),
-                                    &mut pending_command,
-                                );
-                            });
-                    }
-                    if summary.sequences.len() > 50 {
-                        ui.small(format!(
-                            "... and {} more sequence(s); use Copy JSON for the complete list.",
-                            summary.sequences.len() - 50
-                        ));
-                    }
-                });
+            egui::CollapsingHeader::new(self.trf(
+                "agent.display.sequences",
+                &[("count", &(summary.sequence_count).to_string())],
+            ))
+            .default_open(true)
+            .show(ui, |ui| {
+                for sequence in summary.sequences.iter().take(50) {
+                    let name = sequence
+                        .name
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty() && *name != sequence.id.as_str())
+                        .map(|name| format!(" | {name}"))
+                        .unwrap_or_default();
+                    let response = ui.add(
+                        egui::Label::new(format!(
+                            "{}{} | {} bp | {}",
+                            sequence.id,
+                            name,
+                            sequence.length,
+                            if sequence.circular {
+                                self.tr("agent.ui.circular")
+                            } else {
+                                self.tr("agent.ui.linear")
+                            }
+                        ))
+                        .wrap(),
+                    );
+                    response
+                        .on_hover_text(self.tr("agent.ui.sequence_context"))
+                        .context_menu(|ui| {
+                            Self::render_agent_object_command_menu(
+                                ui,
+                                &sequence.id,
+                                &Self::agent_sequence_object_commands(&sequence.id),
+                                &mut pending_command,
+                            );
+                        });
+                }
+                if summary.sequences.len() > 50 {
+                    ui.small(self.trf(
+                        "agent.display.more_sequences",
+                        &[("count", &(summary.sequences.len() - 50).to_string())],
+                    ));
+                }
+            });
         }
         if !summary.containers.is_empty() {
-            egui::CollapsingHeader::new(format!("Containers ({})", summary.container_count))
-                .default_open(false)
-                .show(ui, |ui| {
-                    for container in summary.containers.iter().take(50) {
-                        let response = ui.add(
-                            egui::Label::new(format!(
-                                "{} | {} | {} member(s)",
-                                container.id, container.kind, container.member_count
-                            ))
-                            .wrap(),
-                        );
-                        response
-                            .on_hover_text(
-                                "Right-click for commands that operate on this container",
-                            )
-                            .context_menu(|ui| {
-                                Self::render_agent_object_command_menu(
-                                    ui,
+            egui::CollapsingHeader::new(self.trf(
+                "agent.display.containers",
+                &[("count", &(summary.container_count).to_string())],
+            ))
+            .default_open(false)
+            .show(ui, |ui| {
+                for container in summary.containers.iter().take(50) {
+                    let response = ui.add(
+                        egui::Label::new(self.trf(
+                            "agent.display.container",
+                            &[
+                                ("id", &(container.id).to_string()),
+                                ("kind", &(container.kind).to_string()),
+                                ("count", &(container.member_count).to_string()),
+                            ],
+                        ))
+                        .wrap(),
+                    );
+                    response
+                        .on_hover_text(self.tr("agent.ui.container_context"))
+                        .context_menu(|ui| {
+                            Self::render_agent_object_command_menu(
+                                ui,
+                                &container.id,
+                                &[Self::agent_container_object_command(
                                     &container.id,
-                                    &[Self::agent_container_object_command(
-                                        &container.id,
-                                        container.declared_contents_exclusive,
-                                    )],
-                                    &mut pending_command,
-                                );
-                            });
-                    }
-                    if summary.containers.len() > 50 {
-                        ui.small(format!(
-                            "... and {} more container(s); use Copy JSON for the complete list.",
-                            summary.containers.len() - 50
-                        ));
-                    }
-                });
+                                    container.declared_contents_exclusive,
+                                )],
+                                &mut pending_command,
+                            );
+                        });
+                }
+                if summary.containers.len() > 50 {
+                    ui.small(self.trf(
+                        "agent.display.more_containers",
+                        &[("count", &(summary.containers.len() - 50).to_string())],
+                    ));
+                }
+            });
         }
         if !summary.arrangements.is_empty() {
-            egui::CollapsingHeader::new(format!("Arrangements ({})", summary.arrangement_count))
-                .default_open(false)
-                .show(ui, |ui| {
-                    for arrangement in summary.arrangements.iter().take(50) {
-                        ui.add(
-                            egui::Label::new(format!(
-                                "{} | {} | {} lane(s)",
-                                arrangement.id, arrangement.mode, arrangement.lane_count
-                            ))
-                            .wrap(),
-                        )
-                        .on_hover_text(
-                            "Use Show complete project overview for arrangement actions",
-                        );
-                    }
-                    if summary.arrangements.len() > 50 {
-                        ui.small(format!(
-                            "... and {} more arrangement(s); use Copy JSON for the complete list.",
-                            summary.arrangements.len() - 50
-                        ));
-                    }
-                });
+            egui::CollapsingHeader::new(self.trf(
+                "agent.display.arrangements",
+                &[("count", &(summary.arrangement_count).to_string())],
+            ))
+            .default_open(false)
+            .show(ui, |ui| {
+                for arrangement in summary.arrangements.iter().take(50) {
+                    ui.add(
+                        egui::Label::new(self.trf(
+                            "agent.display.arrangement",
+                            &[
+                                ("id", &(arrangement.id).to_string()),
+                                ("mode", &(arrangement.mode).to_string()),
+                                ("count", &(arrangement.lane_count).to_string()),
+                            ],
+                        ))
+                        .wrap(),
+                    )
+                    .on_hover_text(self.tr("agent.ui.arrangement_context"));
+                }
+                if summary.arrangements.len() > 50 {
+                    ui.small(self.trf(
+                        "agent.display.more_arrangements",
+                        &[("count", &(summary.arrangements.len() - 50).to_string())],
+                    ));
+                }
+            });
         }
         pending_command
     }
@@ -6002,21 +6279,23 @@ impl GENtleApp {
         let mut pending_command = None;
         ui.group(|ui| {
             ui.horizontal_wrapped(|ui| {
-                ui.strong("Command result");
+                ui.strong(self.tr("agent.ui.command_result"));
                 ui.monospace(result.command.trim());
                 ui.small(if result.state_changed {
-                    "project changed"
+                    self.tr("agent.ui.project_changed")
                 } else {
-                    "read only"
+                    self.tr("agent.ui.read_only")
                 });
                 if ui
-                    .button("Copy JSON")
-                    .on_hover_text("Copy the complete structured result from this local command")
+                    .button(self.tr("agent.ui.copy_json"))
+                    .on_hover_text(self.tr("agent.ui.copy_result_hover"))
                     .clicked()
                 {
                     ui.ctx().copy_text(pretty_output.clone());
-                    self.agent_status =
-                        format!("Copied structured result for {}", result.command.trim());
+                    self.agent_status = self.trf(
+                        "agent.status.copied_result",
+                        &[("command", &(result.command.trim()).to_string())],
+                    );
                 }
             });
 
@@ -6026,10 +6305,10 @@ impl GENtleApp {
             } else if result.output.get("help").is_some()
                 || result.output.get("help_markdown").is_some()
             {
-                ui.label("The shared-shell command reference is open in Help > Shell Commands.");
-                ui.small("Use the Help window's Find field to locate a command or topic.");
+                ui.label(self.tr("agent.ui.help_opened"));
+                ui.small(self.tr("agent.ui.help_find"));
             } else {
-                ui.small("Structured command output:");
+                ui.small(self.tr("agent.ui.structured_output"));
                 let mut visible_output = pretty_output;
                 egui::ScrollArea::vertical()
                     .id_salt("agent_local_command_output_scroll")
@@ -6076,7 +6355,7 @@ impl GENtleApp {
         );
         self.refresh_agent_system_catalog();
         let mut close_requested = false;
-        let close_hover = Self::specialist_window_close_hover_text("Agent Assistant");
+        let close_hover = self.tr("agent.ui.close_hover");
         let close_label = self.tr("button.close");
         if self.render_specialist_window_nav_with_close(
             ui,
@@ -6093,12 +6372,18 @@ impl GENtleApp {
         ui.group(|ui| {
             ui.horizontal_wrapped(|ui| {
                 if let Some(system) = selected_system.as_ref() {
-                    ui.strong(format!("{} ({})", system.label, system.id));
+                    ui.strong(format!(
+                        "{} ({})",
+                        self.agent_catalog_text(&system.id, "label", &system.label),
+                        system.id
+                    ));
                     let model = normalize_agent_model_name(self.agent_model_override.trim())
                         .or_else(|| self.selected_agent_discovered_model())
                         .or_else(|| system.model.as_deref().and_then(normalize_agent_model_name));
                     if let Some(model) = model {
-                        ui.small(format!("model: {model}"));
+                        ui.small(
+                            self.trf("agent.display.model", &[("model", &(model).to_string())]),
+                        );
                     }
                 } else {
                     ui.colored_label(
@@ -6198,27 +6483,37 @@ impl GENtleApp {
                                         }
                                         _ => String::new(),
                                     };
-                                ui.small(format!(
-                                    "Attached image: {}{} | source {}",
-                                    attachment.file_name,
-                                    dimensions,
-                                    attachment
-                                        .source_window_title
-                                        .as_deref()
-                                        .unwrap_or("GENtle window")
-                                ));
+                                ui.small(
+                                    self.trf(
+                                        "agent.display.attachment",
+                                        &[
+                                            ("file", &(attachment.file_name).to_string()),
+                                            ("dimensions", &(dimensions).to_string()),
+                                            (
+                                                "window",
+                                                &(attachment
+                                                    .source_window_title
+                                                    .as_deref()
+                                                    .unwrap_or(&self.tr("agent.ui.window")))
+                                                .to_string(),
+                                            ),
+                                        ],
+                                    ),
+                                );
                             }
                             ui.horizontal_wrapped(|ui| {
-                                ui.strong(if turn.system_label.trim().is_empty() {
-                                    turn.system_id.as_str()
-                                } else {
-                                    turn.system_label.as_str()
-                                });
+                                ui.strong(self.agent_catalog_text(
+                                    &turn.system_id,
+                                    "label",
+                                    if turn.system_label.trim().is_empty() {
+                                        turn.system_id.as_str()
+                                    } else {
+                                        turn.system_label.as_str()
+                                    },
+                                ));
                                 if ui
                                     .small_button(self.tr("agent.conversation.copy"))
-                                    .on_hover_text(
-                                        "Copy this stored agent response as structured JSON",
-                                    )
+                                    .on_hover_text(self.tr("agent.ui.copy_stored_hover"))
                                     .clicked()
                                     && let Ok(payload) =
                                         serde_json::to_string_pretty(&turn.response)
@@ -6232,9 +6527,9 @@ impl GENtleApp {
                             for question in &turn.response.questions {
                                 ui.add(
                                     egui::Label::new(
-                                        egui::RichText::new(format!(
-                                            "Question: {}",
-                                            question.trim()
+                                        egui::RichText::new(self.trf(
+                                            "agent.display.question",
+                                            &[("question", &(question.trim()).to_string())],
                                         ))
                                         .small(),
                                     )
@@ -6242,16 +6537,19 @@ impl GENtleApp {
                                 );
                             }
                             if let Some(request) = &turn.response.screenshot_request {
-                                ui.small(format!(
-                                    "Screenshot request {}: {} (one-shot approval is not stored)",
-                                    request.id, request.reason
+                                ui.small(self.trf(
+                                    "agent.display.screenshot_request",
+                                    &[
+                                        ("id", &(request.id).to_string()),
+                                        ("reason", &(request.reason).to_string()),
+                                    ],
                                 ));
                             }
                         }
                     });
             });
             if copied_response {
-                self.agent_status = "Copied stored agent response JSON".to_string();
+                self.agent_status = self.tr("agent.status.copied_stored");
             }
         }
         if !agent_prompt_template_options()
@@ -6264,13 +6562,17 @@ impl GENtleApp {
             ui.label(self.tr("agent.prompt_template"))
                 .on_hover_text(self.tr("agent.prompt_template.tooltip"));
             let template_response = egui::ComboBox::from_id_salt("agent_prompt_template_combo")
-                .selected_text(agent_prompt_template_label(&self.agent_prompt_template_id))
+                .selected_text(self.i18n.catalog_text(
+                    &format!("agent.template.{}", self.agent_prompt_template_id),
+                    agent_prompt_template_label(&self.agent_prompt_template_id),
+                ))
                 .show_ui(ui, |ui| {
-                    for (id, label) in agent_prompt_template_options() {
+                    for (id, _) in agent_prompt_template_options() {
+                        let label = self.tr(&format!("agent.template.{id}"));
                         ui.selectable_value(
                             &mut self.agent_prompt_template_id,
                             (*id).to_string(),
-                            *label,
+                            label,
                         );
                     }
                 });
@@ -6279,9 +6581,7 @@ impl GENtleApp {
                 .on_hover_text(self.tr("agent.prompt_template.tooltip"));
             if ui
                 .button(self.tr("agent.insert"))
-                .on_hover_text(
-                    "Replace current prompt with selected template and apply its request defaults",
-                )
+                .on_hover_text(self.tr("agent.ui.insert_hover"))
                 .clicked()
             {
                 self.agent_prompt =
@@ -6293,9 +6593,7 @@ impl GENtleApp {
             }
             if ui
                 .button(self.tr("agent.append"))
-                .on_hover_text(
-                    "Append selected template below current prompt and apply its request defaults",
-                )
+                .on_hover_text(self.tr("agent.ui.append_hover"))
                 .clicked()
             {
                 let template_text = agent_prompt_template_text(&self.agent_prompt_template_id);
@@ -6322,7 +6620,7 @@ impl GENtleApp {
                 .clicked()
                 && let Some(path) = rfd::FileDialog::new()
                     .add_filter(
-                        "Text documents",
+                        self.tr("agent.ui.text_documents"),
                         &[
                             "md", "markdown", "txt", "rst", "log", "json", "toml", "yaml", "yml",
                             "csv", "tsv",
@@ -6398,14 +6696,14 @@ impl GENtleApp {
         }
         ui.horizontal(|ui| {
             let ask_button_text = if direct_prompt_command.is_some() {
-                "Run command".to_string()
+                self.tr("agent.ui.run_command")
             } else {
                 self.tr("agent.ask_agent")
             };
             let ask_hover_text = if direct_prompt_command.is_some() {
-                "Run this GENtle Agent Assistant slash command locally (Command/Ctrl+Return)"
+                self.tr("agent.ui.run_command_hover")
             } else {
-                "Send prompt to selected agent system (Command/Ctrl+Return)"
+                self.tr("agent.ui.ask_hover")
             };
             let ask_response = ui
                 .add_enabled(can_submit_prompt, egui::Button::new(ask_button_text))
@@ -6431,16 +6729,14 @@ impl GENtleApp {
                     !running,
                     egui::Button::new(self.tr("agent.clear_conversation")),
                 )
-                .on_hover_text(
-                    "Clear the project-stored conversation, latest response, and agent status",
-                )
+                .on_hover_text(self.tr("agent.ui.clear_conversation_hover"))
                 .clicked()
             {
                 self.clear_agent_conversation();
             }
             if ui
                 .button(self.tr("agent.clear_execution_log"))
-                .on_hover_text("Clear local execution history for agent suggestions")
+                .on_hover_text(self.tr("agent.ui.clear_log_hover"))
                 .clicked()
             {
                 self.agent_execution_log.clear();
@@ -6483,15 +6779,16 @@ impl GENtleApp {
         if let Some(task) = &self.agent_task {
             ui.horizontal(|ui| {
                 ui.add(egui::Spinner::new());
-                ui.label(format!(
-                    "Agent request running ({:.1}s)",
-                    task.started.elapsed().as_secs_f32()
+                ui.label(self.trf(
+                    "agent.display.running",
+                    &[(
+                        "elapsed",
+                        &format!("{:.1}", task.started.elapsed().as_secs_f32()),
+                    )],
                 ));
                 if ui
-                    .button("Stop")
-                    .on_hover_text(
-                        "Stop waiting for the current agent request (Command/Ctrl+Period)",
-                    )
+                    .button(self.tr("agent.ui.stop"))
+                    .on_hover_text(self.tr("agent.ui.stop_hover"))
                     .clicked()
                 {
                     stop_agent_request = true;
@@ -6523,51 +6820,85 @@ impl GENtleApp {
         if let Some(invocation) = self.agent_last_invocation.clone() {
             ui.separator();
             ui.horizontal_wrapped(|ui| {
-                ui.label(format!(
-                    "Latest response from {} ({})",
-                    invocation.system_label, invocation.system_id
+                ui.label(self.trf(
+                    "agent.display.latest",
+                    &[
+                        (
+                            "label",
+                            &self.agent_catalog_text(
+                                &invocation.system_id,
+                                "label",
+                                &invocation.system_label,
+                            ),
+                        ),
+                        ("id", &(invocation.system_id).to_string()),
+                    ],
                 ));
                 if ui
-                    .button("Copy Response JSON")
-                    .on_hover_text("Copy the latest agent response JSON to the clipboard")
+                    .button(self.tr("agent.ui.copy_response"))
+                    .on_hover_text(self.tr("agent.ui.copy_response_hover"))
                     .clicked()
                 {
                     let payload = Self::agent_response_clipboard_payload(&invocation);
                     ui.ctx().copy_text(payload);
-                    self.agent_status = "Copied latest agent response JSON".to_string();
+                    self.agent_status = self.tr("agent.status.copied_latest");
                 }
             });
-            ui.small(format!(
-                "elapsed={} ms | transport={} | exit_code={:?}",
-                invocation.elapsed_ms, invocation.transport, invocation.exit_code
+            ui.small(self.trf(
+                "agent.display.elapsed",
+                &[
+                    ("elapsed", &(invocation.elapsed_ms).to_string()),
+                    ("transport", &(invocation.transport).to_string()),
+                    ("code", &format!("{:?}", invocation.exit_code)),
+                ],
             ));
-            ui.small(format!(
-                "runtime: timeout={}s | connect={:?}s | read={:?}s | max_retries={} | max_response_bytes={}",
-                invocation.runtime.timeout_secs,
-                invocation.runtime.connect_timeout_secs,
-                invocation.runtime.read_timeout_secs,
-                invocation.runtime.max_retries,
-                invocation.runtime.max_response_bytes
+            ui.small(self.trf(
+                "agent.display.runtime",
+                &[
+                    ("timeout", &(invocation.runtime.timeout_secs).to_string()),
+                    (
+                        "connect",
+                        &format!("{:?}", invocation.runtime.connect_timeout_secs),
+                    ),
+                    (
+                        "read",
+                        &format!("{:?}", invocation.runtime.read_timeout_secs),
+                    ),
+                    ("retries", &(invocation.runtime.max_retries).to_string()),
+                    (
+                        "bytes",
+                        &(invocation.runtime.max_response_bytes).to_string(),
+                    ),
+                ],
             ));
             if !invocation.runtime.endpoint_candidates.is_empty() {
-                ui.small(format!(
-                    "endpoint candidates: {}",
-                    invocation.runtime.endpoint_candidates.join(" | ")
+                ui.small(self.trf(
+                    "agent.display.endpoint_candidates",
+                    &[(
+                        "endpoints",
+                        &(invocation.runtime.endpoint_candidates.join(" | ")).to_string(),
+                    )],
                 ));
             }
             if !invocation.runtime.attempted_endpoints.is_empty() {
-                ui.small(format!(
-                    "attempted endpoints: {}",
-                    invocation.runtime.attempted_endpoints.join(" | ")
+                ui.small(self.trf(
+                    "agent.display.attempted_endpoints",
+                    &[(
+                        "endpoints",
+                        &(invocation.runtime.attempted_endpoints.join(" | ")).to_string(),
+                    )],
                 ));
             }
             if let Some(selected_endpoint) = invocation.runtime.selected_endpoint.as_deref() {
-                ui.small(format!("selected endpoint: {}", selected_endpoint));
+                ui.small(self.trf(
+                    "agent.display.selected_endpoint",
+                    &[("endpoint", &(selected_endpoint).to_string())],
+                ));
             }
             let sanity_warnings = Self::agent_response_sanity_warnings(&invocation);
             if !sanity_warnings.is_empty() {
                 ui.group(|ui| {
-                    ui.strong("Response sanity checks");
+                    ui.strong(self.tr("agent.ui.sanity_checks"));
                     for warning in &sanity_warnings {
                         let warning = Self::compact_agent_validation_message(warning);
                         ui.add(
@@ -6580,10 +6911,7 @@ impl GENtleApp {
                     }
                     ui.add(
                         egui::Label::new(
-                            egui::RichText::new(
-                                "These checks are deterministic GENtle validation hints, not a second AI judgment.",
-                            )
-                            .small(),
+                            egui::RichText::new(self.tr("agent.ui.sanity_note")).small(),
                         )
                         .wrap(),
                     );
@@ -6591,24 +6919,24 @@ impl GENtleApp {
             }
             if !invocation.response.assistant_message.trim().is_empty() {
                 ui.group(|ui| {
-                    ui.strong("Agent message");
+                    ui.strong(self.tr("agent.ui.agent_message"));
                     ui.add(egui::Label::new(invocation.response.assistant_message.trim()).wrap());
                 });
             }
             self.render_agent_web_research(ui, &invocation.response);
             if !invocation.response.questions.is_empty() {
                 ui.group(|ui| {
-                    ui.strong("Agent questions");
+                    ui.strong(self.tr("agent.ui.agent_questions"));
                     for question in &invocation.response.questions {
                         ui.add(egui::Label::new(format!("- {}", question)).wrap());
                     }
                 });
             }
             if invocation.response.suggested_commands.is_empty() {
-                ui.small("No executable suggestions in this reply.");
+                ui.small(self.tr("agent.ui.no_suggestions"));
             } else {
                 ui.separator();
-                ui.strong("Suggested commands");
+                ui.strong(self.tr("agent.ui.suggestions"));
                 let mut run_request: Option<(usize, AgentSuggestedCommand)> = None;
                 for (idx, suggestion) in invocation.response.suggested_commands.iter().enumerate() {
                     let index_1based = idx + 1;
@@ -6629,10 +6957,15 @@ impl GENtleApp {
                         ui.horizontal_wrapped(|ui| {
                             ui.strong(format!("#{index_1based}"));
                             let run_response = ui
-                                .add_enabled(run_blocker.is_none(), egui::Button::new("Run"))
-                                .on_hover_text(run_blocker.as_deref().unwrap_or(
-                                    "Execute this suggestion through GENtle's shared shell parser/executor",
-                                ));
+                                .add_enabled(
+                                    run_blocker.is_none(),
+                                    egui::Button::new(self.tr("agent.ui.run")),
+                                )
+                                .on_hover_text(
+                                    run_blocker
+                                        .as_deref()
+                                        .unwrap_or(&self.tr("agent.ui.run_suggestion_hover")),
+                                );
                             if run_response.clicked() {
                                 run_request = Some((index_1based, suggestion.clone()));
                             }
@@ -6640,9 +6973,18 @@ impl GENtleApp {
                                 suggestion
                                     .title
                                     .as_deref()
-                                    .unwrap_or("Suggested GENtle command"),
+                                    .unwrap_or(&self.tr("agent.ui.suggestion_title")),
                             );
-                            ui.small(format!("mode: {}", suggestion.execution.as_str()));
+                            ui.small(self.trf(
+                                "agent.display.mode",
+                                &[(
+                                    "mode",
+                                    &self.tr(&format!(
+                                        "agent.mode.{}",
+                                        suggestion.execution.as_str()
+                                    )),
+                                )],
+                            ));
                         });
                         if let Some(reason) = &run_blocker {
                             let reason_color = if precondition_blocker.is_some()
@@ -6653,59 +6995,72 @@ impl GENtleApp {
                                 egui::Color32::from_rgb(190, 70, 70)
                             };
                             ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(reason).color(reason_color),
-                                )
-                                .wrap(),
+                                egui::Label::new(egui::RichText::new(reason).color(reason_color))
+                                    .wrap(),
                             );
                         }
                         let command_text = egui::RichText::new(suggestion.command.trim())
                             .monospace()
-                            .color(if command_blocker.is_some()
-                                && suggestion.execution != AgentExecutionIntent::Chat
-                            {
-                                egui::Color32::from_rgb(190, 70, 70)
-                            } else {
-                                ui.visuals().text_color()
-                            });
+                            .color(
+                                if command_blocker.is_some()
+                                    && suggestion.execution != AgentExecutionIntent::Chat
+                                {
+                                    egui::Color32::from_rgb(190, 70, 70)
+                                } else {
+                                    ui.visuals().text_color()
+                                },
+                            );
                         ui.add(egui::Label::new(command_text).wrap());
 
                         let mut details = Vec::new();
                         if !suggestion.preconditions.is_empty() {
-                            details.push(format!(
-                                "Preconditions: {}",
-                                suggestion.preconditions.join("; ")
+                            details.push(self.trf(
+                                "agent.display.preconditions",
+                                &[("value", &(suggestion.preconditions.join("; ")).to_string())],
                             ));
                         }
                         if let Some(expr) = &suggestion.precondition_expr {
                             if let Some(readiness) = self.agent_suggestion_fact_readiness(expr) {
-                                details.push(format!("Readiness: {readiness}"));
+                                details.push(self.trf(
+                                    "agent.display.readiness",
+                                    &[("value", &(readiness).to_string())],
+                                ));
                             }
                             if let Ok(expr_json) = serde_json::to_string(expr) {
-                                details.push(format!("Precondition logic: {expr_json}"));
+                                details.push(self.trf(
+                                    "agent.display.precondition_logic",
+                                    &[("value", &(expr_json).to_string())],
+                                ));
                             }
                         }
                         if !suggestion.expected_outcomes.is_empty() {
-                            details.push(format!(
-                                "Expected outcomes: {}",
-                                suggestion.expected_outcomes.join("; ")
+                            details.push(self.trf(
+                                "agent.display.outcomes",
+                                &[(
+                                    "value",
+                                    &(suggestion.expected_outcomes.join("; ")).to_string(),
+                                )],
                             ));
                         }
                         if !suggestion.expected_effects.is_empty()
                             && let Ok(effects_json) =
                                 serde_json::to_string(&suggestion.expected_effects)
                         {
-                            details.push(format!("Expected effects: {effects_json}"));
+                            details.push(self.trf(
+                                "agent.display.effects",
+                                &[("value", &(effects_json).to_string())],
+                            ));
                         }
                         if let Some(rationale) = suggestion.rationale.as_deref()
                             && !rationale.trim().is_empty()
                         {
-                            details.push(format!("Rationale: {}", rationale.trim()));
+                            details.push(self.trf(
+                                "agent.display.rationale",
+                                &[("value", &(rationale.trim()).to_string())],
+                            ));
                         }
                         for detail in details {
-                            ui.add(
-                                egui::Label::new(egui::RichText::new(detail).small()).wrap(),
-                            );
+                            ui.add(egui::Label::new(egui::RichText::new(detail).small()).wrap());
                         }
                     });
                 }
@@ -6715,7 +7070,7 @@ impl GENtleApp {
             }
             if !invocation.raw_stderr.trim().is_empty() {
                 ui.separator();
-                ui.strong("Agent stderr");
+                ui.strong(self.tr("agent.ui.stderr"));
                 let mut stderr = invocation.raw_stderr.clone();
                 egui::ScrollArea::horizontal()
                     .id_salt("agent_stderr_horizontal_scroll")
@@ -6732,7 +7087,7 @@ impl GENtleApp {
 
         if !self.agent_execution_log.is_empty() {
             ui.separator();
-            ui.strong("Execution log");
+            ui.strong(self.tr("agent.ui.execution_log"));
             egui::ScrollArea::vertical()
                 .id_salt("agent_execution_log_scroll")
                 .max_height(180.0)
@@ -6744,24 +7099,45 @@ impl GENtleApp {
                     );
                     for entry in self.agent_execution_log.iter().rev() {
                         let source = if entry.index_1based == 0 {
-                            "prompt".to_string()
+                            self.tr("agent.prompt")
                         } else {
                             format!("#{}", entry.index_1based)
                         };
                         ui.add(
-                            egui::Label::new(format!(
-                                "{} [{}] {} | {} | changed={} | t={}",
-                                source,
-                                entry.trigger,
-                                entry
-                                    .feedback
-                                    .as_ref()
-                                    .map(|receipt| receipt.status.as_str())
-                                    .unwrap_or("unavailable"),
-                                entry.command,
-                                entry.state_changed,
-                                entry.executed_at_unix_ms
-                            ))
+                            egui::Label::new(
+                                self.trf(
+                                    "agent.display.log_entry",
+                                    &[
+                                        ("source", &(source).to_string()),
+                                        ("trigger", &(entry.trigger).to_string()),
+                                        (
+                                            "status",
+                                            &(entry
+                                                .feedback
+                                                .as_ref()
+                                                .map(|receipt| {
+                                                    self.tr(&format!(
+                                                        "agent.execution.{}",
+                                                        receipt.status.as_str()
+                                                    ))
+                                                })
+                                                .unwrap_or_else(|| {
+                                                    self.tr("agent.ui.unavailable")
+                                                })),
+                                        ),
+                                        ("command", &(entry.command).to_string()),
+                                        (
+                                            "changed",
+                                            &self.tr(if entry.state_changed {
+                                                "agent.ui.yes"
+                                            } else {
+                                                "agent.ui.no"
+                                            }),
+                                        ),
+                                        ("time", &(entry.executed_at_unix_ms).to_string()),
+                                    ],
+                                ),
+                            )
                             .wrap(),
                         );
                         ui.add(
