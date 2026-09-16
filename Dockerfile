@@ -62,7 +62,7 @@ COPY README.md CONTRIBUTING.md copyright ./
 
 ARG GENTLE_CARGO_PROFILE=release-fast
 
-RUN cargo build --locked --profile "${GENTLE_CARGO_PROFILE}" --features script-interfaces --bins
+RUN cargo build --locked --profile "${GENTLE_CARGO_PROFILE}" --features script-interfaces --bins -j1
 RUN cargo install --locked --root /opt/rnapkin rnapkin
 
 RUN mkdir -p \

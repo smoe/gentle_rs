@@ -599,6 +599,7 @@ jobs:
   ci-summary:
     name: CI / selected platform
     needs:
+      - release-policy
       - select-platform
       - headless-linux
       - macos
@@ -612,6 +613,7 @@ jobs:
         shell: bash
         env:
           PLATFORM: ${{ needs.select-platform.outputs.platform }}
+          RELEASE_POLICY_RESULT: ${{ needs.release-policy.result }}
           HEADLESS_RESULT: ${{ needs.headless-linux.result }}
           MACOS_RESULT: ${{ needs.macos.result }}
           LINUX_RESULT: ${{ needs.linux.result }}
@@ -629,7 +631,11 @@ jobs:
           esac
           echo "Selected platform: $PLATFORM"
           echo "Selected platform result: $result"
+          echo "Release candidate safety result: $RELEASE_POLICY_RESULT"
           echo "Headless Linux result: $HEADLESS_RESULT"
+          if [[ "$RELEASE_POLICY_RESULT" != "success" ]]; then
+            exit 1
+          fi
           if [[ "$HEADLESS_RESULT" != "success" ]]; then
             exit 1
           fi

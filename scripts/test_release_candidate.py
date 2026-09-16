@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import textwrap
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -305,6 +306,42 @@ class WorkflowWiringTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
         self.assertIn("python3 -m unittest scripts.test_release_candidate -v", text)
+
+    def test_ci_summary_requires_release_policy_and_build_success(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        summary = text.split("\n  ci-summary:\n", 1)[1]
+        dependencies = summary.split("    needs:\n", 1)[1].split("    if:", 1)[0]
+        self.assertIn("      - release-policy\n", dependencies)
+        self.assertIn("    if: always()", summary)
+        self.assertIn("RELEASE_POLICY_RESULT: ${{ needs.release-policy.result }}", summary)
+        script = textwrap.dedent(summary.split("        run: |\n", 1)[1])
+
+        for platform in ("macos", "linux", "windows"):
+            selected = f"{platform.upper()}_RESULT"
+            results = {
+                "PLATFORM": platform,
+                "RELEASE_POLICY_RESULT": "success",
+                "HEADLESS_RESULT": "success",
+                "MACOS_RESULT": "skipped",
+                "LINUX_RESULT": "skipped",
+                "WINDOWS_RESULT": "skipped",
+                selected: "success",
+            }
+            cases = [(results, True)]
+            for required in ("RELEASE_POLICY_RESULT", "HEADLESS_RESULT", selected):
+                for outcome in ("failure", "cancelled", "skipped", ""):
+                    cases.append(({**results, required: outcome}, False))
+            for case, should_pass in cases:
+                with self.subTest(results=case):
+                    completed = subprocess.run(
+                        ["bash", "-c", script], env={**os.environ, **case},
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(
+                        completed.returncode == 0, should_pass,
+                        completed.stdout + completed.stderr,
+                    )
 
 
 if __name__ == "__main__":
