@@ -285,11 +285,11 @@ explicit screenshot approval, and broader adapter/documentation polish. Useful
 work here validates headless MCP deployment, aligns install docs with actual
 outputs, and decides release attachments versus git-tracked assets; defer
 infrastructure expansion that does not reduce release risk.
-- Agent screenshot follow-up: run the documented consent flow on Linux/Xvfb and
-  native macOS after merge. Native child viewports should capture their exact
-  viewport; hosted/embedded fallback captures the containing GENtle root
-  viewport, so consider a content-layer crop only if manual review shows that
-  the selected hosted window is not sufficiently clear.
+- Agent GUI acceptance: test screenshot consent on Linux/Xvfb and native macOS;
+  review Assistant/setup translations and small-window layout, especially
+  Chinese/Japanese fonts and Latin. Native child capture must match its viewport;
+  hosted/embedded fallback captures the GENtle root. Consider a content-layer
+  crop only if review finds the selected hosted window insufficiently clear.
 
 ## Phase F: Interpretation Later
 

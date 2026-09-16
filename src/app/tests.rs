@@ -4119,6 +4119,262 @@ fn render_help_contents_texts(app: &mut GENtleApp) -> Vec<String> {
     texts
 }
 
+fn render_agent_i18n_texts(app: &mut GENtleApp, configuration: bool) -> String {
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(960.0, 6000.0),
+        )),
+        ..Default::default()
+    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            if configuration {
+                app.render_agent_configuration_tab(ui);
+            } else {
+                app.render_agent_assistant_contents(ui);
+            }
+        },
+    );
+    let output = crate::egui_compat::end_test_pass(&ctx);
+    let mut texts = Vec::new();
+    for clipped in output.shapes {
+        collect_rendered_text_from_shape(&clipped.shape, &mut texts);
+    }
+    texts.join("\n")
+}
+
+// Hand-crafted, offline GUI state: no provider calls or real credential-file reads.
+fn agent_i18n_test_app(language: crate::i18n::UiLanguage) -> GENtleApp {
+    let mut app = GENtleApp::default();
+    app.i18n = crate::i18n::I18n::for_test_language(language);
+    let mut system = test_agent_system("builtin_echo", AgentSystemTransport::BuiltinEcho);
+    system.label = "Built-in Echo (demo)".to_string();
+    app.agent_systems = vec![system];
+    app.agent_system_id = "builtin_echo".to_string();
+    app.agent_catalog_loaded_path = app.agent_catalog_path.clone();
+    app.agent_token_file_credentials_loaded = true;
+    app
+}
+
+#[test]
+fn agent_i18n_statuses_translate_without_changing_execution_records() {
+    for language in crate::i18n::UiLanguage::ALL {
+        let _language = crate::i18n::TestLanguageGuard::new(language);
+        let mut app = agent_i18n_test_app(language);
+        let command = "agents ask builtin_echo --prompt 'ask: capabilities'";
+        app.execute_agent_prompt_command(command);
+        assert_eq!(
+            app.agent_status,
+            app.trf(
+                "agent.status.command_rejected",
+                &[
+                    ("source", &app.tr("agent.ui.prompt_command")),
+                    ("reason", &app.tr("agent.ui.nested_commands_blocked")),
+                ],
+            )
+        );
+        let record = app.agent_execution_log.last().unwrap();
+        assert_eq!(record.command, command);
+        assert_eq!(record.summary, "agent-to-agent agents command blocked");
+        assert!(!record.ok && !record.state_changed);
+        assert!(app.agent_pending_commands.is_empty() && app.agent_task.is_none());
+
+        let diagnostic = "Screenshot request declined. No image was captured or attached.";
+        app.agent_status = diagnostic.to_string();
+        let rendered = render_agent_i18n_texts(&mut app, false);
+        assert!(rendered.contains(&app.tr("agent.hint.screenshot_declined")));
+        assert_eq!(app.agent_status, diagnostic);
+    }
+}
+
+#[test]
+fn agent_i18n_configuration_renders_all_languages_without_changing_preflight() {
+    for language in crate::i18n::UiLanguage::ALL {
+        let _language = crate::i18n::TestLanguageGuard::new(language);
+        let mut app = agent_i18n_test_app(language);
+        app.agent_preflight_output = Some(crate::agent_transport::AgentSystemPreflight {
+            available: true,
+            transport: AgentSystemTransport::NativeOpenaiCompat
+                .as_str()
+                .to_string(),
+            model: Some("model-id-{unchanged}".to_string()),
+            live_probe: Some(crate::agent_transport::AgentSystemLiveProbe {
+                enabled: true,
+                status_class: crate::agent_transport::AgentLiveProbeStatusClass::ModelMissing,
+                message: "provider diagnostic stays unchanged".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let before = serde_json::to_value(&app.agent_preflight_output).unwrap();
+        let rendered = render_agent_i18n_texts(&mut app, true);
+        for key in [
+            "configuration.agent.heading",
+            "agent.ui.timeout",
+            "agent.ui.connect_timeout",
+            "agent.ui.read_timeout",
+            "agent.ui.retries",
+            "agent.ui.response_bytes",
+            "agent.probe.model_missing",
+            "agent.hint.correct_model",
+            "agent.ui.session_key_note",
+            "agent.provider.builtin_echo.label",
+        ] {
+            assert!(
+                rendered.contains(&app.tr(key)),
+                "{} missing {key}: {rendered}",
+                language.id()
+            );
+        }
+        assert!(rendered.contains("model-id-{unchanged}"));
+        assert!(rendered.contains("provider diagnostic stays unchanged"));
+        assert_eq!(
+            serde_json::to_value(&app.agent_preflight_output).unwrap(),
+            before
+        );
+        assert!(app.agent_task.is_none() && app.agent_model_discovery_task.is_none());
+    }
+}
+
+#[test]
+fn agent_i18n_model_configuration_wraps_without_network_discovery() {
+    for language in [crate::i18n::UiLanguage::DeDe, crate::i18n::UiLanguage::FrFr] {
+        let _language = crate::i18n::TestLanguageGuard::new(language);
+        let mut app = agent_i18n_test_app(language);
+        let mut system = test_agent_system(
+            "local_llama_compat",
+            AgentSystemTransport::NativeOpenaiCompat,
+        );
+        system.label = "Local Llama (OpenAI-compatible)".to_string();
+        system.base_url = Some("http://127.0.0.1:9/v1".to_string());
+        app.agent_systems = vec![system];
+        app.agent_system_id = "local_llama_compat".to_string();
+        // An explicit override suppresses automatic model discovery without changing its policy.
+        app.agent_model_override = "synthetic-model".to_string();
+        for width in [640.0, 960.0] {
+            let ctx = egui::Context::default();
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(width, 6000.0),
+                )),
+                ..Default::default()
+            });
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| {
+                    app.render_agent_configuration_tab(ui);
+                    assert!(
+                        ui.min_rect().right() <= width + 1.0,
+                        "{}: {:?} exceeds {width}",
+                        language.id(),
+                        ui.min_rect()
+                    );
+                },
+            );
+            let output = crate::egui_compat::end_test_pass(&ctx);
+            let mut text = Vec::new();
+            for clipped in output.shapes {
+                collect_rendered_text_from_shape(&clipped.shape, &mut text);
+            }
+            let rendered = text.join("\n");
+            assert!(rendered.contains(&app.tr("agent.key.openai_compatible")));
+            assert!(rendered.contains(&app.tr("agent.discover_models")));
+            assert!(rendered.contains("synthetic-model"));
+            assert!(app.agent_task.is_none() && app.agent_model_discovery_task.is_none());
+        }
+    }
+}
+
+#[test]
+fn agent_i18n_conversation_renders_all_languages_and_preserves_commands_and_json() {
+    for language in crate::i18n::UiLanguage::ALL {
+        let _language = crate::i18n::TestLanguageGuard::new(language);
+        let mut app = agent_i18n_test_app(language);
+        let invocation = AgentInvocationOutcome {
+            catalog_path: "assets/agent_systems.json".to_string(),
+            system_id: "builtin_echo".to_string(),
+            system_label: "Built-in Echo (demo)".to_string(),
+            transport: "builtin_echo".to_string(),
+            command: vec![],
+            request: serde_json::json!({"schema": "gentle.agent_request.v1", "prompt": "leave {id} alone"}),
+            response: AgentResponse {
+                schema: "gentle.agent_response.v1".to_string(),
+                assistant_message: "Provider prose with {placeholders} stays verbatim".to_string(),
+                questions: vec!["Provider question stays verbatim?".to_string()],
+                suggested_commands: vec![AgentSuggestedCommand {
+                    title: None,
+                    preconditions: vec![],
+                    precondition_expr: None,
+                    expected_outcomes: vec![],
+                    expected_effects: vec![],
+                    rationale: None,
+                    command: "/list".to_string(),
+                    execution: AgentExecutionIntent::Ask,
+                }],
+                screenshot_request: None,
+                web_research: None,
+            },
+            raw_stdout: "{\"provider_raw\":true}".to_string(),
+            raw_stderr: String::new(),
+            exit_code: Some(0),
+            elapsed_ms: 1,
+            runtime: crate::agent_bridge::AgentInvocationRuntime::default(),
+        };
+        let before = serde_json::to_value(&invocation).unwrap();
+        let clipboard_before = GENtleApp::agent_response_clipboard_payload(&invocation);
+        app.agent_last_invocation = Some(invocation);
+        app.agent_help_capture_failure = Some(crate::agent_help::AgentHelpCaptureFailure {
+            request_id: 1,
+            window_title: "Source window {unchanged}".to_string(),
+            kind: crate::agent_help::AgentHelpCaptureFailureKind::PermissionRequired,
+            message: "Native diagnostic stays verbatim".to_string(),
+        });
+        let rendered = render_agent_i18n_texts(&mut app, false);
+        for key in [
+            "agent.ui.copy_response",
+            "agent.ui.agent_message",
+            "agent.ui.agent_questions",
+            "agent.ui.suggestions",
+            "agent.ui.suggestion_title",
+            "agent.ui.run",
+            "agent.template.structured",
+            "agent.ui.screen_settings",
+            "agent.ui.screen_permission_note",
+        ] {
+            assert!(
+                rendered.contains(&app.tr(key)),
+                "{} missing {key}: {rendered}",
+                language.id()
+            );
+        }
+        assert!(rendered.contains("Provider prose with {placeholders} stays verbatim"));
+        assert!(rendered.contains("Provider question stays verbatim?"));
+        assert!(rendered.contains("/list"));
+        let after = app.agent_last_invocation.as_ref().unwrap();
+        assert_eq!(serde_json::to_value(after).unwrap(), before);
+        assert_eq!(
+            GENtleApp::agent_response_clipboard_payload(after),
+            clipboard_before
+        );
+        assert!(app.agent_execution_log.is_empty());
+        for (id, _) in super::agent_prompt_template_options() {
+            let key = format!("agent.template.{id}");
+            assert_ne!(app.tr(&key), key);
+        }
+        for action in GENtleApp::agent_sequence_object_commands("test-sequence") {
+            assert_ne!(app.tr(action.label), action.label);
+            assert_ne!(app.tr(action.detail), action.detail);
+            assert!(parse_shell_line(&action.command).is_ok());
+        }
+    }
+}
+
 #[test]
 fn open_routine_assistant_dialog_focuses_existing_window_without_resetting_state() {
     let mut app = GENtleApp::default();

@@ -102,6 +102,11 @@ pub(crate) struct I18n {
 }
 
 impl I18n {
+    #[cfg(test)]
+    pub(crate) fn for_test_language(language: UiLanguage) -> Self {
+        Self { language }
+    }
+
     pub(crate) fn language(&self) -> UiLanguage {
         self.language
     }
@@ -114,6 +119,53 @@ impl I18n {
     pub(crate) fn t(&self, key: &str) -> String {
         translate(self.language, key)
     }
+
+    pub(crate) fn tf(&self, key: &str, values: &[(&str, &str)]) -> String {
+        format_translation(&self.t(key), values)
+    }
+
+    /// Translate bundled catalog prose without replacing user-authored catalog overrides.
+    pub(crate) fn catalog_text(&self, key: &str, source: &str) -> String {
+        if catalog(UiLanguage::EnGb)
+            .get(key)
+            .is_some_and(|text| text == source)
+        {
+            self.t(key)
+        } else {
+            source.to_string()
+        }
+    }
+
+    /// Match only complete, known GUI guidance; never translate a provider's free text.
+    pub(crate) fn agent_hint(&self, source: &str) -> String {
+        catalog(UiLanguage::EnGb)
+            .iter()
+            .find(|(key, value)| key.starts_with("agent.hint.") && value.as_str() == source)
+            .map(|(key, _)| self.t(key))
+            .unwrap_or_else(|| source.to_string())
+    }
+}
+
+// Substitute only catalog placeholders, never braces contained in user/provider data.
+fn format_translation(template: &str, values: &[(&str, &str)]) -> String {
+    let mut result = String::with_capacity(template.len());
+    let mut remaining = template;
+    while let Some(start) = remaining.find('{') {
+        result.push_str(&remaining[..start]);
+        let Some(end) = remaining[start..].find('}') else {
+            result.push_str(&remaining[start..]);
+            return result;
+        };
+        let name = &remaining[start + 1..start + end];
+        if let Some((_, value)) = values.iter().find(|(key, _)| *key == name) {
+            result.push_str(value);
+        } else {
+            result.push_str(&remaining[start..=start + end]);
+        }
+        remaining = &remaining[start + end + 1..];
+    }
+    result.push_str(remaining);
+    result
 }
 
 fn current_language_cell() -> &'static RwLock<UiLanguage> {
@@ -140,6 +192,10 @@ pub(crate) fn current_language() -> UiLanguage {
 
 pub(crate) fn tr(key: &str) -> String {
     translate(current_language(), key)
+}
+
+pub(crate) fn trf(key: &str, values: &[(&str, &str)]) -> String {
+    format_translation(&tr(key), values)
 }
 
 #[cfg(test)]
@@ -288,6 +344,104 @@ mod tests {
 
         assert_eq!(i18n.t("menu.file"), "Datei");
         assert_eq!(i18n.t("missing.example.key"), "missing.example.key");
+    }
+
+    #[test]
+    fn agent_i18n_formatting_preserves_inserted_provider_text() {
+        let i18n = I18n {
+            language: UiLanguage::DeDe,
+        };
+        let raw = "model {code} / unchanged";
+        assert_eq!(
+            i18n.tf("agent.display.latest", &[("label", raw), ("id", "custom")]),
+            "Letzte Antwort von model {code} / unchanged (custom)"
+        );
+        assert_eq!(
+            format_translation("{a} {b}", &[("a", "{b}"), ("b", "untouched")]),
+            "{b} untouched"
+        );
+        assert_eq!(format_translation("{missing} {", &[]), "{missing} {");
+    }
+
+    #[test]
+    fn agent_i18n_covers_bundled_providers_templates_and_ui_keys() {
+        let english = catalog(UiLanguage::EnGb);
+        let providers: serde_json::Value =
+            serde_json::from_str(include_str!("../../assets/agent_systems.json")).unwrap();
+        for provider in providers["systems"].as_array().unwrap() {
+            for field in ["label", "description"] {
+                let key = format!(
+                    "agent.provider.{}.{field}",
+                    provider["id"].as_str().unwrap()
+                );
+                assert_eq!(
+                    english.get(&key).map(String::as_str),
+                    provider[field].as_str(),
+                    "{key}"
+                );
+            }
+        }
+        let key_pattern = regex::Regex::new(r#"(?:\.trf?|::trf?)\(\s*"(agent\.[^"]+)""#).unwrap();
+        let mut checked = BTreeSet::new();
+        for source in [
+            include_str!("routine_and_agent_assistant_ui.rs"),
+            include_str!("../app.rs"),
+        ] {
+            for captures in key_pattern.captures_iter(source) {
+                let key = captures[1].to_string();
+                assert!(english.contains_key(&key), "missing agent GUI key: {key}");
+                checked.insert(key);
+            }
+        }
+        assert!(
+            checked.len() > 180,
+            "agent translation guard must cover the full surface"
+        );
+        for prefix in [
+            "agent.ui.",
+            "agent.display.",
+            "agent.status.",
+            "agent.provider.",
+            "agent.template.",
+            "agent.hint.",
+        ] {
+            for (key, _) in english.iter().filter(|(key, _)| key.starts_with(prefix)) {
+                for language in UiLanguage::ALL {
+                    assert!(
+                        !catalog(language)[key].trim().is_empty(),
+                        "{}: {key}",
+                        language.id()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn agent_i18n_preserves_custom_catalog_text_and_unknown_diagnostics() {
+        let i18n = I18n {
+            language: UiLanguage::DeDe,
+        };
+        assert_eq!(
+            i18n.catalog_text("agent.provider.builtin_echo.label", "Built-in Echo (demo)"),
+            "Integriertes Echo (Demo)"
+        );
+        assert_eq!(
+            i18n.catalog_text("agent.provider.builtin_echo.label", "My laboratory agent"),
+            "My laboratory agent"
+        );
+        assert_eq!(
+            i18n.catalog_text("agent.provider.custom.label", "Private model"),
+            "Private model"
+        );
+        assert_eq!(
+            i18n.agent_hint("Provider error {code}: raw diagnostics"),
+            "Provider error {code}: raw diagnostics"
+        );
+        assert_ne!(
+            i18n.agent_hint(crate::agent_bridge::ANTHROPIC_API_KEY_AUTH_HINT),
+            crate::agent_bridge::ANTHROPIC_API_KEY_AUTH_HINT
+        );
     }
 
     #[test]
