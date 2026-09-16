@@ -13468,7 +13468,7 @@ This supports:
   - see draft: `docs/rna_guides_spec.md`
 ## Annotated TSS Viewer Intent
 
-`ui open|focus|close tss-view` is an argument-free `gentle.ui_intent.v1`
+`ui open|focus|close tss-view` without options is a `gentle.ui_intent.v1`
 destination for the active DNA viewer. Open/focus requests native grouped
 inspection of a GENtle annotated TSS EMBL/GenBank window; close returns to
 Standard map. It does not mutate sequence data, score motifs, or materialize
@@ -13478,3 +13478,22 @@ The common headless shell returns `state_changed=false` and `applied=false`;
 only a GUI host applies the intent. The shared catalog exposes the destination
 to the inner agent and other adapters. See [display semantics and current
 scope](gui.md#tss--regulatory-dna-display).
+
+### TSS Collection Derivation
+
+`InspectTssInventory { request }` is read-only and returns `tss_inventory`
+(`gentle.tss_inventory.v1`). Its request carries `seq_id`, `gene_query`,
+`collection_id`, `upstream_bp` (500) and `downstream_bp` (200). Exact source
+transcript starts are grouped without merging different genes, sources or strands.
+`MaterializeTssWindows { request }` accepts the same inventory request plus
+`expected_approval_sha256` and nonempty `selected_tss_ids`. It validates the whole
+selection before mutation and returns `tss_collection` (`gentle.tss_collection.v1`),
+typed `derive` semantics, a membership fingerprint and explicit project-sequence
+subject. `GetTssCollection { collection_id }` checks persisted members before reuse.
+`tss_collection.exists` reports stored collection identity, not member freshness.
+
+`ui open|focus|close tss-view --collection ID` returns
+`gentle.ui_tss_collection_intent.v1` with per-member `host_pending` states in the
+headless shell. GUI validation is asynchronous, bound to the project/revision,
+and limited to 32 windows. Queued is not completed. Collection-close retains
+sequence data. See [requests, bounds and provenance](tss_workspace.md).

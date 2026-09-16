@@ -57,6 +57,7 @@ pub use window_registry::{GuiProminentGlossaryEntry, gui_prominent_glossary_entr
 mod jaspar_expert;
 #[path = "app/promoter_cofactors_ui.rs"]
 mod promoter_cofactors_ui;
+pub(crate) mod tss_collection_ui;
 
 #[path = "app/history_ui.rs"]
 mod history_ui;
@@ -728,6 +729,7 @@ pub struct GENtleApp {
     engine: Arc<RwLock<GentleEngine>>,
     pattern_catalog: pattern_catalog_ui::PatternCatalogCache,
     new_windows: Vec<Window>,
+    tss_window_task: Option<tss_collection_ui::TssWindowTask>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     detached_auxiliary_window_hosts: HashMap<ViewportId, Arc<RwLock<Window>>>,
     windows_to_close: Arc<RwLock<Vec<ViewportId>>>,
@@ -2658,6 +2660,7 @@ impl Default for GENtleApp {
             engine: Arc::new(RwLock::new(GentleEngine::new())),
             pattern_catalog: pattern_catalog_ui::PatternCatalogCache::default(),
             new_windows: vec![],
+            tss_window_task: None,
             windows: HashMap::new(),
             detached_auxiliary_window_hosts: HashMap::new(),
             windows_to_close: Arc::new(RwLock::new(vec![])),
@@ -12442,6 +12445,8 @@ Error: `{err}`"
                 promoter_module_assessment: None,
                 feature_location_edit_report: None,
                 feature_record_curation_report: None,
+                tss_inventory: None,
+                tss_collection: None,
                 tss_tfbs_profiles: None,
                 tss_tfbs_profile_receipt: None,
                 gel_image: None,
@@ -25575,6 +25580,7 @@ impl GENtleApp {
             self.consume_native_about_request();
             self.consume_native_settings_request();
             self.consume_native_pcr_design_request();
+            self.poll_tss_collection_intent(ctx);
             self.consume_native_jaspar_expert_request();
             self.consume_native_windows_request();
             self.consume_active_viewport_report();

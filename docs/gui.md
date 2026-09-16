@@ -6684,7 +6684,7 @@ hash validation is not external reference authentication or a receipt audit.
 The first native consumer supports GENtle's annotated TSS export grammar,
 including existing hashed record names. FASTA alone, arbitrary locus features,
 and generic prose labels cannot establish its TSS geometry. Full report-backed
-dense traces, imported DuckDB hits, reporter rows, direct locus-to-TSS navigation,
+dense traces, imported DuckDB hits, reporter rows,
 and native-view SVG export remain follow-ups. **Export View SVG** explains this
 limitation instead of silently exporting a different map; existing receipt-bound
 TSS report exports remain the quantitative publication path.
@@ -6695,3 +6695,9 @@ Shared GUI/agent navigation: focus the intended DNA window, then use
 `ui open tss-view` or `ui focus tss-view`; `ui close tss-view` restores Standard
 map. No arbitrary project sequence is selected when the active DNA context is
 missing. Headless execution records the intent with `applied=false`.
+
+For an annotated anchored locus, **TFBS scan > Transcript starts / TSS windows...**
+now provides a background inventory, explicit row selection and approval, then
+collection-targeted opening. `ui open|focus|close tss-view --collection ID`
+targets that persisted collection independently of the active viewer. See the
+[TSS workspace walkthrough and limitations](tss_workspace.md).

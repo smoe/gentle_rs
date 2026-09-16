@@ -51,6 +51,7 @@
 #[path = "main_area_dna/auxiliary_workspaces.rs"]
 mod auxiliary_workspaces;
 mod tata_box_ui;
+mod tss_workspace_ui;
 
 #[path = "main_area_dna/cutrun_support.rs"]
 mod cutrun_support;
@@ -1821,6 +1822,7 @@ pub struct MainAreaDna {
     cryptic_splicing_protein_projection: Option<Arc<CrypticSplicingProteinProjectionReport>>,
     cryptic_splicing_status: String,
     tata_ui: tata_box_ui::TataBoxWorkspace,
+    tss_inventory_ui: tss_workspace_ui::TssWorkspace,
     cryptic_splicing_focus_requested: bool,
     cached_splicing_expert_presentations: Vec<CachedSplicingExpertPresentation>,
     splicing_expert_presentation_cache_hits: u64,
@@ -2707,6 +2709,7 @@ impl MainAreaDna {
             cryptic_splicing_protein_projection: None,
             cryptic_splicing_status: String::new(),
             tata_ui: tata_box_ui::TataBoxWorkspace::default(),
+            tss_inventory_ui: tss_workspace_ui::TssWorkspace::default(),
             cryptic_splicing_focus_requested: false,
             cached_splicing_expert_presentations: Vec::new(),
             splicing_expert_presentation_cache_hits: 0,
@@ -4408,6 +4411,7 @@ impl MainAreaDna {
         self.poll_rna_read_task(ctx);
         self.poll_cryptic_splicing_task(ctx);
         self.poll_tata_task(ctx);
+        self.poll_tss_task(ctx);
         self.poll_genomic_region_homology_task(ctx);
         self.sync_from_engine_display();
         let backdrop_kind = if self.opened_from_pool_context {
@@ -4582,6 +4586,7 @@ impl MainAreaDna {
         self.poll_rna_read_task(ctx);
         self.poll_cryptic_splicing_task(ctx);
         self.poll_tata_task(ctx);
+        self.poll_tss_task(ctx);
         self.poll_genomic_region_homology_task(ctx);
         self.sync_from_engine_display();
         self.render_dotplot_window(ctx);
@@ -4589,6 +4594,7 @@ impl MainAreaDna {
         self.render_genomic_region_manager(ctx);
         self.render_genomic_region_conservation_workspace(ctx);
         self.render_tata_workspace(ctx);
+        self.render_tss_workspace(ctx);
         self.render_rna_read_mapping_window(ctx);
         self.render_variant_followup_window(ctx);
         self.render_isoform_expert_window(ctx);
@@ -6227,6 +6233,10 @@ impl MainAreaDna {
                     (1..=MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS)
                         .contains(&precomputed_genomic_motif_count);
                 ui.menu_button("TFBS scan", |ui| {
+                    if ui.button("Transcript starts / TSS windows...").clicked() {
+                        self.open_tss_inventory();
+                        ui.close();
+                    }
                     if ui.button(Self::tr("tata.title")).clicked() {
                         self.open_tata_boxes();
                         ui.close();
@@ -21267,7 +21277,7 @@ impl MainAreaDna {
             // Only auto-switch current view if exactly one sequence is produced.
             // Multi-product ops (digest/ligation/merge) can trigger heavy redraw paths;
             // keep the current view stable and let the user select products explicitly.
-            if result.created_seq_ids.len() == 1 {
+            if result.created_seq_ids.len() == 1 && result.tss_collection.is_none() {
                 if let Some(new_seq_id) = result.created_seq_ids.first() {
                     let new_dna = {
                         let guard = engine.read().expect("Engine lock poisoned");
@@ -28128,6 +28138,7 @@ impl MainAreaDna {
             self.render_genomic_region_manager(ctx);
             self.render_genomic_region_conservation_workspace(ctx);
             self.render_tata_workspace(ctx);
+            self.render_tss_workspace(ctx);
             self.render_rna_read_mapping_window(ctx);
             self.render_variant_followup_window(ctx);
             self.render_isoform_expert_window(ctx);

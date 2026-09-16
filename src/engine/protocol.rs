@@ -2273,6 +2273,14 @@ const PROJECT_FACT_TYPE_SPECS: &[ProjectFactTypeSpec] = &[
         description: "A persisted workflow macro template with this name exists in current project metadata.",
     },
     ProjectFactTypeSpec {
+        name: "tss_collection.exists",
+        domain: ProjectFactDomain::Project,
+        world: ProjectFactWorld::ClosedWorld,
+        requires_basis: false,
+        subject_kind: FactSubjectKind::Other,
+        description: "A materialized TSS collection is stored in this project; member freshness is validated at execution.",
+    },
+    ProjectFactTypeSpec {
         name: "candidate_macro_template.exists",
         domain: ProjectFactDomain::Project,
         world: ProjectFactWorld::ClosedWorld,
@@ -5363,6 +5371,10 @@ pub struct Workflow {
 /// `created_seq_ids` and `changed_seq_ids` are the stable adapter-facing hint
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_inventory: Option<Box<gentle_protocol::tss_workspace::TssInventoryReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_collection: Option<Box<gentle_protocol::tss_workspace::TssCollectionReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tss_tfbs_profiles: Option<Box<gentle_protocol::tss_profiles::TssProfileReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

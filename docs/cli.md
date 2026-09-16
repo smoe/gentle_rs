@@ -3029,6 +3029,10 @@ Shared shell command:
     - `ui close configuration`
     - `ui open sequence-window SEQ_ID`
     - `ui focus sequence-window SEQ_ID`
+    - `ui open|focus|close tss-view --collection COLLECTION_ID` (bounded, persisted TSS collection; headless reports `applied=false`)
+    - `promoters tss-inventory REQUEST_JSON_OR_@FILE` (read-only exact-start preview)
+    - `promoters tss-materialize REQUEST_JSON_OR_@FILE` (approval-bound selected windows)
+    - `promoters tss-collection COLLECTION_ID` (persisted collection and member validation; [walkthrough](tss_workspace.md))
     - `ui close TARGET`
     - `ui close sequence-window SEQ_ID`
     - `ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`

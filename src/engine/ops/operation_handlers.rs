@@ -40111,6 +40111,8 @@ impl GentleEngine {
             feature_record_curation_report: None,
             gel_image: None,
             gel_image_analysis: None,
+            tss_inventory: None,
+            tss_collection: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
         };
@@ -51473,6 +51475,25 @@ impl GentleEngine {
                     result.tss_window_geometry = Some(Box::new(
                         gentle_engine::tss_window_geometry::compute(*request)?,
                     ));
+                }
+                Operation::InspectTssInventory { request } => {
+                    let report = self.inspect_tss_inventory(&request)?;
+                    result.warnings.extend(report.warnings.clone());
+                    result.tss_inventory = Some(Box::new(report));
+                }
+                Operation::MaterializeTssWindows { request } => {
+                    let (report, created) = self.materialize_tss_windows(&request)?;
+                    for seq_id in &created {
+                        self.add_lineage_node(seq_id, SequenceOrigin::Derived, Some(&result.op_id));
+                    }
+                    parent_seq_ids.push(request.inventory.seq_id.clone());
+                    result.created_seq_ids.extend(created);
+                    result.messages.push(format!("TSS collection '{}' contains {} windows; matching existing outputs are reused", report.collection_id, report.members.len()));
+                    result.tss_collection = Some(Box::new(report));
+                }
+                Operation::GetTssCollection { collection_id } => {
+                    result.tss_collection =
+                        Some(Box::new(self.get_tss_collection(&collection_id)?));
                 }
                 Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
                     let report = self.plan_reporter_fragment_selection(*request)?;

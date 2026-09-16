@@ -1,0 +1,903 @@
+//! Exact-start inventory and atomic, approval-bound derivation of TSS collections.
+
+use super::*;
+use gb_io::seq::{Feature, Location};
+use gentle_protocol::genomic_regions::GenomicRegionStrand;
+use gentle_protocol::tss_profiles::TssStrand;
+use gentle_protocol::tss_workspace::*;
+
+const COLLECTIONS_KEY: &str = "tss_collections_v1";
+
+fn hash(value: &impl Serialize) -> Result<String, EngineError> {
+    serde_json::to_vec(value)
+        .map(|bytes| sha256_prefixed_bytes(&bytes))
+        .map_err(|e| EngineError::internal(format!("TSS snapshot serialization: {e}")))
+}
+
+#[cfg(test)]
+pub(super) mod tests {
+    use super::*;
+
+    // Entirely synthetic locus/annotations, recreated here. Not TP73 biological data.
+    fn transcript(id: &str, gene: &str, start: i64, end: i64, reverse: bool) -> Feature {
+        let location = Location::simple_range(start, end);
+        Feature {
+            kind: "mRNA".into(),
+            location: if reverse {
+                Location::Complement(Box::new(location))
+            } else {
+                location
+            },
+            qualifiers: vec![
+                ("transcript_id".into(), Some(id.into())),
+                ("gene".into(), Some(gene.into())),
+                ("gene_id".into(), Some(format!("gene_{gene}"))),
+                ("source".into(), Some("synthetic".into())),
+            ],
+        }
+    }
+
+    pub(crate) fn engine(anchor_reverse: bool) -> GentleEngine {
+        let mut dna = DNAsequence::from_sequence(&"AACCGTGA".repeat(125)).unwrap();
+        dna.features_mut().extend([
+            transcript("tx1", "TOY", 300, 700, false),
+            transcript("tx2", "TOY", 300, 800, false),
+            transcript("tx3", "TOY", 400, 800, false),
+            transcript("tx_other", "OTHER", 300, 900, false),
+        ]);
+        let mut state = ProjectState::default();
+        state.sequences.insert("locus".into(), dna);
+        state.metadata.insert(PROVENANCE_METADATA_KEY.into(), serde_json::json!({GENOME_EXTRACTIONS_METADATA_KEY: [{
+            "seq_id":"locus", "genome_id":"GRCh38", "chromosome":"1", "start_1based":1001, "end_1based":2000, "anchor_strand":if anchor_reverse {"-"} else {"+"}
+        }]}));
+        GentleEngine::from_state(state)
+    }
+
+    fn request() -> TssInventoryRequest {
+        TssInventoryRequest {
+            seq_id: "locus".into(),
+            gene_query: "TOY".into(),
+            collection_id: "toy_tss".into(),
+            upstream_bp: 50,
+            downstream_bp: 20,
+        }
+    }
+
+    pub(crate) fn approved(engine: &GentleEngine) -> TssMaterializeRequest {
+        let preview = engine.inspect_tss_inventory(&request()).unwrap();
+        TssMaterializeRequest {
+            inventory: preview.request,
+            expected_approval_sha256: preview.approval_sha256,
+            selected_tss_ids: preview.rows.into_iter().map(|r| r.tss_id).collect(),
+        }
+    }
+
+    #[test]
+    fn tss_inventory_groups_exact_starts_and_keeps_gene_source_strand_separate() {
+        let mut e = engine(false);
+        let before = serde_json::to_value(e.snapshot()).unwrap();
+        let report = e.inspect_tss_inventory(&request()).unwrap();
+        assert_eq!(report.rows.len(), 2);
+        assert_eq!(report.rows[0].transcript_ids, ["tx1", "tx2"]);
+        assert_eq!(report.rows[0].genomic_tss.start_0based, 1300);
+        assert_eq!(before, serde_json::to_value(e.snapshot()).unwrap());
+        let dna = e.state.sequences.get_mut("locus").unwrap();
+        dna.features_mut()
+            .push(transcript("tx_reverse", "TOY", 100, 301, true));
+        let mut other_source = transcript("tx_refseq", "TOY", 300, 700, false);
+        other_source
+            .qualifiers
+            .retain(|(k, _)| k.as_ref() != "source");
+        other_source
+            .qualifiers
+            .push(("source".into(), Some("other_annotation".into())));
+        dna.features_mut().push(other_source);
+        let report = e.inspect_tss_inventory(&request()).unwrap();
+        assert_eq!(report.rows.len(), 4);
+        assert_eq!(
+            report
+                .rows
+                .iter()
+                .filter(|r| r.genomic_tss.start_0based == 1300)
+                .count(),
+            3
+        );
+        assert!(
+            report
+                .rows
+                .iter()
+                .all(|r| !r.transcript_ids.contains(&"tx_other".to_owned()))
+        );
+    }
+
+    #[test]
+    fn tss_missing_flanks_are_not_clipped_and_distinct_starts_survive() {
+        let mut e = engine(false);
+        let mut req = request();
+        req.upstream_bp = 450;
+        let report = e.inspect_tss_inventory(&req).unwrap();
+        assert_eq!(report.rows.len(), 2);
+        assert!(
+            report
+                .rows
+                .iter()
+                .all(|r| r.availability == TssWindowAvailability::MissingFlanks)
+        );
+        let count = e.state.sequences.len();
+        let apply = TssMaterializeRequest {
+            inventory: req,
+            expected_approval_sha256: report.approval_sha256,
+            selected_tss_ids: report.rows.into_iter().map(|r| r.tss_id).collect(),
+        };
+        assert!(
+            e.materialize_tss_windows(&apply)
+                .unwrap_err()
+                .message
+                .contains("flanks")
+        );
+        assert_eq!(e.state.sequences.len(), count);
+    }
+
+    #[test]
+    fn tss_missing_or_partial_annotation_fails_closed_for_imported_records() {
+        let mut e = engine(false);
+        e.state
+            .sequences
+            .get_mut("locus")
+            .unwrap()
+            .features_mut()
+            .clear();
+        assert!(
+            e.inspect_tss_inventory(&request())
+                .unwrap_err()
+                .message
+                .contains("not evidence")
+        );
+        let mut f = transcript("partial", "TOY", 10, 100, false);
+        f.location = Location::Range(
+            (10, gb_io::seq::Before(true)),
+            (100, gb_io::seq::After(false)),
+        );
+        e.state
+            .sequences
+            .get_mut("locus")
+            .unwrap()
+            .features_mut()
+            .push(f);
+        assert!(
+            e.inspect_tss_inventory(&request())
+                .unwrap_err()
+                .message
+                .contains("partial")
+        );
+    }
+
+    #[test]
+    fn tss_materialization_is_idempotent_persisted_and_scan_compatible() {
+        let mut e = engine(false);
+        let req = approved(&e);
+        let result = e
+            .apply(Operation::MaterializeTssWindows {
+                request: req.clone(),
+            })
+            .unwrap();
+        assert_eq!(result.created_seq_ids.len(), 2);
+        let report = result.tss_collection.unwrap();
+        for m in &report.members {
+            assert!(
+                e.state.sequences[&m.tss.output_seq_id]
+                    .name()
+                    .as_deref()
+                    .unwrap()
+                    .contains("TSS 1:")
+            );
+        }
+        let again = e
+            .apply(Operation::MaterializeTssWindows { request: req })
+            .unwrap();
+        assert!(again.created_seq_ids.is_empty());
+        let restored = GentleEngine::from_state(
+            serde_json::from_value(serde_json::to_value(e.snapshot()).unwrap()).unwrap(),
+        );
+        assert_eq!(
+            restored
+                .get_tss_collection("toy_tss")
+                .unwrap()
+                .members
+                .len(),
+            2
+        );
+        let scan = e
+            .apply(Operation::ScanTfbsHitsCollection {
+                collection_subject: report.subject,
+                member_bindings: vec![],
+                motifs: vec!["AAC".into()],
+                min_llr_bits: None,
+                min_llr_quantile: None,
+                per_tf_thresholds: vec![],
+                max_hits_per_member: Some(10),
+                path: None,
+            })
+            .unwrap();
+        assert!(scan.collection_tfbs_hit_scan.is_some());
+        assert!(e.get_tss_collection("toy_tss").is_ok());
+    }
+
+    #[test]
+    fn tss_stale_preview_and_any_collision_prevent_partial_writes() {
+        let mut e = engine(false);
+        let req = approved(&e);
+        e.state
+            .sequences
+            .get_mut("locus")
+            .unwrap()
+            .features_mut()
+            .push(transcript("new", "TOY", 500, 900, false));
+        assert!(
+            e.materialize_tss_windows(&req)
+                .unwrap_err()
+                .message
+                .contains("stale")
+        );
+        assert_eq!(e.state.sequences.len(), 1);
+        let req = approved(&e);
+        let preview = e.inspect_tss_inventory(&request()).unwrap();
+        let occupied = preview.rows.last().unwrap().output_seq_id.clone();
+        e.state
+            .sequences
+            .insert(occupied, DNAsequence::from_sequence("AAC").unwrap());
+        assert!(
+            e.materialize_tss_windows(&req)
+                .unwrap_err()
+                .message
+                .contains("already exists")
+        );
+        assert_eq!(e.state.sequences.len(), 2);
+        assert!(!e.state.metadata.contains_key(COLLECTIONS_KEY));
+    }
+
+    #[test]
+    fn tss_negative_local_and_genomic_orientations_are_independent() {
+        for anchor_reverse in [false, true] {
+            for transcript_reverse in [false, true] {
+                let mut e = engine(anchor_reverse);
+                let dna = e.state.sequences.get_mut("locus").unwrap();
+                dna.features_mut().clear();
+                dna.features_mut()
+                    .push(transcript("tx", "TOY", 200, 701, transcript_reverse));
+                let req = approved(&e);
+                let (report, _) = e.materialize_tss_windows(&req).unwrap();
+                let m = &report.members[0];
+                let input = &e.state.sequences["locus"];
+                let s = m.tss.window_local_start_0based.unwrap();
+                let end = m.tss.window_local_end_0based_exclusive.unwrap();
+                let mut expected = input
+                    .extract_region_preserving_features(s, end)
+                    .unwrap()
+                    .clone_seq_record();
+                if transcript_reverse {
+                    expected = expected.revcomp();
+                }
+                let output = &e.state.sequences[&m.tss.output_seq_id];
+                assert_eq!(output.forward_bytes(), expected.seq);
+                assert_eq!(output.len(), 71);
+                assert_eq!(
+                    m.tss.genomic_tss.strand == GenomicRegionStrand::Minus,
+                    anchor_reverse != transcript_reverse
+                );
+                let local_tss = if transcript_reverse { 700 } else { 200 };
+                assert_eq!(
+                    m.tss.genomic_tss.start_0based + 1,
+                    if anchor_reverse {
+                        2000 - local_tss
+                    } else {
+                        1001 + local_tss
+                    }
+                );
+                #[cfg(feature = "desktop-gui")]
+                {
+                    let view = crate::tss_sequence_view::TssSequenceView::from_dna(output).unwrap();
+                    assert_eq!(view.geometry.upstream_bp, 50);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tss_collection_rejects_edited_outputs_and_namespace_reassignment() {
+        let mut e = engine(false);
+        let req = approved(&e);
+        let (report, _) = e.materialize_tss_windows(&req).unwrap();
+        let mut narrower = req.clone();
+        narrower.selected_tss_ids.pop();
+        assert!(
+            e.materialize_tss_windows(&narrower)
+                .unwrap_err()
+                .message
+                .contains("namespace")
+        );
+        e.state
+            .sequences
+            .get_mut(&report.members[0].tss.output_seq_id)
+            .unwrap()
+            .features_mut()
+            .clear();
+        assert!(
+            e.get_tss_collection("toy_tss")
+                .unwrap_err()
+                .message
+                .contains("edited")
+        );
+    }
+}
+
+fn exact_location(location: &Location) -> bool {
+    fn intervals(location: &Location) -> bool {
+        match location {
+            Location::Range((s, before), (e, after)) => !before.0 && !after.0 && *s >= 0 && e > s,
+            Location::Join(parts) => !parts.is_empty() && parts.iter().all(intervals),
+            _ => false,
+        }
+    }
+    match location {
+        Location::Complement(inner) => intervals(inner),
+        _ => intervals(location),
+    }
+}
+
+fn feature(kind: &str, start: usize, end: usize, label: String, note: String) -> Feature {
+    Feature {
+        kind: kind.to_owned().into(),
+        location: Location::simple_range(start as i64, end as i64),
+        qualifiers: vec![("label".into(), Some(label)), ("note".into(), Some(note))],
+    }
+}
+
+impl GentleEngine {
+    /// Inspect only annotations on this anchored project sequence; never infer a TSS from a CDS.
+    pub fn inspect_tss_inventory(
+        &self,
+        request: &TssInventoryRequest,
+    ) -> Result<TssInventoryReport, EngineError> {
+        if request.gene_query.trim().is_empty()
+            || request.gene_query != request.gene_query.trim()
+            || request.collection_id.is_empty()
+            || request.collection_id.len() > 80
+            || !request
+                .collection_id
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || b"_-.".contains(&c))
+        {
+            return Err(EngineError::invalid_input(
+                "TSS inventory requires a gene query and an ASCII collection ID (letters, digits, _, -, .; up to 80 characters)",
+            ));
+        }
+        let window_len = request
+            .upstream_bp
+            .checked_add(request.downstream_bp)
+            .and_then(|n| n.checked_add(1))
+            .filter(|n| *n <= 2_000_000)
+            .ok_or_else(|| EngineError::invalid_input("TSS windows are limited to 2 Mb"))?;
+        let dna = self.state.sequences.get(&request.seq_id).ok_or_else(|| {
+            EngineError::new(ErrorCode::NotFound, "TSS source sequence not found")
+        })?;
+        if dna.is_circular() || dna.len() > 20_000_000 || dna.features().len() > 100_000 {
+            return Err(EngineError::invalid_input(
+                "TSS inventory requires a linear locus up to 20 Mb and 100,000 features",
+            ));
+        }
+        let anchor = self.sequence_genome_anchor_summary(&request.seq_id)?;
+        let source_snapshot_sha256 = hash(&(dna, &anchor))?;
+        let mut groups: BTreeMap<String, TssInventoryRow> = BTreeMap::new();
+        let mut transcript_count = 0;
+        for (feature_id, f) in dna.features().iter().enumerate() {
+            if Self::construct_reasoning_role_from_feature(f) != Some(ConstructRole::Transcript) {
+                continue;
+            }
+            if Self::first_nonempty_feature_qualifier(
+                f,
+                &["gene", "gene_name", "gene_id", "locus_tag"],
+            )
+            .is_none()
+            {
+                return Err(EngineError::invalid_input(format!(
+                    "Transcript feature {feature_id} lacks explicit gene linkage; cannot promise an exhaustive gene-specific inventory by guessing from overlapping genes"
+                )));
+            }
+            let (gene_label, gene_id) = Self::transcript_gene_metadata(dna, f, feature_id);
+            if !gene_label
+                .as_deref()
+                .is_some_and(|s| s.eq_ignore_ascii_case(&request.gene_query))
+                && !Self::feature_matches_identifier(
+                    f,
+                    feature_id,
+                    &request.gene_query,
+                    &["gene", "gene_id", "gene_name", "locus_tag"],
+                )
+            {
+                continue;
+            }
+            transcript_count += 1;
+            if transcript_count > 10_000 {
+                return Err(EngineError::invalid_input(
+                    "TSS inventory exceeds 10,000 matching transcript features",
+                ));
+            }
+            if !exact_location(&f.location) {
+                return Err(EngineError::invalid_input(format!(
+                    "Transcript feature {feature_id} has a partial, fuzzy or unsupported location; exact TSS inventory is unavailable, not empty"
+                )));
+            }
+            let mut ranges = Vec::new();
+            collect_location_ranges_usize(&f.location, &mut ranges);
+            ranges.sort_unstable();
+            if ranges.is_empty() || ranges.iter().any(|(s, e)| s >= e || *e > dna.len()) {
+                return Err(EngineError::invalid_input(
+                    "Transcript annotation lies outside the source sequence",
+                ));
+            }
+            let reverse = feature_is_reverse(f);
+            let tss = if reverse {
+                ranges.iter().map(|r| r.1 - 1).max().unwrap()
+            } else {
+                ranges[0].0
+            };
+            let local_strand = if reverse {
+                GenomicRegionStrand::Minus
+            } else {
+                GenomicRegionStrand::Plus
+            };
+            let (genomic_tss, _) = self.interval_and_projection_from_local(
+                &request.seq_id,
+                tss as u64,
+                tss as u64 + 1,
+                local_strand,
+                None,
+            )?;
+            let annotation_source = Self::first_nonempty_feature_qualifier(
+                f,
+                &["annotation_source", "source", "annotation_release"],
+            )
+            .unwrap_or_else(|| "project_annotation".into());
+            let identity = hash(&(
+                &request.seq_id,
+                &gene_id,
+                &gene_label,
+                &annotation_source,
+                &genomic_tss,
+            ))?;
+            let tss_id = format!("tss_{}", identity.trim_start_matches("sha256:"));
+            let transcript_id =
+                Self::first_nonempty_feature_qualifier(f, &["transcript_id", "name", "label"])
+                    .unwrap_or_else(|| format!("feature_{feature_id}"));
+            if let Some(row) = groups.get_mut(&tss_id) {
+                row.transcript_ids.push(transcript_id);
+                row.transcript_feature_ids.push(feature_id);
+                continue;
+            }
+            let bounds = gentle_engine::tss_window_geometry::window_bounds(
+                tss as u64 + 1,
+                if reverse {
+                    TssStrand::Minus
+                } else {
+                    TssStrand::Plus
+                },
+                request.upstream_bp,
+                request.downstream_bp,
+            )
+            .ok()
+            .filter(|(_, end)| *end <= dna.len() as u64);
+            groups.insert(tss_id.clone(), TssInventoryRow {
+                output_seq_id: format!("{}_{}", request.collection_id, tss_id), tss_id,
+                gene_id, gene_label, annotation_source, transcript_ids: vec![transcript_id], transcript_feature_ids: vec![feature_id],
+                tss_local_0based: tss, local_strand: if reverse { "-" } else { "+" }.into(), genomic_tss,
+                window_local_start_0based: bounds.map(|(s,_)| s as usize - 1),
+                window_local_end_0based_exclusive: bounds.map(|(_,e)| e as usize),
+                availability: if bounds.is_some() { TssWindowAvailability::Available } else { TssWindowAvailability::MissingFlanks },
+                explanation: if bounds.is_some() { "Exact annotated transcript start; not experimentally established initiation" } else { "Requested flanks exceed the loaded locus; extend the anchored sequence and inspect again. No clipping or network retrieval performed" }.into(),
+            });
+        }
+        if transcript_count == 0 {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                "Transcript annotation unavailable for this gene in the loaded locus (including annotation formats without an indexed transcript view). This is not evidence that the gene has no TSSs; import annotated mRNA/transcript features first",
+            ));
+        }
+        if groups.len() > 256
+            || groups
+                .len()
+                .checked_mul(window_len)
+                .is_none_or(|n| n > 32_000_000)
+        {
+            return Err(EngineError::invalid_input(
+                "TSS inventory exceeds 256 starts or 32 Mb of derived windows; narrow the locus/flanks",
+            ));
+        }
+        let mut rows = groups.into_values().collect::<Vec<_>>();
+        rows.sort_by(|a, b| {
+            a.genomic_tss
+                .start_0based
+                .cmp(&b.genomic_tss.start_0based)
+                .then(a.tss_id.cmp(&b.tss_id))
+        });
+        for row in &mut rows {
+            row.transcript_ids.sort();
+            row.transcript_ids.dedup();
+        }
+        let mut report = TssInventoryReport {
+            schema: "gentle.tss_inventory.v1".into(), request: request.clone(), source_snapshot_sha256,
+            approval_sha256: String::new(), rows,
+            warnings: vec!["Scope: transcript features on this loaded, anchored project locus only; not all possible biological starts or a cross-source consensus. No TFBS or CUT&RUN analysis was run.".into()],
+        };
+        report.approval_sha256 = hash(&report)?;
+        Ok(report)
+    }
+
+    /// Return a persisted collection only while its members still match their stored snapshots.
+    pub fn get_tss_collection(
+        &self,
+        collection_id: &str,
+    ) -> Result<TssCollectionReport, EngineError> {
+        let value = self
+            .state
+            .metadata
+            .get(COLLECTIONS_KEY)
+            .and_then(|v| v.get(collection_id))
+            .ok_or_else(|| {
+                EngineError::new(
+                    ErrorCode::NotFound,
+                    format!("TSS collection '{collection_id}' not found"),
+                )
+            })?;
+        let report: TssCollectionReport = serde_json::from_value(value.clone()).map_err(|e| {
+            EngineError::invalid_input(format!("Invalid stored TSS collection: {e}"))
+        })?;
+        let expected_subject =
+            gentle_protocol::collection_subjects::CollectionSubjectRef::ProjectSequences {
+                seq_ids: report
+                    .members
+                    .iter()
+                    .map(|m| m.tss.output_seq_id.clone())
+                    .collect(),
+            };
+        let mut preview = report.inventory.clone();
+        preview.approval_sha256.clear();
+        let unique_ids = report
+            .members
+            .iter()
+            .map(|m| &m.tss.output_seq_id)
+            .collect::<BTreeSet<_>>();
+        if report.schema != "gentle.tss_collection.v1"
+            || report.collection_id != collection_id
+            || report.collection_id != report.inventory.request.collection_id
+            || report.subject != expected_subject
+            || report.members.len() != unique_ids.len()
+            || report.members.len() > 256
+            || report.members.is_empty()
+            || hash(&preview)? != report.inventory.approval_sha256
+            || report
+                .members
+                .iter()
+                .any(|m| !report.inventory.rows.contains(&m.tss))
+        {
+            return Err(EngineError::invalid_input(
+                "TSS collection membership or preview binding is inconsistent",
+            ));
+        }
+        for member in &report.members {
+            let dna = self
+                .state
+                .sequences
+                .get(&member.tss.output_seq_id)
+                .ok_or_else(|| {
+                    EngineError::invalid_input(
+                        "TSS collection member is missing; no windows opened",
+                    )
+                })?;
+            if hash(dna)? != member.record_snapshot_sha256 {
+                return Err(EngineError::invalid_input(
+                    "TSS collection member was edited; inspect the individual sequence instead of reusing stale TSS geometry",
+                ));
+            }
+        }
+        Ok(report)
+    }
+
+    pub(super) fn materialize_tss_windows(
+        &mut self,
+        request: &TssMaterializeRequest,
+    ) -> Result<(TssCollectionReport, Vec<String>), EngineError> {
+        let inventory = self.inspect_tss_inventory(&request.inventory)?;
+        if inventory.approval_sha256 != request.expected_approval_sha256 {
+            return Err(EngineError::invalid_input(
+                "TSS preview is stale or parameters changed; inspect again before materialization",
+            ));
+        }
+        let selected = request.selected_tss_ids.iter().collect::<BTreeSet<_>>();
+        if selected.is_empty()
+            || selected.len() != request.selected_tss_ids.len()
+            || selected
+                .iter()
+                .any(|id| !inventory.rows.iter().any(|r| &r.tss_id == *id))
+        {
+            return Err(EngineError::invalid_input(
+                "Select unique TSS IDs from the approved inventory",
+            ));
+        }
+        let rows = inventory
+            .rows
+            .iter()
+            .filter(|r| selected.contains(&r.tss_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        if rows
+            .iter()
+            .any(|r| r.availability != TssWindowAvailability::Available)
+        {
+            return Err(EngineError::invalid_input(
+                "Selected TSS windows have unavailable flanks; nothing materialized",
+            ));
+        }
+        if self
+            .state
+            .metadata
+            .get(COLLECTIONS_KEY)
+            .and_then(|v| v.get(&request.inventory.collection_id))
+            .is_some()
+        {
+            let existing = self.get_tss_collection(&request.inventory.collection_id)?;
+            if existing.inventory.approval_sha256 == inventory.approval_sha256
+                && existing.members.iter().map(|m| &m.tss).eq(rows.iter())
+            {
+                return Ok((existing, Vec::new()));
+            }
+            return Err(EngineError::invalid_input(
+                "TSS collection namespace already belongs to another derivation; choose a new collection ID",
+            ));
+        }
+        if rows
+            .iter()
+            .any(|r| self.state.sequences.contains_key(&r.output_seq_id))
+        {
+            return Err(EngineError::invalid_input(
+                "TSS output sequence ID already exists; no outputs overwritten",
+            ));
+        }
+        let parent_anchor = self.latest_genome_anchor_for_seq(&request.inventory.seq_id)?;
+        let parent = &self.state.sequences[&request.inventory.seq_id];
+        let mut prepared = Vec::new();
+        let mut members = Vec::new();
+        let mut anchors = Vec::new();
+        let mut feature_count = 0usize;
+        for row in rows {
+            let start = row.window_local_start_0based.unwrap();
+            let end = row.window_local_end_0based_exclusive.unwrap();
+            let extracted = parent
+                .extract_region_preserving_features(start, end)
+                .ok_or_else(|| {
+                    EngineError::invalid_input("Cannot extract the complete TSS window")
+                })?;
+            let mut seq = extracted.clone_seq_record();
+            if row.local_strand == "-" {
+                seq = seq.revcomp();
+            }
+            let (window, _) = self.interval_and_projection_from_local(
+                &request.inventory.seq_id,
+                start as u64,
+                end as u64,
+                if row.local_strand == "-" {
+                    GenomicRegionStrand::Minus
+                } else {
+                    GenomicRegionStrand::Plus
+                },
+                None,
+            )?;
+            let sequence_sha256 = sha256_prefixed_bytes(
+                &seq.seq
+                    .iter()
+                    .map(u8::to_ascii_uppercase)
+                    .collect::<Vec<_>>(),
+            );
+            let strand = if window.strand == GenomicRegionStrand::Minus {
+                "-"
+            } else {
+                "+"
+            };
+            let gene = row
+                .gene_label
+                .as_deref()
+                .or(row.gene_id.as_deref())
+                .unwrap_or(&request.inventory.gene_query);
+            seq.name = Some(format!(
+                "{gene} TSS {}:{} ({strand})",
+                window.reference.contig_name,
+                row.genomic_tss.start_0based + 1
+            ));
+            seq.comments = vec![
+                format!(
+                    "GENtle promoter_id={}; sequence_sha256={}",
+                    row.tss_id,
+                    sequence_sha256.trim_start_matches("sha256:")
+                ),
+                format!(
+                    "Reference={}; assembly={}; chromosome={}; genomic={}..{}; genomic_strand={strand}; local_axis=transcript_5prime_to_3prime; TSS_local_1based={}",
+                    request.inventory.seq_id,
+                    window.reference.assembly_name,
+                    window.reference.contig_name,
+                    window.start_0based + 1,
+                    window.end_0based_exclusive,
+                    request.inventory.upstream_bp + 1
+                ),
+                format!(
+                    "Origin=project_annotation_derivation; source_snapshot={}; approval={}; transcripts={}; not a verified external report bundle",
+                    inventory.source_snapshot_sha256,
+                    inventory.approval_sha256,
+                    row.transcript_ids.join(",")
+                ),
+            ];
+            seq.features.retain(|f| f.kind.as_ref() != "source");
+            for feature_id in &row.transcript_feature_ids {
+                let transcript = &parent.features()[*feature_id];
+                let id =
+                    Self::first_nonempty_feature_qualifier(transcript, &["transcript_id", "label"])
+                        .unwrap_or_else(|| format!("feature_{feature_id}"));
+                let mut exons = Vec::new();
+                collect_location_ranges_usize(&transcript.location, &mut exons);
+                exons.sort_unstable();
+                if row.local_strand == "-" {
+                    exons.reverse();
+                }
+                for (i, (s, e)) in exons.into_iter().enumerate() {
+                    let (s, e) = (s.max(start), e.min(end));
+                    if s >= e {
+                        continue;
+                    }
+                    let (local_s, local_e) = if row.local_strand == "-" {
+                        (end - e, end - s)
+                    } else {
+                        (s - start, e - start)
+                    };
+                    seq.features.push(feature("exon", local_s, local_e, format!("{id} E{}", i+1), "Transcript exon projected into this TSS window; clipped to the displayed span when necessary".into()));
+                    if seq.features.len() > 100_000 {
+                        return Err(EngineError::invalid_input(
+                            "TSS window exceeds 100,000 projected features; narrow the locus",
+                        ));
+                    }
+                }
+            }
+            seq.features.insert(
+                0,
+                feature(
+                    "source",
+                    0,
+                    end - start,
+                    gene.into(),
+                    "Project-derived annotated TSS window".into(),
+                ),
+            );
+            seq.features.push(feature(
+                "misc_feature",
+                request.inventory.upstream_bp,
+                request.inventory.upstream_bp + 1,
+                "Annotated TSS candidate".into(),
+                format!(
+                    "Genomic {}; annotation-derived, not experimentally established initiation",
+                    row.genomic_tss.start_0based + 1
+                ),
+            ));
+            let dna = DNAsequence::from_genbank_seq(seq);
+            feature_count += dna.features().len();
+            if dna.features().len() > 100_000 || feature_count > 250_000 {
+                return Err(EngineError::invalid_input(
+                    "TSS materialization exceeds 100,000 features per window or 250,000 total; select fewer starts",
+                ));
+            }
+            let record_snapshot_sha256 = hash(&dna)?;
+            anchors.push(GenomeExtractionProvenance {
+                seq_id: row.output_seq_id.clone(),
+                recorded_at_unix_ms: Self::now_unix_ms(),
+                operation: "MaterializeTssWindows".into(),
+                genome_id: parent_anchor.genome_id.clone(),
+                catalog_path: parent_anchor.catalog_path.clone().unwrap_or_default(),
+                cache_dir: parent_anchor.cache_dir.clone(),
+                chromosome: Some(window.reference.contig_name.clone()),
+                start_1based: Some(window.start_0based as usize + 1),
+                end_1based: Some(window.end_0based_exclusive as usize),
+                gene_query: Some(request.inventory.gene_query.clone()),
+                occurrence: None,
+                gene_extract_mode: Some("exact_annotated_tss".into()),
+                transcript_id: None,
+                tss_1based: Some(row.genomic_tss.start_0based as usize + 1),
+                promoter_upstream_bp: Some(request.inventory.upstream_bp),
+                promoter_downstream_bp: Some(request.inventory.downstream_bp),
+                gene_id: row.gene_id.clone(),
+                gene_name: row.gene_label.clone(),
+                strand: Some(if strand == "-" { '-' } else { '+' }),
+                anchor_strand: Some(if strand == "-" { '-' } else { '+' }),
+                anchor_verified: parent_anchor.anchor_verified,
+                sequence_source_type: Some("project_derivation".into()),
+                annotation_source_type: Some("project_annotation".into()),
+                sequence_source: Some(request.inventory.seq_id.clone()),
+                annotation_source: Some(row.annotation_source.clone()),
+                sequence_sha1: None,
+                annotation_sha1: None,
+            });
+            prepared.push((row.output_seq_id.clone(), dna));
+            members.push(TssCollectionMember {
+                tss: row,
+                sequence_sha256,
+                record_snapshot_sha256,
+            });
+        }
+        let seq_ids = prepared
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect::<Vec<_>>();
+        let collection_members = seq_ids
+            .iter()
+            .map(
+                |seq_id| gentle_protocol::collection_subjects::CollectionMemberRef {
+                    stable_member_id: seq_id.clone(),
+                    seq_id: Some(seq_id.clone()),
+                    parent_member_id: Some(request.inventory.seq_id.clone()),
+                    ..Default::default()
+                },
+            )
+            .collect::<Vec<_>>();
+        let fingerprint =
+            gentle_protocol::collection_subjects::canonical_collection_membership_json(
+                gentle_protocol::collection_subjects::CollectionSubjectKind::ProjectSequences,
+                &collection_members,
+            );
+        let report = TssCollectionReport {
+            schema: "gentle.tss_collection.v1".into(),
+            collection_id: request.inventory.collection_id.clone(),
+            inventory,
+            members,
+            lifting_mode: gentle_protocol::collection_subjects::CollectionLiftingMode::Derive,
+            collection_membership_fingerprint_sha256: sha256_prefixed_str(&fingerprint),
+            subject: gentle_protocol::collection_subjects::CollectionSubjectRef::ProjectSequences {
+                seq_ids: seq_ids.clone(),
+            },
+        };
+        let value =
+            serde_json::to_value(&report).map_err(|e| EngineError::internal(e.to_string()))?;
+        // All extraction, hashes and collisions are validated before the first state change.
+        let mut collections = self
+            .state
+            .metadata
+            .get(COLLECTIONS_KEY)
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        collections
+            .as_object_mut()
+            .ok_or_else(|| EngineError::invalid_input("Invalid TSS collection registry"))?
+            .insert(report.collection_id.clone(), value);
+        let mut provenance = self
+            .state
+            .metadata
+            .get(PROVENANCE_METADATA_KEY)
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+        let entries = provenance
+            .as_object_mut()
+            .ok_or_else(|| EngineError::invalid_input("Invalid genome provenance registry"))?
+            .entry(GENOME_EXTRACTIONS_METADATA_KEY)
+            .or_insert_with(|| serde_json::json!([]))
+            .as_array_mut()
+            .ok_or_else(|| EngineError::invalid_input("Invalid genome extraction registry"))?;
+        for anchor in anchors {
+            entries.push(
+                serde_json::to_value(anchor).map_err(|e| EngineError::internal(e.to_string()))?,
+            );
+        }
+        self.state.sequences.extend(prepared);
+        self.state
+            .metadata
+            .insert(PROVENANCE_METADATA_KEY.into(), provenance);
+        self.state
+            .metadata
+            .insert(COLLECTIONS_KEY.into(), collections);
+        Ok((report, seq_ids))
+    }
+}

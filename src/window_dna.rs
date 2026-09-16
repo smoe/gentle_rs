@@ -37,6 +37,7 @@ enum DeferredAnalysisFocus {
     FlexibilityTrack(String),
     CrypticSplicing,
     TataBoxes,
+    TssView,
     GenomicRegionManager,
     RnaReadReport(String),
     PrimerDesign(String),
@@ -73,6 +74,13 @@ pub struct WindowDna {
 }
 
 impl WindowDna {
+    pub(crate) fn focus_tss_view(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::TssView);
+        } else if let Err(error) = self.main_area.set_tss_view(true) {
+            self.deferred_load_message = Some(error);
+        }
+    }
     pub(crate) fn set_tss_view(&mut self, enabled: bool) -> Result<(), String> {
         if self.pending_dna_load.is_some() {
             return Err(
@@ -163,6 +171,7 @@ impl WindowDna {
                 self.main_area.focus_cryptic_splicing_screen();
             }
             DeferredAnalysisFocus::TataBoxes => self.main_area.open_tata_boxes(),
+            DeferredAnalysisFocus::TssView => self.focus_tss_view(),
             DeferredAnalysisFocus::GenomicRegionManager => {
                 self.main_area.open_genomic_region_manager(None);
             }

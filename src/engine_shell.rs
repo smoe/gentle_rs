@@ -1703,6 +1703,10 @@ pub enum ShellCommand {
         action: UiIntentAction,
         seq_id: String,
     },
+    UiTssCollection {
+        action: UiIntentAction,
+        collection_id: String,
+    },
     UiSequenceSelection {
         seq_id: String,
         start_0based: Option<usize>,
@@ -9266,6 +9270,14 @@ impl ShellCommand {
                 "request GUI {} for Configuration section '{}'",
                 action.as_str(),
                 section.as_str()
+            ),
+            Self::UiTssCollection {
+                action,
+                collection_id,
+            } => format!(
+                "request GUI {} for TSS collection '{}'",
+                action.as_str(),
+                collection_id
             ),
             Self::UiSequenceWindow { action, seq_id } => {
                 format!(
@@ -21069,6 +21081,13 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             false,
             "Assess conserved promoter-module hypotheses through the shared read-only engine operation.",
         ),
+        tss_workspace_capability_descriptor("InspectTssInventory", false, false),
+        tss_workspace_capability_descriptor("promoters tss-inventory", false, false),
+        tss_workspace_capability_descriptor("MaterializeTssWindows", true, false),
+        tss_workspace_capability_descriptor("promoters tss-materialize", true, false),
+        tss_workspace_capability_descriptor("GetTssCollection", false, true),
+        tss_workspace_capability_descriptor("promoters tss-collection", false, true),
+        tss_workspace_capability_descriptor("ui open tss-view --collection", false, true),
         tata_capability_descriptor("promoters tata-screen", false),
         tata_capability_descriptor("ScreenTataBoxes", false),
         tata_capability_descriptor("promoters tata-materialize", true),
@@ -40260,6 +40279,21 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 .unwrap_or_default();
             Ok(ShellCommand::UiConfiguration { action, section })
         }
+        action_raw
+            if UiIntentAction::parse(action_raw).is_some()
+                && tokens
+                    .get(2)
+                    .is_some_and(|s| UiIntentTarget::parse(s) == Some(UiIntentTarget::TssView))
+                && tokens.len() > 3 =>
+        {
+            if tokens.len() != 5 || tokens[3] != "--collection" || tokens[4].trim().is_empty() {
+                return Err("ui open|focus|close tss-view --collection COLLECTION_ID".into());
+            }
+            Ok(ShellCommand::UiTssCollection {
+                action: UiIntentAction::parse(action_raw).unwrap(),
+                collection_id: tokens[4].clone(),
+            })
+        }
         action_raw if UiIntentAction::parse(action_raw).is_some() => {
             if tokens.len() < 3 {
                 return Err(
@@ -42394,6 +42428,20 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
     }
 }
 
+fn tss_workspace_capability_descriptor(id: &str, mutating: bool, collection: bool) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": if mutating {"true"} else {"false"},
+        "requires_confirmation": mutating,
+        "args": if collection { vec![json!({"name":"COLLECTION_ID", "required":true,"subject_kind":"other"})] }
+            else { vec![json!({"name":"REQUEST_JSON_OR_@FILE","required":true,"subject_kind":"other", "detail": if mutating {"inventory request, expected_approval_sha256 from preview, explicit selected_tss_ids"} else {"seq_id, gene_query, collection_id, upstream_bp (default 500), downstream_bp (default 200)"}})] },
+        "reads": if collection {vec![json!({"fact":"tss_collection.exists","subject":{"arg":"COLLECTION_ID"}})]} else {vec![]},
+        "effects": [], "precondition_expr": if collection {json!({"all":[{"fact":"tss_collection.exists","subject":{"arg":"COLLECTION_ID"}}]})} else {json!({"all":[]})},
+        "annotation_status":"fact_annotated",
+        "description":"All annotated TSSs / Transkriptionsstartstellen, one window per exact start: promoters tss-inventory previews an anchored loaded locus; promoters tss-materialize explicitly approves selected starts; ui open tss-view --collection COLLECTION_ID opens up to 32 windows, reusing existing windows. Never guess coordinates or collapse distinct starts by clipped spans. GetTssCollection returns a ProjectSequences subject for optional ScanTfbsHitsCollection.",
+        "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
     if tokens.len() < 2 {
         return Err(
@@ -42402,6 +42450,28 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
         );
     }
     match tokens[1].as_str() {
+        "tss-inventory" | "tss-materialize" | "tss-collection" => {
+            if tokens.len() != 3 {
+                return Err("promoters tss-inventory REQUEST_JSON_OR_@FILE | promoters tss-materialize REQUEST_JSON_OR_@FILE | promoters tss-collection COLLECTION_ID".into());
+            }
+            let operation = match tokens[1].as_str() {
+                "tss-inventory" => Operation::InspectTssInventory {
+                    request: parse_required_json_payload(&tokens[2], "TSS inventory request")?,
+                },
+                "tss-materialize" => Operation::MaterializeTssWindows {
+                    request: parse_required_json_payload(
+                        &tokens[2],
+                        "TSS materialization request",
+                    )?,
+                },
+                _ => Operation::GetTssCollection {
+                    collection_id: tokens[2].clone(),
+                },
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
         "tata-screen" | "tata-materialize" => {
             if tokens.len() != 3
                 && !(tokens[1] == "tata-screen" && tokens.len() == 5 && tokens[3] == "--output")
@@ -64853,6 +64923,8 @@ fn execute_op_command(
             | Operation::ComputeTssTfbsProfiles { .. }
             | Operation::ExportTssTfbsProfiles { .. }
             | Operation::ComputeTssWindowGeometry { .. }
+            | Operation::InspectTssInventory { .. }
+            | Operation::GetTssCollection { .. }
     ) {
         let state_changed = matches!(
             &op,
@@ -66501,6 +66573,7 @@ fn execute_ui_command(
                         "ui focus configuration [SECTION]",
                         "ui close configuration",
                         "ui open sequence-window SEQ_ID",
+                        "ui open|focus|close tss-view --collection COLLECTION_ID",
                         "ui focus sequence-window SEQ_ID",
                         "ui close sequence-window SEQ_ID",
                         "ui selection sequence-window SEQ_ID [--range START..END]",
@@ -66600,6 +66673,26 @@ fn execute_ui_command(
                     },
                     "applied": false,
                     "message": message
+                }),
+            })
+        }
+        ShellCommand::UiTssCollection {
+            action,
+            collection_id,
+        } => {
+            let report = engine
+                .get_tss_collection(collection_id)
+                .map_err(|e| e.to_string())?;
+            if report.members.len() > 32 {
+                return Err("Opening a TSS collection is limited to 32 windows; materialize a smaller selection".into());
+            }
+            Ok(ShellRunResult {
+                state_changed: false,
+                output: json!({
+                    "schema": "gentle.ui_tss_collection_intent.v1", "applied": false,
+                    "ui_intent": { "target": "tss-view", "action": action.as_str(), "collection_id": collection_id },
+                    "members": report.members.iter().map(|m| json!({"seq_id":m.tss.output_seq_id,"status":"host_pending"})).collect::<Vec<_>>(),
+                    "message": "Validated collection; window opening/focus/closing requires a GUI host. Sequences are not deleted."
                 }),
             })
         }
@@ -67552,6 +67645,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::UiTutorialGuide { .. }
             | ShellCommand::UiConfiguration { .. }
             | ShellCommand::UiSequenceWindow { .. }
+            | ShellCommand::UiTssCollection { .. }
             | ShellCommand::UiSequenceSelection { .. }
             | ShellCommand::UiPreparedGenomes { .. }
             | ShellCommand::UiLatestPrepared { .. }
@@ -68257,6 +68351,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UiTutorialGuide { .. }
         | ShellCommand::UiConfiguration { .. }
         | ShellCommand::UiSequenceWindow { .. }
+        | ShellCommand::UiTssCollection { .. }
         | ShellCommand::UiSequenceSelection { .. }
         | ShellCommand::UiPreparedGenomes { .. }
         | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,

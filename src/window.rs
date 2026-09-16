@@ -95,6 +95,11 @@ impl Window {
             Self::Dna(window) => window.focus_tata_boxes(),
         }
     }
+    pub(crate) fn focus_tss_view(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_tss_view(),
+        }
+    }
 
     #[cfg(test)]
     pub(crate) fn tata_workspace_open_or_pending(&self) -> bool {

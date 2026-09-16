@@ -14102,6 +14102,8 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            tss_inventory: None,
+            tss_collection: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
             gel_image: None,
@@ -14381,6 +14383,8 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            tss_inventory: None,
+            tss_collection: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
             gel_image: None,
@@ -14544,6 +14548,8 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
             promoter_module_assessment: None,
             feature_location_edit_report: None,
             feature_record_curation_report: None,
+            tss_inventory: None,
+            tss_collection: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
             gel_image: None,
@@ -14944,6 +14950,8 @@ fn format_extract_region_status_includes_annotation_fallback_reason() {
         promoter_module_assessment: None,
         feature_location_edit_report: None,
         feature_record_curation_report: None,
+        tss_inventory: None,
+        tss_collection: None,
         tss_tfbs_profiles: None,
         tss_tfbs_profile_receipt: None,
         gel_image: None,
@@ -17587,4 +17595,79 @@ fn tss_view_ui_intent_targets_active_dna_and_fails_without_context() {
             .sequences
             .contains_key("toy_tss")
     );
+}
+
+#[test]
+fn tss_workspace_collection_open_is_deferred_and_reuses_pending_windows() {
+    let mut engine = crate::engine::synthetic_tss_engine(false);
+    let request = crate::engine::synthetic_tss_approval(&engine);
+    engine
+        .apply(Operation::MaterializeTssWindows { request })
+        .unwrap();
+    let mut app = GENtleApp::default();
+    app.engine = Arc::new(RwLock::new(engine));
+    let command = parse_shell_line("ui open tss-view --collection toy_tss").unwrap();
+    let ctx = egui::Context::default();
+    for _ in 0..2 {
+        assert!(
+            app.try_apply_shell_ui_intent(&command)
+                .unwrap()
+                .contains("queued")
+        );
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while app.tss_window_task.is_some() && Instant::now() < deadline {
+            app.poll_tss_collection_intent(&ctx);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(app.tss_window_task.is_none(), "{}", app.app_status);
+        assert_eq!(app.new_windows.len(), 2, "{}", app.app_status);
+    }
+    assert!(
+        app.active_dna_window_context().is_none(),
+        "collection opening must not depend on active DNA"
+    );
+}
+
+#[test]
+fn tss_workspace_preview_is_shared_only_by_explicit_draft_action() {
+    let mut engine = crate::engine::synthetic_tss_engine(false);
+    let request = crate::engine::synthetic_tss_approval(&engine).inventory;
+    let command = ShellCommand::Op {
+        payload: serde_json::to_string(&Operation::InspectTssInventory { request }).unwrap(),
+    };
+    let result = crate::engine_shell::execute_shell_command(&mut engine, &command).unwrap();
+    let preview = &result.output["result"]["tss_inventory"];
+    let mut app = GENtleApp::default();
+    app.engine = Arc::new(RwLock::new(engine));
+    app.agent_prompt = "Open all available starts after my approval.".into();
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    app.stage_tss_preview_followup(&result.output).unwrap();
+    assert!(app.agent_prompt.starts_with("Open all available starts"));
+    assert!(
+        app.agent_prompt
+            .contains(preview["approval_sha256"].as_str().unwrap())
+    );
+    for row in preview["rows"].as_array().unwrap() {
+        assert!(app.agent_prompt.contains(row["tss_id"].as_str().unwrap()));
+    }
+    assert!(!app.agent_prompt.contains("AACCGTGA"));
+    assert!(app.agent_task.is_none());
+    assert!(app.agent_pending_commands.is_empty());
+    assert_eq!(
+        before,
+        serde_json::to_value(app.engine.read().unwrap().state()).unwrap()
+    );
+    let mut oversized = result.output.clone();
+    oversized["result"]["tss_inventory"]["warnings"] = serde_json::json!(["x".repeat(65 * 1024)]);
+    let draft = app.agent_prompt.clone();
+    assert!(app.stage_tss_preview_followup(&oversized).is_err());
+    assert_eq!(app.agent_prompt, draft);
+    assert!(
+        app.stage_tss_preview_followup(&serde_json::json!({}))
+            .is_err()
+    );
+    app.agent_prompt = "promoters tss-collection toy_tss".into();
+    assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_some());
+    app.stage_tss_preview_followup(&result.output).unwrap();
+    assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_none());
 }

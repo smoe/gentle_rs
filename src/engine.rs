@@ -1323,7 +1323,13 @@ mod regulatory_fragment_panel;
 mod tata_boxes;
 #[path = "engine/analysis/tss_profiles.rs"]
 mod tss_profiles;
+#[path = "engine/analysis/tss_workspace.rs"]
+mod tss_workspace;
 pub(crate) use region_homology::validate_genomic_region_homology_report;
+#[cfg(test)]
+pub(crate) use tss_workspace::tests::{
+    approved as synthetic_tss_approval, engine as synthetic_tss_engine,
+};
 #[path = "engine/analysis/regulatory_partners.rs"]
 mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]
@@ -5818,6 +5824,16 @@ pub enum Operation {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
     },
+    /// Preview exact annotated transcript starts on a loaded anchored locus.
+    InspectTssInventory {
+        request: gentle_protocol::tss_workspace::TssInventoryRequest,
+    },
+    MaterializeTssWindows {
+        request: gentle_protocol::tss_workspace::TssMaterializeRequest,
+    },
+    GetTssCollection {
+        collection_id: String,
+    },
     /// Stateless fixed-window geometry, not adaptive reporter insert selection.
     ComputeTssWindowGeometry {
         request: Box<gentle_protocol::tss_window_geometry::TssWindowGeometryRequest>,
@@ -10090,6 +10106,8 @@ impl GentleEngine {
                 | Operation::PlanPromoterReporterPanel { .. }
                 | Operation::PlanEvidenceGuidedFragmentCandidates { .. }
                 | Operation::ComputeTssWindowGeometry { .. }
+                | Operation::InspectTssInventory { .. }
+                | Operation::GetTssCollection { .. }
                 | Operation::PlanRegulatoryFragmentPanel { .. }
                 | Operation::PlanRegulatoryFragmentMaterialization { .. }
                 | Operation::RenderRegulatoryFragmentPanelSvg { .. }

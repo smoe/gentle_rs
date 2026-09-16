@@ -3340,6 +3340,13 @@ impl GENtleApp {
     }
 
     pub(super) fn try_apply_shell_ui_intent(&mut self, command: &ShellCommand) -> Option<String> {
+        if let ShellCommand::UiTssCollection {
+            action,
+            collection_id,
+        } = command
+        {
+            return Some(self.start_tss_collection_intent(*action, collection_id));
+        }
         if let ShellCommand::UiRecentProject { item_id } = command {
             return Some(self.apply_recent_project_intent(item_id));
         }
@@ -3840,7 +3847,11 @@ impl GENtleApp {
         }
     }
 
-    fn apply_sequence_window_intent(&mut self, action: UiIntentAction, seq_id: &str) -> String {
+    pub(super) fn apply_sequence_window_intent(
+        &mut self,
+        action: UiIntentAction,
+        seq_id: &str,
+    ) -> String {
         match action {
             UiIntentAction::Open | UiIntentAction::Focus => {
                 self.apply_open_or_focus_sequence_window_intent(action, seq_id)
@@ -6019,6 +6030,16 @@ impl GENtleApp {
                         format!("Copied structured result for {}", result.command.trim());
                 }
             });
+
+            if result.output.pointer("/result/tss_inventory").is_some() {
+                ui.small("The agent has only the execution receipt, not this preview. You can explicitly include its gene, coordinates, transcript IDs and approval digest in your next prompt (no DNA bases). The prompt is retained with the conversation.");
+                if ui.button("Use TSS preview in next prompt").clicked() {
+                    self.agent_status = match self.stage_tss_preview_followup(&result.output) {
+                        Ok(()) => "TSS preview added to the draft. Review it, then send; no request or materialization has been executed.".into(),
+                        Err(error) => error,
+                    };
+                }
+            }
 
             if let Ok(summary) = serde_json::from_value::<EngineStateSummary>(result.output.clone())
             {
