@@ -1137,6 +1137,20 @@ fn smoke_command_override(path: &str) -> Option<&'static str> {
             r#""expected_approval_sha256":"sha256:parser-only","selected_tss_ids":["synthetic"]}"#,
             "'",
         )),
+        // Synthetic parser fixtures; runtime still verifies the region, reference and approval.
+        "regions preview-feature" => Some(concat!(
+            "regions preview-feature '",
+            r#"{"set_id":"synthetic_set","region_id":"synthetic_region","seq_id":"demo","#,
+            r#""expected_region_content_sha256":"sha256:parser-only-region"}"#,
+            "'",
+        )),
+        "regions materialize-feature" => Some(concat!(
+            "regions materialize-feature '",
+            r#"{"set_id":"synthetic_set","region_id":"synthetic_region","seq_id":"demo","#,
+            r#""expected_region_content_sha256":"sha256:parser-only-region","#,
+            r#""expected_approval_sha256":"sha256:parser-only-approval"}"#,
+            "'",
+        )),
         "screenshot-window" => Some("screenshot-window out.png"),
         "cache clear" => Some("cache clear all-prepared-in-cache"),
         "transcripts derive" => Some("transcripts derive seq --feature-id 1"),
@@ -1458,6 +1472,49 @@ fn glossary_tss_smoke_retains_typed_inventory_and_explicit_approval() {
             error.contains(&format!("missing field `{required}`")),
             "{error}"
         );
+    }
+}
+
+#[test]
+fn glossary_region_feature_smoke_retains_bindings_and_explicit_approval() {
+    for (path, expected_approval) in [
+        ("regions preview-feature", None),
+        (
+            "regions materialize-feature",
+            Some("sha256:parser-only-approval"),
+        ),
+    ] {
+        let line = smoke_command_override(path).expect("typed region feature fixture");
+        let ShellCommand::GenomicRegions { operation } =
+            parse_shell_line(line).expect("region parser fixture")
+        else {
+            panic!("expected the typed genomic-region route for {path}");
+        };
+        let request = match operation {
+            Operation::PreviewGenomicRegionFeature { request } => {
+                assert_eq!(path, "regions preview-feature");
+                request
+            }
+            Operation::MaterializeGenomicRegionFeature { request } => {
+                assert_eq!(path, "regions materialize-feature");
+                request
+            }
+            other => panic!("unexpected operation for {path}: {other:?}"),
+        };
+        assert_eq!(request.set_id, "synthetic_set");
+        assert_eq!(request.region_id, "synthetic_region");
+        assert_eq!(request.seq_id, "demo");
+        assert_eq!(
+            request.expected_region_content_sha256,
+            "sha256:parser-only-region"
+        );
+        assert_eq!(
+            request.expected_approval_sha256.as_deref(),
+            expected_approval
+        );
+        let error = parse_shell_line(&format!("{path} '{{}}'"))
+            .expect_err("an empty object is not a typed region feature request");
+        assert!(error.contains("missing field `set_id`"), "{error}");
     }
 }
 
@@ -23996,7 +24053,13 @@ fn execute_async_blast_cancel_after_restart_is_deterministic() {
 
 #[test]
 fn execute_async_blast_restart_snapshot_race_still_normalizes_deterministically() {
-    with_blast_async_test_overrides(1, 80, || {
+    with_blast_async_test_overrides(1, 0, || {
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        *BLAST_ASYNC_WORKER_TEST_GATE.lock().unwrap() = Some(BlastAsyncWorkerTestGate {
+            entered: entered_tx,
+            release: Arc::new(Mutex::new(release_rx)),
+        });
         let mut engine = GentleEngine::new();
         let start = execute_shell_command(
             &mut engine,
@@ -24018,10 +24081,17 @@ fn execute_async_blast_restart_snapshot_race_still_normalizes_deterministically(
             .unwrap_or_default()
             .to_string();
         assert!(!job_id.is_empty());
+        entered_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("worker reached preflight gate");
+        assert_eq!(start.output["job"]["state"], "running");
+        // Hold the worker until the stale snapshot exists, rather than assuming
+        // a fixed sleep is long enough for the test thread to take the snapshot.
         let pre_completion_snapshot = engine.state().clone();
+        release_tx.send(()).expect("release preflight worker");
 
-        let mut terminal_state = String::new();
-        for _ in 0..60 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let terminal_status = loop {
             let status = execute_shell_command(
                 &mut engine,
                 &ShellCommand::ReferenceBlastAsyncStatus {
@@ -24031,22 +24101,25 @@ fn execute_async_blast_restart_snapshot_race_still_normalizes_deterministically(
                 },
             )
             .expect("status before restart");
-            terminal_state = status.output["job"]["state"]
-                .as_str()
-                .unwrap_or_default()
-                .to_string();
-            if matches!(
-                terminal_state.as_str(),
-                "completed" | "failed" | "cancelled"
-            ) {
-                break;
+            let state = status.output["job"]["state"].as_str().unwrap_or_default();
+            if matches!(state, "completed" | "failed" | "cancelled") {
+                break status.output;
             }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "missing-tool worker did not terminate; last status: {}",
+                status.output
+            );
             std::thread::sleep(std::time::Duration::from_millis(15));
-        }
-        assert!(
-            matches!(terminal_state.as_str(), "failed" | "cancelled"),
-            "expected original process to reach terminal state, got {}",
-            terminal_state
+        };
+        assert_eq!(terminal_status["job"]["state"], "failed");
+        assert_eq!(
+            terminal_status["job"]["binary_preflight"]["blastn"]["executable"],
+            "__gentle_async_missing_blastn__"
+        );
+        assert_eq!(
+            terminal_status["job"]["binary_preflight"]["makeblastdb"]["executable"],
+            "__gentle_async_missing_makeblastdb__"
         );
 
         {

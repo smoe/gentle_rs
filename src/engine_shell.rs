@@ -65170,10 +65170,17 @@ fn execute_reference_and_track_command_with_expanded_stack(
 ) -> Result<ShellRunResult, String> {
     let engine_ptr = engine as *mut GentleEngine as usize;
     let command = command.clone();
+    #[cfg(test)]
+    let scoped_tool_overrides = crate::tool_overrides::scoped_tool_overrides_snapshot();
     let worker = thread::Builder::new()
         .name("gentle-shell-reference-command".to_string())
         .stack_size(SHELL_EXPANDED_STACK_SIZE)
         .spawn(move || {
+            #[cfg(test)]
+            let _scoped_tool_overrides =
+                crate::tool_overrides::ScopedToolOverridesSnapshotGuard::install(
+                    scoped_tool_overrides,
+                );
             // SAFETY: the caller synchronously joins this worker before returning
             // and does not access `engine` while the worker is running. This keeps
             // the shared reference/track command path intact while avoiding the

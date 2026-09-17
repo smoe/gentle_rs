@@ -5729,6 +5729,9 @@ mod tests {
         let _guard = crate::engine_shell::BLAST_ASYNC_TEST_MUTEX
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let td = tempdir().expect("isolated MCP state directory");
+        let state_path = td.path().join("state.json");
+        let state_path = state_path.to_str().unwrap();
         // Synthetic missing tools: deferred preflight must not depend on host BLAST.
         let _blastn = crate::tool_overrides::ScopedToolOverrideGuard::set(
             "GENTLE_BLASTN_BIN",
@@ -5740,7 +5743,7 @@ mod tests {
         );
         crate::engine_shell::clear_blast_async_jobs_for_test();
         let started = run_tool(
-            DEFAULT_MCP_STATE_PATH,
+            state_path,
             "blast_async_start",
             json!({
                 "helpers": true,
@@ -5769,8 +5772,8 @@ mod tests {
 
         // Wait until the async job reaches a terminal state to avoid racey
         // running->failed transitions between MCP and shared-shell snapshots.
-        let mut expected_status: Option<Value> = None;
-        for _ in 0..300 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let expected_status = loop {
             let status = run_shared_shell_command(vec![
                 "helpers".to_string(),
                 "blast-status".to_string(),
@@ -5781,20 +5784,27 @@ mod tests {
                 .and_then(Value::as_str)
                 .unwrap_or("unknown");
             if matches!(state, "completed" | "failed" | "cancelled") {
-                expected_status = Some(status);
-                break;
+                break status;
             }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "missing-tool preflight did not terminate; last status: {status}"
+            );
             thread::sleep(Duration::from_millis(10));
-        }
+        };
 
-        let expected_status = expected_status.expect("missing-tool preflight must terminate");
+        assert_eq!(expected_status["job"]["state"], "failed");
         assert_eq!(
             expected_status["job"]["binary_preflight"]["blastn"]["executable"],
             "__gentle_mcp_async_missing_blastn__"
         );
+        assert_eq!(
+            expected_status["job"]["binary_preflight"]["makeblastdb"]["executable"],
+            "__gentle_mcp_async_missing_makeblastdb__"
+        );
 
         let mcp_status = run_tool(
-            DEFAULT_MCP_STATE_PATH,
+            state_path,
             "blast_async_status",
             json!({
                 "helpers": true,
