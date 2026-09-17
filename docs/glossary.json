@@ -2461,8 +2461,15 @@
          "aliases": [], "engine_operations": ["GetTssCollection"],
          "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
          "path": "promoters tss-collection",
-         "summary": "Inspect a persisted TSS collection and its explicit ProjectSequences subject for optional collection scans.",
+         "summary": "Validate a persisted TSS collection and its typed TssCollection subject for optional collection scans.",
          "usage": "promoters tss-collection COLLECTION_ID"
+      },
+      {
+         "aliases": [], "engine_operations": ["ForgetTssCollection"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "promoters tss-forget",
+         "summary": "Forget collection metadata only, retaining member sequences and lineage, including for stale or legacy collections.",
+         "usage": "promoters tss-forget COLLECTION_ID"
       },
       {
          "aliases": [],
@@ -4501,8 +4508,8 @@
             "gui-menu"
          ],
          "path": "collections run tfbs-scan",
-         "summary": "Map the shared non-mutating TFBS hit scanner over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution, with explicit aggregate completeness.",
-         "usage": "collections run tfbs-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]"
+         "summary": "Map the shared non-mutating TFBS hit scanner over loaded project sequences, snapshot-validated TSS collections, or explicitly sequence-bound gene-set members, with explicit aggregate completeness.",
+         "usage": "collections run tfbs-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-sequence MEMBER_ID=SEQ_ID]... --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--min-llr-bits VALUE] [--min-llr-quantile VALUE] [--per-tf-min-llr-bits TF=VALUE] [--per-tf-min-llr-quantile TF=VALUE] [--max-hits N] [--path OUTPUT.json]"
       },
       {
          "aliases": [],

@@ -5649,6 +5649,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "InspectTssInventory",
     "MaterializeTssWindows",
     "GetTssCollection",
+    "ForgetTssCollection",
     "ComposeRegulatoryReporterStudy",
     "PlanRegulatoryFragmentPanel",
     "PlanRegulatoryFragmentMaterialization",

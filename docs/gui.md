@@ -6722,7 +6722,10 @@ missing. Headless execution records the intent with `applied=false`.
 
 For an annotated anchored locus, **TFBS scan > Transcript starts / TSS windows...**
 now provides a background inventory, explicit row selection and approval, then
-collection-targeted opening. `ui open|focus|close tss-view --collection ID`
+collection-targeted opening. Truncated or uncertain 5-prime starts and unlinked
+transcripts appear as nonselectable diagnostic rows, not candidate TSSs. Feature
+cache refresh does not mark an intact collection edited; changed bases,
+annotations or genomic anchors still prevent reuse. `ui open|focus|close tss-view --collection ID`
 targets that persisted collection independently of the active viewer. See the
 [TSS workspace walkthrough and limitations](tss_workspace.md).
 Prepared GenBank/XML references do not supply a tabular transcript index:

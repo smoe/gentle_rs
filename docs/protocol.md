@@ -13558,8 +13558,17 @@ transcript starts are grouped without merging different genes, sources or strand
 `MaterializeTssWindows { request }` accepts the same inventory request plus
 `expected_approval_sha256` and nonempty `selected_tss_ids`. It validates the whole
 selection before mutation and returns `tss_collection` (`gentle.tss_collection.v1`),
-typed `derive` semantics, a membership fingerprint and explicit project-sequence
-subject. `GetTssCollection { collection_id }` checks persisted members before reuse.
+typed `derive` semantics, a membership fingerprint and a `tss_collection` subject
+with `collection_id`. `GetTssCollection { collection_id }` checks persisted members
+before reuse. The shared map resolver performs the same checks for this subject;
+it follows project-sequence lifting policies, not a new generic loop.
+`ForgetTssCollection { collection_id }` removes only registry metadata, retaining
+member sequences and lineage even when the collection is stale or legacy.
+Inventory `snapshot_algorithm=gentle.tss_biological_snapshot.v1` excludes computed
+caches from approval/member hashes. Legacy absent algorithms fail closed on reuse.
+`excluded_transcripts` retains typed per-feature diagnostics for missing gene
+links, uncertain/clipped 5-prime ends or invalid genomic bounds. Exact 5-prime
+starts remain usable when only the 3-prime endpoint is fuzzy.
 `tss_collection.exists` reports stored collection identity, not member freshness.
 
 `ui open|focus|close tss-view --collection ID` returns

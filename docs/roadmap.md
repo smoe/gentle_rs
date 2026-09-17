@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-17 - TSS collection/index-diagnostic acceptance pending; final-SHA/package acceptance remains pending.
+Last session: 2026-09-17 - TSS collection review and index diagnostics integrated; real-data/final-SHA/package acceptance remains pending.
 Glen approved `.10` preparation; final-SHA/package acceptance and owner publication approval remain pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -82,7 +82,7 @@ Pre-release finishing scope:
 ## Next Session Priorities
 
 1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and
-   TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots. Exercise the [TSS collection workflow](tss_workspace.md#acceptance): membership, strands, flanks, repeated opening, preview/approval and unsupported-index warnings distinct from loaded-feature coverage.
+   TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots. Exercise the [TSS collection workflow](tss_workspace.md#acceptance) on TP73: membership, strands/flanks, separate-process approval, cache refresh, DeltaNp73-only cropped locus, validated scans, repeated opening and inner-agent handoff. Check unsupported-index warnings remain distinct from loaded-feature coverage.
 2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
    Keep tutorial 08.13's live GUI capture and real Parquet acceptance separate from the [synthetic TSS tutorial replay](tss_tfbs_profiles.md#rescoring-existing-reports) and mocked tests. For private five-gene rescoring, first obtain the old scored report/receipt and exact matrix/context bindings; the [historical input inventory](tss_tfbs_profiles.md#check-input-completeness-before-regeneration) alone is not acceptance.
 3. Owner: run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval. Validate extracted/copied Windows/macOS apps away from the checkout, including assets and tutorials; Windows currently packages only the GUI executable. Tagging and upload remain owner-managed.

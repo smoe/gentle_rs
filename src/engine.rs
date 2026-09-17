@@ -5840,6 +5840,10 @@ pub enum Operation {
     GetTssCollection {
         collection_id: String,
     },
+    /// Remove only TSS collection metadata; preserve member sequences and lineage.
+    ForgetTssCollection {
+        collection_id: String,
+    },
     /// Stateless fixed-window geometry, not adaptive reporter insert selection.
     ComputeTssWindowGeometry {
         request: Box<gentle_protocol::tss_window_geometry::TssWindowGeometryRequest>,

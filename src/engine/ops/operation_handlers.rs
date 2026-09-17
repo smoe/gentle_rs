@@ -13056,6 +13056,25 @@ impl GentleEngine {
         EngineError,
     > {
         match subject {
+            CollectionSubjectRef::TssCollection { collection_id } => {
+                let report = self.get_tss_collection(collection_id)?;
+                let members = report
+                    .members
+                    .iter()
+                    .map(|member| CollectionMemberRef {
+                        stable_member_id: member.tss.output_seq_id.clone(),
+                        seq_id: Some(member.tss.output_seq_id.clone()),
+                        parent_member_id: Some(report.inventory.request.seq_id.clone()),
+                        ..Default::default()
+                    })
+                    .collect();
+                Ok((
+                    subject.clone(),
+                    members,
+                    vec![],
+                    BiologicalContextRegistry::default(),
+                ))
+            }
             CollectionSubjectRef::ProjectSequences { seq_ids } => {
                 let normalized_ids = seq_ids
                     .iter()
@@ -51498,6 +51517,10 @@ impl GentleEngine {
                 Operation::GetTssCollection { collection_id } => {
                     result.tss_collection =
                         Some(Box::new(self.get_tss_collection(&collection_id)?));
+                }
+                Operation::ForgetTssCollection { collection_id } => {
+                    self.forget_tss_collection(&collection_id)?;
+                    result.messages.push(format!("Forgot TSS collection '{collection_id}' metadata; member sequences and lineage retained"));
                 }
                 Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
                     let report = self.plan_reporter_fragment_selection(*request)?;

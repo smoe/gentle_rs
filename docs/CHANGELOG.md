@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-17 - TSS Collection Snapshot And Truncation Review
+
+- Replace cache-sensitive source/member hashes with versioned authoritative
+  sequence/anchor snapshots. Preserve reload/recompute reuse; fail closed on
+  edited members or legacy snapshots. Add undoable metadata-only forgetting,
+  retaining member sequences and lineage.
+- Reject clipped transcript starts using genomic bounds and preserve 5-prime
+  truncation during linear extraction, including removed first exons. Surface
+  excluded annotations explicitly; retain exact starts with fuzzy 3-prime ends.
+- Add typed `TssCollection` map subjects and shared-shell `--tss-collection`
+  scanning, validating all members before analysis/output. Expose diagnostic
+  rows in the existing GUI and document recovery and historical-data limits.
+- Add prepared GenBank/separate-process, recomputation, plus/minus clipping,
+  legacy/undo and stale-scan regressions. Glen's real TP73/DeltaNp73 GUI and CLI
+  acceptance remains pending; synthetic tests do not replace scientific review.
+
 ## 2026-09-17 - TSS GUI Discovery Parity
 
 - Register both TSS inventory and approved materialization in the GUI
