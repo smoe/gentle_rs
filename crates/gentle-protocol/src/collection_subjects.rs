@@ -41,6 +41,10 @@ pub enum CollectionSubjectKind {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "source_kind", rename_all = "snake_case")]
 pub enum CollectionSubjectRef {
+    /// Snapshot-validated, engine-owned set of derived project sequences.
+    TssCollection {
+        collection_id: String,
+    },
     ProjectSequences {
         #[serde(default)]
         seq_ids: Vec<SeqId>,
@@ -65,7 +69,9 @@ impl Default for CollectionSubjectRef {
 impl CollectionSubjectRef {
     pub fn kind(&self) -> CollectionSubjectKind {
         match self {
-            Self::ProjectSequences { .. } => CollectionSubjectKind::ProjectSequences,
+            Self::ProjectSequences { .. } | Self::TssCollection { .. } => {
+                CollectionSubjectKind::ProjectSequences
+            }
             Self::Container { .. } => CollectionSubjectKind::Container,
             Self::Arrangement { .. } => CollectionSubjectKind::Arrangement,
             Self::GeneSetResolution { .. } => CollectionSubjectKind::GeneSetResolution,

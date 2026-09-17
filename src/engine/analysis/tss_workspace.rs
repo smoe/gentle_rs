@@ -7,6 +7,25 @@ use gentle_protocol::tss_profiles::TssStrand;
 use gentle_protocol::tss_workspace::*;
 
 const COLLECTIONS_KEY: &str = "tss_collections_v1";
+const SNAPSHOT_ALGORITHM: &str = "gentle.tss_biological_snapshot.v1";
+
+fn biological_snapshot(
+    dna: &DNAsequence,
+    anchor: &SequenceGenomeAnchorSummary,
+) -> Result<String, EngineError> {
+    hash(&(
+        SNAPSHOT_ALGORITHM,
+        dna.clone_seq_record(),
+        dna.overhang(),
+        (
+            &anchor.genome_id,
+            &anchor.chromosome,
+            anchor.start_1based,
+            anchor.end_1based,
+            anchor.strand,
+        ),
+    ))
+}
 
 fn hash(value: &impl Serialize) -> Result<String, EngineError> {
     serde_json::to_vec(value)
@@ -17,6 +36,17 @@ fn hash(value: &impl Serialize) -> Result<String, EngineError> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
+
+    fn prepare_fixture(dna: &mut DNAsequence) {
+        GentleEngine::prepare_sequence(dna);
+        // Synthetic recognition rule guarantees many cached sites without a user REBASE catalog.
+        *dna.restriction_enzymes_mut() =
+            vec![serde_json::from_value(serde_json::json!({
+            "name":"SyntheticTssCache", "sequence":"AACCGT", "note":null, "cut":2, "overlap":0
+        })).unwrap()];
+        dna.update_computed_features();
+        assert!(dna.restriction_enzyme_groups().len() > 1);
+    }
 
     // Entirely synthetic locus/annotations, recreated here. Not TP73 biological data.
     fn transcript(id: &str, gene: &str, start: i64, end: i64, reverse: bool) -> Feature {
@@ -45,6 +75,7 @@ pub(super) mod tests {
             transcript("tx3", "TOY", 400, 800, false),
             transcript("tx_other", "OTHER", 300, 900, false),
         ]);
+        prepare_fixture(&mut dna);
         let mut state = ProjectState::default();
         state.sequences.insert("locus".into(), dna);
         state.metadata.insert(PROVENANCE_METADATA_KEY.into(), serde_json::json!({GENOME_EXTRACTIONS_METADATA_KEY: [{
@@ -164,12 +195,339 @@ pub(super) mod tests {
             .unwrap()
             .features_mut()
             .push(f);
+        let report = e.inspect_tss_inventory(&request()).unwrap();
+        assert!(report.rows.is_empty());
+        assert_eq!(
+            report.excluded_transcripts[0].reason,
+            TssTranscriptExclusionReason::UncertainFivePrimeEnd
+        );
+    }
+
+    #[test]
+    fn tss_process_worker() {
+        let Ok(path) = std::env::var("GENTLE_TSS_REGRESSION_DIR") else {
+            return;
+        };
+        let path = std::path::Path::new(&path);
+        let state: ProjectState =
+            serde_json::from_slice(&std::fs::read(path.join("state.json")).unwrap()).unwrap();
+        let mut e = GentleEngine::from_state(state);
+        match std::env::var("GENTLE_TSS_REGRESSION_PHASE")
+            .unwrap()
+            .as_str()
+        {
+            "preview" => {
+                let command = crate::engine_shell::parse_shell_line(&format!(
+                    "promoters tss-inventory '{}'",
+                    serde_json::to_string(&request()).unwrap()
+                ))
+                .unwrap();
+                let output = crate::engine_shell::execute_shell_command(&mut e, &command).unwrap();
+                let preview: TssInventoryReport =
+                    serde_json::from_value(output.output["result"]["tss_inventory"].clone())
+                        .unwrap();
+                let req = TssMaterializeRequest {
+                    inventory: preview.request,
+                    expected_approval_sha256: preview.approval_sha256,
+                    selected_tss_ids: preview.rows.into_iter().map(|r| r.tss_id).collect(),
+                };
+                std::fs::write(
+                    path.join("approval.json"),
+                    serde_json::to_vec(&req).unwrap(),
+                )
+                .unwrap();
+            }
+            "materialize" => {
+                let req: TssMaterializeRequest =
+                    serde_json::from_slice(&std::fs::read(path.join("approval.json")).unwrap())
+                        .unwrap();
+                let command = crate::engine_shell::parse_shell_line(&format!(
+                    "promoters tss-materialize '{}'",
+                    serde_json::to_string(&req).unwrap()
+                ))
+                .unwrap();
+                crate::engine_shell::execute_shell_command(&mut e, &command).unwrap();
+                std::fs::write(
+                    path.join("state.json"),
+                    serde_json::to_vec(e.snapshot()).unwrap(),
+                )
+                .unwrap();
+            }
+            "reopen" => {
+                let report = e.get_tss_collection("toy_tss").unwrap();
+                for member in report.members {
+                    e.apply(Operation::RecomputeFeatures {
+                        seq_id: member.tss.output_seq_id,
+                    })
+                    .unwrap();
+                }
+                assert_eq!(e.get_tss_collection("toy_tss").unwrap().members.len(), 2);
+            }
+            _ => panic!("unknown regression phase"),
+        }
+    }
+
+    #[test]
+    fn tss_prepared_genbank_preview_materialize_and_reopen_across_processes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e = engine(false);
+        // Synthetic fixture from engine(), round-tripped through real GenBank import.
+        let gb = dir.path().join("locus.gb");
+        std::fs::write(&gb, e.state.sequences["locus"].to_genbank_string().unwrap()).unwrap();
+        let mut imported = DNAsequence::from_genbank_file(gb.to_str().unwrap())
+            .unwrap()
+            .remove(0);
+        prepare_fixture(&mut imported);
         assert!(
-            e.inspect_tss_inventory(&request())
+            !serde_json::to_value(&imported).unwrap()["restriction_enzyme_groups"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        e.state.sequences.insert("locus".into(), imported);
+        std::fs::write(
+            dir.path().join("state.json"),
+            serde_json::to_vec(e.snapshot()).unwrap(),
+        )
+        .unwrap();
+        let worker = format!(
+            "{}::tss_process_worker",
+            module_path!().split_once("::").unwrap().1
+        );
+        for phase in ["preview", "materialize", "reopen"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", &worker, "--nocapture"])
+                .env("GENTLE_TSS_REGRESSION_DIR", dir.path())
+                .env("GENTLE_TSS_REGRESSION_PHASE", phase)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{phase}: {} {}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(
+                String::from_utf8_lossy(&output.stdout).contains("1 passed"),
+                "worker must actually run"
+            );
+        }
+    }
+
+    #[test]
+    fn tss_cache_refresh_is_not_edit_but_anchor_and_record_edits_are() {
+        let mut e = engine(false);
+        let approved = approved(&e);
+        e.apply(Operation::RecomputeFeatures {
+            seq_id: "locus".into(),
+        })
+        .unwrap();
+        let (report, _) = e.materialize_tss_windows(&approved).unwrap();
+        for m in &report.members {
+            e.apply(Operation::RecomputeFeatures {
+                seq_id: m.tss.output_seq_id.clone(),
+            })
+            .unwrap();
+        }
+        assert!(e.get_tss_collection("toy_tss").is_ok());
+        let id = &report.members[0].tss.output_seq_id;
+        for change in ["bases", "topology", "anchor"] {
+            let mut altered = GentleEngine::from_state(e.snapshot().clone());
+            if change == "anchor" {
+                let entries = altered
+                    .state
+                    .metadata
+                    .get_mut(PROVENANCE_METADATA_KEY)
+                    .unwrap()[GENOME_EXTRACTIONS_METADATA_KEY]
+                    .as_array_mut()
+                    .unwrap();
+                let entry = entries.iter_mut().find(|v| v["seq_id"] == *id).unwrap();
+                entry["anchor_strand"] = serde_json::json!("-");
+            } else if change == "topology" {
+                altered
+                    .state
+                    .sequences
+                    .get_mut(id)
+                    .unwrap()
+                    .set_circular(true);
+            } else {
+                let mut seq = altered.state.sequences[id].clone_seq_record();
+                seq.seq[0] = b'T';
+                altered
+                    .state
+                    .sequences
+                    .insert(id.clone(), DNAsequence::from_genbank_seq(seq));
+            }
+            assert!(
+                altered
+                    .get_tss_collection("toy_tss")
+                    .unwrap_err()
+                    .message
+                    .contains("edited"),
+                "{change}"
+            );
+        }
+    }
+
+    #[test]
+    fn tss_forget_legacy_metadata_preserves_sequences_and_lineage_and_is_undoable() {
+        let mut e = engine(false);
+        let req = approved(&e);
+        e.apply(Operation::MaterializeTssWindows { request: req })
+            .unwrap();
+        e.state.metadata.get_mut(COLLECTIONS_KEY).unwrap()["toy_tss"]["inventory"]
+            .as_object_mut()
+            .unwrap()
+            .remove("snapshot_algorithm");
+        assert!(
+            e.get_tss_collection("toy_tss")
                 .unwrap_err()
                 .message
-                .contains("partial")
+                .contains("Legacy")
         );
+        let mut expected = serde_json::to_value(e.snapshot()).unwrap();
+        e.apply(Operation::ForgetTssCollection {
+            collection_id: "toy_tss".into(),
+        })
+        .unwrap();
+        expected["metadata"][COLLECTIONS_KEY]
+            .as_object_mut()
+            .unwrap()
+            .remove("toy_tss");
+        assert_eq!(serde_json::to_value(e.snapshot()).unwrap(), expected);
+        assert!(e.get_tss_collection("toy_tss").is_err());
+        e.undo_last_operation().unwrap();
+        assert!(e.state.metadata[COLLECTIONS_KEY].get("toy_tss").is_some());
+    }
+
+    #[test]
+    fn tss_genome_bounds_reject_clipped_starts_on_both_strands() {
+        for reverse in [false, true] {
+            let mut e = engine(false);
+            let record = GenomeTranscriptRecord {
+                chromosome: "1".into(),
+                transcript_id: "cropped".into(),
+                gene_id: Some("gene_TOY".into()),
+                gene_name: Some("TOY".into()),
+                strand: Some(if reverse { '-' } else { '+' }),
+                transcript_start_1based: if reverse { 1101 } else { 901 },
+                transcript_end_1based: if reverse { 2100 } else { 1900 },
+                exons_1based: if reverse {
+                    vec![(1101, 1500), (2051, 2100)]
+                } else {
+                    vec![(901, 950), (1401, 1900)]
+                },
+                cds_1based: vec![],
+            };
+            let feature =
+                GentleEngine::transcript_feature_from_genome_record(&record, 1001, 2000).unwrap();
+            e.state
+                .sequences
+                .get_mut("locus")
+                .unwrap()
+                .features_mut()
+                .push(feature);
+            let report = e.inspect_tss_inventory(&request()).unwrap();
+            assert_eq!(report.rows.len(), 2);
+            assert_eq!(
+                report.excluded_transcripts[0].reason,
+                TssTranscriptExclusionReason::TruncatedFivePrimeEnd
+            );
+            assert_eq!(report.excluded_transcripts[0].transcript_id, "cropped");
+        }
+    }
+
+    #[test]
+    fn tss_extraction_marks_dropped_first_exon_and_clipped_start_not_three_prime() {
+        for reverse in [false, true] {
+            let mut e = engine(false);
+            let dna = e.state.sequences.get_mut("locus").unwrap();
+            dna.features_mut().clear();
+            let mut joined = transcript("dropped_exon", "TOY", 100, 900, reverse);
+            let location = Location::Join(vec![
+                Location::simple_range(100, 200),
+                Location::simple_range(400, 500),
+                Location::simple_range(800, 900),
+            ]);
+            joined.location = if reverse {
+                Location::Complement(Box::new(location))
+            } else {
+                location
+            };
+            dna.features_mut().extend([
+                joined,
+                transcript("clipped_start", "TOY", 100, 900, reverse),
+                transcript(
+                    "intact_start",
+                    "TOY",
+                    if reverse { 0 } else { 400 },
+                    if reverse { 500 } else { 1000 },
+                    reverse,
+                ),
+            ]);
+            let (from, to) = if reverse { (50, 750) } else { (350, 950) };
+            e.apply(Operation::ExtractRegion {
+                input: "locus".into(),
+                from,
+                to,
+                output_id: Some("cropped".into()),
+            })
+            .unwrap();
+            // Extraction has no implicit genome anchor: bind the synthetic coordinates explicitly.
+            let mut anchor = e.state.metadata[PROVENANCE_METADATA_KEY]
+                [GENOME_EXTRACTIONS_METADATA_KEY][0]
+                .clone();
+            anchor["seq_id"] = serde_json::json!("cropped");
+            anchor["start_1based"] = serde_json::json!(1001 + from);
+            anchor["end_1based"] = serde_json::json!(1000 + to);
+            e.state.metadata.get_mut(PROVENANCE_METADATA_KEY).unwrap()
+                [GENOME_EXTRACTIONS_METADATA_KEY]
+                .as_array_mut()
+                .unwrap()
+                .push(anchor);
+            let mut req = request();
+            req.seq_id = "cropped".into();
+            let report = e.inspect_tss_inventory(&req).unwrap();
+            assert_eq!(report.rows.len(), 1);
+            assert_eq!(report.rows[0].transcript_ids, ["intact_start"]);
+            assert_eq!(report.excluded_transcripts.len(), 2);
+            assert!(
+                report
+                    .excluded_transcripts
+                    .iter()
+                    .all(|r| r.reason == TssTranscriptExclusionReason::TruncatedFivePrimeEnd)
+            );
+        }
+    }
+
+    #[test]
+    fn tss_exact_start_allows_fuzzy_three_prime_and_unlinked_other_transcript() {
+        for reverse in [false, true] {
+            let mut e = engine(false);
+            let dna = e.state.sequences.get_mut("locus").unwrap();
+            dna.features_mut().clear();
+            let mut f = transcript("exact_start", "TOY", 300, 700, reverse);
+            let loc = Location::Range(
+                (300, gb_io::seq::Before(reverse)),
+                (700, gb_io::seq::After(!reverse)),
+            );
+            f.location = if reverse {
+                Location::Complement(Box::new(loc))
+            } else {
+                loc
+            };
+            let mut unrelated = transcript("unlinked", "OTHER", 100, 200, false);
+            unrelated
+                .qualifiers
+                .retain(|(k, _)| !matches!(k.as_ref(), "gene" | "gene_id"));
+            dna.features_mut().extend([f, unrelated]);
+            let report = e.inspect_tss_inventory(&request()).unwrap();
+            assert_eq!(report.rows.len(), 1);
+            assert_eq!(
+                report.excluded_transcripts[0].reason,
+                TssTranscriptExclusionReason::MissingGeneLink
+            );
+        }
     }
 
     #[test]
@@ -207,20 +565,33 @@ pub(super) mod tests {
                 .len(),
             2
         );
-        let scan = e
-            .apply(Operation::ScanTfbsHitsCollection {
-                collection_subject: report.subject,
-                member_bindings: vec![],
-                motifs: vec!["AAC".into()],
-                min_llr_bits: None,
-                min_llr_quantile: None,
-                per_tf_thresholds: vec![],
-                max_hits_per_member: Some(10),
-                path: None,
-            })
-            .unwrap();
+        let scan_op = Operation::ScanTfbsHitsCollection {
+            collection_subject: report.subject,
+            member_bindings: vec![],
+            motifs: vec!["AAC".into()],
+            min_llr_bits: None,
+            min_llr_quantile: None,
+            per_tf_thresholds: vec![],
+            max_hits_per_member: Some(10),
+            path: None,
+        };
+        let scan = e.apply(scan_op.clone()).unwrap();
         assert!(scan.collection_tfbs_hit_scan.is_some());
         assert!(e.get_tss_collection("toy_tss").is_ok());
+        e.state
+            .sequences
+            .get_mut(&report.members[0].tss.output_seq_id)
+            .unwrap()
+            .features_mut()
+            .clear();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("must_not_be_written.json");
+        let mut stale_op = scan_op;
+        if let Operation::ScanTfbsHitsCollection { path: output, .. } = &mut stale_op {
+            *output = Some(path.to_str().unwrap().into());
+        }
+        assert!(e.apply(stale_op).unwrap_err().message.contains("edited"));
+        assert!(!path.exists());
     }
 
     #[test]
@@ -331,17 +702,31 @@ pub(super) mod tests {
     }
 }
 
-fn exact_location(location: &Location) -> bool {
-    fn intervals(location: &Location) -> bool {
+fn exact_five_prime_location(location: &Location) -> bool {
+    fn intervals(location: &Location, ranges: &mut Vec<(i64, bool, i64, bool)>) -> bool {
         match location {
-            Location::Range((s, before), (e, after)) => !before.0 && !after.0 && *s >= 0 && e > s,
-            Location::Join(parts) => !parts.is_empty() && parts.iter().all(intervals),
+            Location::Range((s, before), (e, after)) if *s >= 0 && e > s => {
+                ranges.push((*s, before.0, *e, after.0));
+                true
+            }
+            Location::Join(parts) => {
+                !parts.is_empty() && parts.iter().all(|p| intervals(p, ranges))
+            }
             _ => false,
         }
     }
-    match location {
-        Location::Complement(inner) => intervals(inner),
-        _ => intervals(location),
+    let (inner, reverse) = match location {
+        Location::Complement(inner) => (inner.as_ref(), true),
+        _ => (location, false),
+    };
+    let mut ranges = Vec::new();
+    if !intervals(inner, &mut ranges) {
+        return false;
+    }
+    if reverse {
+        ranges.iter().max_by_key(|r| r.2).is_some_and(|r| !r.3)
+    } else {
+        ranges.iter().min_by_key(|r| r.0).is_some_and(|r| !r.1)
     }
 }
 
@@ -387,22 +772,34 @@ impl GentleEngine {
             ));
         }
         let anchor = self.sequence_genome_anchor_summary(&request.seq_id)?;
-        let source_snapshot_sha256 = hash(&(dna, &anchor))?;
+        let source_snapshot_sha256 = biological_snapshot(dna, &anchor)?;
         let mut groups: BTreeMap<String, TssInventoryRow> = BTreeMap::new();
+        let mut excluded_transcripts = Vec::new();
         let mut transcript_count = 0;
         for (feature_id, f) in dna.features().iter().enumerate() {
             if Self::construct_reasoning_role_from_feature(f) != Some(ConstructRole::Transcript) {
                 continue;
             }
+            let transcript_id =
+                Self::first_nonempty_feature_qualifier(f, &["transcript_id", "name", "label"])
+                    .unwrap_or_else(|| format!("feature_{feature_id}"));
+            let excluded = |reason, explanation: &str| TssExcludedTranscript {
+                feature_id,
+                transcript_id: transcript_id.clone(),
+                reason,
+                explanation: explanation.into(),
+            };
             if Self::first_nonempty_feature_qualifier(
                 f,
                 &["gene", "gene_name", "gene_id", "locus_tag"],
             )
             .is_none()
             {
-                return Err(EngineError::invalid_input(format!(
-                    "Transcript feature {feature_id} lacks explicit gene linkage; cannot promise an exhaustive gene-specific inventory by guessing from overlapping genes"
-                )));
+                excluded_transcripts.push(excluded(
+                    TssTranscriptExclusionReason::MissingGeneLink,
+                    "Gene linkage unavailable; not assigned to this gene by overlap guessing",
+                ));
+                continue;
             }
             let (gene_label, gene_id) = Self::transcript_gene_metadata(dna, f, feature_id);
             if !gene_label
@@ -423,10 +820,20 @@ impl GentleEngine {
                     "TSS inventory exceeds 10,000 matching transcript features",
                 ));
             }
-            if !exact_location(&f.location) {
-                return Err(EngineError::invalid_input(format!(
-                    "Transcript feature {feature_id} has a partial, fuzzy or unsupported location; exact TSS inventory is unavailable, not empty"
-                )));
+            if !exact_five_prime_location(&f.location) {
+                excluded_transcripts.push(excluded(
+                    TssTranscriptExclusionReason::UncertainFivePrimeEnd,
+                    "Partial, fuzzy or unsupported transcript 5-prime end; exact TSS unavailable",
+                ));
+                continue;
+            }
+            if f.qualifiers
+                .iter()
+                .any(|(k, _)| k.as_ref() == "gentle_transcript_5prime_truncated")
+            {
+                excluded_transcripts.push(excluded(TssTranscriptExclusionReason::TruncatedFivePrimeEnd,
+                    "Transcript 5-prime end was removed by extraction; surviving exon boundary is not a TSS"));
+                continue;
             }
             let mut ranges = Vec::new();
             collect_location_ranges_usize(&f.location, &mut ranges);
@@ -454,6 +861,31 @@ impl GentleEngine {
                 local_strand,
                 None,
             )?;
+            let genomic_start =
+                Self::first_nonempty_feature_qualifier(f, &["genomic_start_1based"]);
+            let genomic_end = Self::first_nonempty_feature_qualifier(f, &["genomic_end_1based"]);
+            if genomic_start.is_some() || genomic_end.is_some() {
+                let bounds = genomic_start
+                    .as_deref()
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .zip(genomic_end.as_deref().and_then(|s| s.parse::<u64>().ok()))
+                    .filter(|(s, e)| *s > 0 && e >= s);
+                let Some((s, e)) = bounds else {
+                    excluded_transcripts.push(excluded(TssTranscriptExclusionReason::InvalidGenomicBounds,
+                        "Transcript genomic bounds are incomplete or invalid; exact start cannot be checked"));
+                    continue;
+                };
+                let expected = if genomic_tss.strand == GenomicRegionStrand::Minus {
+                    e
+                } else {
+                    s
+                };
+                if genomic_tss.start_0based + 1 != expected {
+                    excluded_transcripts.push(excluded(TssTranscriptExclusionReason::TruncatedFivePrimeEnd,
+                        "Local 5-prime endpoint differs from annotated genomic transcript start; extend the locus before using this TSS"));
+                    continue;
+                }
+            }
             let annotation_source = Self::first_nonempty_feature_qualifier(
                 f,
                 &["annotation_source", "source", "annotation_release"],
@@ -467,9 +899,6 @@ impl GentleEngine {
                 &genomic_tss,
             ))?;
             let tss_id = format!("tss_{}", identity.trim_start_matches("sha256:"));
-            let transcript_id =
-                Self::first_nonempty_feature_qualifier(f, &["transcript_id", "name", "label"])
-                    .unwrap_or_else(|| format!("feature_{feature_id}"));
             if let Some(row) = groups.get_mut(&tss_id) {
                 row.transcript_ids.push(transcript_id);
                 row.transcript_feature_ids.push(feature_id);
@@ -525,10 +954,16 @@ impl GentleEngine {
             row.transcript_ids.dedup();
         }
         let mut report = TssInventoryReport {
-            schema: "gentle.tss_inventory.v1".into(), request: request.clone(), source_snapshot_sha256,
-            approval_sha256: String::new(), rows,
+            schema: "gentle.tss_inventory.v1".into(), snapshot_algorithm: SNAPSHOT_ALGORITHM.into(), request: request.clone(), source_snapshot_sha256,
+            approval_sha256: String::new(), rows, excluded_transcripts,
             warnings: vec!["Scope: transcript features on this loaded, anchored project locus only; not all possible biological starts or a cross-source consensus. No TFBS or CUT&RUN analysis was run.".into()],
         };
+        if !report.excluded_transcripts.is_empty() {
+            report.warnings.push(format!(
+                "{} transcript annotations excluded from exact-start candidates; inspect excluded_transcripts. Unavailable starts are not evidence of absent promoters.",
+                report.excluded_transcripts.len()
+            ));
+        }
         report.approval_sha256 = hash(&report)?;
         Ok(report)
     }
@@ -552,13 +987,14 @@ impl GentleEngine {
         let report: TssCollectionReport = serde_json::from_value(value.clone()).map_err(|e| {
             EngineError::invalid_input(format!("Invalid stored TSS collection: {e}"))
         })?;
+        if report.inventory.snapshot_algorithm != SNAPSHOT_ALGORITHM {
+            return Err(EngineError::invalid_input(
+                "Legacy TSS collection uses cache-sensitive snapshots; inspect again under a new collection ID or forget its metadata (sequences are retained). No silent reapproval performed",
+            ));
+        }
         let expected_subject =
-            gentle_protocol::collection_subjects::CollectionSubjectRef::ProjectSequences {
-                seq_ids: report
-                    .members
-                    .iter()
-                    .map(|m| m.tss.output_seq_id.clone())
-                    .collect(),
+            gentle_protocol::collection_subjects::CollectionSubjectRef::TssCollection {
+                collection_id: collection_id.into(),
             };
         let mut preview = report.inventory.clone();
         preview.approval_sha256.clear();
@@ -567,6 +1003,18 @@ impl GentleEngine {
             .iter()
             .map(|m| &m.tss.output_seq_id)
             .collect::<BTreeSet<_>>();
+        let members = report
+            .members
+            .iter()
+            .map(|m| CollectionMemberRef {
+                stable_member_id: m.tss.output_seq_id.clone(),
+                seq_id: Some(m.tss.output_seq_id.clone()),
+                parent_member_id: Some(report.inventory.request.seq_id.clone()),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        let fingerprint =
+            canonical_collection_membership_json(CollectionSubjectKind::ProjectSequences, &members);
         if report.schema != "gentle.tss_collection.v1"
             || report.collection_id != collection_id
             || report.collection_id != report.inventory.request.collection_id
@@ -574,6 +1022,8 @@ impl GentleEngine {
             || report.members.len() != unique_ids.len()
             || report.members.len() > 256
             || report.members.is_empty()
+            || report.lifting_mode != CollectionLiftingMode::Derive
+            || report.collection_membership_fingerprint_sha256 != sha256_prefixed_str(&fingerprint)
             || hash(&preview)? != report.inventory.approval_sha256
             || report
                 .members
@@ -594,13 +1044,31 @@ impl GentleEngine {
                         "TSS collection member is missing; no windows opened",
                     )
                 })?;
-            if hash(dna)? != member.record_snapshot_sha256 {
+            let anchor = self.sequence_genome_anchor_summary(&member.tss.output_seq_id)?;
+            if biological_snapshot(dna, &anchor)? != member.record_snapshot_sha256 {
                 return Err(EngineError::invalid_input(
                     "TSS collection member was edited; inspect the individual sequence instead of reusing stale TSS geometry",
                 ));
             }
         }
         Ok(report)
+    }
+
+    /// Forget only the registry entry, even when legacy or stale; retain sequences and lineage.
+    pub(super) fn forget_tss_collection(&mut self, collection_id: &str) -> Result<(), EngineError> {
+        let collections = self
+            .state
+            .metadata
+            .get_mut(COLLECTIONS_KEY)
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| EngineError::new(ErrorCode::NotFound, "TSS collection not found"))?;
+        if collections.remove(collection_id).is_none() {
+            return Err(EngineError::new(
+                ErrorCode::NotFound,
+                "TSS collection not found",
+            ));
+        }
+        Ok(())
     }
 
     pub(super) fn materialize_tss_windows(
@@ -792,7 +1260,18 @@ impl GentleEngine {
                     "TSS materialization exceeds 100,000 features per window or 250,000 total; select fewer starts",
                 ));
             }
-            let record_snapshot_sha256 = hash(&dna)?;
+            let record_snapshot_sha256 = biological_snapshot(
+                &dna,
+                &SequenceGenomeAnchorSummary {
+                    seq_id: row.output_seq_id.clone(),
+                    genome_id: parent_anchor.genome_id.clone(),
+                    chromosome: window.reference.contig_name.clone(),
+                    start_1based: window.start_0based as usize + 1,
+                    end_1based: window.end_0based_exclusive as usize,
+                    strand: Some(if strand == "-" { '-' } else { '+' }),
+                    anchor_verified: parent_anchor.anchor_verified,
+                },
+            )?;
             anchors.push(GenomeExtractionProvenance {
                 seq_id: row.output_seq_id.clone(),
                 recorded_at_unix_ms: Self::now_unix_ms(),
@@ -856,8 +1335,8 @@ impl GentleEngine {
             members,
             lifting_mode: gentle_protocol::collection_subjects::CollectionLiftingMode::Derive,
             collection_membership_fingerprint_sha256: sha256_prefixed_str(&fingerprint),
-            subject: gentle_protocol::collection_subjects::CollectionSubjectRef::ProjectSequences {
-                seq_ids: seq_ids.clone(),
+            subject: gentle_protocol::collection_subjects::CollectionSubjectRef::TssCollection {
+                collection_id: request.inventory.collection_id.clone(),
             },
         };
         let value =

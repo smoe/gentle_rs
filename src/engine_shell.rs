@@ -21453,6 +21453,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tss_workspace_capability_descriptor("promoters tss-materialize", true, false),
         tss_workspace_capability_descriptor("GetTssCollection", false, true),
         tss_workspace_capability_descriptor("promoters tss-collection", false, true),
+        tss_workspace_capability_descriptor("ForgetTssCollection", true, true),
+        tss_workspace_capability_descriptor("promoters tss-forget", true, true),
         tss_workspace_capability_descriptor("ui open tss-view --collection", false, true),
         tata_capability_descriptor("promoters tata-screen", false),
         tata_capability_descriptor("ScreenTataBoxes", false),
@@ -23248,7 +23250,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences or gene_set_resolution collection subject"},
+                {"name": "COLLECTION_SUBJECT", "required": true, "subject_kind": "other", "detail": "typed project_sequences, validated tss_collection, or gene_set_resolution collection subject"},
                 {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "member-id to loaded-sequence bindings; required for logical gene-set members"},
                 {"name": "MOTIFS", "required": true, "subject_kind": "other", "detail": "motif query tokens shared by all members"},
                 {"name": "MIN_LLR_BITS", "required": false, "subject_kind": "other", "detail": "optional minimum log-likelihood-ratio threshold in bits"},
@@ -23274,6 +23276,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
+                {"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates all persisted members; exclusive with gene-set, sequence and member bindings"},
                 {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
                 {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
                 {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
@@ -42807,7 +42810,7 @@ fn tss_workspace_capability_descriptor(id: &str, mutating: bool, collection: boo
         "reads": if collection {vec![json!({"fact":"tss_collection.exists","subject":{"arg":"COLLECTION_ID"}})]} else {vec![]},
         "effects": [], "precondition_expr": if collection {json!({"all":[{"fact":"tss_collection.exists","subject":{"arg":"COLLECTION_ID"}}]})} else {json!({"all":[]})},
         "annotation_status":"fact_annotated",
-        "description":"All annotated TSSs / Transkriptionsstartstellen, one window per exact start: promoters tss-inventory previews an anchored loaded locus; promoters tss-materialize explicitly approves selected starts; ui open tss-view --collection COLLECTION_ID opens up to 32 windows, reusing existing windows. Never guess coordinates or collapse distinct starts by clipped spans. GetTssCollection returns a ProjectSequences subject for optional ScanTfbsHitsCollection.",
+        "description": if mutating && collection {"Forget only the named TSS collection registry entry, including stale/legacy metadata. Member sequences and lineage are retained. Explicit confirmation required; no silent recovery or overwrite."} else {"All annotated TSSs / Transkriptionsstartstellen, one window per exact start: promoters tss-inventory previews an anchored loaded locus; promoters tss-materialize explicitly approves selected starts; ui open tss-view --collection COLLECTION_ID opens up to 32 windows, reusing existing windows. Never guess coordinates or promote clipped transcript ends to TSSs. GetTssCollection returns a validated TssCollection subject for optional ScanTfbsHitsCollection; collections run tfbs-scan --tss-collection ID avoids copying member IDs."},
         "registry": registry_metadata_for_introspection(id)
     })
 }
@@ -42820,9 +42823,9 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
         );
     }
     match tokens[1].as_str() {
-        "tss-inventory" | "tss-materialize" | "tss-collection" => {
+        "tss-inventory" | "tss-materialize" | "tss-collection" | "tss-forget" => {
             if tokens.len() != 3 {
-                return Err("promoters tss-inventory REQUEST_JSON_OR_@FILE | promoters tss-materialize REQUEST_JSON_OR_@FILE | promoters tss-collection COLLECTION_ID".into());
+                return Err("promoters tss-inventory REQUEST_JSON_OR_@FILE | promoters tss-materialize REQUEST_JSON_OR_@FILE | promoters tss-collection COLLECTION_ID | promoters tss-forget COLLECTION_ID (retain sequences)".into());
             }
             let operation = match tokens[1].as_str() {
                 "tss-inventory" => Operation::InspectTssInventory {
@@ -42833,6 +42836,9 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
                         &tokens[2],
                         "TSS materialization request",
                     )?,
+                },
+                "tss-forget" => Operation::ForgetTssCollection {
+                    collection_id: tokens[2].clone(),
                 },
                 _ => Operation::GetTssCollection {
                     collection_id: tokens[2].clone(),

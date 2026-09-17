@@ -53,12 +53,35 @@ pub struct TssInventoryRow {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TssInventoryReport {
     pub schema: String,
+    /// Empty in legacy payloads whose snapshots included nondeterministic caches.
+    #[serde(default)]
+    pub snapshot_algorithm: String,
     pub request: TssInventoryRequest,
     pub source_snapshot_sha256: String,
     /// Includes source, geometry, transcript membership and output namespace.
     pub approval_sha256: String,
     pub rows: Vec<TssInventoryRow>,
+    #[serde(default)]
+    pub excluded_transcripts: Vec<TssExcludedTranscript>,
     pub warnings: Vec<String>,
+}
+
+/// An annotation that must not be promoted to an exact transcript start.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TssExcludedTranscript {
+    pub feature_id: usize,
+    pub transcript_id: String,
+    pub reason: TssTranscriptExclusionReason,
+    pub explanation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TssTranscriptExclusionReason {
+    MissingGeneLink,
+    UncertainFivePrimeEnd,
+    TruncatedFivePrimeEnd,
+    InvalidGenomicBounds,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +108,6 @@ pub struct TssCollectionReport {
     pub members: Vec<TssCollectionMember>,
     pub lifting_mode: crate::collection_subjects::CollectionLiftingMode,
     pub collection_membership_fingerprint_sha256: String,
-    /// Existing map operations consume this explicit sequence subject.
+    /// Map operations resolve this typed reference and revalidate member snapshots.
     pub subject: CollectionSubjectRef,
 }

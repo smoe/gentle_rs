@@ -1446,6 +1446,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "promoters tss-inventory",
             "promoters tss-materialize",
             "promoters tss-collection",
+            "promoters tss-forget",
             "promoters compare-architectures",
             "promoters regulatory-panel-plan",
             "promoters fragment-candidates",

@@ -434,8 +434,37 @@ impl DNAsequence {
             let rotated = self.seq.set_origin(start as i64);
             rotated.extract_range(0, extracted_len as i64)
         } else {
-            self.seq
-                .extract_range(from as i64, from.saturating_add(extracted_len) as i64)
+            let end = from.saturating_add(extracted_len);
+            let mut source = self.seq.clone();
+            // gb_io clips exact ends and drops exons without marking partiality.
+            // Record loss of the original transcript start before that information disappears.
+            for feature in &mut source.features {
+                if !matches!(
+                    feature.kind.to_ascii_uppercase().as_str(),
+                    "MRNA" | "TRANSCRIPT" | "NCRNA" | "RRNA" | "TRNA"
+                ) {
+                    continue;
+                }
+                if let Ok((s, e)) = feature.location.find_bounds() {
+                    let start = if matches!(feature.location, gb_io::seq::Location::Complement(_)) {
+                        e - 1
+                    } else {
+                        s
+                    };
+                    if (start < from as i64 || start >= end as i64)
+                        && !feature
+                            .qualifiers
+                            .iter()
+                            .any(|(k, _)| k.as_ref() == "gentle_transcript_5prime_truncated")
+                    {
+                        feature.qualifiers.push((
+                            "gentle_transcript_5prime_truncated".into(),
+                            Some("true".into()),
+                        ));
+                    }
+                }
+            }
+            source.extract_range(from as i64, end as i64)
         };
         seq.topology = Topology::Linear;
 

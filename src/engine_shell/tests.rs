@@ -41,7 +41,16 @@ fn tss_workspace_shell_preview_apply_collection_and_window_intent() {
     )
     .unwrap();
     assert!(!show.state_changed);
-    assert!(show.output.to_string().contains("project_sequences"));
+    assert!(show.output.to_string().contains("tss_collection"));
+    let scan = parse_shell_line(
+        "collections run tfbs-scan --tss-collection toy_tss --motif AAC --max-hits 10",
+    )
+    .unwrap();
+    assert!(
+        matches!(&scan, ShellCommand::CollectionsRunTfbsScan {collection_subject: CollectionSubjectRef::TssCollection {collection_id},..} if collection_id == "toy_tss")
+    );
+    let scanned = execute_shell_command(&mut engine, &scan).unwrap();
+    assert!(!scanned.state_changed);
     let readiness = execute_shell_command(
         &mut engine,
         &parse_shell_line("introspect readiness GetTssCollection --arg COLLECTION_ID=toy_tss")
@@ -61,9 +70,21 @@ fn tss_workspace_shell_preview_apply_collection_and_window_intent() {
         "ui open tss-view --collection",
         "ui open tss-view --collection toy --all",
         "ui open tss-view --unknown x",
+        "collections run tfbs-scan --tss-collection toy --seq-ids x --motif AAC",
+        "collections run tfbs-scan other --tss-collection toy --motif AAC",
+        "collections run tfbs-scan --tss-collection toy --member-sequence x=y --motif AAC",
     ] {
         assert!(parse_shell_line(invalid).is_err());
     }
+    let before_count = engine.state().sequences.len();
+    let forgotten = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("promoters tss-forget toy_tss").unwrap(),
+    )
+    .unwrap();
+    assert!(forgotten.state_changed);
+    assert_eq!(engine.state().sequences.len(), before_count);
+    assert!(execute_shell_command(&mut engine, &scan).is_err());
 }
 
 #[test]
@@ -1573,7 +1594,14 @@ fn glossary_cli_usage_flags_parse_one_by_one() {
             if skip_glossary_flag_parse(&command.path, &flag) {
                 continue;
             }
-            let Some(mut line) = shell_command_line_with_option(&base, &flag, value.as_deref())
+            // This alternative subject replaces --seq-ids; combining them must remain invalid.
+            let flag_base =
+                if command.path == "collections run tfbs-scan" && flag == "--tss-collection" {
+                    "collections run tfbs-scan --motif AAA"
+                } else {
+                    &base
+                };
+            let Some(mut line) = shell_command_line_with_option(flag_base, &flag, value.as_deref())
             else {
                 continue;
             };

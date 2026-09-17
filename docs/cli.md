@@ -3033,6 +3033,8 @@ Shared shell command:
     - `promoters tss-inventory REQUEST_JSON_OR_@FILE` (read-only exact-start preview)
     - `promoters tss-materialize REQUEST_JSON_OR_@FILE` (approval-bound selected windows)
     - `promoters tss-collection COLLECTION_ID` (persisted collection and member validation; [walkthrough](tss_workspace.md))
+    - `promoters tss-forget COLLECTION_ID` (metadata only; retains member sequences and lineage)
+    - `collections run tfbs-scan --tss-collection COLLECTION_ID --motif TOKEN [--path OUTPUT.json]` (validates all members before scanning; exclusive with gene-set/sequence/member-binding arguments)
     - `ui close TARGET`
     - `ui close sequence-window SEQ_ID`
     - `ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`

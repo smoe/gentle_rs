@@ -263,6 +263,17 @@ impl MainAreaDna {
                 egui::ScrollArea::vertical()
                     .id_salt("tss_inventory_rows")
                     .show(ui, |ui| {
+                        for excluded in &report.excluded_transcripts {
+                            ui.add_enabled(
+                                false,
+                                egui::Label::new(format!(
+                                    "{} (feature {}): {}",
+                                    excluded.transcript_id,
+                                    excluded.feature_id,
+                                    excluded.explanation
+                                )),
+                            );
+                        }
                         for row in &report.rows {
                             let mut selected = self.tss_inventory_ui.selected.contains(&row.tss_id);
                             let label = format!(

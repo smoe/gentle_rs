@@ -497,6 +497,16 @@ GENtle never emits dangling report references. Membership locks are set-like
 except for explicitly ordered subjects such as arrangements, whose numeric
 member order is part of the fingerprint.
 
+TSS-derived collections are validated references to project-sequence sets, not
+raw ID aliases. Their approvals/member snapshots bind authoritative sequence
+records, overhangs and genomic anchor geometry, never recomputable caches or
+unordered cache maps. Legacy cache-sensitive snapshots require explicit new
+approval, not silent migration. Typed collection maps validate all members
+before scanning; metadata-only forgetting preserves sequences and lineage.
+Transcript 5-prime truncation must survive extraction, including dropped first
+exons. A surviving exon boundary cannot become an exact annotated TSS merely
+because a file library clips locations without marking them partial.
+
 Collection wrappers over non-persisted child scans own those reports directly
 and must describe aggregate completeness. A retained-row cap is not evidence
 that later motifs or candidates were scanned: aggregate count fields must be

@@ -9216,6 +9216,7 @@ fn parse_collections_run_restriction_scan(tokens: &[String]) -> Result<ShellComm
 fn parse_collections_run_tfbs_scan(tokens: &[String]) -> Result<ShellCommand, String> {
     const COMMAND: &str = "collections run tfbs-scan";
     let mut gene_set_report_id: Option<String> = None;
+    let mut tss_collection_id: Option<String> = None;
     let mut seq_ids = Vec::new();
     let mut member_bindings = Vec::new();
     let mut motifs = Vec::new();
@@ -9234,6 +9235,13 @@ fn parse_collections_run_tfbs_scan(tokens: &[String]) -> Result<ShellCommand, St
 
     while idx < tokens.len() {
         match tokens[idx].as_str() {
+            "--tss-collection" => {
+                let id = parse_option_path(tokens, &mut idx, "--tss-collection", COMMAND)?;
+                if id.trim().is_empty() || tss_collection_id.is_some() {
+                    return Err("--tss-collection requires one nonempty collection ID".into());
+                }
+                tss_collection_id = Some(id);
+            }
             "--seq-id" => {
                 let seq_id = parse_option_path(tokens, &mut idx, "--seq-id", COMMAND)?;
                 if seq_id.trim().is_empty() {
@@ -9344,12 +9352,21 @@ fn parse_collections_run_tfbs_scan(tokens: &[String]) -> Result<ShellCommand, St
     if motifs.is_empty() {
         return Err(format!("{COMMAND} requires at least one --motif TOKEN"));
     }
+    if tss_collection_id.is_some()
+        && (gene_set_report_id.is_some() || !seq_ids.is_empty() || !member_bindings.is_empty())
+    {
+        return Err(
+            "--tss-collection cannot be combined with gene-set, sequence or member bindings".into(),
+        );
+    }
     if gene_set_report_id.is_some() && !seq_ids.is_empty() {
         return Err(format!(
             "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
         ));
     }
-    let collection_subject = if let Some(report_id) = gene_set_report_id {
+    let collection_subject = if let Some(collection_id) = tss_collection_id {
+        CollectionSubjectRef::TssCollection { collection_id }
+    } else if let Some(report_id) = gene_set_report_id {
         if report_id.is_empty() {
             return Err("GENE_SET_REPORT_ID must not be empty".to_string());
         }
