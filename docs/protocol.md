@@ -13528,6 +13528,27 @@ only a GUI host applies the intent. The shared catalog exposes the destination
 to the inner agent and other adapters. See [display semantics and current
 scope](gui.md#tss--regulatory-dna-display).
 
+### Prepared Transcript Index Availability
+
+Whole prepared-genome transcript inventories (`GenomeCatalog::list_all_transcript_records`)
+return the existing typed `EngineError`: `Unsupported` for GenBank/XML annotation,
+with genome ID, source path and format in the message. This is checked before
+loading even an existing/cached transcript sidecar. Preparation inspection keeps
+`transcript_index_ready=false` for those formats or a missing annotation source.
+Other preparation/index-read failures retain `InvalidInput` with explicit
+unavailable-index context. Successful GTF/GFF reads may return an empty inventory;
+that describes the indexed annotation, not biological absence.
+
+The Rust whole-index accessor now returns `EngineError` instead of `String`;
+no operation, request or success-payload schema changes. Promoter-similarity
+background loading preserves the typed error and validates before BLAST and
+homology-cache reuse. It does not publish a zero-row matrix on index failure.
+The interval accessor retains its string-error API and the same unsupported
+diagnostic. Optional region/gene extraction retains sequence output with an
+explicit transcript-enrichment warning; repeat-cohort projection likewise keeps
+unavailable transcript geometry explicit. Loaded project transcript features
+remain the source for TSS collections, independently of prepared-index support.
+
 ### TSS Collection Derivation
 
 `InspectTssInventory { request }` is read-only and returns `tss_inventory`

@@ -2,7 +2,7 @@
 
 use super::*;
 use gentle_protocol as gp;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 
 static REGION_HOMOLOGY_CACHE: LazyLock<
     Mutex<BTreeMap<String, gp::GenomicRegionHomologyScreenReport>>,
@@ -1152,32 +1152,20 @@ fn promoter_contig_key(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn build_promoter_similarity_matrix(
+fn load_promoter_similarity_transcripts(
     catalog: &GenomeCatalog,
-    report: &gp::GenomicRegionHomologyScreenReport,
-    policy: &gp::PromoterSimilarityMatrixPolicy,
-) -> Result<gp::PromoterSimilarityMatrix, EngineError> {
-    if policy.upstream_bp.saturating_add(policy.downstream_bp) == 0 || policy.max_rows == 0 {
-        return Err(homology_error(
-            ErrorCode::InvalidInput,
-            "promoter similarity requires a non-empty window and positive max_rows",
-        ));
-    }
-    let cache_dir = report
-        .effective_request
-        .cache_dir
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let transcripts = catalog
-        .list_all_transcript_records(&report.effective_request.query_genome_id, cache_dir)
-        .map_err(|error| {
-            homology_error(
-                ErrorCode::InvalidInput,
-                format!("could not load transcript promoter background: {error}"),
-            )
-        })?;
-    build_promoter_similarity_matrix_from_transcripts(report, policy, transcripts.as_slice())
+    genome_id: &str,
+    cache_dir: Option<&str>,
+) -> Result<Arc<Vec<crate::genomes::GenomeTranscriptRecord>>, EngineError> {
+    catalog
+        .list_all_transcript_records(genome_id, cache_dir)
+        .map_err(|mut error| {
+            error.message = format!(
+                "could not load transcript promoter background: {}",
+                error.message
+            );
+            error
+        })
 }
 
 fn build_promoter_similarity_matrix_from_transcripts(
@@ -1670,6 +1658,14 @@ impl GentleEngine {
             .as_deref()
             .map(str::trim)
             .filter(|v| !v.is_empty());
+        // Required promoter background must validate even on a homology cache
+        // hit, and before launching searches that cannot produce that matrix.
+        let promoter_transcripts = request
+            .policy
+            .promoter_similarity_matrix
+            .as_ref()
+            .map(|_| load_promoter_similarity_transcripts(&catalog, &query_genome_id, cache_dir))
+            .transpose()?;
         let mut inspections = BTreeMap::new();
         let mut effective_targets = if request.targets.is_empty() {
             let mut resolved = vec![];
@@ -1979,15 +1975,20 @@ impl GentleEngine {
         )?;
         let mut report =
             finalize_projection(query, effective, target_results, all_hsps, request_sha256)?;
-        if let Some(policy) = report
-            .effective_request
-            .policy
-            .promoter_similarity_matrix
-            .clone()
-        {
-            report.promoter_similarity_matrix = Some(build_promoter_similarity_matrix(
-                &catalog, &report, &policy,
-            )?);
+        if let (Some(policy), Some(transcripts)) = (
+            report
+                .effective_request
+                .policy
+                .promoter_similarity_matrix
+                .as_ref(),
+            promoter_transcripts.as_ref(),
+        ) {
+            report.promoter_similarity_matrix =
+                Some(build_promoter_similarity_matrix_from_transcripts(
+                    &report,
+                    policy,
+                    transcripts.as_slice(),
+                )?);
             let mut content = report.clone();
             content.content_sha256.clear();
             content.op_id = None;
@@ -2264,6 +2265,72 @@ impl GentleEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepared_transcript_index_promoter_background_preserves_diagnostics() {
+        // Synthetic prepared cache with a deliberately retained empty sidecar.
+        // Tests the real catalog-to-promoter reader, not hand-injected records.
+        for extension in ["gb", "xml", "gtf"] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path();
+            let install = root.join("genome");
+            std::fs::create_dir(&install).unwrap();
+            let sequence = install.join("sequence.fa");
+            let annotation = install.join(format!("annotation.{extension}"));
+            let fasta_index = install.join("sequence.fa.fai");
+            let transcripts = install.join("transcripts.json");
+            std::fs::write(&sequence, ">chr1\nACGTACGT\n").unwrap();
+            std::fs::write(
+                &annotation,
+                match extension {
+                    "gb" => "LOCUS       chr1\nFEATURES             Location/Qualifiers\n//\n",
+                    "xml" => "<GBSet/>\n",
+                    _ => "chr1\tsrc\tgene\t1\t8\t.\t+\t.\tgene_id \"G1\";\n",
+                },
+            )
+            .unwrap();
+            std::fs::write(&fasta_index, "chr1\t8\t6\t8\t9\n").unwrap();
+            std::fs::write(&transcripts, "[]").unwrap();
+            std::fs::write(install.join("manifest.json"), serde_json::to_vec(&serde_json::json!({
+                "genome_id":"genome", "sequence_source":sequence, "annotation_source":annotation,
+                "sequence_path":sequence, "annotation_path":annotation, "fasta_index_path":fasta_index,
+                "gene_index_path":null, "transcript_index_path":transcripts, "installed_at_unix_ms":1,
+            })).unwrap()).unwrap();
+            let catalog_path = root.join("catalog.json");
+            std::fs::write(
+                &catalog_path,
+                serde_json::to_vec(&serde_json::json!({"genome": {
+                    "sequence_local":sequence, "annotations_local":annotation, "cache_dir":root,
+                }}))
+                .unwrap(),
+            )
+            .unwrap();
+            let catalog = GenomeCatalog::from_json_file(catalog_path.to_str().unwrap()).unwrap();
+            let result = load_promoter_similarity_transcripts(&catalog, "genome", None);
+            if extension != "gtf" {
+                let error = result.unwrap_err();
+                assert_eq!(error.code, ErrorCode::Unsupported);
+                assert!(
+                    error
+                        .message
+                        .contains("could not load transcript promoter background")
+                );
+                assert!(error.message.contains("not evidence of zero transcripts"));
+                assert_eq!(error.portable_payload(vec![])["code"], "Unsupported");
+            } else {
+                let records = result.unwrap();
+                assert!(records.is_empty());
+                let matrix = build_promoter_similarity_matrix_from_transcripts(
+                    &gp::GenomicRegionHomologyScreenReport::default(),
+                    &gp::PromoterSimilarityMatrixPolicy::default(),
+                    &records,
+                )
+                .unwrap();
+                assert_eq!(matrix.annotated_promoter_window_count, 0);
+                assert!(matrix.rows.is_empty());
+            }
+        }
+    }
 
     #[test]
     fn transcript_promoter_windows_follow_transcriptional_orientation() {

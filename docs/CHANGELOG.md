@@ -10,6 +10,19 @@
 - Cover missing subjects, pending/existing viewers and non-DNA refusal without
   weakening the capability-parity checks.
 
+## 2026-09-17 - Explicit Prepared Transcript Index Availability
+
+- Reject GenBank/XML whole-genome transcript inventory requests with typed
+  `Unsupported` diagnostics rather than empty records, even when an old
+  transcript sidecar is cached. Prepared inspection no longer calls such
+  sidecars ready. Valid empty GTF/GFF indexes and on-demand rebuilding remain.
+- Preserve the error through promoter-background preflight before BLAST/cache
+  reuse. Interval enrichment also reports unsupported indexing; extraction
+  keeps sequence output and its existing explicit annotation warning.
+- Add offline synthetic index, extraction and promoter-caller regressions.
+  Clarify prepared-index versus loaded-feature TSS scope without changing
+  derive-then-map semantics. Live TP73 GUI acceptance remains with Glen.
+
 ## 2026-09-16 - BLAST Admission, Queue And Cached Status
 
 - Move async BLAST executable preflight onto the worker, using bounded,

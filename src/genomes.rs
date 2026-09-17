@@ -45,6 +45,7 @@ use crate::feature_location::feature_is_reverse;
 use crate::ncbi_genbank_xml::{NcbiXmlDialect, parse_gbseq_xml_file_with_dialect};
 use crate::runtime_status::{RuntimeStatusFrameKind, runtime_status_registry};
 use flate2::read::MultiGzDecoder;
+use gentle_protocol::{EngineError, ErrorCode};
 pub use gentle_protocol::{PreparedCacheCleanupMode, PreparedCacheCleanupRequest};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -5516,10 +5517,11 @@ impl GenomeCatalog {
         let annotation_present = annotation_path.exists();
         let fasta_index_ready = fasta_index_path.exists();
         let gene_index_ready = gene_index_path.exists();
-        let transcript_index_ready = transcript_index_path
-            .as_ref()
-            .map(|path| path.exists())
-            .unwrap_or(false);
+        let transcript_index_ready = annotation_present
+            && validate_transcript_index_annotation_format(genome_id, &annotation_path).is_ok()
+            && transcript_index_path
+                .as_ref()
+                .is_some_and(|path| path.exists());
         let blast_index_ready = is_blast_index_ready(&blast_index_files);
         let blast_database = Some(inspect_blast_database_prefix(
             genome_id,
@@ -7084,8 +7086,9 @@ FASTA index='{}'.{}{}",
     ///
     /// This is used to project annotation-backed transcript structures into
     /// extracted gene slices (for example for isoform architecture views).
-    /// For non-tabular annotation sources (GenBank/XML), this currently returns
-    /// an empty list.
+    /// Non-tabular sources (GenBank/XML) return an explicit unsupported-index
+    /// error. Optional annotation consumers may retain it as a warning, never
+    /// interpret it as evidence that the locus has no transcripts.
     pub fn list_gene_transcript_records(
         &self,
         genome_id: &str,
@@ -7118,10 +7121,8 @@ FASTA index='{}'.{}{}",
                 annotation_path.display()
             ));
         }
-        if is_genbank_annotation_path(&annotation_path) || is_xml_annotation_path(&annotation_path)
-        {
-            return Ok(vec![]);
-        }
+        validate_transcript_index_annotation_format(&resolved_genome_id, &annotation_path)
+            .map_err(|error| error.to_string())?;
         let transcript_index_path = manifest
             .transcript_index_path
             .as_ref()
@@ -7160,34 +7161,42 @@ FASTA index='{}'.{}{}",
     /// The returned `Arc` shares the process-wide transcript-index cache so
     /// promoterome-style analyses can scan the annotation once without cloning
     /// hundreds of thousands of records or reparsing the GTF.
+    /// GenBank/XML sources return `Unsupported`, including when an old sidecar
+    /// exists. Other load failures are explicit unavailable-index errors; only
+    /// a successfully loaded tabular index can return an empty record set.
     pub fn list_all_transcript_records(
         &self,
         genome_id: &str,
         cache_dir_override: Option<&str>,
-    ) -> Result<Arc<Vec<GenomeTranscriptRecord>>, String> {
-        let prepared = self.resolve_prepared_genome_id(genome_id, cache_dir_override)?;
+    ) -> Result<Arc<Vec<GenomeTranscriptRecord>>, EngineError> {
+        let unavailable = |detail: String| {
+            EngineError::invalid_input(format!(
+                "Prepared transcript index unavailable for genome '{genome_id}': {detail}"
+            ))
+        };
+        let prepared = self
+            .resolve_prepared_genome_id(genome_id, cache_dir_override)
+            .map_err(&unavailable)?;
         let resolved_genome_id = prepared.resolved_genome_id;
-        let entry = self.entry(&resolved_genome_id)?;
+        let entry = self.entry(&resolved_genome_id).map_err(&unavailable)?;
         let install_dir = self.install_dir(&resolved_genome_id, entry, cache_dir_override);
         let manifest_path = install_dir.join("manifest.json");
-        let mut manifest = Self::load_manifest(&manifest_path)?;
-        Self::validate_manifest_files(&manifest)?;
+        let mut manifest = Self::load_manifest(&manifest_path).map_err(&unavailable)?;
+        Self::validate_manifest_files(&manifest).map_err(&unavailable)?;
         let annotation_path = PathBuf::from(&manifest.annotation_path);
-        if is_genbank_annotation_path(&annotation_path) || is_xml_annotation_path(&annotation_path)
-        {
-            return Ok(Arc::new(vec![]));
-        }
+        validate_transcript_index_annotation_format(&resolved_genome_id, &annotation_path)?;
         let transcript_index_path = manifest
             .transcript_index_path
             .as_ref()
             .map(PathBuf::from)
             .unwrap_or_else(|| install_dir.join("transcripts.json"));
         if !transcript_index_path.exists() {
-            build_transcript_index_file(&annotation_path, &transcript_index_path, |_, _| true)?;
+            build_transcript_index_file(&annotation_path, &transcript_index_path, |_, _| true)
+                .map_err(&unavailable)?;
             manifest.transcript_index_path = Some(canonical_or_display(&transcript_index_path));
-            Self::write_manifest(&manifest_path, &manifest)?;
+            Self::write_manifest(&manifest_path, &manifest).map_err(&unavailable)?;
         }
-        load_transcript_index_file_cached(&transcript_index_path)
+        load_transcript_index_file_cached(&transcript_index_path).map_err(unavailable)
     }
 
     /// Run BLASTN of query sequence against the prepared genome index.
@@ -13475,6 +13484,29 @@ where
     }
 }
 
+fn validate_transcript_index_annotation_format(
+    genome_id: &str,
+    annotation_path: &Path,
+) -> Result<(), EngineError> {
+    let format = if is_genbank_annotation_path(annotation_path) {
+        "GenBank"
+    } else if is_xml_annotation_path(annotation_path) {
+        "XML"
+    } else {
+        return Ok(());
+    };
+    Err(EngineError::new(
+        ErrorCode::Unsupported,
+        format!(
+            "Prepared transcript index unsupported for {format} annotation '{}' (genome '{genome_id}'). \
+             Use a compatible GTF/GFF annotation for prepared-genome transcript indexing, or inspect \
+             transcript features imported into a project sequence. This is unavailable annotation \
+             coverage, not evidence of zero transcripts.",
+            annotation_path.display()
+        ),
+    ))
+}
+
 fn is_genbank_annotation_path(path: &Path) -> bool {
     let lower = path
         .file_name()
@@ -15527,6 +15559,210 @@ mod tests {
         assert!(err.contains("III"));
         assert!(err.contains("sequence.fa"));
         assert!(err.contains("sequence.fa.fai"));
+    }
+
+    #[test]
+    fn prepared_transcript_index_rejects_genbank_xml_even_with_cached_sidecar() {
+        use crate::engine::Engine;
+
+        // Synthetic prepared files, recreated locally via the cache fixture helper.
+        // A warm empty sidecar from an older preparation must not authorize an
+        // inventory for a format without transcript-index support.
+        let _lock = genbank_env_lock()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let _blastdbcmd =
+            EnvVarGuard::set(BLASTDBCMD_ENV_BIN, "__gentle_missing_test_blastdbcmd__");
+        for (extension, format) in [
+            ("gb", "GenBank"),
+            ("gbk", "GenBank"),
+            ("gbff", "GenBank"),
+            ("genbank", "GenBank"),
+            ("xml", "XML"),
+        ] {
+            let td = tempdir().unwrap();
+            let (install, _) = write_prepared_cache_install(td.path(), "ToyGenome");
+            let manifest_path = install.join("manifest.json");
+            let mut manifest = GenomeCatalog::load_manifest(&manifest_path).unwrap();
+            let annotation = install.join(format!("annotation.{extension}"));
+            fs::write(
+                &annotation,
+                if format == "XML" {
+                    "<GBSet><GBSeq><GBSeq_locus>chr1</GBSeq_locus></GBSeq></GBSet>\n"
+                } else {
+                    "LOCUS       chr1\nFEATURES             Location/Qualifiers\n//\n"
+                },
+            )
+            .unwrap();
+            manifest.annotation_path = canonical_or_display(&annotation);
+            GenomeCatalog::write_manifest(&manifest_path, &manifest).unwrap();
+            let index = Path::new(manifest.transcript_index_path.as_ref().unwrap());
+            assert!(load_transcript_index_file_cached(index).unwrap().is_empty());
+            let before_manifest = fs::read(&manifest_path).unwrap();
+            let before_index = fs::read(index).unwrap();
+            let catalog = write_toy_prepare_catalog(
+                td.path(),
+                Path::new(&manifest.sequence_path),
+                &annotation,
+                td.path(),
+            );
+            let error = catalog
+                .list_all_transcript_records("ToyGenome", None)
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::Unsupported);
+            assert_eq!(serde_json::to_value(&error).unwrap()["code"], "Unsupported");
+            assert!(error.message.contains(format));
+            assert!(error.message.contains("ToyGenome"));
+            assert!(error.message.contains(&annotation.display().to_string()));
+            assert!(error.message.contains("not evidence of zero transcripts"));
+            let interval_error = catalog
+                .list_gene_transcript_records("ToyGenome", "chr1", 1, 8, None, None, None)
+                .unwrap_err();
+            assert!(interval_error.contains("Unsupported"));
+            assert!(interval_error.contains(format));
+            let inspection = catalog
+                .inspect_prepared_genome("ToyGenome", None)
+                .unwrap()
+                .unwrap();
+            assert!(!inspection.transcript_index_ready);
+            assert!(inspection.sequence_present && inspection.annotation_present);
+            assert_eq!(fs::read(&manifest_path).unwrap(), before_manifest);
+            assert_eq!(fs::read(index).unwrap(), before_index);
+
+            // Optional annotation enrichment must still allow sequence extraction,
+            // with its existing explicit warning, instead of inventing transcripts.
+            let mut engine = crate::engine::GentleEngine::new();
+            let result = engine
+                .apply(crate::engine::Operation::ExtractGenomeRegion {
+                    genome_id: "ToyGenome".into(),
+                    chromosome: "chr1".into(),
+                    start_1based: 1,
+                    end_1based: 8,
+                    output_id: Some("extracted".into()),
+                    annotation_scope: None,
+                    max_annotation_features: None,
+                    include_genomic_annotation: None,
+                    catalog_path: Some(td.path().join("catalog.json").display().to_string()),
+                    cache_dir: None,
+                })
+                .unwrap();
+            assert_eq!(
+                engine.state().sequences["extracted"].forward_bytes(),
+                b"ACGTACGT"
+            );
+            assert!(
+                result
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("transcript/exon annotation")
+                        && warning.contains("Unsupported"))
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_transcript_index_distinguishes_valid_empty_from_unavailable() {
+        let td = tempdir().unwrap();
+        let (install, _) = write_prepared_cache_install(td.path(), "ToyGenome");
+        let annotation = install.join("annotation.gtf");
+        let catalog = write_toy_prepare_catalog(
+            td.path(),
+            &install.join("sequence.fa"),
+            &annotation,
+            td.path(),
+        );
+        let records = catalog
+            .list_all_transcript_records("ToyGenome", None)
+            .unwrap();
+        assert!(
+            records.is_empty(),
+            "a valid gene-only tabular index can be empty"
+        );
+        assert!(Arc::ptr_eq(
+            &records,
+            &catalog
+                .list_all_transcript_records("ToyGenome", None)
+                .unwrap()
+        ));
+        let index = install.join("transcripts.json");
+        fs::remove_file(&index).unwrap();
+        assert!(
+            catalog
+                .list_all_transcript_records("ToyGenome", None)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(index.exists(), "missing tabular indexes still rebuild");
+        fs::write(&index, "not JSON").unwrap();
+        invalidate_transcript_index_cache(&index);
+        let error = catalog
+            .list_all_transcript_records("ToyGenome", None)
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("index unavailable"));
+        assert!(error.message.contains("Could not parse transcript index"));
+        fs::remove_file(annotation).unwrap();
+        let error = catalog
+            .list_all_transcript_records("ToyGenome", None)
+            .unwrap_err();
+        assert!(error.message.contains("index unavailable"));
+        assert!(error.message.contains("not prepared locally"));
+    }
+
+    #[test]
+    fn prepared_transcript_index_rebuilds_gtf_and_gff_records() {
+        // Hand-written equivalent GTF/GFF3 inputs, no downloaded annotation.
+        for (extension, annotation_text) in [
+            (
+                "gtf",
+                concat!(
+                    "chr1\tsrc\ttranscript\t1\t8\t.\t+\t.\tgene_id \"G1\"; transcript_id \"TX1\";\n",
+                    "chr1\tsrc\texon\t1\t8\t.\t+\t.\tgene_id \"G1\"; transcript_id \"TX1\";\n"
+                ),
+            ),
+            (
+                "gff3",
+                concat!(
+                    "##gff-version 3\n",
+                    "chr1\tsrc\tmRNA\t1\t8\t.\t+\t.\tID=TX1;Parent=G1\n",
+                    "chr1\tsrc\texon\t1\t8\t.\t+\t.\tID=E1;Parent=TX1\n"
+                ),
+            ),
+        ] {
+            let td = tempdir().unwrap();
+            let (install, _) = write_prepared_cache_install(td.path(), "ToyGenome");
+            let manifest_path = install.join("manifest.json");
+            let mut manifest = GenomeCatalog::load_manifest(&manifest_path).unwrap();
+            let annotation = install.join(format!("annotation.{extension}"));
+            fs::write(&annotation, annotation_text).unwrap();
+            manifest.annotation_path = canonical_or_display(&annotation);
+            manifest.transcript_index_path = None;
+            GenomeCatalog::write_manifest(&manifest_path, &manifest).unwrap();
+            fs::remove_file(install.join("transcripts.json")).unwrap();
+            let catalog = write_toy_prepare_catalog(
+                td.path(),
+                Path::new(&manifest.sequence_path),
+                &annotation,
+                td.path(),
+            );
+            let records = catalog
+                .list_all_transcript_records("ToyGenome", None)
+                .unwrap();
+            assert_eq!(records.len(), 1);
+            assert_eq!(records[0].transcript_id, "TX1");
+            assert_eq!(records[0].exons_1based, [(1, 8)]);
+            let interval = catalog
+                .list_gene_transcript_records("ToyGenome", "chr1", 1, 8, None, None, None)
+                .unwrap();
+            assert_eq!(interval[0].transcript_id, records[0].transcript_id);
+            assert_eq!(interval[0].exons_1based, records[0].exons_1based);
+            assert!(
+                GenomeCatalog::load_manifest(&manifest_path)
+                    .unwrap()
+                    .transcript_index_path
+                    .is_some()
+            );
+        }
     }
 
     #[test]

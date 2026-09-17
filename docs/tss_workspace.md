@@ -29,6 +29,15 @@ does not establish a TSS. Annotation support is based on imported transcript
 features, including GenBank/EMBL features, not an assumption that every genome
 annotation format has a transcript index.
 
+Prepared-genome transcript indexing is a separate capability: it currently
+supports tabular GTF/GFF, not GenBank/XML. A whole-index request for GenBank/XML
+returns `Unsupported`, naming the genome, format and annotation path; a leftover
+sidecar is not accepted as a ready index. Region/gene extraction can still
+succeed, but explicitly warns that transcript enrichment is unavailable.
+This does not prevent TSS derivation from transcript features already imported
+into a project sequence. A successfully loaded GTF/GFF index with zero records
+is different from an unavailable index; neither proves biological absence.
+
 ## Shared Shell And Inner Agent
 
 For an existing anchored `tp73_locus` sequence:
@@ -119,6 +128,10 @@ Deterministic synthetic tests exercise shared/opposite-strand starts, overlappin
 genes, missing/partial annotation, flank refusal, all four local/genomic strand
 combinations, stale/collision refusal, persistence/reuse, optional TFBS collection
 scanning, shell parsing and deferred/reused GUI window requests.
+Prepared-index regressions separately cover GenBank/XML refusal with a cached
+sidecar, valid empty GTF/GFF inventories, missing/corrupt index diagnostics,
+on-demand rebuilding, optional extraction warnings and promoter-background
+error propagation. These are shared-engine tests, not desktop acceptance.
 
 Glen's live TP73 acceptance remains separate: use the exact candidate binary and
 loaded reference, compare inventory membership to source transcripts, repeat

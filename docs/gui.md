@@ -6725,3 +6725,7 @@ now provides a background inventory, explicit row selection and approval, then
 collection-targeted opening. `ui open|focus|close tss-view --collection ID`
 targets that persisted collection independently of the active viewer. See the
 [TSS workspace walkthrough and limitations](tss_workspace.md).
+Prepared GenBank/XML references do not supply a tabular transcript index:
+extraction reports unavailable transcript enrichment, not zero transcripts.
+The workspace can still use transcript features already imported into the
+loaded locus; see the walkthrough's annotation-source distinction.
