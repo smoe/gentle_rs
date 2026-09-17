@@ -657,6 +657,49 @@ def _fake_cli_with_svg_png(main_body: str) -> str:
     )
 
 
+def _write_workflow_graphics_cli(
+    path: Path,
+    *,
+    svg_path: str,
+    svg_text: str,
+    run_id: str,
+    json_artifacts: dict[str, dict] | None = None,
+) -> None:
+    """Synthetic artifact transport fixture, not a scientific workflow or renderer."""
+
+    response = {"schema": "gentle.workflow_run.v1", "run_id": run_id}
+    path.write_text(
+        "#!/usr/bin/env python3\n"
+        "import base64, json, sys\n"
+        "from pathlib import Path\n"
+        "args = sys.argv[1:]\n"
+        "if args[:1] == ['--state']:\n"
+        "    args = args[2:]\n"
+        "if args[:1] == ['svg-png']:\n"
+        "    assert len(args) == 5 and args[3:] == ['--scale', '2.0'], args\n"
+        "    assert '<svg' in Path(args[1]).read_text(encoding='utf-8')\n"
+        "    output = Path(args[2])\n"
+        "    output.parent.mkdir(parents=True, exist_ok=True)\n"
+        "    output.write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0ioAAAAASUVORK5CYII='))\n"
+        "    print('{}')\n"
+        "elif args[:1] == ['workflow']:\n"
+        "    assert len(args) == 2 and args[1].startswith('@'), args\n"
+        "    assert Path(args[1][1:]).is_file(), args\n"
+        f"    output = Path({svg_path!r})\n"
+        "    output.parent.mkdir(parents=True, exist_ok=True)\n"
+        f"    output.write_text({svg_text!r}, encoding='utf-8')\n"
+        f"    for name, payload in {(json_artifacts or {})!r}.items():\n"
+        "        artifact = Path(name)\n"
+        "        artifact.parent.mkdir(parents=True, exist_ok=True)\n"
+        "        artifact.write_text(json.dumps(payload, separators=(',', ':')) + '\\n', encoding='utf-8')\n"
+        f"    print(json.dumps({response!r}))\n"
+        "else:\n"
+        "    raise SystemExit('unexpected fixture arguments: ' + repr(args))\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+
+
 def _write_approval_gate_fake_cli(path: Path, execution_marker: Path) -> None:
     path.write_text(
         "#!/usr/bin/env python3\n"
@@ -5096,7 +5139,7 @@ def test_approval_gate_rejects_mutable_oci_image_reference(tmp_path: Path) -> No
 
 
 def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> None:
-    fake_repo = tmp_path / "GENtle"
+    fake_repo = tmp_path / "GENtle checkout"
     (fake_repo / "src" / "bin").mkdir(parents=True)
     (fake_repo / "Cargo.toml").write_text("[package]\nname = 'gentle'\n", encoding="utf-8")
     (fake_repo / "src" / "bin" / "gentle_cli.rs").write_text(
@@ -5122,13 +5165,15 @@ def test_workflow_request_resolves_against_gentle_repo_root(tmp_path: Path) -> N
         encoding="utf-8",
     )
 
-    fake_cli = tmp_path / "capture_cli.sh"
+    fake_cli = tmp_path / "capture cli.py"
     capture_path = tmp_path / "captured_args.txt"
     capture_cwd = tmp_path / "captured_cwd.txt"
     fake_cli.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s\\n' \"$@\" > \"$FAKE_CAPTURE_ARGS\"\n"
-        "pwd > \"$FAKE_CAPTURE_CWD\"\n",
+        "#!/usr/bin/env python3\n"
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "Path(os.environ['FAKE_CAPTURE_ARGS']).write_text('\\n'.join(sys.argv[1:]) + '\\n', encoding='utf-8')\n"
+        "Path(os.environ['FAKE_CAPTURE_CWD']).write_text(str(Path.cwd()) + '\\n', encoding='utf-8')\n",
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -5472,21 +5517,18 @@ def test_simple_pcr_workflow_promotes_protocol_figure_summary(
         encoding="utf-8",
     )
 
-    fake_cli = tmp_path / "fake_cli.sh"
-    fake_cli.write_text(
-        _fake_cli_with_svg_png(
-            "mkdir -p artifacts\n"
-            "cat > artifacts/simple_pcr_demo_primers.protocol.svg <<'SVG'\n"
-            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"96\" height=\"48\" viewBox=\"0 0 96 48\"><text x=\"4\" y=\"24\">PCR</text></svg>\n"
-            "SVG\n"
-            "printf '{\"schema\":\"gentle.primer_design_report.v1\"}\\n' > artifacts/simple_pcr_demo_primers.report.json\n"
-            "cat <<'JSON'\n"
-            '{"schema":"gentle.workflow_run.v1","run_id":"example_simple_pcr_primer_design_offline"}\n'
-            "JSON\n"
-        ),
-        encoding="utf-8",
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_workflow_graphics_cli(
+        fake_cli,
+        svg_path="artifacts/simple_pcr_demo_primers.protocol.svg",
+        svg_text='<svg xmlns="http://www.w3.org/2000/svg" width="96" height="48" viewBox="0 0 96 48"><text x="4" y="24">PCR</text></svg>\n',
+        run_id="example_simple_pcr_primer_design_offline",
+        json_artifacts={
+            "artifacts/simple_pcr_demo_primers.report.json": {
+                "schema": "gentle.primer_design_report.v1"
+            }
+        },
     )
-    fake_cli.chmod(0o755)
 
     output_dir = tmp_path / "out"
     env = dict(os.environ)
@@ -5594,23 +5636,18 @@ def test_shipped_graphics_example_emits_png_first_artifacts(tmp_path: Path) -> N
 def test_isoform_protein_gel_demo_request_promotes_png_first_artifact(
     tmp_path: Path,
 ) -> None:
-    fake_cli = tmp_path / "fake_cli.sh"
-    fake_cli.write_text(
-        _fake_cli_with_svg_png(
-            f"mkdir -p {shlex.quote('exports')}\n"
-            "cat > exports/tp73_isoform_protein_gel.svg <<'SVG'\n"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_workflow_graphics_cli(
+        fake_cli,
+        svg_path="exports/tp73_isoform_protein_gel.svg",
+        svg_text=(
             '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">\n'
             '  <rect width="64" height="32" fill="#f8fafc"/>\n'
             '  <rect x="8" y="6" width="48" height="20" fill="#f59e0b"/>\n'
             "</svg>\n"
-            "SVG\n"
-            "cat <<'JSON'\n"
-            '{"schema":"gentle.workflow_run.v1","run_id":"example_tp73_isoform_protein_gel_offline"}\n'
-            "JSON\n"
         ),
-        encoding="utf-8",
+        run_id="example_tp73_isoform_protein_gel_offline",
     )
-    fake_cli.chmod(0o755)
 
     output_dir = tmp_path / "out"
     run = subprocess.run(
@@ -5654,23 +5691,18 @@ def test_isoform_protein_gel_demo_request_promotes_png_first_artifact(
 def test_isoform_protein_2d_gel_demo_request_promotes_png_first_artifact(
     tmp_path: Path,
 ) -> None:
-    fake_cli = tmp_path / "fake_cli.sh"
-    fake_cli.write_text(
-        _fake_cli_with_svg_png(
-            f"mkdir -p {shlex.quote('exports')}\n"
-            "cat > exports/tp73_isoform_protein_2d_gel.svg <<'SVG'\n"
+    fake_cli = tmp_path / "fake_cli.py"
+    _write_workflow_graphics_cli(
+        fake_cli,
+        svg_path="exports/tp73_isoform_protein_2d_gel.svg",
+        svg_text=(
             '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="32" viewBox="0 0 64 32">\n'
             '  <rect width="64" height="32" fill="#f8fafc"/>\n'
             '  <circle cx="32" cy="16" r="10" fill="#2563eb"/>\n'
             "</svg>\n"
-            "SVG\n"
-            "cat <<'JSON'\n"
-            '{"schema":"gentle.workflow_run.v1","run_id":"example_tp73_isoform_protein_2d_gel_offline"}\n'
-            "JSON\n"
         ),
-        encoding="utf-8",
+        run_id="example_tp73_isoform_protein_2d_gel_offline",
     )
-    fake_cli.chmod(0o755)
 
     output_dir = tmp_path / "out"
     run = subprocess.run(
@@ -5966,6 +5998,44 @@ def test_failed_command_reports_command_exit_code_and_stderr_preview(tmp_path: P
     assert "Failure stage: `main_command`" in report
 
 
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        ["gentle_cli"],
+        ["python", "fixture.py"],
+        ["cargo", "run", "--bin", "gentle_cli", "--"],
+        ["docker", "run", "--rm", "gentle:test"],
+    ],
+)
+@pytest.mark.parametrize("state_args", [[], ["--state", "project with spaces.json"]])
+def test_compatibility_note_uses_cli_args_not_launcher(
+    prefix: list[str], state_args: list[str],
+) -> None:
+    module = _skill_module()
+    cli_args = state_args + ["shell", "services status"]
+    command = prefix + cli_args
+    step = {
+        "command": command,
+        "cli_args": cli_args,
+        "stderr": "Unknown shell command 'services'. Try: help\n",
+        "exit_code": 1,
+    }
+
+    summary = module._build_failure_summary(stage="main", step=step, execution_cwd=None)
+
+    assert "requested status route" in summary["note"]
+    assert "gentle_local_checkout_cli.sh" in summary["note"]
+    assert summary["command"] == command
+    assert step["cli_args"] == cli_args
+    # Old receipts still support the direct-executable command form.
+    assert module._infer_command_compatibility_note(
+        ["gentle_cli"] + cli_args, step["stderr"]
+    ) == summary["note"]
+    assert module._infer_command_compatibility_note(
+        command, "Permission denied", cli_args=cli_args
+    ) is None
+
+
 def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: Path) -> None:
     request_path = tmp_path / "request.json"
     request_path.write_text(
@@ -5981,11 +6051,11 @@ def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: 
         encoding="utf-8",
     )
 
-    fake_cli = tmp_path / "fake_cli.sh"
+    fake_cli = tmp_path / "fake_cli.py"
     fake_cli.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf \"Unknown shell command 'services'. Try: help\\n\" >&2\n"
-        "exit 1\n",
+        "import sys\n"
+        "print(\"Unknown shell command 'services'. Try: help\", file=sys.stderr)\n"
+        "raise SystemExit(1)\n",
         encoding="utf-8",
     )
     fake_cli.chmod(0o755)
@@ -6000,7 +6070,7 @@ def test_unknown_services_shell_command_reports_version_mismatch_hint(tmp_path: 
             "--output",
             str(output_dir),
             "--gentle-cli",
-            _fixture_cli_command(fake_cli),
+            shlex.join([sys.executable, str(fake_cli)]),
         ],
         cwd=tmp_path,
         capture_output=True,

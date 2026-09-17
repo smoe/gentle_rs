@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-17 - TSS collection review and index diagnostics integrated; real-data/final-SHA/package acceptance remains pending.
+Last session: 2026-09-17 - Windows ClawBio parity rerun pending; TSS real-data/final-SHA/package acceptance remains pending.
 Glen approved `.10` preparation; final-SHA/package acceptance and owner publication approval remain pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

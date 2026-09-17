@@ -83,6 +83,20 @@ table.
   and graphics flows
 - `tests/test_gentle_cloning.py`: minimal wrapper tests
 
+### Wrapper Test Fixtures
+
+Run `pytest integrations/clawbio/skills/gentle-cloning/tests/ -q` from the GENtle
+checkout. The workflow argument, PCR summary and protein-gel summary tests
+generate hand-written synthetic Python CLI fixtures in pytest's temporary
+directory. Their SVG text and fixed one-pixel PNG are transport/presentation
+fixtures, not biological results or a rendering-quality check. Re-running those
+tests recreates them deterministically from the inline source.
+
+These fixtures use native Python on Windows as well as POSIX, preserving literal
+`@workflow-file` arguments and native paths without MSYS/Bash interpretation.
+The separate real `gentle_cli svg-png` tests remain rendering checks; the POSIX
+launcher/signal tests retain their explicit platform restrictions.
+
 ## Positioning for OpenClaw
 
 When OpenClaw answers broad questions such as "How does GENtle help me?", the
@@ -625,6 +639,10 @@ and SHA-256 hashes. Signal records are orchestration provenance only and never
 become `[gentle]` scientific claims. Windows retains child-process supervision
 and bounded termination using the signals available on that platform; it does
 not claim POSIX-only `SIGUSR1` support or POSIX process-tree semantics.
+
+Compatibility hints inspect GENtle's arguments separately from the launcher
+prefix, including when Python, Cargo or a container launcher precedes them.
+Failure receipts continue to retain the full executed command.
 
 ## Request schema
 
