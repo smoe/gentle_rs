@@ -9,7 +9,10 @@ evidence of experimentally established transcription initiation.
 
 1. Open an annotated locus with its genome anchor. Prefer an already prepared
    local reference. Include enough flanking DNA for the requested windows.
-2. Choose **TFBS scan > Transcript starts / TSS windows...**.
+2. Choose **TFBS scan > Transcript starts / TSS windows...**, or select
+   **Transcript Starts / TSS Windows** in the command palette. The palette uses
+   the explicitly selected DNA sequence and reuses an open or loading viewer;
+   opening the form does not inspect or materialize anything automatically.
 3. Enter the gene symbol or gene ID, a new collection ID, and upstream/downstream
    sizes (defaults: 500/200 bp). Click **Inspect starts (no changes)**.
 4. Review the coordinates, strands and transcript memberships. Select the

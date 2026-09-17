@@ -185,9 +185,10 @@ mod tests {
 
     #[test]
     fn dna_launchers_do_not_fall_back_to_first_sequence() {
-        let actions: [fn(&mut GENtleApp); 6] = [
+        let actions: [fn(&mut GENtleApp); 7] = [
             GENtleApp::open_cryptic_splicing_screen,
             GENtleApp::open_tata_box_workspace,
+            GENtleApp::open_tss_inventory_workspace,
             GENtleApp::open_saved_genomic_regions,
             GENtleApp::open_genomic_region_conservation,
             GENtleApp::open_pcr_design_dialog,

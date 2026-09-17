@@ -176,7 +176,8 @@ impl LaunchContext {
     pub(super) fn readiness(&self, action: CommandPaletteAction) -> ActionReadiness {
         match action {
             CommandPaletteAction::OpenCrypticSplicingScreen
-            | CommandPaletteAction::OpenTataBoxes => self.dna.clone(),
+            | CommandPaletteAction::OpenTataBoxes
+            | CommandPaletteAction::OpenTssInventory => self.dna.clone(),
             CommandPaletteAction::OpenGenomicRegionConservation if !self.empty => self.dna.clone(),
             CommandPaletteAction::UiIntent(UiIntentTarget::FeatureLocationEditor) => {
                 self.sequence.clone()

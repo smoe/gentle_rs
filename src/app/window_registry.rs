@@ -16,6 +16,18 @@ pub struct GuiProminentGlossaryEntry {
 
 const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
     GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-inventory",
+        menu_path: "DNA Sequence Viewer > TFBS scan > Transcript starts / TSS windows...",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-materialize",
+        menu_path: "Transcript starts > Approve and create selected windows",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "promoters tata-screen",
         menu_path: "DNA Sequence Viewer > TFBS scan > TATA-box evidence",
         palette_title: "TATA-box Evidence",

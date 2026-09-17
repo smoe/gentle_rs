@@ -37,6 +37,7 @@ enum DeferredAnalysisFocus {
     FlexibilityTrack(String),
     CrypticSplicing,
     TataBoxes,
+    TssInventory,
     TssView,
     GenomicRegionManager,
     RnaReadReport(String),
@@ -171,6 +172,7 @@ impl WindowDna {
                 self.main_area.focus_cryptic_splicing_screen();
             }
             DeferredAnalysisFocus::TataBoxes => self.main_area.open_tata_boxes(),
+            DeferredAnalysisFocus::TssInventory => self.main_area.open_tss_inventory(),
             DeferredAnalysisFocus::TssView => self.focus_tss_view(),
             DeferredAnalysisFocus::GenomicRegionManager => {
                 self.main_area.open_genomic_region_manager(None);
@@ -720,6 +722,22 @@ impl WindowDna {
             self.deferred_analysis_focus,
             Some(DeferredAnalysisFocus::TataBoxes)
         ) || self.main_area.tata_workspace_open()
+    }
+
+    pub(crate) fn focus_tss_inventory(&mut self) {
+        if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::TssInventory);
+            return;
+        }
+        self.main_area.open_tss_inventory();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tss_inventory_workspace_open_or_pending(&self) -> bool {
+        matches!(
+            self.deferred_analysis_focus,
+            Some(DeferredAnalysisFocus::TssInventory)
+        ) || self.main_area.tss_inventory_workspace_open()
     }
 
     pub fn focus_primer_design_report(&mut self, report_id: &str) {

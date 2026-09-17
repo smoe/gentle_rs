@@ -7226,6 +7226,49 @@ fn tata_palette_handles_missing_pending_and_existing_sequence_windows() {
 }
 
 #[test]
+fn tss_palette_handles_missing_pending_and_existing_sequence_windows() {
+    let ctx = egui::Context::default();
+    let mut missing = GENtleApp::default();
+    let entry = missing
+        .collect_command_palette_entries()
+        .into_iter()
+        .find(|entry| entry.title == "Transcript Starts / TSS Windows")
+        .expect("TSS command palette entry");
+    assert!(!entry.readiness.is_ready());
+    let action = entry.action;
+    missing.execute_command_palette_action(&ctx, action);
+    assert!(missing.app_status.contains("Select a sequence"));
+    assert!(missing.new_windows.is_empty());
+
+    let mut pending = command_palette_test_app_with_sequence();
+    for _ in 0..2 {
+        assert!(pending.execute_command_palette_action(&ctx, action));
+    }
+    assert_eq!(pending.new_windows.len(), 1);
+    assert!(pending.new_windows[0].tss_inventory_workspace_open_or_pending());
+    assert_eq!(
+        pending.new_windows[0].sequence_id().as_deref(),
+        Some("seq1")
+    );
+
+    let mut existing = command_palette_test_app_with_sequence();
+    let viewport = existing.register_window(Window::new_dna(
+        DNAsequence::from_sequence("ACGTACGT").unwrap(),
+        "seq1".into(),
+        existing.engine.clone(),
+    ));
+    assert!(existing.execute_command_palette_action(&ctx, action));
+    assert!(
+        existing.windows[&viewport]
+            .read()
+            .unwrap()
+            .tss_inventory_workspace_open_or_pending()
+    );
+    assert!(existing.new_windows.is_empty());
+    assert_eq!(existing.engine.read().unwrap().state().sequences.len(), 1);
+}
+
+#[test]
 fn command_palette_conservation_reuses_pending_sequence_window() {
     let mut app = command_palette_test_app_with_sequence();
     let ctx = egui::Context::default();

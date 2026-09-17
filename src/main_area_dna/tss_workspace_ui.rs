@@ -294,8 +294,13 @@ impl MainAreaDna {
         self.tss_inventory_ui.open = open;
     }
 
-    pub(super) fn open_tss_inventory(&mut self) {
+    pub(crate) fn open_tss_inventory(&mut self) {
         self.tss_inventory_ui.open = true;
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tss_inventory_workspace_open(&self) -> bool {
+        self.tss_inventory_ui.open
     }
 }
 

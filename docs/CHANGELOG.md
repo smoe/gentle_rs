@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-09-17 - TSS GUI Discovery Parity
+
+- Register both TSS inventory and approved materialization in the GUI
+  menu/palette oracle, preserving their prominent capability declarations.
+- Add a command-palette launcher for the existing transcript-start preview and
+  approval form. Require an explicit DNA subject and reuse open or lazy-loading
+  viewers; launching never approves or creates a TSS collection.
+- Cover missing subjects, pending/existing viewers and non-DNA refusal without
+  weakening the capability-parity checks.
+
 ## 2026-09-16 - BLAST Admission, Queue And Cached Status
 
 - Move async BLAST executable preflight onto the worker, using bounded,

@@ -2571,6 +2571,7 @@ enum CommandPaletteAction {
     OpenMirnaTargetScan,
     OpenCrypticSplicingScreen,
     OpenTataBoxes,
+    OpenTssInventory,
     OpenPrecomputedGenomicMotifEvidence,
     OpenPromoterCofactors,
     OpenGenomicRegionConservation,
@@ -5681,6 +5682,13 @@ Error: `{err}`"
             },
             CommandPaletteEntry {
                 readiness: ActionReadiness::Ready,
+                title: "Transcript Starts / TSS Windows".into(),
+                detail: "Preview annotated transcript starts on the selected locus; review and approve before creating windows".into(),
+                keywords: "promoter transcript starts tss inventory collection windows".into(),
+                action: CommandPaletteAction::OpenTssInventory,
+            },
+            CommandPaletteEntry {
+                readiness: ActionReadiness::Ready,
                 title: "Precomputed Genomic Motif Evidence".to_string(),
                 detail: "Open an anchored DNA sequence for optional precomputed JASPAR genome-scan queries"
                     .to_string(),
@@ -5870,6 +5878,7 @@ Error: `{err}`"
             CommandPaletteAction::OpenMirnaTargetScan => self.open_mirna_target_scan_dialog(),
             CommandPaletteAction::OpenCrypticSplicingScreen => self.open_cryptic_splicing_screen(),
             CommandPaletteAction::OpenTataBoxes => self.open_tata_box_workspace(),
+            CommandPaletteAction::OpenTssInventory => self.open_tss_inventory_workspace(),
             CommandPaletteAction::OpenPrecomputedGenomicMotifEvidence => {
                 self.open_precomputed_genomic_motif_evidence()
             }
@@ -8908,6 +8917,40 @@ Error: `{err}`"
             }
         }
         self.app_status = format!("Opening sequence '{seq_id}' for TATA-box evidence");
+    }
+
+    fn open_tss_inventory_workspace(&mut self) {
+        let Some(seq_id) =
+            self.sequence_subject_for_action("Transcript starts / TSS windows", true)
+        else {
+            return;
+        };
+        if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+            let opened = self
+                .windows
+                .get(&viewport_id)
+                .cloned()
+                .and_then(|window| {
+                    window.write().ok()?.focus_tss_inventory();
+                    Some(())
+                })
+                .is_some();
+            if opened {
+                self.queue_focus_viewport(viewport_id);
+                self.app_status = format!("Opened transcript starts / TSS windows for '{seq_id}'");
+                return;
+            }
+        }
+        if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+            window.focus_tss_inventory();
+        } else {
+            self.open_sequence_window(&seq_id);
+            if let Some(window) = self.find_pending_sequence_window_mut(&seq_id) {
+                window.focus_tss_inventory();
+            }
+        }
+        self.app_status =
+            format!("Opening sequence '{seq_id}' for transcript starts / TSS windows");
     }
 
     fn open_feature_location_editor(&mut self) {

@@ -101,6 +101,19 @@ impl Window {
         }
     }
 
+    pub(crate) fn focus_tss_inventory(&mut self) {
+        match self {
+            Self::Dna(window) => window.focus_tss_inventory(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tss_inventory_workspace_open_or_pending(&self) -> bool {
+        match self {
+            Self::Dna(window) => window.tss_inventory_workspace_open_or_pending(),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn tata_workspace_open_or_pending(&self) -> bool {
         match self {
