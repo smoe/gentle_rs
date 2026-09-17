@@ -1389,6 +1389,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "agent_execute_plan" => &["agents execute-plan"],
         "op" => &[
             "op",
+            "primers design-transcript-capture-pool",
             "gene-locus prepare",
             "gel-image import",
             "gel-image save-draft",

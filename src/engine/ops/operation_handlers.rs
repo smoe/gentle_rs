@@ -18,6 +18,8 @@
 use std::{cmp::Ordering, fs};
 
 use super::*;
+#[path = "../analysis/transcript_capture.rs"]
+mod transcript_capture;
 use crate::engine::sequence_ops::{Primer3PairDesignOptions, PrimerDesignProgressContext};
 use crate::{
     AMINO_ACIDS,
@@ -40018,6 +40020,7 @@ impl GentleEngine {
             primerbank_search_report: None,
             external_primer_pair_import_report: None,
             terminal_exon_rt_primer_pool: None,
+            transcript_capture_pool: None,
             primer_variant_screen: None,
             primer_group_target_design: None,
             transcript_qpcr_panel: None,
@@ -46319,6 +46322,21 @@ impl GentleEngine {
                         report_id,
                         None,
                     )?;
+                }
+                Operation::DesignTranscriptCapturePool { request } => {
+                    parent_seq_ids.extend(request.targets.iter().flat_map(|target| {
+                        target.sources.iter().map(|source| source.seq_id.clone())
+                    }));
+                    parent_seq_ids.sort();
+                    parent_seq_ids.dedup();
+                    let report =
+                        self.design_transcript_capture_pool(request, &result.op_id, run_id)?;
+                    result.warnings.extend(report.warnings.iter().cloned());
+                    result.messages.push(format!(
+                        "Persisted transcript capture discovery '{}' ({} proposed oligos; specificity unassessed)",
+                        report.report_id, report.proposed_candidate_ids.len()
+                    ));
+                    result.transcript_capture_pool = Some(Box::new(report));
                 }
                 Operation::DesignTerminalExonRtPrimerPool { request } => {
                     parent_seq_ids

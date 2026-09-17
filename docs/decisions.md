@@ -1,5 +1,16 @@
 # GENtle Decisions
 
+## Transcript Capture Discovery Boundaries
+
+Capture binding coverage, retained isoform information, specificity and
+experimental success are separate claims. Target sets, role/window policy,
+primer budget and permission to share are independent inputs. Never silently
+move an unknown UTR window into coding sequence, add a primer beyond budget,
+infer oligo availability from a design, or borrow paired-assay/unique-genomic-
+hit approval for a multi-target single-primer pool. Fixed protocol oligos
+participate only in declared stages; recorded heuristic Tm is not reaction Ta.
+See [the portable capture contract](transcript_capture_pools.md).
+
 ## Contextual Launcher Readiness
 
 The egui menu/palette pilot reuses the app's collection-launcher readiness

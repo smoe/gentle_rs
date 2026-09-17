@@ -4182,6 +4182,14 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["DesignTranscriptCapturePool"],
+         "interfaces": ["cli-shell", "gui-shell", "mcp-op"],
+         "path": "primers design-transcript-capture-pool",
+         "summary": "Discover exact transcript-binding sense/antisense oligos with explicit UTR/range windows, shared-target budgets, retained isoform information and stage-aware fixed-oligo pool diagnostics; specificity and order readiness remain unassessed.",
+         "usage": "primers design-transcript-capture-pool REQUEST_JSON_OR_@FILE"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "DesignQpcrAssays"
          ],
