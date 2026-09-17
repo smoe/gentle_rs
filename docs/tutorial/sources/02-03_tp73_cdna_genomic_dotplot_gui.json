@@ -23,6 +23,12 @@
       "visual_learning"
     ],
     "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.",
+    "estimated_minutes": 30,
+    "difficulty": "routine",
+    "network": "online setup; local analysis",
+    "interfaces": ["GUI", "CLI / GUI Shell", "inner agent"],
+    "starting_state": "TP73 cDNA accession and a prepared GRCh38 Ensembl reference",
+    "produces": ["pairwise dotplot analysis"],
     "group": "02",
     "group_position": 3
   }

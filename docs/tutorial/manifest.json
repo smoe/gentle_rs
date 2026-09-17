@@ -1890,6 +1890,13 @@
         "In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.",
         "Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core."
       ],
+      "step_titles": [
+        "Open the tutorial project",
+        "Select the required core region",
+        "Start Simple PCR from the selection",
+        "Set the flank and amplicon limits",
+        "Design and review primer pairs"
+      ],
       "cli_steps": [
         "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/simple_pcr_selection_gui.json",
         "# GUI-only selection gesture. For a fully scripted primer-design payload, use Chapter 13's batch PCR route.",
@@ -1897,12 +1904,26 @@
         "# The scripted equivalent is a DesignPrimerPairs request with explicit core_start/core_end and flank limits.",
         "cargo run --bin gentle_cli -- shell 'primers list-reports'"
       ],
+      "agent_steps": [
+        "Open the Simple PCR tutorial project and tell me which compact sequence I should inspect. Show the exact GENtle operation for review; do not execute it until I approve.",
+        "For the open `tp73_locus` tutorial sequence, explain how to select bases 201 through 600 as the required core ROI. Show the exact operation for review; do not execute it.",
+        "Propose the GENtle operation that opens Simple PCR from my current selection. Explain which shared UI-intent route it uses; do not execute it.",
+        "Using the selected core ROI, propose practical flank-window and maximum-amplicon settings. Show the resulting GENtle request for review; do not run primer design.",
+        "Propose the command that designs the primer pairs and the command that lists the saved reports. State the expected report fields; do not execute either command."
+      ],
       "step_expectations": [
         "The starter project contains the 800-base TP73 extract `tp73_locus` and its full source locus; open the extract. The primer backend is pinned to the deterministic internal implementation.",
         "The selected core ROI is the biological interval that must be included; scripted users should encode the same interval explicitly in a primer-design request.",
         "The PCR Designer opens from the same shared UI-intent route used by agent and shell callers.",
         "The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.",
         "After primer design, report rows expose amplicon length plus left/right distance from the core ROI."
+      ],
+      "step_rationales": [
+        "The compact 800-base extract keeps the beginner exercise bounded while the full source locus remains available for provenance.",
+        "The core ROI describes the biology that must be covered; it is not a guess at the complete amplicon.",
+        "GUI, shell and agent callers converge on the same engine-owned PCR Designer intent.",
+        "These two limits control where primers may move and how long the product may become before detailed thermodynamic tuning is attempted.",
+        "The report makes the design auditable by exposing product length, core-flanking geometry and primer properties."
       ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"

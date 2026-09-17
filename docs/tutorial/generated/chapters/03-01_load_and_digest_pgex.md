@@ -24,7 +24,100 @@ Introduce restriction digest planning and deterministic fragment products.
 
 Restriction digest is a core molecular cloning routine used for vector linearization, insert release, and diagnostic fragment checks. This chapter focuses on how digest parameters map to reproducible fragment sets that can later feed ligation or analysis steps.
 
+## What You Will Accomplish
+
+- Execute digest operations and inspect created fragment IDs.
+- Reason about multi-product lineage from one parent sequence.
+- Identify why stable IDs matter for follow-up ligation/extraction steps.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 1: Load FASTA, branch, and reverse-complement](./02-01_load_branch_reverse_complement_pgex_fasta.md) first.
+
+**Useful when:**
+
+- You want to verify expected restriction fragments before ordering primers or designing ligations.
+- You need a reproducible digest baseline to compare against wet-lab gel expectations.
+- You plan to reuse fragment IDs in later operations.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Load test_files/pGEX-3X
+
+**GUI**
+
+Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli op '{"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The state contains the annotated pGEX sequence as `pgex`.
+
+### Step 2: Open Sequence Tools from the DNA window
+
+**GUI**
+
+Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli op '{"Digest":{"input":"pgex","enzymes":["BamHI","EcoRI"],"output_prefix":"frag"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The digest operation creates deterministic fragment sequence IDs using the `frag` prefix.
+
+![Whole-screen orientation after opening Sequence Tools from the DNA viewer.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg)
+
+*Figure: Whole-screen orientation after opening Sequence Tools from the DNA viewer. Screenshot captured 2026-09-08.*
+
+![Digest controls with the enzyme list and output prefix in interaction context.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg)
+
+*Figure: Digest controls with the enzyme list and output prefix in interaction context. Screenshot captured 2026-09-08.*
+
+### Step 3: Review created fragment entries and confirm they are stored as
+
+**GUI**
+
+Review created fragment entries and confirm they are stored as independent sequence products.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/load_and_digest_pgex.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Review created fragment entries and confirm they are stored as independent sequence products. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Replaying the workflow reproduces the same loaded sequence and fragment-product lineage.
+
+![Whole-screen orientation after running the digest and publishing its fragment products.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg)
+
+*Figure: Whole-screen orientation after running the digest and publishing its fragment products. Screenshot captured 2026-09-08.*
+
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -36,75 +129,10 @@ Restriction digest is a core molecular cloning routine used for vector lineariza
   - How to derive it: Use a short routine-specific prefix (e.g., `frag`, `d`, `eco_bam`).
   - Omit when: Omit only if auto-generated IDs are acceptable for ad hoc inspection.
 
-## When This Routine Is Useful
-
-- You want to verify expected restriction fragments before ordering primers or designing ligations.
-- You need a reproducible digest baseline to compare against wet-lab gel expectations.
-- You plan to reuse fragment IDs in later operations.
-
-## What You Learn
-
-- Execute digest operations and inspect created fragment IDs.
-- Reason about multi-product lineage from one parent sequence.
-- Identify why stable IDs matter for follow-up ligation/extraction steps.
-
 ## Applied Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
-
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Load test_files/pGEX-3X.gb in the GUI and inspect annotated features
-
-GUI: Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}'
-```
-
-> Expected: The state contains the annotated pGEX sequence as `pgex`.
-
-### Step 2: Open Sequence Tools from the DNA window, expand Core cloning operations, keep...
-
-GUI: Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"Digest":{"input":"pgex","enzymes":["BamHI","EcoRI"],"output_prefix":"frag"}}'
-```
-
-> Expected: The digest operation creates deterministic fragment sequence IDs using the `frag` prefix.
-
-![Whole-screen orientation after opening Sequence Tools from the DNA viewer.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/open_tools.orientation.svg)
-
-*Figure: Whole-screen orientation after opening Sequence Tools from the DNA viewer. Screenshot captured 2026-09-08.*
-
-![Digest controls with the enzyme list and output prefix in interaction context.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/set_prefix.context.svg)
-
-*Figure: Digest controls with the enzyme list and output prefix in interaction context. Screenshot captured 2026-09-08.*
-
-### Step 3: Review created fragment entries and confirm they are stored as independent se...
-
-GUI: Review created fragment entries and confirm they are stored as independent sequence products.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json
-```
-
-> Expected: Replaying the workflow reproduces the same loaded sequence and fragment-product lineage.
-
-![Whole-screen orientation after running the digest and publishing its fragment products.](../../../screenshots/tutorial_gui_acceptance/load_and_digest_pgex/digest.orientation.svg)
-
-*Figure: Whole-screen orientation after running the digest and publishing its fragment products. Screenshot captured 2026-09-08.*
-
 
 ## Checkpoints
 

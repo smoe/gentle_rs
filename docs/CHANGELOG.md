@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-17 - Human-Readable Three-Interface Tutorials
+
+- Reorder generated chapters around learner outcome, prerequisites, a full
+  at-a-glance path and the walkthrough before parameter/provenance reference.
+- Keep GUI, installed-CLI/GUI-Shell and review-only inner-agent examples beside
+  each operation. Generated agent prompts ask for the exact command and
+  expected result but never authorize or perform execution.
+- Add optional concise step titles and rationales to the existing v4 tutorial
+  source contract. Preserve backward readability and derive safe fallback
+  headings without reusing truncated prose as section titles.
+- Replace Help's opening provenance paragraph with compact quick facts; retain
+  complete canonical provenance at each generated chapter's end.
+- Put task choice first on the tutorial landing page, add quick reader metadata
+  for the Simple PCR and cDNA/genomic dotplot guides, and embed the existing
+  public Simple-PCR walkthrough captures in its hand-written companion.
+
 ## 2026-09-17 - Transcript Capture Discovery
 
 - Add gene-agnostic, shared-engine exact-site discovery across annotated

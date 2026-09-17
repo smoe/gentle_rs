@@ -1040,6 +1040,14 @@ Practical rule:
       reference guides must be linked from the same entry point
     - distinction between tutorial, recipe, and reference material should be
       explicit in page metadata/catalog text
+    - each generated operation keeps its GUI action, CLI/GUI-Shell equivalent,
+      inner-Agent-Assistant request, expected result and rationale adjacent;
+      interface-specific appendices must not become competing workflows
+    - inner-agent examples request an exact operation for human review and do
+      not authorize execution; tutorial generation never invokes a provider
+    - learner-facing pages lead with outcome, prerequisites and the shortest
+      path; detailed parameters, provenance and maintainer evidence follow the
+      walkthrough rather than obstructing it
 - Screenshot bridge status (temporarily disabled by security policy):
   - historical implementation existed as a compile-time + runtime gated adapter
     bridge (`screenshot-capture` feature + `--allow-screenshots` startup flag)
