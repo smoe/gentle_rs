@@ -45,7 +45,9 @@ This chapter extends the TP53 genome-targeting path toward read-origin mapping i
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
 ### Step 1: Prepare Human GRCh38 Ensembl 116 and extract TP53 into grch38_tp53
 
@@ -53,7 +55,7 @@ The three routes below describe the same operation. CLI snippets assume an insta
 
 Prepare `Human GRCh38 Ensembl 116` and extract `TP53` into `grch38_tp53`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 GENTLE_TEST_ONLINE=1 gentle_cli workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json
@@ -67,13 +69,13 @@ GENTLE_TEST_ONLINE=1 gentle_cli workflow @docs/examples/workflows/tp53_multi_gen
 
 > The workflow prepares/extracts TP53 and runs the read interpretation template with `origin_mode=multi_gene_sparse`.
 
-### Step 2: Open Splicing Expert for a TP53 transcript
+### Step 2: Open Splicing Expert for a TP53 transcript, set Origin mode to multi_gene_sparse, and set Target genes to TP53, TP63, TP73
 
 **GUI**
 
 Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'rna-reads list-reports grch38_tp53'
@@ -87,13 +89,13 @@ gentle_cli shell 'rna-reads list-reports grch38_tp53'
 
 > The report list includes `tp53_family_sparse_template` after the interpretation step has stored its report.
 
-### Step 3: Run Nanopore interpretation from the same panel and inspect sparse-origin
+### Step 3: Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section
 
 **GUI**
 
 Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'rna-reads show-report tp53_family_sparse_template'

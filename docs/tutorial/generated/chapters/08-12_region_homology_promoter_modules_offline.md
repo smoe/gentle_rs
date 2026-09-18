@@ -65,15 +65,17 @@ A conserved or selectively recurring promoter segment can be a useful fragment c
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Prepare or open a project containing an assembly-bound saved upstream
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Prepare or open a project containing an assembly-bound saved upstream region, then open its source sequence in the DNA viewer. The executable GUI fixture uses one synthetic 80 bp candidate so that navigation remains unambiguous; it makes no promoter-function claim
 
 **GUI**
 
 Prepare or open a project containing an assembly-bound saved upstream region, then open its source sequence in the DNA viewer. The executable GUI fixture uses one synthetic 80 bp candidate so that navigation remains unambiguous; it makes no promoter-function claim.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 cargo build --locked --bin gentle_cli
@@ -87,13 +89,13 @@ cargo build --locked --bin gentle_cli
 
 > The workflow uses only hand-crafted local FASTA files and requires no network access; it never downloads or indexes an undeclared genome.
 
-### Step 2: Choose Regions
+### Step 2: Choose Regions... in the DNA viewer. In Saved genomic regions, locate the exact candidate and confirm its assembly, contig, coordinates, strand, purpose, and source binding before searching
 
 **GUI**
 
 Choose `Regions...` in the DNA viewer. In `Saved genomic regions`, locate the exact candidate and confirm its assembly, contig, coordinates, strand, purpose, and source binding before searching.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gentle_cli --output /tmp/gentle-conservation-tutorial
@@ -111,13 +113,13 @@ python3 docs/examples/run_region_homology_tutorial.py --gentle target/debug/gent
 
 *Figure: The saved-region manager shows the assembly-bound candidate and keeps Conservation and Promoter similarity actions visible at the standard 800×600 DNA-window size. Screenshot captured 2026-09-09.*
 
-### Step 3: Choose Promoter similarity
+### Step 3: Choose Promoter similarity... on that saved region. GENtle opens the Conservation workspace with the candidate's prepared genome as a required same-genome target, a transcript-linked 2,000 bp upstream plus 200 bp downstream promoter-window policy, and conservative 40 bp / 80% identity defaults
 
 **GUI**
 
 Choose `Promoter similarity...` on that saved region. GENtle opens the Conservation workspace with the candidate's prepared genome as a required same-genome target, a transcript-linked 2,000 bp upstream plus 200 bp downstream promoter-window policy, and conservative 40 bp / 80% identity defaults.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.project.json shell 'regions render-homology-svg @/tmp/gentle-conservation-tutorial/homology_report.json /tmp/gentle-conservation-tutorial/replayed.svg'
@@ -135,13 +137,13 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 
 *Figure: Whole-screen orientation after Promoter similarity opens the content-bound Conservation workspace for the selected candidate. Screenshot captured 2026-09-09.*
 
-### Step 4: Expand Search request
+### Step 4: Expand Search request. First constrain the evidence universe: query genome ID, genome catalog/cache, explicit target genome IDs, required/optional status, target role (same_genome, expected_ortholog, or cross_species_unassigned), and—only for expected orthologs—reviewed expected loci with evidence identifiers. An empty target list searches every validated local index; that is broader, not equivalent to a declared promoterome comparison
 
 **GUI**
 
 Expand `Search request`. First constrain the evidence universe: query genome ID, genome catalog/cache, explicit target genome IDs, required/optional status, target role (`same_genome`, `expected_ortholog`, or `cross_species_unassigned`), and—only for expected orthologs—reviewed expected loci with evidence identifiers. An empty target list searches every validated local index; that is broader, not equivalent to a declared promoterome comparison.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.project.json shell 'promoters assess-conserved-modules @/tmp/gentle-conservation-tutorial/paired.request.json'
@@ -159,7 +161,7 @@ target/debug/gentle_cli --state /tmp/gentle-conservation-tutorial/report_only.pr
 
 *Figure: The expanded request exposes the query genome, catalog/cache, required target genome, and target role before any search starts. Screenshot captured 2026-09-09.*
 
-### Step 5: Scroll within Search request to constrain the alignment and promoter
+### Step 5: Scroll within Search request to constrain the alignment and promoter interpretation before running: minimum identity, maximum E-value, minimum aligned bases, maximum chain gap, retained loci per target, HSP processing budget, minimum exact-block length, promoter-matrix on/off, upstream/downstream window lengths, and displayed-row limit. Select Run local screen only after recording these choices; Cancel stops an active search without publishing a partial report, while Export request... preserves the exact reusable request
 
 **GUI**
 
@@ -181,7 +183,7 @@ Scroll within `Search request` to constrain the alignment and promoter interpret
 
 *Figure: Whole-screen orientation for the lower search-policy and transcript-promoter matrix controls. Screenshot captured 2026-09-09.*
 
-### Step 6: Inspect target readiness and confirm that expected-ortholog
+### Step 6: Inspect target readiness and confirm that expected-ortholog, unassigned cross-species, and same-genome evidence remain separate
 
 **GUI**
 
@@ -195,7 +197,7 @@ Inspect target readiness and confirm that expected-ortholog, unassigned cross-sp
 
 > Promoter-matrix counts distinguish genomic windows, genes and transcripts. If an HSP/locus budget is reached, the report labels all frequency counts as lower bounds instead of implying completeness.
 
-### Step 7: Inspect Promoter recurrence matrix
+### Step 7: Inspect Promoter recurrence matrix. Rows are distinct genomic promoter windows, not raw transcript counts. Read blue intensity as identity and the block number as target-promoter 5'-to-3' order. Hover a row for its genes, transcripts, TSS and coordinates. Treat a red block outline as a structural split candidate: the query order or orientation changed, so GENtle does not join it to the preceding block
 
 **GUI**
 
@@ -209,7 +211,7 @@ Inspect `Promoter recurrence matrix`. Rows are distinct genomic promoter windows
 
 > Changing block order or orientation splits the visual chain. This is structural evidence for testing reporter subfragments or arrangements, not proof that either arrangement is functional.
 
-### Step 8: Inspect the query-referenced alignment
+### Step 8: Inspect the query-referenced alignment: dots are exact bases, letters are substitutions, dashes are target deletions, and omitted insertions remain in JSON rather than adding columns
 
 **GUI**
 
@@ -223,7 +225,7 @@ Inspect the query-referenced alignment: dots are exact bases, letters are substi
 
 > Module outcomes retain all thresholds, evidence IDs, passed and failed rules, alternatives, and explicit non-claims.
 
-### Step 9: Select only synthetic_occupancy_anchor
+### Step 9: Select only synthetic_occupancy_anchor, choose Assess selected evidence, and compare the standalone decision with standalone.json. Add synthetic_left_motif and reassess: the paired decision must cite a shared ortholog locus and compatible target-coordinate gaps, not merely proximity in the query. Select a block to jump to its virtualized alignment tile
 
 **GUI**
 
@@ -237,7 +239,7 @@ Select only `synthetic_occupancy_anchor`, choose `Assess selected evidence`, and
 
 > The companion asserts standalone and paired results, an insufficient result for evidence in the deliberately substituted gap, and a repetitive result under an explicitly strict 1% policy. Its receipt records the exact commands, binary and artifact hashes. GENtle alone computes these outcomes. Report-only steps use an empty scratch project because their inputs are self-contained; the original tutorial project is not reopened or rewritten.
 
-### Step 10: Optionally save a selected conserved block as a new portable region
+### Step 10: Optionally save a selected conserved block as a new portable region. This explicit mutation preserves the report digest and non-claims
 
 **GUI**
 

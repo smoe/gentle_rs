@@ -65,11 +65,16 @@ exercise; its runtime is not covered by the bounded beginner smoke.
 
 ## Step-by-Step
 
-Each step keeps the three control surfaces together: **GUI**, **CLI / GUI
-Shell**, and **Ask the inner agent**. Agent examples request a proposal for
-review; they do not authorize execution. CLI examples assume an installed
+Each step pairs **GUI** instructions with **CLI (terminal)** commands or
+guidance and **Ask the inner agent** prompts. Agent examples request a proposal
+for review; they do not authorize execution. CLI examples assume an installed
 `gentle_cli`; from a source checkout, replace it with
-`cargo run --bin gentle_cli --`.
+`cargo run --bin gentle_cli --`. CLI state defaults to `.gentle_state.json`;
+use `--project PATH` for a saved project. A separate CLI process does not
+inherit the GUI's unsaved project or current selection.
+
+In the **GUI Shell**, enter only the command inside `gentle_cli shell '...'`,
+without that wrapper. Other terminal commands cannot simply be pasted there.
 
 ### Step 1: Open One Sequence
 
@@ -78,7 +83,7 @@ GUI:
 1. open the tutorial project through the menu above
 2. open the compact `tp73_locus` sequence (800 bases)
 
-CLI / GUI Shell:
+CLI (terminal):
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/simple_pcr_selection_gui.json
@@ -99,7 +104,7 @@ GUI:
 
 This selection is your **core ROI**.
 
-CLI / GUI Shell:
+CLI / GUI Shell guidance:
 
 There is no standalone shell command for the drag gesture. Scripted callers
 encode the same interval as `core_start=200` and `core_end=600` in the
@@ -123,7 +128,13 @@ GUI:
 1. right-click on the map while the selection is active
 2. choose `Simple PCR from selection`
 
-CLI / GUI Shell:
+GUI Shell (opens the designer, but does not copy a map selection):
+
+```text
+ui open pcr-design
+```
+
+CLI (terminal; returns a UI intent without opening a window):
 
 ```bash
 gentle_cli shell 'ui open pcr-design'
@@ -138,7 +149,7 @@ Ask the inner agent:
 
 ![Focused selection context menu with the Simple PCR action.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg)
 
-What GENtle does for you:
+What the GUI's `Simple PCR from selection` action does for you:
 
 - copies the selection into the PCR ROI fields
 - enables `require ROI flanking`
@@ -172,7 +183,7 @@ Important translation:
 So the simple controls are still deterministic and inspectable: they just write
 the existing forward/reverse side-window fields for you.
 
-CLI / GUI Shell:
+CLI / GUI Shell guidance:
 
 Use the typed `DesignPrimerPairs` request with explicit core, flank-window and
 maximum-amplicon values. The executable companion chapter preserves the exact
@@ -194,7 +205,7 @@ GUI:
 2. set `max pairs` to `5` for this walkthrough
 3. click `Design Primer Pairs`
 
-CLI / GUI Shell:
+CLI / GUI Shell guidance:
 
 Use the same typed `DesignPrimerPairs` request described above; this step has
 no separate command because the design parameters belong to one atomic engine
@@ -228,7 +239,13 @@ GENtle now keeps that beginner wording visible in two places:
 - the in-panel `Primer report preview` inside `PCR Designer`
 - shared-shell `primers show-report REPORT_ID` as `simple_pcr_pairs`
 
-CLI / GUI Shell:
+GUI Shell (lists reports in the current project):
+
+```text
+primers list-reports
+```
+
+CLI (terminal; lists reports in the CLI state or specified saved project):
 
 ```bash
 gentle_cli shell 'primers list-reports'

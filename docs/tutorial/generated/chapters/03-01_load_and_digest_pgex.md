@@ -42,15 +42,17 @@ Restriction digest is a core molecular cloning routine used for vector lineariza
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Load test_files/pGEX-3X
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Load test_files/pGEX-3X.gb in the GUI and inspect annotated features
 
 **GUI**
 
 Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli op '{"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}'
@@ -64,13 +66,13 @@ gentle_cli op '{"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}'
 
 > The state contains the annotated pGEX sequence as `pgex`.
 
-### Step 2: Open Sequence Tools from the DNA window
+### Step 2: Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes BamHI,EcoRI, set prefix frag, and run Digest
 
 **GUI**
 
 Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli op '{"Digest":{"input":"pgex","enzymes":["BamHI","EcoRI"],"output_prefix":"frag"}}'
@@ -92,13 +94,13 @@ gentle_cli op '{"Digest":{"input":"pgex","enzymes":["BamHI","EcoRI"],"output_pre
 
 *Figure: Digest controls with the enzyme list and output prefix in interaction context. Screenshot captured 2026-09-08.*
 
-### Step 3: Review created fragment entries and confirm they are stored as
+### Step 3: Review created fragment entries and confirm they are stored as independent sequence products
 
 **GUI**
 
 Review created fragment entries and confirm they are stored as independent sequence products.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/load_and_digest_pgex.json

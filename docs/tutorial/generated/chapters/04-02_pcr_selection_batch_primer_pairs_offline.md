@@ -60,15 +60,17 @@ The canonical offline workflow uses two GC-rich TP73-AS2 promoter-proximal examp
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Load test_files/tp73
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Load test_files/tp73.ncbi.gb, then open Patterns -> PCR Designer... (or command palette PCR Designer) and keep the map in linear mode
 
 **GUI**
 
 Load `test_files/tp73.ncbi.gb`, then open `Patterns -> PCR Designer...` (or command palette `PCR Designer`) and keep the map in linear mode.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-primer-pair-tutorial.json workflow @docs/examples/workflows/pcr_selection_batch_primer_pairs_offline.json
@@ -82,13 +84,13 @@ gentle_cli --state /tmp/gentle-primer-pair-tutorial.json workflow @docs/examples
 
 > The workflow creates two complete reports and exports both as retained tutorial artifacts.
 
-### Step 2: For the first example
+### Step 2: For the first example, paint only the indispensable core 61820..61920 as the green ROI. The broader copied context 61720..62120 is not the ROI
 
 **GUI**
 
 For the first example, paint only the indispensable core `61820..61920` as the green ROI. The broader copied context `61720..62120` is not the ROI.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{report_id,template,required_roi:[.roi_start_0based,.roi_end_0based]}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
@@ -102,13 +104,13 @@ jq '{report_id,template,required_roi:[.roi_start_0based,.roi_end_0based]}' docs/
 
 > The first report records the indispensable core as `61820..61920`; the broader extracted context is not silently substituted as the ROI.
 
-### Step 3: Paint the upstream search window 61720
+### Step 3: Paint the upstream search window 61720..61745 red and the downstream search window 62000..62040 blue. Confirm in the live cartoon that both primer windows lie outside and flank the ROI
 
 **GUI**
 
 Paint the upstream search window `61720..61745` red and the downstream search window `62000..62040` blue. Confirm in the live cartoon that both primer windows lie outside and flank the ROI.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{required_roi:[.roi_start_0based,.roi_end_0based],forward_window:[.forward.start_0based,.forward.end_0based],reverse_window:[.reverse.start_0based,.reverse.end_0based],require_roi_flanking:.pair_constraints.require_roi_flanking}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
@@ -122,13 +124,13 @@ jq '{required_roi:[.roi_start_0based,.roi_end_0based],forward_window:[.forward.s
 
 > The upstream and downstream windows lie outside the required ROI, and `require_roi_flanking` is true.
 
-### Step 4: Set primer length 18
+### Step 4: Set primer length 18..24 nt, Tm 55..78 C, GC fraction 0.30..0.80, maximum local annealing hits 1, amplicon length 90..350 bp, maximum pair Tm difference 5 C, backend internal, and maximum returned pairs 5
 
 **GUI**
 
 Set primer length `18..24 nt`, Tm `55..78 C`, GC fraction `0.30..0.80`, maximum local annealing hits `1`, amplicon length `90..350 bp`, maximum pair Tm difference `5 C`, backend `internal`, and maximum returned pairs `5`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{primer_length:[.forward.min_length,.forward.max_length],primer_tm_c:[.forward.min_tm_c,.forward.max_tm_c],primer_gc_fraction:[.forward.min_gc_fraction,.forward.max_gc_fraction],max_local_hits:.forward.max_anneal_hits,amplicon_bp:[.min_amplicon_bp,.max_amplicon_bp],max_tm_delta_c,max_pairs}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
@@ -142,13 +144,13 @@ jq '{primer_length:[.forward.min_length,.forward.max_length],primer_tm_c:[.forwa
 
 > The report preserves the exact primer, amplicon, Tm-difference, local-hit, and result-count limits used for determination.
 
-### Step 5: Run the first design and inspect report tp73_as2_promoter_batch_r01
+### Step 5: Run the first design and inspect report tp73_as2_promoter_batch_r01. Confirm that it contains five pairs, records the internal backend, and did not skip candidate combinations because of the evaluation limit
 
 **GUI**
 
 Run the first design and inspect report `tp73_as2_promoter_batch_r01`. Confirm that it contains five pairs, records the internal backend, and did not skip candidate combinations because of the evaluation limit.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{pair_count,backend,rejection_summary}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
@@ -162,13 +164,13 @@ jq '{pair_count,backend,rejection_summary}' docs/tutorial/generated/artifacts/pc
 
 > The first report has five candidates, records the internal backend, and has `pair_evaluation_limit_skipped: 0`.
 
-### Step 6: Open rank 1 and review both oligos plus the pair
+### Step 6: Open rank 1 and review both oligos plus the pair: sequences and binding coordinates, 310 bp amplicon, Tm/GC values, one local annealing hit per primer, 3-prime clamps, homopolymer/self-complementary runs, pair-complementary runs, score, and every rule flag. Compare ranks 1-3 instead of treating rank 1 as automatically order-ready
 
 **GUI**
 
 Open rank 1 and review both oligos plus the pair: sequences and binding coordinates, 310 bp amplicon, Tm/GC values, one local annealing hit per primer, 3-prime clamps, homopolymer/self-complementary runs, pair-complementary runs, score, and every rule flag. Compare ranks 1-3 instead of treating rank 1 as automatically order-ready.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{top_pair:(.pairs[0]|{rank,score,amplicon:[.amplicon_start_0based,.amplicon_end_0based_exclusive,.amplicon_length_bp],tm_delta_c,forward,reverse,primer_pair_complementary_run_bp,primer_pair_3prime_complementary_run_bp,rule_flags}),alternatives:[.pairs[0:3][]|{rank,score,amplicon_length_bp,tm_delta_c}]}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json
@@ -182,13 +184,13 @@ jq '{top_pair:(.pairs[0]|{rank,score,amplicon:[.amplicon_start_0based,.amplicon_
 
 > Rank 1 exposes both full oligo diagnostics and pair diagnostics, while ranks 1-3 remain directly comparable.
 
-### Step 7: Repeat with ROI 62040
+### Step 7: Repeat with ROI 62040..62140, upstream 61940..61965, and downstream 62158..62188. In tp73_as2_promoter_batch_r02, notice that the top forward primer has a five-base homopolymer and forward_secondary_structure_ok: false; the report preserves this advisory even though the pair ranks first
 
 **GUI**
 
 Repeat with ROI `62040..62140`, upstream `61940..61965`, and downstream `62158..62188`. In `tp73_as2_promoter_batch_r02`, notice that the top forward primer has a five-base homopolymer and `forward_secondary_structure_ok: false`; the report preserves this advisory even though the pair ranks first.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{pair_count,rejection_summary,top_forward:(.pairs[0].forward|{sequence,tm_c,gc_fraction,anneal_hits,longest_homopolymer_run_bp,self_complementary_run_bp}),top_flags:.pairs[0].rule_flags}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json
@@ -202,13 +204,13 @@ jq '{pair_count,rejection_summary,top_forward:(.pairs[0].forward|{sequence,tm_c,
 
 > The second report exposes a real advisory (`forward_secondary_structure_ok: false`) rather than hiding it behind the rank.
 
-### Step 8: Use Export to retain each full JSON report
+### Step 8: Use Export to retain each full JSON report. Record why you selected or rejected a candidate, then perform the separate genomic-specificity handoff and wet-lab validation before procurement
 
 **GUI**
 
 Use `Export` to retain each full JSON report. Record why you selected or rejected a candidate, then perform the separate genomic-specificity handoff and wet-lab validation before procurement.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers export-report tp73_as2_promoter_batch_r01 /tmp/tp73_as2_promoter_batch_r01.json'

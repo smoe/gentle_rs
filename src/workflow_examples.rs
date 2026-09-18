@@ -4767,40 +4767,9 @@ fn tutorial_step_heading(chapter: &TutorialChapter, idx: usize, gui_step: &str) 
         return title.trim_end_matches('.').to_string();
     }
     let normalized = normalize_markdown_one_line(&gui_step.replace('`', ""));
-    let mut heading = normalized
-        .split(['.', ',', ';', ':'])
-        .next()
-        .unwrap_or(&normalized)
-        .trim()
-        .to_string();
-    if heading.chars().count() > 72 {
-        let mut words = Vec::new();
-        for word in heading.split_whitespace() {
-            let connector = word
-                .trim_matches(|character: char| !character.is_ascii_alphabetic())
-                .to_ascii_lowercase();
-            if words.len() >= 3
-                && matches!(
-                    connector.as_str(),
-                    "after"
-                        | "before"
-                        | "because"
-                        | "for"
-                        | "including"
-                        | "then"
-                        | "while"
-                        | "with"
-                )
-            {
-                break;
-            }
-            words.push(word);
-            if words.len() == 10 {
-                break;
-            }
-        }
-        heading = words.join(" ");
-    }
+    // Punctuation can belong to accessions, paths or coordinates. Only an
+    // explicit step title may abbreviate the source instruction.
+    let mut heading = normalized.trim_end_matches('.').to_string();
     if let Some(first) = heading.get_mut(0..1) {
         first.make_ascii_uppercase();
     }
@@ -4933,7 +4902,7 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> St
         return out;
     }
     if !chapter.cli_steps.is_empty() {
-        out.push_str("The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.\n\n");
+        out.push_str("Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.\n\nIn the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.\n\n");
     }
     for (idx, step) in chapter.gui_steps.iter().enumerate() {
         let step = step.trim();
@@ -4955,7 +4924,7 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> St
         out.push_str(step);
         out.push_str("\n\n");
         if let Some(cli_step) = cli_step {
-            out.push_str("**CLI / GUI Shell**\n\n");
+            out.push_str("**CLI (terminal)**\n\n");
             out.push_str("```bash\n");
             out.push_str(&tutorial_cli_for_reader(cli_step));
             out.push_str("\n```\n\n");
@@ -9075,6 +9044,42 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_step_headings_preserve_accessions_ranges_paths_and_complete_instructions() {
+        let mut chapter = minimal_tutorial_chapter("heading_contract");
+        for instruction in [
+            "Fetch GenBank accession NM_001126241.3.",
+            "Open test_files/pGEX_3X.fasta.",
+            "Paint the upstream window 61720..62000, then inspect chr1:62000.",
+            "Inspect A. Keep the complete instruction, including its second sentence.",
+            "Open Patterns -> PCR Designer with the current selection before adjusting the flank windows for the selected core region.",
+        ] {
+            assert_eq!(
+                tutorial_step_heading(&chapter, 0, instruction),
+                instruction.trim_end_matches('.')
+            );
+        }
+        chapter.step_titles.push("Open the PCR Designer".into());
+        assert_eq!(
+            tutorial_step_heading(&chapter, 0, "A longer fallback instruction."),
+            "Open the PCR Designer"
+        );
+    }
+
+    #[test]
+    fn tutorial_walkthrough_distinguishes_terminal_commands_from_gui_shell_intents() {
+        let mut chapter = minimal_tutorial_chapter("interface_contract");
+        chapter.gui_steps = vec!["Open the PCR Designer.".into()];
+        chapter.cli_steps = vec!["gentle_cli shell 'ui open pcr-design'".into()];
+        let markdown = render_tutorial_gui_steps(&chapter, Path::new("."));
+        assert!(markdown.contains("**CLI (terminal)**"));
+        assert!(!markdown.contains("**CLI / GUI Shell**"));
+        assert!(markdown.contains("without the executable prefix or outer quotes"));
+        assert!(markdown.contains("a headless CLI returns the UI intent but does not open a GUI"));
+        assert!(markdown.contains("does not inherit the open GUI project's unsaved state"));
+        assert!(markdown.contains("a listing command only inspects results"));
+    }
+
+    #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
         let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
@@ -9123,7 +9128,7 @@ mod tests {
         assert!(online_markdown.contains("### Step 1:"));
         assert!(
             online_markdown
-                .contains("**CLI / GUI Shell**\n\n```bash\nGENTLE_TEST_ONLINE=1 gentle_cli")
+                .contains("**CLI (terminal)**\n\n```bash\nGENTLE_TEST_ONLINE=1 gentle_cli")
         );
         assert!(online_markdown.contains("**Expected**\n\n>"));
         assert!(!online_markdown.contains("## Complete Workflow Replay"));
@@ -9140,7 +9145,7 @@ mod tests {
             std::fs::read_to_string(&promoter_chapter).expect("read promoter chapter markdown");
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
-        assert!(promoter_markdown.contains("**CLI / GUI Shell**\n\n```bash\ngentle_cli"));
+        assert!(promoter_markdown.contains("**CLI (terminal)**\n\n```bash\ngentle_cli"));
         assert!(promoter_markdown.contains("CLI snippets assume an installed `gentle_cli`"));
         assert!(promoter_markdown.contains("**Expected**\n\n> `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));

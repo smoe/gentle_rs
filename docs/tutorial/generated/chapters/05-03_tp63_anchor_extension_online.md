@@ -45,15 +45,17 @@ This chapter focuses on day-to-day genome-anchored sequence inspection: identify
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open File -> Prepare Reference Genome
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open File -> Prepare Reference Genome... and prepare Human GRCh38 Ensembl 116 from assets/genomes.json
 
 **GUI**
 
 Open `File -> Prepare Reference Genome...` and prepare `Human GRCh38 Ensembl 116` from `assets/genomes.json`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 GENTLE_TEST_ONLINE=1 gentle_cli genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
@@ -67,13 +69,13 @@ GENTLE_TEST_ONLINE=1 gentle_cli genomes prepare "Human GRCh38 Ensembl 116" --cat
 
 > The reference-preparation status becomes ready or reports a reusable prepared cache for GRCh38.
 
-### Step 2: Open File -> Retrieve Genome Sequence
+### Step 2: Open File -> Retrieve Genome Sequence..., set gene query/filter to TP63, review the displayed TP63 coordinate hit, and extract the first TP63 entry
 
 **GUI**
 
 Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli genomes genes "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --filter "^TP63$" --limit 20
@@ -88,13 +90,13 @@ gentle_cli genomes extract-gene "Human GRCh38 Ensembl 116" TP63 --occurrence 1 -
 
 > The gene listing shows the TP63 coordinate candidate(s), and extraction creates the anchored sequence id `grch38_tp63`.
 
-### Step 3: In the resulting DNA sequence window (grch38_tp63)
+### Step 3: In the resulting DNA sequence window (grch38_tp63), use Extend 5' with 2000 bp, then Extend 3' with 2000 bp to produce the +/-2 kb context sequence
 
 **GUI**
 
 In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes

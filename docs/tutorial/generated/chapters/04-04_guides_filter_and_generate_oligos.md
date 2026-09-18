@@ -42,15 +42,17 @@ For CRISPR-style cloning, guide quality control is where many downstream failure
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open the guides workflow controls in GENtle and create/import a
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the guides workflow controls in GENtle and create/import a guide set for a target region
 
 **GUI**
 
 Open the guides workflow controls in GENtle and create/import a guide set for a target region.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli guides put tp73_guides --json '[{"guide_id":"g1","seq_id":"tp73","start_0based":100,"end_0based_exclusive":120,"strand":"+","protospacer":"GACCTGTTGACGATGTTCCA","pam":"AGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":1},{"guide_id":"g2","seq_id":"tp73","start_0based":220,"end_0based_exclusive":240,"strand":"+","protospacer":"TTTTGCCATGTTGACCTGAA","pam":"TGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":2},{"guide_id":"g3","seq_id":"tp73","start_0based":340,"end_0based_exclusive":360,"strand":"-","protospacer":"GGTACCGATGTTGCCAGTAA","pam":"CGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":3}]'
@@ -64,13 +66,13 @@ gentle_cli guides put tp73_guides --json '[{"guide_id":"g1","seq_id":"tp73","sta
 
 > The guide registry contains `tp73_guides` with three ranked guide candidates.
 
-### Step 2: Apply practical filters (GC range
+### Step 2: Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance)
 
 **GUI**
 
 Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance).
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli guides filter tp73_guides --config '{"gc_min":0.3,"gc_max":0.7,"max_homopolymer_run":4,"reject_ambiguous_bases":true,"avoid_u6_terminator_tttt":true,"u6_terminator_window":"spacer_plus_tail","required_5prime_base":"G","allow_5prime_g_extension":true}' --output-set tp73_guides_pass
@@ -84,13 +86,13 @@ gentle_cli guides filter tp73_guides --config '{"gc_min":0.3,"gc_max":0.7,"max_h
 
 > The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.
 
-### Step 3: Generate oligos from passed guides and inspect the resulting oligo
+### Step 3: Generate oligos from passed guides and inspect the resulting oligo set IDs
 
 **GUI**
 
 Generate oligos from passed guides and inspect the resulting oligo set IDs.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only

@@ -64,15 +64,17 @@ This tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sh
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open docs/examples/assets/tp73_promoter_artifact_demo
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open docs/examples/assets/tp73_promoter_artifact_demo.gb via File -> Open Sequence
 
 **GUI**
 
 Open `docs/examples/assets/tp73_promoter_artifact_demo.gb` via `File -> Open Sequence...`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json
@@ -86,13 +88,13 @@ gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offl
 
 > The canonical workflow loads the synthetic TP73-like locus under `tp73_promoter_artifact_demo` and writes the promoter artifact bundle.
 
-### Step 2: Open Promoter design from the TP73 gene or one of
+### Step 2: Open Promoter design from the TP73 gene or one of the TP73-demo-* mRNA features
 
 **GUI**
 
 Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-label TP73 --upstream-bp 40 --downstream-bp 15 --collapse transcript'
@@ -106,13 +108,13 @@ gentle_cli shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-
 
 > Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state.
 
-### Step 3: Set Gene label to TP73
+### Step 3: Set Gene label to TP73, promoter upstream bp to 40, and promoter downstream bp to 15
 
 **GUI**
 
 Set `Gene label` to `TP73`, `promoter upstream bp` to `40`, and `promoter downstream bp` to `15`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-label TP73 --upstream-bp 40 --downstream-bp 15 --collapse transcript'
@@ -126,13 +128,13 @@ gentle_cli shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-
 
 > The window parameters are the tiny-locus tutorial values used by all downstream promoter reports.
 
-### Step 4: Click Annotate promoter windows
+### Step 4: Click Annotate promoter windows, then Compare alternative promoters; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows
 
 **GUI**
 
 Click `Annotate promoter windows`, then `Compare alternative promoters`; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json
@@ -146,13 +148,13 @@ gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offl
 
 > `alternative_promoters.json` reports three transcript windows collapsed into two DNA-level promoter windows.
 
-### Step 5: Click Build evidence matrix
+### Step 5: Click Build evidence matrix; confirm the shared promoter row reports 2 tx and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence
 
 **GUI**
 
 Click `Build evidence matrix`; confirm the shared promoter row reports `2 tx` and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.evidence_matrix.json'
@@ -166,13 +168,13 @@ gentle_cli shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo 
 
 > `evidence_matrix.json` contains two promoter candidates and shows the shared promoter with `2 tx` support plus multiple evidence kinds.
 
-### Step 6: Run the isoform promoter comparison
+### Step 6: Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures
 
 **GUI**
 
 Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'features promoter-isoform-comparison tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --path artifacts/tp73_promoter_artifact_demo.isoform_promoter_comparison.json'
@@ -186,13 +188,13 @@ gentle_cli shell 'features promoter-isoform-comparison tp73_promoter_artifact_de
 
 > `isoform_promoter_comparison.json` separates the shared-TSS and alternative-start promoter groups.
 
-### Step 7: Load or paste expression rows for the TP73 demo transcripts
+### Step 7: Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note
 
 **GUI**
 
 Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'features promoter-expression-evidence tp73_promoter_artifact_demo --gene-label TP73 --promoter-upstream-bp 40 --promoter-downstream-bp 15 --source-label synthetic_demo --expression-json {"transcript_id":"ENSTTP73DEMO1","value":18.0,"unit":"a.u."} --path artifacts/tp73_promoter_artifact_demo.promoter_expression_evidence.json'
@@ -206,13 +208,13 @@ gentle_cli shell 'features promoter-expression-evidence tp73_promoter_artifact_d
 
 > `promoter_expression_evidence.json` links the synthetic expression rows to promoter groups through transcript IDs.
 
-### Step 8: Set TF motifs to SP1
+### Step 8: Set TF motifs to SP1,TP53,TP63,TP73, run Show TF score tracks, then export TF score tracks SVG... for the visual artifact
 
 **GUI**
 
 Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'features tfbs-score-tracks-svg tp73_promoter_artifact_demo artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg --motif SP1 --motif TP53 --motif TP63 --motif TP73 --range 60..158 --score-kind llr_background_tail_log10'
@@ -232,13 +234,13 @@ gentle_cli shell 'features tfbs-score-tracks-svg tp73_promoter_artifact_demo art
 
 > SVG text labels: `Continuous TF motif score tracks | target=tp73_promoter_artifact_demo | span=60..158 | motifs=4 | score=llr_background_tail_log10 | forward strand = teal | reverse strand = ambe...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
-### Step 9: Set TFBS similarity anchor to SP1
+### Step 9: Set TFBS similarity anchor to SP1, compare against TP53,TP63,TP73,CTCF, run Show TFBS similarity ranking, then export the JSON ranking
 
 **GUI**
 
 Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor-motif SP1 --candidate-motif TP53 --candidate-motif TP63 --candidate-motif TP73 --candidate-motif CTCF --range 60..158 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'
@@ -252,13 +254,13 @@ gentle_cli shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --a
 
 > `tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`.
 
-### Step 10: Inspect the component manifest to see which JSON/SVG artifacts were
+### Step 10: Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order
 
 **GUI**
 
 Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json

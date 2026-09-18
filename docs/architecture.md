@@ -1040,9 +1040,12 @@ Practical rule:
       reference guides must be linked from the same entry point
     - distinction between tutorial, recipe, and reference material should be
       explicit in page metadata/catalog text
-    - each generated operation keeps its GUI action, CLI/GUI-Shell equivalent,
-      inner-Agent-Assistant request, expected result and rationale adjacent;
-      interface-specific appendices must not become competing workflows
+    - each generated step keeps its GUI action, related terminal command or
+      guidance, inner-Agent-Assistant request, expected result and rationale
+      adjacent; distinguish terminal wrappers from GUI Shell syntax, UI intents
+      from GUI effects, and CLI state from the GUI's unsaved state
+    - heading fallbacks preserve complete instructions, including accession
+      versions, paths and coordinate ranges; concise headings are explicit data
     - inner-agent examples request an exact operation for human review and do
       not authorize execution; tutorial generation never invokes a provider
     - learner-facing pages lead with outcome, prerequisites and the shortest

@@ -1,5 +1,38 @@
 # GENtle Changelog
 
+## 2026-09-18 - Internal .11 Integration Review
+
+- Start `codex/internal.11` without changing `main`, package versions or `.10`
+  release acceptance. Merge Glen's tutorial commit `cfd83bcc` with its history;
+  selectively port vector-PDF commits `14f00836` and `00c9fa93` with attribution.
+- Fix two tutorial-review findings: fallback headings now retain complete
+  accessions, paths, coordinate ranges and instructions; terminal wrappers,
+  GUI Shell syntax, UI-opening effects and separate process state are explicitly
+  distinguished. Keep generated agent examples review-only and regenerate the
+  affected chapter text from the shared generator.
+- Correct fractional vector-PDF page dimensions in both the audit and
+  multipage renderer; add geometry and failed-later-page preservation tests.
+  Reuse the raster backend's font-family preferences after visual review
+  exposed proportional-font substitution for `monospace` on macOS; add an
+  actual used-font-identity parity regression for all three generic families.
+  Existing raster PDF defaults and biological scoring remain unchanged.
+- Record the [`.11` implementation slices](internal_11_plan.md): dedicated
+  typed capture GUI, reference-bound permitted-multilocus specificity, optional
+  expression/array ranking, reviewed order handoff and the eight-gene public
+  replay. These capture extensions are planned, not implemented or approved
+  for procurement. Assess the older RefSeq patch separately, rather than
+  silently broadening assembly matching in a PDF integration.
+- Verification: 32 tutorial Rust tests plus the standalone 28-chapter generated
+  check; 56-entry catalog and manifest checks; 6 vector-PDF tests, 38 raster/TSS
+  export tests, 10 CLI rendering tests and the opt-in synthetic export passed.
+  Python checks passed 43 compositor cases and 73 tutorial cases (11 optional
+  skips). Default locked Cargo check, formatting and whitespace checks passed.
+  Poppler confirmed text extraction, font embedding, two-page ordering and no
+  raster images in the CLI vector composition; both pages were visually reviewed.
+  Two stale human-review warnings and the macOS large-unwind-table linker
+  warning remain. Full-workspace, live GUI/agent and real-data acceptance were
+  not run; these implementation checks do not approve a release.
+
 ## 2026-09-17 - Windows ClawBio Parity Fixtures
 
 - Replace the affected workflow/path and PNG-summary Bash fixtures with native

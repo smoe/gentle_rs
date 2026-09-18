@@ -57,15 +57,17 @@ Read the figure as a structured evidence ledger. A probe interval or junction ma
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb, import patz1_isoform_panel.json as panel patz1_synthetic_v1, and open Splicing Expert for the PATZ1 gene group
 
 **GUI**
 
 Open `test_files/fixtures/isoform_evidence/patz1/patz1_minus_strand.gb`, import `patz1_isoform_panel.json` as panel `patz1_synthetic_v1`, and open Splicing Expert for the PATZ1 gene group.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json
@@ -79,7 +81,7 @@ gentle_cli workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.j
 
 > The loaded 240 bp sequence reports a GRCh38.p14 chromosome-22 anchor and the gene/transcript rows remain on the negative strand.
 
-### Step 2: Select the Evidence tab and enter the committed probe-evidence JSON
+### Step 2: Select the Evidence tab and enter the committed probe-evidence JSON, cDNA/EST JSON, and expression TSV. Inspect the ledger before composing the figure; observed evidence, candidate association, design constraint, and unresolved evidence remain separate statuses
 
 **GUI**
 
@@ -93,7 +95,7 @@ Select the `Evidence` tab and enter the committed probe-evidence JSON, cDNA/EST 
 
 > The evidence ledger keeps cDNA/EST observations separate from array design constraints and retains the synthetic missing/mismatched evidence warnings.
 
-### Step 3: Import the four small BED files from test_files/fixtures/gene_locus_evidence/patz1_offline_composer/
+### Step 3: Import the four small BED files from test_files/fixtures/gene_locus_evidence/patz1_offline_composer/ with the exact Saos-2 and SK-MEL-29 track names used by the workflow
 
 **GUI**
 
@@ -107,7 +109,7 @@ Import the four small BED files from `test_files/fixtures/gene_locus_evidence/pa
 
 > Four projected occupancy tracks are present with explicit Saos-2 and SK-MEL-29 identities.
 
-### Step 4: Select Locus figure
+### Step 4: Select Locus figure, choose the committed probe-effect TSV, leave the contrast filter empty to retain all abundance and differential columns, set coordinate system GRCh38.p14, and choose docs/examples/gene_locus_evidence/patz1_cutrun_layout.json
 
 **GUI**
 
@@ -121,7 +123,7 @@ Select `Locus figure`, choose the committed probe-effect TSV, leave the contrast
 
 > The request carries one PSR row, one JUC row, three abundance columns, and three differential columns without inferring primer binding or significance.
 
-### Step 5: Set upstream and downstream flanks to 19
+### Step 5: Set upstream and downstream flanks to 19, motif to TP73, score kind to llr_background_tail_log10, clipping on, and top hits to 5. Confirm the readiness table reports the anchor and local resources before composing
 
 **GUI**
 
@@ -135,7 +137,7 @@ Set upstream and downstream flanks to `19`, motif to `TP73`, score kind to `llr_
 
 > Resource readiness distinguishes readable files from engine-validated project objects, and the motif request resolves through the local JASPAR registry.
 
-### Step 6: Click Compose / refresh
+### Step 6: Click Compose / refresh. Inspect the graphical preview, warnings, provenance, and assay continuations; then export SVG, PDF, or report JSON through the shared renderer/operation paths
 
 **GUI**
 

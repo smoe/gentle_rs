@@ -55,7 +55,9 @@ See also: guided walkthrough [docs/tutorial/06-05_tp73_uniprot_projection_audit_
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
 ### Step 1: Prepare Human GRCh38 Ensembl 116 and extract gene TP73 into grch38_tp73
 
@@ -63,7 +65,7 @@ The three routes below describe the same operation. CLI snippets assume an insta
 
 Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 GENTLE_TEST_ONLINE=1 gentle_cli genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
@@ -78,13 +80,13 @@ gentle_cli genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --occurrence 1 -
 
 > The reference is prepared if needed and TP73 is extracted into the anchored sequence id `grch38_tp73`.
 
-### Step 2: Fetch UniProt Q9H3D4 and Ensembl protein ENSP00000264724 from Protein Evidence
+### Step 2: Fetch UniProt Q9H3D4 and Ensembl protein ENSP00000264724 from Protein Evidence..., then project the UniProt entry onto the TP73 locus
 
 **GUI**
 
 Fetch UniProt `Q9H3D4` and Ensembl protein `ENSP00000264724` from `Protein Evidence...`, then project the UniProt entry onto the TP73 locus.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'uniprot fetch Q9H3D4 --entry-id Q9H3D4'
@@ -100,13 +102,13 @@ gentle_cli shell 'uniprot map Q9H3D4 grch38_tp73 --projection-id tp73_uniprot_q9
 
 > The UniProt, Ensembl protein, and projection records persist under the ids used by the audit workflow.
 
-### Step 3: Run the high-level audit and parity actions from Protein Evidence
+### Step 3: Run the high-level audit and parity actions from Protein Evidence... so the stored audit rows and local unsent email draft are persisted
 
 **GUI**
 
 Run the high-level audit and parity actions from `Protein Evidence...` so the stored audit rows and local unsent email draft are persisted.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'uniprot audit-projection tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit'
@@ -121,13 +123,13 @@ gentle_cli shell 'uniprot audit-parity tp73_uniprot_q9h3d4 --ensembl-entry TP73_
 
 > The integrated audit and parity reports are stored as `tp73_projection_audit` and `tp73_projection_audit_parity`.
 
-### Step 4: Open the saved projection in the Protein Expert or inspect
+### Step 4: Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry
 
 **GUI**
 
 Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4
@@ -142,13 +144,13 @@ gentle_cli render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot
 
 > Expert inspection and SVG export show the same projected TP73 feature geometry used by the GUI.
 
-### Step 5: Use the companion CLI tutorial to rebuild the same result
+### Step 5: Use the companion CLI tutorial to rebuild the same result from resolve-ensembl-links, transcript-accounting, compare-ensembl-exons, and compare-ensembl-peptide
 
 **GUI**
 
 Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'

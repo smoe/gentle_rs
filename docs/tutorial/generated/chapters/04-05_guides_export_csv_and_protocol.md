@@ -42,7 +42,9 @@ Operational work is only useful if outputs can be shared with collaborators and 
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
 ### Step 1: Open the guide/oligo export controls after guide generation
 
@@ -50,7 +52,7 @@ The three routes below describe the same operation. CLI snippets assume an insta
 
 Open the guide/oligo export controls after guide generation.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli guides put demo_guides --json '[{"guide_id":"demo_1","seq_id":"target_demo","start_0based":10,"end_0based_exclusive":30,"strand":"+","protospacer":"GACCTGTTGACGATGTTCCA","pam":"AGG","nuclease":"SpCas9","cut_offset_from_protospacer_start":17,"rank":1}]'
@@ -65,13 +67,13 @@ gentle_cli guides oligos-generate demo_guides lenti_bsmbi_u6_default --apply-5pr
 
 > The guide set `demo_guides` and oligo set `demo_lenti` are stored with deterministic ids.
 
-### Step 2: Export one CSV table and one protocol text file to
+### Step 2: Export one CSV table and one protocol text file to verify both machine and human output forms
 
 **GUI**
 
 Export one CSV table and one protocol text file to verify both machine and human output forms.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli guides oligos-export demo_guides exports/demo_guides.csv --format csv_table --oligo-set demo_lenti
@@ -86,13 +88,13 @@ gentle_cli guides protocol-export demo_guides exports/demo_guides.protocol.txt -
 
 > The CSV and protocol text files are written under `exports/` for machine and bench-facing review.
 
-### Step 3: Inspect the exported files and confirm they match current guide/oligo
+### Step 3: Inspect the exported files and confirm they match current guide/oligo set IDs
 
 **GUI**
 
 Inspect the exported files and confirm they match current guide/oligo set IDs.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli guides oligos-show demo_lenti

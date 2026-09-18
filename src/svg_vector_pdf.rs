@@ -9,7 +9,8 @@
 use crate::{
     digest_utils::sha256_hex_bytes,
     svg_png::{
-        SVG_FONT_DIR_ENV, SVG_FONT_FILE_ENV, SVG_MONOSPACE_FAMILY_ENV, SVG_SANS_SERIF_FAMILY_ENV,
+        SVG_FONT_DIR_ENV, SVG_FONT_FILE_ENV, SVG_MONOSPACE_FAMILIES, SVG_MONOSPACE_FAMILY_ENV,
+        SVG_SANS_SERIF_FAMILIES, SVG_SANS_SERIF_FAMILY_ENV, SVG_SERIF_FAMILIES,
         SVG_SERIF_FAMILY_ENV, SvgPngRenderOptions, SvgUsedFontIdentity,
         strip_dotplot_metadata_text,
     },
@@ -129,25 +130,14 @@ fn choose_family(
 }
 
 fn configure_generic_families(fontdb: &mut usvg::fontdb::Database) {
-    if let Some(family) = choose_family(
-        fontdb,
-        SVG_MONOSPACE_FAMILY_ENV,
-        &["DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono"],
-    ) {
+    if let Some(family) = choose_family(fontdb, SVG_MONOSPACE_FAMILY_ENV, SVG_MONOSPACE_FAMILIES) {
         fontdb.set_monospace_family(family);
     }
-    if let Some(family) = choose_family(
-        fontdb,
-        SVG_SANS_SERIF_FAMILY_ENV,
-        &["DejaVu Sans", "Liberation Sans", "Noto Sans", "Arial"],
-    ) {
+    if let Some(family) = choose_family(fontdb, SVG_SANS_SERIF_FAMILY_ENV, SVG_SANS_SERIF_FAMILIES)
+    {
         fontdb.set_sans_serif_family(family);
     }
-    if let Some(family) = choose_family(
-        fontdb,
-        SVG_SERIF_FAMILY_ENV,
-        &["DejaVu Serif", "Liberation Serif", "Noto Serif", "Times"],
-    ) {
+    if let Some(family) = choose_family(fontdb, SVG_SERIF_FAMILY_ENV, SVG_SERIF_FAMILIES) {
         fontdb.set_serif_family(family);
     }
 }
@@ -273,8 +263,9 @@ pub fn render_svg_to_vector_pdf_bytes_audited(
         .to_int_size()
         .scale_by(options.scale)
         .ok_or_else(|| format!("Could not scale SVG size by {}", options.scale))?;
-    let page_width_pt = size.width() as f32 * 72.0 / 96.0;
-    let page_height_pt = size.height() as f32 * 72.0 / 96.0;
+    // PDF geometry retains fractional SVG dimensions; the pixel summary does not.
+    let page_width_pt = tree.size().width() * options.scale * 72.0 / 96.0;
+    let page_height_pt = tree.size().height() * options.scale * 72.0 / 96.0;
     let conversion = svg2pdf::ConversionOptions {
         compress: true,
         raster_scale: 1.5 * options.scale,
@@ -363,8 +354,8 @@ pub fn render_svg_files_to_vector_pdf(
             .to_int_size()
             .scale_by(options.scale)
             .ok_or_else(|| format!("Could not scale SVG size by {}", options.scale))?;
-        let page_width_pt = size.width() as f32 * 72.0 / 96.0;
-        let page_height_pt = size.height() as f32 * 72.0 / 96.0;
+        let page_width_pt = tree.size().width() * options.scale * 72.0 / 96.0;
+        let page_height_pt = tree.size().height() * options.scale * 72.0 / 96.0;
         let conversion = svg2pdf::ConversionOptions {
             compress: true,
             raster_scale: 1.5 * options.scale,
@@ -520,5 +511,75 @@ mod tests {
                 .windows(b"/Subtype /Image".len())
                 .any(|window| window == b"/Subtype /Image")
         );
+    }
+
+    #[test]
+    fn vector_pdf_fractional_geometry_matches_both_media_boxes_and_audits() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100.5" height="50.5"><path d="M0 0L100 50" stroke="black"/></svg>"#;
+        let options = SvgPngRenderOptions {
+            scale: 2.0,
+            ..Default::default()
+        };
+        let single = render_svg_to_vector_pdf_bytes_audited(svg, options).unwrap();
+        assert_eq!(single.page_width_pt, "150.75");
+        assert_eq!(single.page_height_pt, "75.75");
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("fractional.svg");
+        let output = directory.path().join("fractional.pdf");
+        std::fs::write(&input, svg).unwrap();
+        let set = render_svg_files_to_vector_pdf(&[&input], &output, options).unwrap();
+        assert_eq!(set.pages[0].page_width_pt, single.page_width_pt);
+        assert_eq!(set.pages[0].page_height_pt, single.page_height_pt);
+        for bytes in [single.bytes, std::fs::read(output).unwrap()] {
+            assert!(String::from_utf8_lossy(&bytes).contains("/MediaBox [0 0 150.75 75.75]"));
+        }
+    }
+
+    #[test]
+    fn vector_pdf_set_invalid_later_page_leaves_existing_output_untouched() {
+        let directory = tempfile::tempdir().unwrap();
+        let first = directory.path().join("valid.svg");
+        let second = directory.path().join("invalid.svg");
+        let output = directory.path().join("existing.pdf");
+        std::fs::write(
+            &first,
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"/>"#,
+        )
+        .unwrap();
+        std::fs::write(&second, "not SVG").unwrap();
+        std::fs::write(&output, "existing artifact").unwrap();
+        assert!(
+            render_svg_files_to_vector_pdf(
+                &[&first, &second],
+                &output,
+                SvgPngRenderOptions::default()
+            )
+            .is_err()
+        );
+        assert_eq!(
+            std::fs::read_to_string(output).unwrap(),
+            "existing artifact"
+        );
+    }
+
+    #[test]
+    fn vector_pdf_generic_font_identities_match_the_raster_backend() {
+        let directory = tempfile::tempdir().unwrap();
+        let input = directory.path().join("font-parity.svg");
+        for family in ["monospace", "sans-serif", "serif"] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="300" height="50"><text x="10" y="25" font-family="{family}">TSS genomic 12345</text></svg>"#
+            );
+            std::fs::write(&input, &svg).unwrap();
+            let options = SvgPngRenderOptions::default();
+            let (_, raster_fonts) =
+                crate::svg_png::render_svg_file_to_png_bytes_audited(&input, options).unwrap();
+            let vector = render_svg_to_vector_pdf_bytes_audited(&svg, options).unwrap();
+            assert!(!vector.font_identities.is_empty());
+            assert_eq!(
+                vector.font_identities, raster_fonts,
+                "generic family {family}"
+            );
+        }
     }
 }

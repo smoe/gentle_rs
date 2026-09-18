@@ -46,12 +46,17 @@ engine-owned dotplot operation; only the way you express the request changes.
 
 **GUI:** follow the five steps below.
 
-**CLI / GUI Shell:** after the two sequences are loaded, run:
+**CLI (terminal):** after both sequences are loaded in the CLI's state, run:
 
 ```bash
 gentle_cli shell 'dotplot compute tp73_cdna --reference-seq tp73_genomic --mode pair_forward --word-size 7 --step 1 --max-mismatches 0 --id tp73_cdna_vs_genomic_dotplot'
 gentle_cli shell 'dotplot show tp73_cdna_vs_genomic_dotplot'
 ```
+
+**GUI Shell:** to work on the currently open GUI project, use the commands
+inside the quotes, without `gentle_cli shell` or the outer quotes. Terminal
+commands use `.gentle_state.json` by default; pass `--project PATH` to work on
+a saved project instead. A separate CLI does not inherit unsaved GUI state.
 
 **Ask the inner agent:**
 

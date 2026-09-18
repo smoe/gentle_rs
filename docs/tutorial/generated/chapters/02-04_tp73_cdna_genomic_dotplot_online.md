@@ -45,15 +45,17 @@ This chapter captures a practical cDNA-vs-genomic verification route for transcr
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Fetch GenBank accession NM_001126241
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Fetch GenBank accession NM_001126241.3 as tp73_cdna
 
 **GUI**
 
 Fetch GenBank accession `NM_001126241.3` as `tp73_cdna`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'genbank fetch NM_001126241.3 --as-id tp73_cdna'
@@ -67,13 +69,13 @@ gentle_cli shell 'genbank fetch NM_001126241.3 --as-id tp73_cdna'
 
 > The GenBank route imports the TP73 cDNA accession under the stable id `tp73_cdna`.
 
-### Step 2: Prepare Human GRCh38 Ensembl 116
+### Step 2: Prepare Human GRCh38 Ensembl 116, retrieve gene TP73 as tp73_genomic
 
 **GUI**
 
 Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 GENTLE_TEST_ONLINE=1 gentle_cli genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
@@ -88,13 +90,13 @@ gentle_cli genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --occurrence 1 -
 
 > The reference is prepared if needed and TP73 is extracted into the stable genomic sequence id `tp73_genomic`.
 
-### Step 3: Open tp73_cdna
+### Step 3: Open tp73_cdna, switch to Dotplot map, set pair mode against tp73_genomic, and compute with word<=7, step=1, mismatches=0
 
 **GUI**
 
 Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'dotplot compute tp73_cdna --reference-seq tp73_genomic --mode pair_forward --word-size 7 --step 1 --max-mismatches 0 --id tp73_cdna_vs_genomic_dotplot'

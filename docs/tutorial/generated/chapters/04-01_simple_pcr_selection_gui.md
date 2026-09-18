@@ -52,7 +52,9 @@ See also: guided walkthrough [docs/tutorial/04-01_simple_pcr_selection_gui.md](.
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
 ### Step 1: Open the tutorial project
 
@@ -60,7 +62,7 @@ The three routes below describe the same operation. CLI snippets assume an insta
 
 Open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/simple_pcr_selection_gui.json
@@ -84,7 +86,7 @@ The compact 800-base extract keeps the beginner exercise bounded while the full 
 
 Open `tp73_locus` (800 bases) and select `=201 .. 600` in linear mode.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 # GUI-only selection gesture. For a fully scripted primer-design payload, use Chapter 13's batch PCR route.
@@ -108,7 +110,7 @@ The core ROI describes the biology that must be covered; it is not a guess at th
 
 Right-click the selection and choose `Simple PCR from selection`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'ui open pcr-design'
@@ -140,7 +142,7 @@ GUI, shell and agent callers converge on the same engine-owned PCR Designer inte
 
 In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 # The scripted equivalent is a DesignPrimerPairs request with explicit core_start/core_end and flank limits.
@@ -168,7 +170,7 @@ These two limits control where primers may move and how long the product may bec
 
 Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'primers list-reports'

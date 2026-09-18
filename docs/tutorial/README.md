@@ -21,10 +21,13 @@ You do not need to understand the tutorial machinery before beginning.
 - **Replay an exact, machine-checked workflow:** open the
   [executable reference hub](./generated/README.md).
 
-Within generated walkthroughs, each operation keeps **GUI**, **CLI / GUI
-Shell**, and **Ask the inner agent** together. The inner-agent examples ask for
-a proposed command and expected result for review; they do not authorize
-execution.
+Within generated walkthroughs, each step keeps **GUI**, **CLI (terminal)**,
+and **Ask the inner agent** together. Related commands may inspect a result
+rather than perform the GUI action. In the GUI Shell, enter the shared command
+inside `gentle_cli shell '...'`, without that wrapper; other terminal commands
+are not automatically GUI Shell commands. UI intents open windows only in the
+GUI, and a separate CLI does not inherit unsaved GUI state. Inner-agent examples
+ask for a proposed command and expected result, not execution permission.
 
 ## How This Guide Is Organized
 

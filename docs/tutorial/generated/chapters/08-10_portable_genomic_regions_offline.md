@@ -60,15 +60,17 @@ The reason for selecting a region is equally important, but it is not the geomet
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open the pinned SERPINE1 tutorial locus and select a short
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the pinned SERPINE1 tutorial locus and select a short genomic span in the DNA view. Open its context menu and choose Save/share selected genomic region
 
 **GUI**
 
 Open the pinned SERPINE1 tutorial locus and select a short genomic span in the DNA view. Open its context menu and choose `Save/share selected genomic region...`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/portable_genomic_regions_offline.json
@@ -82,13 +84,13 @@ gentle_cli workflow @docs/examples/workflows/portable_genomic_regions_offline.js
 
 > The selected local span becomes one canonical GRCh38 genomic interval; local and genomic coordinates are both retained and explicitly labelled.
 
-### Step 2: In Saved genomic regions
+### Step 2: In Saved genomic regions, choose a set ID, label the selection, and save it. Confirm the table shows assembly, 1-based inclusive coordinates, strand, manual_span, and evidence availability
 
 **GUI**
 
 In `Saved genomic regions`, choose a set ID, label the selection, and save it. Confirm the table shows assembly, 1-based inclusive coordinates, strand, `manual_span`, and evidence availability.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '.regions[] | {region_id,label,interval,selection_method,evidence,identity_sha256,content_sha256}' artifacts/portable_genomic_regions.region_set.json
@@ -102,13 +104,13 @@ jq '.regions[] | {region_id,label,interval,selection_method,evidence,identity_sh
 
 > Saving the manual span uses the shared `CaptureGenomicRegion` operation rather than a GUI-only feature annotation.
 
-### Step 3: Use Copy human coordinates (1-based inclusive)
+### Step 3: Use Copy human coordinates (1-based inclusive), then Copy BED row (0-based half-open). Compare the boundaries: BED start is one less; the inclusive human end equals the BED-exclusive end
 
 **GUI**
 
 Use `Copy human coordinates (1-based inclusive)`, then `Copy BED row (0-based half-open)`. Compare the boundaries: BED start is one less; the inclusive human end equals the BED-exclusive end.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 cat artifacts/portable_genomic_regions.bed
@@ -122,13 +124,13 @@ cat artifacts/portable_genomic_regions.bed
 
 > The human representation is 1-based inclusive and the BED representation is 0-based half-open; a one-base region remains one base in both forms.
 
-### Step 4: Copy the canonical ROI JSON and confirm it contains zero_based_half_open
+### Step 4: Copy the canonical ROI JSON and confirm it contains zero_based_half_open, the GRCh38 assembly/accession, contig identity, local projection, selection method, and both identity and content digests
 
 **GUI**
 
 Copy the canonical ROI JSON and confirm it contains `zero_based_half_open`, the GRCh38 assembly/accession, contig identity, local projection, selection method, and both identity and content digests.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{bed_sha256,coordinate_convention,columns,region_set_sha256:.region_set.content_sha256}' artifacts/portable_genomic_regions.bed.manifest.json
@@ -142,13 +144,13 @@ jq '{bed_sha256,coordinate_convention,columns,region_set_sha256:.region_set.cont
 
 > Canonical JSON carries the complete portable record. Label and notes can change the content digest without changing the immutable identity digest.
 
-### Step 5: Capture the synthetic Ensembl regulatory row from the Locus figure
+### Step 5: Capture the synthetic Ensembl regulatory row from the Locus figure table and the synthetic CUT&RUN support window from its support-window table. Confirm the three rows retain different methods and evidence statements
 
 **GUI**
 
 Capture the synthetic Ensembl regulatory row from the Locus figure table and the synthetic CUT&RUN support window from its support-window table. Confirm the three rows retain different methods and evidence statements.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-region-import.json shell 'regions import {"path":"artifacts/portable_genomic_regions.bed","format":"bed","manifest_path":"artifacts/portable_genomic_regions.bed.manifest.json"}'
@@ -162,13 +164,13 @@ gentle_cli --state /tmp/gentle-region-import.json shell 'regions import {"path":
 
 > The Ensembl and CUT&RUN captures retain source IDs and conservative non-claims rather than becoming generic prose or causal assertions.
 
-### Step 6: Export JSON
+### Step 6: Export JSON... for lossless exchange, then BED + manifest... for a BED6 consumer. Keep the manifest beside the BED when the region set may return to GENtle
 
 **GUI**
 
 Export `JSON...` for lossless exchange, then `BED + manifest...` for a BED6 consumer. Keep the manifest beside the BED when the region set may return to GENtle.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-region-import.json shell 'regions list'
@@ -182,13 +184,13 @@ gentle_cli --state /tmp/gentle-region-import.json shell 'regions list'
 
 > The BED manifest binds the exact BED bytes, BED6 column contract, complete region set, assembly identity, evidence, and region-set digest.
 
-### Step 7: Select serpine1_regions in the Locus figure Saved region set IDs
+### Step 7: Select serpine1_regions in the Locus figure Saved region set IDs field and compose the view. Confirm the three compact saved-region overlays align with the transcript/CDS, occupancy, TP73 score, and reporter rows
 
 **GUI**
 
 Select `serpine1_regions` in the Locus figure `Saved region set IDs` field and compose the view. Confirm the three compact saved-region overlays align with the transcript/CDS, occupancy, TP73 score, and reporter rows.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-region-import.json shell 'regions inspect {"set_id":"serpine1_regions","region_id":"serpine1_manual_candidate"}'
@@ -208,7 +210,7 @@ gentle_cli --state /tmp/gentle-region-import.json shell 'regions inspect {"set_i
 
 > SVG text labels: `SERPINE1 promoter-reporter architectures | 5' -> 3' display, genomic 101121158 -> 101139263 | strand + | assembly GRCh38 | annotation Ensembl 116 pinned public fixture | upstrea...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
-### Step 8: Import the BED
+### Step 8: Import the BED with its manifest into a fresh project and inspect the region-set digest. Try the BED alone only with an explicit assembly/reference request; GENtle does not infer GRCh38 from chromosome 7
 
 **GUI**
 

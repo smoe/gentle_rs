@@ -56,15 +56,17 @@ The second half resolves TP73 ortholog promoter windows from a local `gentle.ort
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open the tutorial chapter and inspect the retained JSON artifacts
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the tutorial chapter and inspect the retained JSON artifacts under docs/tutorial/generated/artifacts/promoter_gene_set_ortholog_cohort_offline/
 
 **GUI**
 
 Open the tutorial chapter and inspect the retained JSON artifacts under `docs/tutorial/generated/artifacts/promoter_gene_set_ortholog_cohort_offline/`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/promoter_gene_set_ortholog_cohort_offline.json
@@ -78,13 +80,13 @@ gentle_cli workflow @docs/examples/workflows/promoter_gene_set_ortholog_cohort_o
 
 > The canonical workflow prepares the three synthetic local genomes into a temporary tutorial cache and writes four retained JSON artifacts.
 
-### Step 2: Use the Promoter design and gene-set inspection concepts from the
+### Step 2: Use the Promoter design and gene-set inspection concepts from the previous promoter chapters; this slice is headless because it demonstrates cohort contracts rather than a new GUI-only workflow
 
 **GUI**
 
 Use the Promoter design and gene-set inspection concepts from the previous promoter chapters; this slice is headless because it demonstrates cohort contracts rather than a new GUI-only workflow.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'gene-sets promoter-cohort HumanPromoterToy --members TP73,E2F1,PATZ1 --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --genome-catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --output /tmp/gene_set_promoter_cohort.json'
@@ -98,13 +100,13 @@ gentle_cli shell 'gene-sets promoter-cohort HumanPromoterToy --members TP73,E2F1
 
 > `gene_set_promoter_cohort.json` records an explicit-member source and `relationship: co_regulated` for TP73, E2F1, and PATZ1 promoter windows.
 
-### Step 3: Compare the relationship field in gene_set_promoter_cohort
+### Step 3: Compare the relationship field in gene_set_promoter_cohort.json with the relationship_flags in gene_set_promoter_cohort_comparison.json
 
 **GUI**
 
 Compare the `relationship` field in `gene_set_promoter_cohort.json` with the `relationship_flags` in `gene_set_promoter_cohort_comparison.json`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'genomes promoter-cohort-comparison HumanPromoterToy --cohort-label synthetic_tp73_e2f1_patz1_co_regulated_review --cohort-kind co-regulated --gene TP73 --gene E2F1 --gene PATZ1 --motif SP1 --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --path /tmp/gene_set_promoter_cohort_comparison.json'
@@ -118,13 +120,13 @@ gentle_cli shell 'genomes promoter-cohort-comparison HumanPromoterToy --cohort-l
 
 > `gene_set_promoter_cohort_comparison.json` contains at least one `unexpected_divergence` flag involving the deliberately motif-poor PATZ1 promoter.
 
-### Step 4: Open ortholog_promoter_cohort
+### Step 4: Open ortholog_promoter_cohort.json and confirm that the local ortholog resource resolved human, mouse, and rat promoter rows
 
 **GUI**
 
 Open `ortholog_promoter_cohort.json` and confirm that the local ortholog resource resolved human, mouse, and rat promoter rows.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'orthologs resolve-promoter-cohort --anchor-species "Homo sapiens" --anchor-genome HumanPromoterToy --anchor-gene TP73 --target-species "Mus musculus" --target-species "Rattus norvegicus" --target-genome "Mus musculus=MousePromoterToy" --target-genome "Rattus norvegicus=RatPromoterToy" --transcript "Homo sapiens=TX_TP73_HUMAN" --transcript "Mus musculus=TX_TRP73_MOUSE" --transcript "Rattus norvegicus=TX_TP73_RAT" --orthologs docs/examples/assets/promoter_cohort_ortholog_demo/ortholog_resource.json --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_ortholog_demo/genomes.json --cache-dir /tmp/gentle-promoter-cohort-demo-cache --path /tmp/ortholog_promoter_cohort.json'
@@ -138,13 +140,13 @@ gentle_cli shell 'orthologs resolve-promoter-cohort --anchor-species "Homo sapie
 
 > `ortholog_promoter_cohort.json` uses the local `gentle.ortholog_resource.v1` fixture to resolve Homo sapiens TP73, Mus musculus Trp73, and Rattus norvegicus Tp73 promoter windows.
 
-### Step 5: Open ortholog_promoter_comparison
+### Step 5: Open ortholog_promoter_comparison.json and inspect the relationship_flags that mark the synthetic mouse-labeled Trp73 promoter as divergent from the co-regulated expectation
 
 **GUI**
 
 Open `ortholog_promoter_comparison.json` and inspect the `relationship_flags` that mark the synthetic mouse-labeled Trp73 promoter as divergent from the co-regulated expectation.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'orthologs promoter-comparison --cohort /tmp/ortholog_promoter_cohort.json --motif SP1 --relationship co-regulated --path /tmp/ortholog_promoter_comparison.json'

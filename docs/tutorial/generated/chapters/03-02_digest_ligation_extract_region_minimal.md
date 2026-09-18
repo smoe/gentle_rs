@@ -42,7 +42,9 @@ This chapter models a compact molecular cloning routine in one chain: digest sou
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
 ### Step 1: Start from the loaded FASTA/plasmid sequence in the GUI
 
@@ -50,7 +52,7 @@ The three routes below describe the same operation. CLI snippets assume an insta
 
 Start from the loaded FASTA/plasmid sequence in the GUI.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
@@ -70,7 +72,7 @@ gentle_cli op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}
 
 Run digest with selected enzymes and inspect available products.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli op '{"Digest":{"input":"pgex_fasta","enzymes":["BamHI","EcoRI"],"output_prefix":"d"}}'
@@ -84,13 +86,13 @@ gentle_cli op '{"Digest":{"input":"pgex_fasta","enzymes":["BamHI","EcoRI"],"outp
 
 > The digest step creates deterministic fragment IDs with the `d` prefix.
 
-### Step 3: Run ligation with the intended inputs
+### Step 3: Run ligation with the intended inputs, then extract a focused region from the ligation result
 
 **GUI**
 
 Run ligation with the intended inputs, then extract a focused region from the ligation result.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json

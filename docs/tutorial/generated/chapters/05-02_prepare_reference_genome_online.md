@@ -43,7 +43,9 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
 ### Step 1: Open prepared-reference controls from the GUI menus
 
@@ -51,7 +53,7 @@ The three routes below describe the same operation. CLI snippets assume an insta
 
 Open prepared-reference controls from the GUI menus.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 GENTLE_TEST_ONLINE=1 gentle_cli workflow @docs/examples/workflows/prepare_reference_genome_online.json
@@ -65,13 +67,13 @@ GENTLE_TEST_ONLINE=1 gentle_cli workflow @docs/examples/workflows/prepare_refere
 
 > The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.
 
-### Step 2: Select the target genome and start preparation
+### Step 2: Select the target genome and start preparation with explicit cache settings
 
 **GUI**
 
 Select the target genome and start preparation with explicit cache settings.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
@@ -85,13 +87,13 @@ gentle_cli genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.js
 
 > The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.
 
-### Step 3: Confirm prepared status in the GUI
+### Step 3: Confirm prepared status in the GUI before attempting extraction workflows
 
 **GUI**
 
 Confirm prepared status in the GUI before attempting extraction workflows.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes

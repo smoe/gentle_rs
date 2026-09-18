@@ -42,15 +42,17 @@ Contributing effectively requires keeping biological behavior, command contracts
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Run the baseline sequence routine in the GUI and inspect
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Run the baseline sequence routine in the GUI and inspect resulting lineage entries
 
 **GUI**
 
 Run the baseline sequence routine in the GUI and inspect resulting lineage entries.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/contribute_gentle_development_baseline.json
@@ -64,13 +66,13 @@ gentle_cli workflow @docs/examples/workflows/contribute_gentle_development_basel
 
 > The baseline workflow creates `contrib_seed`, `contrib_branch`, and `contrib_branch_rc` through the shared engine.
 
-### Step 2: Locate the same routine as a canonical workflow JSON example
+### Step 2: Locate the same routine as a canonical workflow JSON example in docs/examples/workflows
 
 **GUI**
 
 Locate the same routine as a canonical workflow JSON example in `docs/examples/workflows`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 cargo run --bin gentle_examples_docs -- --check
@@ -84,13 +86,13 @@ cargo run --bin gentle_examples_docs -- --check
 
 > Example generation/checking confirms the canonical workflow JSON remains parseable and adapter snippets are current.
 
-### Step 3: Use this mapping to validate that your planned code change
+### Step 3: Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface
 
 **GUI**
 
 Use this mapping to validate that your planned code change affects shared engine behavior, not only one interface.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 cargo check -q

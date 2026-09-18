@@ -42,15 +42,17 @@ Many investigations start with "which exact genomic interval should I look at" r
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open File -> Prepare Reference Genome
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open File -> Prepare Reference Genome..., set catalog to assets/genomes.json, choose LocalProject, and prepare it
 
 **GUI**
 
 Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli genomes prepare LocalProject --catalog assets/genomes.json --cache-dir cache/localproject
@@ -64,13 +66,13 @@ gentle_cli genomes prepare LocalProject --catalog assets/genomes.json --cache-di
 
 > The offline `LocalProject` reference is prepared into `cache/localproject` without network access.
 
-### Step 2: Open File -> Retrieve Genome Sequence
+### Step 2: Open File -> Retrieve Genome Sequence..., use Gene filter (regex) to narrow annotation hits, pick one gene match, and extract it
 
 **GUI**
 
 Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20
@@ -85,13 +87,13 @@ gentle_cli genomes extract-gene LocalProject etpC --occurrence 1 --output-id loc
 
 > The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.
 
-### Step 3: In the resulting DNA window
+### Step 3: In the resulting DNA window, use the Extend 5' / Extend 3' anchor controls (next to Genome anchor) to add flanking context
 
 **GUI**
 
 In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject

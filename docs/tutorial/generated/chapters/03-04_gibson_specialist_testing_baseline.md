@@ -44,15 +44,17 @@ See also: guided walkthrough [docs/tutorial/03-05_gibson_specialist_testing_gui.
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open the Gibson specialist starter project from File -> Open
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the Gibson specialist starter project from File -> Open Tutorial Project
 
 **GUI**
 
 Open the Gibson specialist starter project from `File -> Open Tutorial Project...`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
@@ -72,7 +74,7 @@ gentle_cli workflow @docs/examples/workflows/gibson_specialist_testing_baseline.
 
 Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
@@ -86,13 +88,13 @@ gentle_cli workflow @docs/examples/workflows/gibson_specialist_testing_baseline.
 
 > The workflow result contains `gibson_destination_pgex` from `test_files/pGEX-3X.gb` and `gibson_insert_demo` from the tutorial insert FASTA.
 
-### Step 3: Continue in the automatically opened Gibson Specialist Testing Tutorial from
+### Step 3: Continue in the automatically opened Gibson Specialist Testing Tutorial from Step 3 onward
 
 **GUI**
 
 Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 cargo run --bin gentle_examples_docs -- tutorial-catalog-check

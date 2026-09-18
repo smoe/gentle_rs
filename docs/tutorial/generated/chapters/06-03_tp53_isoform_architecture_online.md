@@ -45,7 +45,9 @@ This chapter demonstrates a publication-oriented use case: derive TP53 from a pr
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
 ### Step 1: Prepare Human GRCh38 Ensembl 116 and extract gene TP53 into grch38_tp53
 
@@ -53,7 +55,7 @@ The three routes below describe the same operation. CLI snippets assume an insta
 
 Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 GENTLE_TEST_ONLINE=1 gentle_cli genomes prepare "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600
@@ -68,13 +70,13 @@ gentle_cli genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 -
 
 > The reference is prepared if needed and TP53 is extracted into the stable anchored sequence id `grch38_tp53`.
 
-### Step 2: Open DNA window Engine Ops -> Isoform architecture panels
+### Step 2: Open DNA window Engine Ops -> Isoform architecture panels, import assets/panels/tp53_isoforms_v1.json
 
 **GUI**
 
 Open DNA window `Engine Ops -> Isoform architecture panels`, import `assets/panels/tp53_isoforms_v1.json`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'
@@ -95,7 +97,7 @@ gentle_cli shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'
 
 Open `Isoform Expert` and export SVG from the same panel context.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'

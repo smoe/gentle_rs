@@ -40,15 +40,17 @@ In real cloning projects, people often say "the sequence" even when they mean di
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open GENtle and load test_files/pGEX_3X
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open GENtle and load test_files/pGEX_3X.fa via File -> Open
 
 **GUI**
 
 Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
@@ -62,13 +64,13 @@ gentle_cli op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}
 
 > The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.
 
-### Step 2: In the DNA window
+### Step 2: In the DNA window, create a branch copy from the loaded sequence (Branch action)
 
 **GUI**
 
 In the DNA window, create a branch copy from the loaded sequence (Branch action).
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli op '{"Branch":{"input":"pgex_fasta","output_id":"pgex_fasta_branch"}}'
@@ -86,13 +88,13 @@ gentle_cli op '{"Branch":{"input":"pgex_fasta","output_id":"pgex_fasta_branch"}}
 
 *Figure: Interaction context for creating a branch while preserving the original sequence. Screenshot captured 2026-09-08.*
 
-### Step 3: Apply reverse-complement to the branch and confirm a new sequence
+### Step 3: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead
 
 **GUI**
 
 Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli op '{"ReverseComplement":{"input":"pgex_fasta_branch","output_id":"pgex_fasta_branch_rc"}}'

@@ -34,6 +34,31 @@ pub const SVG_SANS_SERIF_FAMILY_ENV: &str = "GENTLE_SVG_SANS_SERIF_FAMILY";
 /// Optional family name used for SVG generic `serif` text.
 pub const SVG_SERIF_FAMILY_ENV: &str = "GENTLE_SVG_SERIF_FAMILY";
 
+// Keep generic-family selection identical in the raster and vector backends.
+pub(crate) const SVG_MONOSPACE_FAMILIES: &[&str] = &[
+    "DejaVu Sans Mono",
+    "Liberation Mono",
+    "Noto Sans Mono",
+    "Courier New",
+    "Menlo",
+    "Monaco",
+    "Consolas",
+];
+pub(crate) const SVG_SANS_SERIF_FAMILIES: &[&str] = &[
+    "DejaVu Sans",
+    "Liberation Sans",
+    "Noto Sans",
+    "Arial",
+    "Helvetica",
+];
+pub(crate) const SVG_SERIF_FAMILIES: &[&str] = &[
+    "DejaVu Serif",
+    "Liberation Serif",
+    "Noto Serif",
+    "Times New Roman",
+    "Times",
+];
+
 /// Default fixed raster scale for messenger/chat-facing ClawBio figures.
 pub const DEFAULT_CLAWBIO_PNG_SCALE: f32 = 2.0;
 
@@ -173,45 +198,17 @@ fn choose_font_family(
 }
 
 fn configure_generic_font_families(fontdb: &mut usvg::fontdb::Database) {
-    if let Some(family) = choose_font_family(
-        fontdb,
-        SVG_MONOSPACE_FAMILY_ENV,
-        &[
-            "DejaVu Sans Mono",
-            "Liberation Mono",
-            "Noto Sans Mono",
-            "Courier New",
-            "Menlo",
-            "Monaco",
-            "Consolas",
-        ],
-    ) {
+    if let Some(family) =
+        choose_font_family(fontdb, SVG_MONOSPACE_FAMILY_ENV, SVG_MONOSPACE_FAMILIES)
+    {
         fontdb.set_monospace_family(family);
     }
-    if let Some(family) = choose_font_family(
-        fontdb,
-        SVG_SANS_SERIF_FAMILY_ENV,
-        &[
-            "DejaVu Sans",
-            "Liberation Sans",
-            "Noto Sans",
-            "Arial",
-            "Helvetica",
-        ],
-    ) {
+    if let Some(family) =
+        choose_font_family(fontdb, SVG_SANS_SERIF_FAMILY_ENV, SVG_SANS_SERIF_FAMILIES)
+    {
         fontdb.set_sans_serif_family(family);
     }
-    if let Some(family) = choose_font_family(
-        fontdb,
-        SVG_SERIF_FAMILY_ENV,
-        &[
-            "DejaVu Serif",
-            "Liberation Serif",
-            "Noto Serif",
-            "Times New Roman",
-            "Times",
-        ],
-    ) {
+    if let Some(family) = choose_font_family(fontdb, SVG_SERIF_FAMILY_ENV, SVG_SERIF_FAMILIES) {
         fontdb.set_serif_family(family);
     }
 }

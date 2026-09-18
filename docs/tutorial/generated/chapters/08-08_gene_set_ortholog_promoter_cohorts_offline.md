@@ -55,15 +55,17 @@ The second half uses a local `gentle.ortholog_resource.v1` fixture mapping synth
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open the generated artifact directory
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the generated artifact directory for this chapter after running tutorial generation
 
 **GUI**
 
 Open the generated artifact directory for this chapter after running tutorial generation.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/gene_set_ortholog_promoter_cohorts_offline.json
@@ -77,13 +79,13 @@ gentle_cli workflow @docs/examples/workflows/gene_set_ortholog_promoter_cohorts_
 
 > The canonical workflow prepares `TutorialHumanPromoterToy` and `TutorialMousePromoterToy` from local FASTA/GTF fixtures.
 
-### Step 2: Inspect promoter_cohort_tutorial
+### Step 2: Inspect promoter_cohort_tutorial.gene_set_promoter_cohort.json to see the resolved gene-set members and promoter windows
 
 **GUI**
 
 Inspect `promoter_cohort_tutorial.gene_set_promoter_cohort.json` to see the resolved gene-set members and promoter windows.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'gene-sets promoter-cohort TutorialHumanPromoterToy --group tutorial_p73_promoter_cohort --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --gene-group-catalog docs/examples/assets/promoter_cohort_tutorial_gene_groups.json --genome-catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/gene_set_promoter_cohort.json'
@@ -97,13 +99,13 @@ gentle_cli shell 'gene-sets promoter-cohort TutorialHumanPromoterToy --group tut
 
 > `gene_set_promoter_cohort.json` resolves two reviewed gene-set members and records `relationship: co_regulated`.
 
-### Step 3: Inspect promoter_cohort_tutorial
+### Step 3: Inspect promoter_cohort_tutorial.gene_set_promoter_comparison.json to see the co-regulated expectation and the unexpected_divergence relationship flag
 
 **GUI**
 
 Inspect `promoter_cohort_tutorial.gene_set_promoter_comparison.json` to see the co-regulated expectation and the `unexpected_divergence` relationship flag.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'genomes promoter-cohort-comparison TutorialHumanPromoterToy --cohort-label tutorial_p73_gene_set_co_regulated --cohort-kind co_regulated --gene TP73 --gene TP73D --motif SP1 --upstream-bp 40 --downstream-bp 10 --score-kind llr_background_tail_log10 --catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/gene_set_promoter_comparison.json'
@@ -117,13 +119,13 @@ gentle_cli shell 'genomes promoter-cohort-comparison TutorialHumanPromoterToy --
 
 > `gene_set_promoter_comparison.json` contains a non-empty `relationship_flags[]` row with `flag_kind: unexpected_divergence`.
 
-### Step 4: Inspect promoter_cohort_tutorial
+### Step 4: Inspect promoter_cohort_tutorial.ortholog_promoter_cohort.json to compare human TP73 and mouse Trp73 promoter window geometry
 
 **GUI**
 
 Inspect `promoter_cohort_tutorial.ortholog_promoter_cohort.json` to compare human TP73 and mouse Trp73 promoter window geometry.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'orthologs resolve-promoter-cohort --anchor-species human --anchor-genome TutorialHumanPromoterToy --anchor-gene TP73 --target-species mouse --target-genome mouse=TutorialMousePromoterToy --transcript human=TX_HUMAN_TP73 --transcript mouse=TX_MOUSE_TRP73 --orthologs docs/examples/assets/promoter_cohort_tutorial_orthologs.json --relationship co-regulated --upstream-bp 40 --downstream-bp 10 --catalog docs/examples/assets/promoter_cohort_tutorial_genomes.json --cache-dir /tmp/gentle-promoter-cohort-cache --path /tmp/ortholog_promoter_cohort.json'
@@ -137,13 +139,13 @@ gentle_cli shell 'orthologs resolve-promoter-cohort --anchor-species human --anc
 
 > `ortholog_promoter_cohort.json` resolves human TP73 and mouse Trp73 promoter windows from the local ortholog resource.
 
-### Step 5: Inspect promoter_cohort_tutorial
+### Step 5: Inspect promoter_cohort_tutorial.ortholog_promoter_comparison.json to see cross-species TFBS evidence kept separate from the relationship flag
 
 **GUI**
 
 Inspect `promoter_cohort_tutorial.ortholog_promoter_comparison.json` to see cross-species TFBS evidence kept separate from the relationship flag.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli shell 'orthologs promoter-comparison --cohort /tmp/ortholog_promoter_cohort.json --motif SP1 --score-kind llr_background_tail_log10 --relationship co-regulated --path /tmp/ortholog_promoter_comparison.json'

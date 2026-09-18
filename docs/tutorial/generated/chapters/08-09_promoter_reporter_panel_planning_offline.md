@@ -59,15 +59,17 @@ This chapter stays offline by using a repository-owned 240 bp synthetic MCS-layo
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Open the synthetic MCS vector fixture and synthetic panel source
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the synthetic MCS vector fixture and synthetic panel source sequence in GENtle
 
 **GUI**
 
 Open the synthetic MCS vector fixture and synthetic panel source sequence in GENtle.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json
@@ -81,13 +83,13 @@ gentle_cli workflow @docs/examples/workflows/promoter_reporter_panel_planning_of
 
 > The canonical workflow executes entirely offline and completes the read-only panel plan.
 
-### Step 2: Open Promoter design
+### Step 2: Open Promoter design for the synthetic source and expand Promoter-reporter panel
 
 **GUI**
 
 Open `Promoter design` for the synthetic source and expand `Promoter-reporter panel`.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path":"test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb","as_id":"synthetic_panel_vector"}}'
@@ -101,13 +103,13 @@ gentle_cli --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path"
 
 > The exact 240 bp circular synthetic vector is loaded under the ID required by the request.
 
-### Step 3: Paste the request JSON from docs/examples/assets/promoter_reporter_panel_demo_request
+### Step 3: Paste the request JSON from docs/examples/assets/promoter_reporter_panel_demo_request.json, adjusting only the loaded sequence IDs or output directory when needed
 
 **GUI**
 
 Paste the request JSON from `docs/examples/assets/promoter_reporter_panel_demo_request.json`, adjusting only the loaded sequence IDs or output directory when needed.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path":"docs/examples/assets/promoter_reporter_panel_demo_source.fasta","as_id":"synthetic_panel_source"}}'
@@ -127,13 +129,13 @@ gentle_cli --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path"
 
 > SVG text labels: `GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1) | 240 bp | MCS | luc2_demo | 9 BsrI | 11 HapII, MnoI, MspI | 11 Cfr10 | 12 HpaII`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
-### Step 4: Click Plan panel
+### Step 4: Click Plan panel; confirm the vector validation is verified, the selected motif interval is 88..108, and both wild-type and mutant circular products are listed
 
 **GUI**
 
 Click `Plan panel`; confirm the vector validation is verified, the selected motif interval is `88..108`, and both wild-type and mutant circular products are listed.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-promoter-panel-state.json shell 'promoters panel-plan @docs/examples/assets/promoter_reporter_panel_demo_request.json --path /tmp/gentle-promoter-panel-proposal.json'
@@ -153,13 +155,13 @@ gentle_cli --state /tmp/gentle-promoter-panel-state.json shell 'promoters panel-
 
 > SVG text labels: `MaeII | TthI | NspHI,SphI | AquI,BstSI,Cfr9I,NspIII,NspSAI,XcyI | HapII,MnoI,MspI | AvaI,SecI,XmaI | HpaII | SmaI`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
-### Step 5: Review the shared cloning strategy
+### Step 5: Review the shared cloning strategy, primer readiness, exact output paths, warnings, and the non-claims that motif evidence is not occupancy or functional proof
 
 **GUI**
 
 Review the shared cloning strategy, primer readiness, exact output paths, warnings, and the non-claims that motif evidence is not occupancy or functional proof.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{proposal_id,proposal_digest,vector_validation,cloning_strategy,members,products,artifacts,warnings,nonclaims}' /tmp/gentle-promoter-panel-proposal.json
@@ -173,13 +175,13 @@ jq '{proposal_id,proposal_digest,vector_validation,cloning_strategy,members,prod
 
 > The proposal exposes the vector hash/validation, candidate binding, stated-rule mutation audit, shared strategy, primers, circular product hashes, artifact paths, warnings, and non-claims.
 
-### Step 6: Type the displayed full proposal digest into the approval field
+### Step 6: Type the displayed full proposal digest into the approval field. The materialization button remains disabled for a missing or different digest
 
 **GUI**
 
 Type the displayed full proposal digest into the approval field. The materialization button remains disabled for a missing or different digest.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 DIGEST=$(jq -r .proposal_digest /tmp/gentle-promoter-panel-proposal.json); gentle_cli --state /tmp/gentle-promoter-panel-state.json shell "promoters panel-materialize @/tmp/gentle-promoter-panel-proposal.json --approve $DIGEST"

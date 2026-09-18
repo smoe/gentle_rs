@@ -61,15 +61,17 @@ This offline example uses a pinned public Ensembl-116 SERPINE1 locus only as a r
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
-The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
 
-### Step 1: Run the offline workflow once using a new state-file path
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Run the offline workflow once using a new state-file path and open that saved project. It contains both the pinned locus and the synthetic vector. Reusing an already imported region-set id is deliberately rejected; use a different state file for a fresh run
 
 **GUI**
 
 Run the offline workflow once using a new state-file path and open that saved project. It contains both the pinned locus and the synthetic vector. Reusing an already imported region-set id is deliberately rejected; use a different state file for a fresh run.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-regulatory-fragment-tutorial.json workflow @docs/examples/workflows/regulatory_fragment_panel_planning_offline.json
@@ -83,13 +85,13 @@ gentle_cli --state /tmp/gentle-regulatory-fragment-tutorial.json workflow @docs/
 
 > The workflow resolves the pinned locus, imports the content-addressed region set, validates the exact synthetic vector, and plans entirely offline.
 
-### Step 2: Open regulatory_panel_locus
+### Step 2: Open regulatory_panel_locus, choose Promoter design, and expand Regulatory-fragment panel. Select Candidate A tutorial span, Partner B tutorial span, and Minimal promoter-context tutorial span for their respective roles; leave reference control empty. The selectors show coordinates and Current projection status; exact region-set and ROI digests are available in exported JSON
 
 **GUI**
 
 Open `regulatory_panel_locus`, choose `Promoter design`, and expand `Regulatory-fragment panel`. Select `Candidate A tutorial span`, `Partner B tutorial span`, and `Minimal promoter-context tutorial span` for their respective roles; leave reference control empty. The selectors show coordinates and `Current` projection status; exact region-set and ROI digests are available in exported JSON.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '.request.fragments[] | {fragment_id,role,reference_release,region_id:.region.region_id,interval:.region.interval,projection:.region.local_projection,region_set_content_sha256}' artifacts/regulatory_fragment_panel.plan.json
@@ -109,13 +111,13 @@ jq '.request.fragments[] | {fragment_id,role,reference_release,region_id:.region
 
 > SVG text labels: `SERPINE1 locus evidence | 5' -> 3' display, genomic 101121158 -> 101139263 | strand + | assembly GRCh38 | annotation Ensembl 116 pinned public fixture | upstream 1000 bp | downs...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
-### Step 3: Enter loaded vector id regulatory_panel_vector
+### Step 3: Enter loaded vector id regulatory_panel_vector, vector catalog id Synthetic panel vector, helper catalog path docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json, and reference release Ensembl 116 pinned public fixture. Enable partner, order, orientation, and spacing comparisons, enter spacer GCGCGC, set the member bound to eight and insert-length bound to 1,000 bp, then click Plan exact panel. Confirm eight members and no uncovered questions
 
 **GUI**
 
 Enter loaded vector id `regulatory_panel_vector`, vector catalog id `Synthetic panel vector`, helper catalog path `docs/examples/assets/promoter_reporter_panel_demo_helper_vectors.json`, and reference release `Ensembl 116 pinned public fixture`. Enable partner, order, orientation, and spacing comparisons, enter spacer `GCGCGC`, set the member bound to eight and insert-length bound to 1,000 bp, then click `Plan exact panel`. Confirm eight members and no uncovered questions.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{plan_id,proposal_digest,planning_label,member_count:(.members|length),contrast_count:(.contrasts|length),uncovered_questions,materialization_supported}' artifacts/regulatory_fragment_panel.plan.json
@@ -129,13 +131,13 @@ jq '{plan_id,proposal_digest,planning_label,member_count:(.members|length),contr
 
 > The planner returns exactly eight members and covers all five requested questions without generating unrequested construct combinations.
 
-### Step 4: Inspect A
+### Step 4: Inspect A, B, A+B, the three explicitly requested geometry variants, and both controls. Only the controlled-spacing member should have GCGCGC before B; the other geometries have no spacer. GUI-generated member names and request digests may differ from the workflow's names, but these comparison geometries should agree
 
 **GUI**
 
 Inspect A, B, A+B, the three explicitly requested geometry variants, and both controls. Only the controlled-spacing member should have `GCGCGC` before B; the other geometries have no spacer. GUI-generated member names and request digests may differ from the workflow's names, but these comparison geometries should agree.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '.members[] | {member_id,construct_kind,insert_length_bp,instances:[.instances[]|{fragment_id,orientation,spacer_before,assembled_start_0based,assembled_end_0based_exclusive}],contrast_ids}' artifacts/regulatory_fragment_panel.plan.json
@@ -149,13 +151,13 @@ jq '.members[] | {member_id,construct_kind,insert_length_bp,instances:[.instance
 
 > Every ordered instance records genomic and assembled coordinates, orientation, and exact spacer-before DNA.
 
-### Step 5: Expand the five sequence-computable evidence lanes
+### Step 5: Expand the five sequence-computable evidence lanes. Treat evaluated as an assessment state, not a pass. Reference uniqueness here concerns the loaded, ROI-bound locus only, not the complete genome
 
 **GUI**
 
 Expand the five sequence-computable evidence lanes. Treat `evaluated` as an assessment state, not a pass. Reference uniqueness here concerns the loaded, ROI-bound locus only, not the complete genome.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '.evidence_dimensions[] | {kind,state,observations:(.observations|length),blockers,warnings}' artifacts/regulatory_fragment_panel.plan.json
@@ -169,13 +171,13 @@ jq '.evidence_dimensions[] | {kind,state,observations:(.observations|length),blo
 
 > Reference uniqueness within the loaded locus, panel/vector similarity, repeats/low complexity, junction uniqueness, and cloning risk are evaluated as independent lanes; no genome-wide uniqueness claim is made.
 
-### Step 6: Inspect Ensembl Regulation
+### Step 6: Inspect Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin lanes. All three remain not_evaluated; the imported coordinates are not a substitute for typed biological evidence reports
 
 **GUI**
 
 Inspect Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin lanes. All three remain `not_evaluated`; the imported coordinates are not a substitute for typed biological evidence reports.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '.evidence_dimensions[] | select(.kind=="ensembl_regulatory_overlap" or .kind=="tfbs_model_score_context" or .kind=="cutrun_and_chromatin_context") | {kind,state,detail}' artifacts/regulatory_fragment_panel.plan.json
@@ -189,13 +191,13 @@ jq '.evidence_dimensions[] | select(.kind=="ensembl_regulatory_overlap" or .kind
 
 > Ensembl Regulation, TFBS/model-score, and CUT&RUN/chromatin lanes are explicitly `not_evaluated`; this state is not a pass or evidence of absence.
 
-### Step 7: Review the panel digest
+### Step 7: Review the panel digest, blockers, and non-claims. This walkthrough stops at review. The separate Exact design products section can prepare full product sequences for another review, but creation requires that product proposal's own digest, not the panel digest. A designed molecule is not a validated cloning reaction
 
 **GUI**
 
 Review the panel digest, blockers, and non-claims. This walkthrough stops at review. The separate `Exact design products` section can prepare full product sequences for another review, but creation requires that product proposal's own digest, not the panel digest. A designed molecule is not a validated cloning reaction.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 jq '{proposal_digest,approval_required,materialization_supported,blockers,warnings,nonclaims}' artifacts/regulatory_fragment_panel.plan.json
@@ -209,13 +211,13 @@ jq '{proposal_digest,approval_required,materialization_supported,blockers,warnin
 
 > The plan requires review under its exact digest and advertises a separate exact-product proposal via `materialization_supported=true`; planning alone adds no construct or primer to project state.
 
-### Step 8: Export JSON and SVG
+### Step 8: Export JSON and SVG. The SVG is a view of the same digest-valid plan; changing a bound region, sequence, vector, geometry, or member order requires replanning. Keep each plan with its own figure rather than substituting the CLI workflow's digest for a GUI-authored request
 
 **GUI**
 
 Export JSON and SVG. The SVG is a view of the same digest-valid plan; changing a bound region, sequence, vector, geometry, or member order requires replanning. Keep each plan with its own figure rather than substituting the CLI workflow's digest for a GUI-authored request.
 
-**CLI / GUI Shell**
+**CLI (terminal)**
 
 ```bash
 gentle_cli --state /tmp/gentle-regulatory-fragment-tutorial.json shell 'promoters regulatory-panel-render @artifacts/regulatory_fragment_panel.plan.json --path artifacts/regulatory_fragment_panel.plan.svg'
