@@ -518,6 +518,7 @@ pub enum TssExportFormat {
     Svg,
     Png,
     Pdf,
+    VectorPdf,
     Genbank,
     Embl,
 }

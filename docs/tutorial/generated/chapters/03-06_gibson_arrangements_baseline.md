@@ -26,7 +26,92 @@ This chapter now uses its own deterministic workflow example instead of reusing 
 
 See also: guided walkthrough [docs/tutorial/03-07_gibson_arrangements_gui.md](../../03-07_gibson_arrangements_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+## What You Will Accomplish
+
+- Use one executable starter project to reach an arrangement-ready walkthrough directly.
+- Recognize the separation between the Gibson specialist apply tutorial and the downstream arrangement/gel-inspection tutorial.
+- Inspect the generated lab-assistant handoff as the bench-facing counterpart to the design state.
+- Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 15: Gibson Specialist Starter Project (offline)](./03-04_gibson_specialist_testing_baseline.md) first.
+
+**Useful when:**
+
+- You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.
+- You want a reproducible starter state for checking singleton output containers, the assembled product, and arrangement-level gel export.
+- You want a deterministic example of GENtle handing a designed cloning experiment to a non-IT lab assistant.
+- You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the Gibson arrangements starter project from File -> Open Tutorial Project
+
+**GUI**
+
+Open the Gibson arrangements starter project from `File -> Open Tutorial Project...`.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/gibson_arrangements_baseline.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Open the Gibson arrangements starter project from `File -> Open Tutorial Project...`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The workflow builds the same arrangement-ready starter state that the GUI tutorial-project menu opens.
+
+### Step 2: Confirm the starter contains gibson_destination_pgex (circular), gibson_insert_demo (linear), and the assembled product gibson_destination_pgex_with_gibson_insert_demo
+
+**GUI**
+
+Confirm the starter contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/gibson_arrangements_baseline.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Confirm the starter contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The workflow result includes the vector, insert, assembled Gibson product, stored arrangement context, and the retained handoff artifact.
+
+### Step 3: Continue in the automatically opened Gibson Arrangements Tutorial from Step 1 onward
+
+**GUI**
+
+Continue in the automatically opened `Gibson Arrangements Tutorial` from `Step 1` onward.
+
+**CLI (terminal)**
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-catalog-check
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Continue in the automatically opened `Gibson Arrangements Tutorial` from `Step 1` onward. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The tutorial catalog remains linked so the generated arrangement starter points readers to the hand-written Gibson Arrangements walkthrough.
+
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -46,71 +131,16 @@ See also: guided walkthrough [docs/tutorial/03-07_gibson_arrangements_gui.md](..
   - Why it matters: Provides non-IT bench-facing instructions tied to the exact deterministic design outputs.
   - How to derive it: The workflow calls `ExportLabAssistantInstructions` after applying the Gibson plan.
 
-## When This Routine Is Useful
-
-- You want to inspect the arrangement that Gibson apply creates without first navigating through the earlier Gibson-specialist apply walkthrough.
-- You want a reproducible starter state for checking singleton output containers, the assembled product, and arrangement-level gel export.
-- You want a deterministic example of GENtle handing a designed cloning experiment to a non-IT lab assistant.
-- You want one offline tutorial-project entry that opens directly on the arrangement guide in Help/Tutorial.
-
-## What You Learn
-
-- Use one executable starter project to reach an arrangement-ready walkthrough directly.
-- Recognize the separation between the Gibson specialist apply tutorial and the downstream arrangement/gel-inspection tutorial.
-- Inspect the generated lab-assistant handoff as the bench-facing counterpart to the design state.
-- Replay the same arrangement-focused setup from GUI and CLI without requiring a second manual Gibson apply.
-
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
 
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Open the Gibson arrangements starter project from File -> Open Tutorial Proje...
-
-GUI: Open the Gibson arrangements starter project from `File -> Open Tutorial Project...`.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
-```
-
-> Expected: The workflow builds the same arrangement-ready starter state that the GUI tutorial-project menu opens.
-
-### Step 2: Confirm the starter contains gibson_destination_pgex (circular), gibson_inser...
-
-GUI: Confirm the starter contains `gibson_destination_pgex` (circular), `gibson_insert_demo` (linear), and the assembled product `gibson_destination_pgex_with_gibson_insert_demo`.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
-```
-
-> Expected: The workflow result includes the vector, insert, assembled Gibson product, stored arrangement context, and the retained handoff artifact.
-
-### Step 3: Continue in the automatically opened Gibson Arrangements Tutorial from Step 1...
-
-GUI: Continue in the automatically opened `Gibson Arrangements Tutorial` from `Step 1` onward.
-
-CLI:
-
-```bash
-cargo run --bin gentle_examples_docs -- tutorial-catalog-check
-```
-
-> Expected: The tutorial catalog remains linked so the generated arrangement starter points readers to the hand-written Gibson Arrangements walkthrough.
-
-
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_arrangements_baseline.json
+gentle_cli workflow @docs/examples/workflows/gibson_arrangements_baseline.json
 ```
 
 ## Checkpoints

@@ -2,6 +2,39 @@
 
 This is the canonical entry page for GENtle tutorials.
 
+## Choose a Task
+
+You do not need to understand the tutorial machinery before beginning.
+
+- **Design primers from one required region:** start with
+  [Simple PCR From a Selected Core Region](./04-01_simple_pcr_selection_gui.md).
+- **Inspect or edit a sequence:** use
+  [Stateless Sequence Inspection](./02-02_stateless_sequence_inspection_gui_cli.md)
+  or [Annotation Curation](./02-05_feature_editor_gui_cli.md).
+- **Plan cloning or assembly:** use the
+  [Gibson specialist walkthrough](./03-05_gibson_specialist_testing_gui.md).
+- **Compare transcript and genomic structure:** use the
+  [cDNA/genomic dotplot walkthrough](./02-03_tp73_cdna_genomic_dotplot_gui.md).
+- **Investigate promoters or TFBS evidence:** begin with the
+  [tutorial landscape](./landscape_overview.md) and choose the regulatory
+  chapter matching your evidence source.
+- **Replay an exact, machine-checked workflow:** open the
+  [executable reference hub](./generated/README.md).
+
+Within generated walkthroughs, each step keeps **GUI**, **CLI (terminal)**,
+and **Ask the inner agent** together. Related commands may inspect a result
+rather than perform the GUI action. In the GUI Shell, enter the shared command
+inside `gentle_cli shell '...'`, without that wrapper; other terminal commands
+are not automatically GUI Shell commands. UI intents open windows only in the
+GUI, and a separate CLI does not inherit unsaved GUI state. Inner-agent examples
+ask for a proposed command and expected result, not execution permission.
+
+## How This Guide Is Organized
+
+Guided walkthroughs teach the task. Executable reference chapters preserve the
+exact workflow, artifacts and provenance. Start with the guided page; switch to
+its executable companion when you need reproducible replay or auditing.
+
 Machine-readable catalog source:
 
 - [`docs/tutorial/catalog.json`](./catalog.json)
@@ -69,24 +102,6 @@ Common destinations already available here:
 The two new worked guides below fill different teaching needs: MCP transport
 and report parity, and deliberate annotation curation. Neither claims automated
 GUI coverage that has not been run.
-
-## Start Here
-
-If you are new to GENtle:
-
-- Start with the guided walkthroughs below, especially
-  [`docs/tutorial/04-01_simple_pcr_selection_gui.md`](./04-01_simple_pcr_selection_gui.md)
-  for a compact GUI-first path.
-
-If you want the big-picture map first:
-
-- Use the tutorial landscape overview:
-  [`docs/tutorial/landscape_overview.md`](./landscape_overview.md)
-
-If you want machine-checked reproducibility first:
-
-- Use the executable reference hub:
-  [`docs/tutorial/generated/README.md`](./generated/README.md)
 
 ## Why Actions Recur Across Tutorials
 

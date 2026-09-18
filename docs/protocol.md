@@ -114,7 +114,10 @@ omits the resolved manifest path. Context provenance, missing states and clipped
 genomic-to-local geometry are shared across adapters, not computed in Python or
 the SVG renderer. See [context inputs and validation](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
 
-`TssExportFormat` also accepts `genbank` and `embl`. New contexts optionally retain
+`TssExportFormat` also accepts `vector_pdf`, `genbank` and `embl`. `vector_pdf`
+preserves vector geometry and embeds selectable text in a static PDF; it does
+not claim to preserve SVG title-hover interaction. The older `pdf` value remains
+the lossless raster-backed compatibility representation. New contexts optionally retain
 `window_sequence`, bound to the existing SHA-256 and geometry; old contexts
 remain readable. Both formats require verified stored bases for every window,
 exports one annotated record per promoter through the shared engine, and binds

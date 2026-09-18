@@ -24,6 +24,101 @@ Start with a simple cloning-prep routine to learn product IDs and sequence linea
 
 In real cloning projects, people often say "the sequence" even when they mean different biological records: the sequence as downloaded from a public database or read from a local sample, versus a derivative changed by an operation such as introducing a nonsense mutation. GENtle keeps those records apart. Each conceptual or hands-on sequence is represented as a vial node in a lineage graph, and each operation is represented as a transaction node connecting biological inputs to outputs. Even this small routine can branch: the original FASTA remains the provenance-preserving input, while the branch and reverse-complement become separate products. Larger projects can branch one product into several downstream operations or merge independent products into one process.
 
+## What You Will Accomplish
+
+- Run one canonical workflow from source JSON and interpret the result IDs.
+- Understand that branch and reverse-complement operations create explicit derivative sequences.
+- Recognize the shared-engine contract across GUI, CLI, and shell entry points.
+
+## Before You Start
+
+**Useful when:**
+
+- You received a FASTA plasmid or amplicon sequence and want a reproducible project starting point.
+- You need a reverse-complemented working copy but want to preserve the original sequence identity.
+- You are onboarding to GENtle and need to understand how derived IDs are created and reused.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open GENtle and load test_files/pGEX_3X.fa via File -> Open
+
+**GUI**
+
+Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.
+
+### Step 2: In the DNA window, create a branch copy from the loaded sequence (Branch action)
+
+**GUI**
+
+In the DNA window, create a branch copy from the loaded sequence (Branch action).
+
+**CLI (terminal)**
+
+```bash
+gentle_cli op '{"Branch":{"input":"pgex_fasta","output_id":"pgex_fasta_branch"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: In the DNA window, create a branch copy from the loaded sequence (Branch action). Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.
+
+![Interaction context for creating a branch while preserving the original sequence.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg)
+
+*Figure: Interaction context for creating a branch while preserving the original sequence. Screenshot captured 2026-09-08.*
+
+### Step 3: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead
+
+**GUI**
+
+Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli op '{"ReverseComplement":{"input":"pgex_fasta_branch","output_id":"pgex_fasta_branch_rc"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> A new sequence `pgex_fasta_branch_rc` appears as the reverse-complement product linked to the branch input.
+
+![Focused reverse-complement control and nearby sequence context.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg)
+
+*Figure: Focused reverse-complement control and nearby sequence context. Screenshot captured 2026-09-08.*
+
+![Whole-screen orientation for the reverse-complement action in the DNA viewer.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg)
+
+*Figure: Whole-screen orientation for the reverse-complement action in the DNA viewer. Screenshot captured 2026-09-08.*
+
+
+## Interpretation and Reference
+
 ## Parameters That Matter
 
 - `LoadFile.path` (where used: operation 1)
@@ -34,76 +129,11 @@ In real cloning projects, people often say "the sequence" even when they mean di
   - How to derive it: Pick short descriptive IDs tied to intent (e.g., branch copy vs reverse-complement product).
   - Omit when: You can omit IDs only when you accept auto-generated names.
 
-## When This Routine Is Useful
-
-- You received a FASTA plasmid or amplicon sequence and want a reproducible project starting point.
-- You need a reverse-complemented working copy but want to preserve the original sequence identity.
-- You are onboarding to GENtle and need to understand how derived IDs are created and reused.
-
-## What You Learn
-
-- Run one canonical workflow from source JSON and interpret the result IDs.
-- Understand that branch and reverse-complement operations create explicit derivative sequences.
-- Recognize the shared-engine contract across GUI, CLI, and shell entry points.
-
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
-
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Open GENtle and load test_files/pGEX_3X.fa via File -> Open
-
-GUI: Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
-```
-
-> Expected: The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.
-
-### Step 2: In the DNA window, create a branch copy from the loaded sequence (Branch action)
-
-GUI: In the DNA window, create a branch copy from the loaded sequence (Branch action).
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"Branch":{"input":"pgex_fasta","output_id":"pgex_fasta_branch"}}'
-```
-
-> Expected: A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.
-
-![Interaction context for creating a branch while preserving the original sequence.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/branch.context.svg)
-
-*Figure: Interaction context for creating a branch while preserving the original sequence. Screenshot captured 2026-09-08.*
-
-### Step 3: Apply reverse-complement to the branch and confirm a new sequence entry appea...
-
-GUI: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"ReverseComplement":{"input":"pgex_fasta_branch","output_id":"pgex_fasta_branch_rc"}}'
-```
-
-> Expected: A new sequence `pgex_fasta_branch_rc` appears as the reverse-complement product linked to the branch input.
-
-![Focused reverse-complement control and nearby sequence context.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.context.svg)
-
-*Figure: Focused reverse-complement control and nearby sequence context. Screenshot captured 2026-09-08.*
-
-![Whole-screen orientation for the reverse-complement action in the DNA viewer.](../../../screenshots/tutorial_gui_acceptance/load_branch_reverse_complement_pgex_fasta/reverse_complement.orientation.svg)
-
-*Figure: Whole-screen orientation for the reverse-complement action in the DNA viewer. Screenshot captured 2026-09-08.*
-
 
 ## Checkpoints
 

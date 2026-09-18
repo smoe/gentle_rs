@@ -39,6 +39,37 @@ Default behavior now aims at a full first picture:
 - `step`: default `1`
 - `mismatches`: default `0` (exact-seed baseline)
 
+## The Same Operation Through Three Interfaces
+
+Keep these routes together when adapting the example. They all reach the same
+engine-owned dotplot operation; only the way you express the request changes.
+
+**GUI:** follow the five steps below.
+
+**CLI (terminal):** after both sequences are loaded in the CLI's state, run:
+
+```bash
+gentle_cli shell 'dotplot compute tp73_cdna --reference-seq tp73_genomic --mode pair_forward --word-size 7 --step 1 --max-mismatches 0 --id tp73_cdna_vs_genomic_dotplot'
+gentle_cli shell 'dotplot show tp73_cdna_vs_genomic_dotplot'
+```
+
+**GUI Shell:** to work on the currently open GUI project, use the commands
+inside the quotes, without `gentle_cli shell` or the outer quotes. Terminal
+commands use `.gentle_state.json` by default; pass `--project PATH` to work on
+a saved project instead. A separate CLI does not inherit unsaved GUI state.
+
+**Ask the inner agent:**
+
+> I have `tp73_cdna` and `tp73_genomic` loaded. Propose the exact GENtle
+> command for a forward pairwise dotplot with word size 7, step 1 and no seed
+> mismatches. Tell me what result I should expect and what would make the plot
+> inconclusive. Do not execute it until I approve.
+
+From a source checkout, replace `gentle_cli` with
+`cargo run --bin gentle_cli --`. Fetching the accession and preparing the
+reference require network access; the dotplot itself is local once both
+sequences are loaded.
+
 ## GUI Workflow
 
 Initial state:

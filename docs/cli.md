@@ -27,6 +27,10 @@ These shared-parser routes also work in the GUI Shell and through typed MCP
 Both accept `--context-manifest FILE` for sequence-verified CUT&RUN/chromatin,
 exon/CDS/translation-marker and TATA rows on detailed pages, without rescoring.
 See the [context example and input contract](tss_tfbs_profiles.md#cutrun-gene-structure-and-tata-context).
+Use `--formats svg,vector_pdf` for an interactive SVG peer plus a static vector
+PDF with selectable embedded text. The existing `pdf` token remains the
+lossless raster-backed compatibility format; PDF viewers do not portably retain
+SVG title-hover behavior.
 Repeat `--genomic-motif-evidence FILE` to attach saved DuckDB-query reports as
 separate [strand/span/score triangle lanes](tss_tfbs_profiles.md#imported-duckdb-motif-hits)
 and a complete imported-hit TSV, without rescoring or querying the package.
@@ -5387,6 +5391,13 @@ Rendering export commands:
     count and actual used-font identities/hashes from that page's rasterization.
     It also declares lossless PDF image encoding. Failed font auditing prevents
     PDF publication; SVGs are never silently rendered through an unaudited fallback.
+- `svg-vector-pdf-set OUTPUT.pdf INPUT.svg [INPUT.svg ...] [--scale N] [--drop-dotplot-metadata]`
+  - Preserves each ordered SVG as a separate vector page with its own dimensions
+    and embeds selectable, Unicode-mapped subset fonts.
+  - The JSON summary records exact page geometry and used-font identities.
+    This is a static PDF: SVG hover and URI interaction are not preserved.
+    Unsupported SVG effects may be rasterized locally rather than converting
+    the entire page into an image.
 - `render-svg SEQ_ID linear|circular OUTPUT.svg`
   - Calls engine operation `RenderSequenceSvg`.
   - Linear exports honor the current stored linear viewport when one is set,

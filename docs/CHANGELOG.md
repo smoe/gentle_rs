@@ -15,6 +15,66 @@
   CI also checks entrypoints, missing runtime libraries and omitted binaries.
   Actual reduced-container build and memory acceptance remain with container CI.
 
+## 2026-09-18 - Internal .11 Integration Review
+
+- Start `codex/internal.11` without changing `main`, package versions or `.10`
+  release acceptance. Merge Glen's tutorial commit `cfd83bcc` with its history;
+  selectively port vector-PDF commits `14f00836` and `00c9fa93` with attribution.
+- Fix two tutorial-review findings: fallback headings now retain complete
+  accessions, paths, coordinate ranges and instructions; terminal wrappers,
+  GUI Shell syntax, UI-opening effects and separate process state are explicitly
+  distinguished. Keep generated agent examples review-only and regenerate the
+  affected chapter text from the shared generator.
+- Correct fractional vector-PDF page dimensions in both the audit and
+  multipage renderer; add geometry and failed-later-page preservation tests.
+  Reuse the raster backend's font-family preferences after visual review
+  exposed proportional-font substitution for `monospace` on macOS; add an
+  actual used-font-identity parity regression for all three generic families.
+  Existing raster PDF defaults and biological scoring remain unchanged.
+- Record the [`.11` implementation slices](internal_11_plan.md): dedicated
+  typed capture GUI, reference-bound permitted-multilocus specificity, optional
+  expression/array ranking, reviewed order handoff and the eight-gene public
+  replay. These capture extensions are planned, not implemented or approved
+  for procurement. Assess the older RefSeq patch separately, rather than
+  silently broadening assembly matching in a PDF integration.
+- Verification: 32 tutorial Rust tests plus the standalone 28-chapter generated
+  check; 56-entry catalog and manifest checks; 6 vector-PDF tests, 38 raster/TSS
+  export tests, 10 CLI rendering tests and the opt-in synthetic export passed.
+  Python checks passed 43 compositor cases and 73 tutorial cases (11 optional
+  skips). Default locked Cargo check, formatting and whitespace checks passed.
+  Poppler confirmed text extraction, font embedding, two-page ordering and no
+  raster images in the CLI vector composition; both pages were visually reviewed.
+  Two stale human-review warnings and the macOS large-unwind-table linker
+  warning remain. Full-workspace, live GUI/agent and real-data acceptance were
+  not run; these implementation checks do not approve a release.
+
+## 2026-09-17 - Windows ClawBio Parity Fixtures
+
+- Replace the affected workflow/path and PNG-summary Bash fixtures with native
+  Python fixtures, preserving literal workflow-file arguments and native paths.
+  Retain the artifact assertions and separate real SVG rasterization tests.
+- Bind compatibility diagnostics to actual GENtle arguments rather than a
+  one-token executable assumption; cover interpreter, Cargo, container and
+  state-file prefixes without losing the full executed command.
+- Windows CI rerun remains required; local wrapper tests are not Windows
+  packaging or scientific acceptance.
+
+## 2026-09-17 - Human-Readable Three-Interface Tutorials
+
+- Reorder generated chapters around learner outcome, prerequisites, a full
+  at-a-glance path and the walkthrough before parameter/provenance reference.
+- Keep GUI, installed-CLI/GUI-Shell and review-only inner-agent examples beside
+  each operation. Generated agent prompts ask for the exact command and
+  expected result but never authorize or perform execution.
+- Add optional concise step titles and rationales to the existing v4 tutorial
+  source contract. Preserve backward readability and derive safe fallback
+  headings without reusing truncated prose as section titles.
+- Replace Help's opening provenance paragraph with compact quick facts; retain
+  complete canonical provenance at each generated chapter's end.
+- Put task choice first on the tutorial landing page, add quick reader metadata
+  for the Simple PCR and cDNA/genomic dotplot guides, and embed the existing
+  public Simple-PCR walkthrough captures in its hand-written companion.
+
 ## 2026-09-17 - Transcript Capture Discovery
 
 - Add gene-agnostic, shared-engine exact-site discovery across annotated
@@ -37,17 +97,6 @@
   checks and the separate Primer3 thermodynamic follow-up. Complementary-base
   runs are not hairpin/dimer Tm values; complete oligos, reaction stages and
   explicit chemical assumptions remain necessary for review.
-
-## 2026-09-17 - Windows ClawBio Parity Fixtures
-
-- Replace the affected workflow/path and PNG-summary Bash fixtures with native
-  Python fixtures, preserving literal workflow-file arguments and native paths.
-  Retain the artifact assertions and separate real SVG rasterization tests.
-- Bind compatibility diagnostics to actual GENtle arguments rather than a
-  one-token executable assumption; cover interpreter, Cargo, container and
-  state-file prefixes without losing the full executed command.
-- Windows CI rerun remains required; local wrapper tests are not Windows
-  packaging or scientific acceptance.
 
 ## 2026-09-17 - TSS Collection Snapshot And Truncation Review
 
@@ -178,6 +227,19 @@
   real CLI/Parquet replay, plus an optional coordinate-selected IRF9 appendix.
   Native GUI/human acceptance and explicit DNA-feature attachment remain pending;
   summarized depth is not reconstructed as coverage.
+
+## 2026-09-15 - Audited Vector TSS PDF Peer
+
+- Add explicit `vector_pdf` TSS-profile export alongside the unchanged
+  raster-backed `pdf` compatibility path. The new representation keeps vector
+  geometry and embeds selectable text, with backend, dimensions, source SVG,
+  lockfile and used-font identities recorded in the receipt.
+- Keep interaction claims representation-specific: SVG retains per-hit title
+  hover, while the PDF is static. A PDF may locally rasterize SVG features its
+  backend cannot represent; it is not advertised as a browser substitute.
+- Add `svg-vector-pdf-set` and a `--pdf-representation vector` compositor path
+  so final multipage locus/TSS reporter bundles can use the same audited vector
+  representation rather than only their component TSS pages.
 
 ## 2026-09-15 - `.10` Notes And Scientific Regeneration Input Gate
 

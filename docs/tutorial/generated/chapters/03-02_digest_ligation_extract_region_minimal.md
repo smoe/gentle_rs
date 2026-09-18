@@ -24,7 +24,90 @@ Run a full mini-loop from fragment production to assembled product extraction.
 
 This chapter models a compact molecular cloning routine in one chain: digest source material, produce a ligation product, and extract a target segment for subsequent validation or design. It is the smallest end-to-end routine that still reflects real bench-side reasoning.
 
+## What You Will Accomplish
+
+- Execute a minimal end-to-end cloning chain.
+- Track how intermediate IDs are consumed by downstream operations.
+- Use ExtractRegion output as a stable hand-off point for later analyses.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 3: Load pGEX and digest with BamHI/EcoRI](./03-01_load_and_digest_pgex.md) first.
+
+**Useful when:**
+
+- You want to test whether your planned digest/ligation sequence is internally consistent.
+- You need a deterministic extracted segment for primer design or annotation checks.
+- You want a regression slice that exercises core cloning operations together.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Start from the loaded FASTA/plasmid sequence in the GUI
+
+**GUI**
+
+Start from the loaded FASTA/plasmid sequence in the GUI.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Start from the loaded FASTA/plasmid sequence in the GUI. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The source sequence is loaded as `pgex_fasta`, ready to feed cloning operations.
+
+### Step 2: Run digest with selected enzymes and inspect available products
+
+**GUI**
+
+Run digest with selected enzymes and inspect available products.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli op '{"Digest":{"input":"pgex_fasta","enzymes":["BamHI","EcoRI"],"output_prefix":"d"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Run digest with selected enzymes and inspect available products. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The digest step creates deterministic fragment IDs with the `d` prefix.
+
+### Step 3: Run ligation with the intended inputs, then extract a focused region from the ligation result
+
+**GUI**
+
+Run ligation with the intended inputs, then extract a focused region from the ligation result.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Run ligation with the intended inputs, then extract a focused region from the ligation result. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The full workflow creates ligation product `lig_1` and extracted handoff sequence `lig_extract`.
+
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -35,63 +118,10 @@ This chapter models a compact molecular cloning routine in one chain: digest sou
   - Why it matters: Defines the exact segment handed to downstream interpretation.
   - How to derive it: Derive boundaries from feature coordinates or expected amplicon/design window.
 
-## When This Routine Is Useful
-
-- You want to test whether your planned digest/ligation sequence is internally consistent.
-- You need a deterministic extracted segment for primer design or annotation checks.
-- You want a regression slice that exercises core cloning operations together.
-
-## What You Learn
-
-- Execute a minimal end-to-end cloning chain.
-- Track how intermediate IDs are consumed by downstream operations.
-- Use ExtractRegion output as a stable hand-off point for later analyses.
-
 ## Applied Concepts
 
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
-
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Start from the loaded FASTA/plasmid sequence in the GUI
-
-GUI: Start from the loaded FASTA/plasmid sequence in the GUI.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}}'
-```
-
-> Expected: The source sequence is loaded as `pgex_fasta`, ready to feed cloning operations.
-
-### Step 2: Run digest with selected enzymes and inspect available products
-
-GUI: Run digest with selected enzymes and inspect available products.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- op '{"Digest":{"input":"pgex_fasta","enzymes":["BamHI","EcoRI"],"output_prefix":"d"}}'
-```
-
-> Expected: The digest step creates deterministic fragment IDs with the `d` prefix.
-
-### Step 3: Run ligation with the intended inputs, then extract a focused region from the...
-
-GUI: Run ligation with the intended inputs, then extract a focused region from the ligation result.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/digest_ligation_extract_region_minimal.json
-```
-
-> Expected: The full workflow creates ligation product `lig_1` and extracted handoff sequence `lig_extract`.
-
 
 ## Checkpoints
 

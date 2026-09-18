@@ -26,7 +26,215 @@ A coordinate copied from a figure is easy to misread. BED uses zero-based, half-
 
 The reason for selecting a region is equally important, but it is not the geometry. In this example one region comes from a manual selection, one from a synthetic Ensembl Regulation row, and one from a synthetic CUT&RUN support window. Each retains a typed selection method and source evidence. The Ensembl association remains a provider annotation; CUT&RUN enrichment remains occupancy evidence rather than affinity or causal activity. JSON is the lossless exchange format. BED6 is accompanied by a content-bound manifest because BED alone cannot preserve assembly accessions, evidence, derivation, or local projection identity.
 
+## What You Will Accomplish
+
+- Distinguish canonical genomic coordinates, human display coordinates, BED coordinates, and sequence-local coordinates.
+- Keep genomic strand distinct from a locus viewer's local/display orientation.
+- Explain why region geometry, selection purpose, and evidence provenance are separate fields.
+- Capture manual, provider-annotation, and occupancy-derived regions through the same engine-owned contract.
+- Use canonical JSON for lossless sharing and BED6 plus its manifest for external-tool interoperability.
+- Recognize assembly mismatch as an error that requires an explicit liftover workflow rather than an automatic coordinate change.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 29: Promoter-Reporter Panel Planning (Offline Approval-Gated Demo)](./08-09_promoter_reporter_panel_planning_offline.md), [Chapter 27: PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)](./06-06_patz1_gene_locus_evidence_offline.md) first.
+
+**Useful when:**
+
+- You want to send a promoter or enhancer candidate to a colleague without an off-by-one ambiguity.
+- You want to retain why a region was selected without turning an annotation or occupancy signal into a verdict.
+- You need BED for another tool but also need a lossless round trip back into GENtle.
+- You want selected regions to remain reusable after the original evidence file is unavailable.
+- You want to compare saved candidates on the same strand-aware locus axis as transcripts, CDS, occupancy, motif scores, and reporter architectures.
+
+## At a Glance
+
+1. Open the pinned SERPINE1 tutorial locus and select a short genomic span in the DNA view. Open its context menu and choose Save/share selected genomic region....
+2. In Saved genomic regions, choose a set ID, label the selection, and save it. Confirm the table shows assembly, 1-based inclusive coordinates, strand, manual_span, and evidence availability.
+3. Use Copy human coordinates (1-based inclusive), then Copy BED row (0-based half-open). Compare the boundaries: BED start is one less; the inclusive human end equals the BED-exclusive end.
+4. Copy the canonical ROI JSON and confirm it contains zero_based_half_open, the GRCh38 assembly/accession, contig identity, local projection, selection method, and both identity and content digests.
+5. Capture the synthetic Ensembl regulatory row from the Locus figure table and the synthetic CUT&RUN support window from its support-window table. Confirm the three rows retain different methods and evidence statements.
+6. Export JSON... for lossless exchange, then BED + manifest... for a BED6 consumer. Keep the manifest beside the BED when the region set may return to GENtle.
+7. Select serpine1_regions in the Locus figure Saved region set IDs field and compose the view. Confirm the three compact saved-region overlays align with the transcript/CDS, occupancy, TP73 score, and reporter rows.
+8. Import the BED with its manifest into a fresh project and inspect the region-set digest. Try the BED alone only with an explicit assembly/reference request; GENtle does not infer GRCh38 from chromosome 7.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the pinned SERPINE1 tutorial locus and select a short genomic span in the DNA view. Open its context menu and choose Save/share selected genomic region
+
+**GUI**
+
+Open the pinned SERPINE1 tutorial locus and select a short genomic span in the DNA view. Open its context menu and choose `Save/share selected genomic region...`.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/portable_genomic_regions_offline.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Open the pinned SERPINE1 tutorial locus and select a short genomic span in the DNA view. Open its context menu and choose `Save/share selected genomic region...`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The selected local span becomes one canonical GRCh38 genomic interval; local and genomic coordinates are both retained and explicitly labelled.
+
+### Step 2: In Saved genomic regions, choose a set ID, label the selection, and save it. Confirm the table shows assembly, 1-based inclusive coordinates, strand, manual_span, and evidence availability
+
+**GUI**
+
+In `Saved genomic regions`, choose a set ID, label the selection, and save it. Confirm the table shows assembly, 1-based inclusive coordinates, strand, `manual_span`, and evidence availability.
+
+**CLI (terminal)**
+
+```bash
+jq '.regions[] | {region_id,label,interval,selection_method,evidence,identity_sha256,content_sha256}' artifacts/portable_genomic_regions.region_set.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: In `Saved genomic regions`, choose a set ID, label the selection, and save it. Confirm the table shows assembly, 1-based inclusive coordinates, strand, `manual_span`, and evidence availability. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Saving the manual span uses the shared `CaptureGenomicRegion` operation rather than a GUI-only feature annotation.
+
+### Step 3: Use Copy human coordinates (1-based inclusive), then Copy BED row (0-based half-open). Compare the boundaries: BED start is one less; the inclusive human end equals the BED-exclusive end
+
+**GUI**
+
+Use `Copy human coordinates (1-based inclusive)`, then `Copy BED row (0-based half-open)`. Compare the boundaries: BED start is one less; the inclusive human end equals the BED-exclusive end.
+
+**CLI (terminal)**
+
+```bash
+cat artifacts/portable_genomic_regions.bed
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Use `Copy human coordinates (1-based inclusive)`, then `Copy BED row (0-based half-open)`. Compare the boundaries: BED start is one less; the inclusive human end equals the BED-exclusive end. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The human representation is 1-based inclusive and the BED representation is 0-based half-open; a one-base region remains one base in both forms.
+
+### Step 4: Copy the canonical ROI JSON and confirm it contains zero_based_half_open, the GRCh38 assembly/accession, contig identity, local projection, selection method, and both identity and content digests
+
+**GUI**
+
+Copy the canonical ROI JSON and confirm it contains `zero_based_half_open`, the GRCh38 assembly/accession, contig identity, local projection, selection method, and both identity and content digests.
+
+**CLI (terminal)**
+
+```bash
+jq '{bed_sha256,coordinate_convention,columns,region_set_sha256:.region_set.content_sha256}' artifacts/portable_genomic_regions.bed.manifest.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Copy the canonical ROI JSON and confirm it contains `zero_based_half_open`, the GRCh38 assembly/accession, contig identity, local projection, selection method, and both identity and content digests. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Canonical JSON carries the complete portable record. Label and notes can change the content digest without changing the immutable identity digest.
+
+### Step 5: Capture the synthetic Ensembl regulatory row from the Locus figure table and the synthetic CUT&RUN support window from its support-window table. Confirm the three rows retain different methods and evidence statements
+
+**GUI**
+
+Capture the synthetic Ensembl regulatory row from the Locus figure table and the synthetic CUT&RUN support window from its support-window table. Confirm the three rows retain different methods and evidence statements.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli --state /tmp/gentle-region-import.json shell 'regions import {"path":"artifacts/portable_genomic_regions.bed","format":"bed","manifest_path":"artifacts/portable_genomic_regions.bed.manifest.json"}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Capture the synthetic Ensembl regulatory row from the Locus figure table and the synthetic CUT&RUN support window from its support-window table. Confirm the three rows retain different methods and evidence statements. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The Ensembl and CUT&RUN captures retain source IDs and conservative non-claims rather than becoming generic prose or causal assertions.
+
+### Step 6: Export JSON... for lossless exchange, then BED + manifest... for a BED6 consumer. Keep the manifest beside the BED when the region set may return to GENtle
+
+**GUI**
+
+Export `JSON...` for lossless exchange, then `BED + manifest...` for a BED6 consumer. Keep the manifest beside the BED when the region set may return to GENtle.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli --state /tmp/gentle-region-import.json shell 'regions list'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Export `JSON...` for lossless exchange, then `BED + manifest...` for a BED6 consumer. Keep the manifest beside the BED when the region set may return to GENtle. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The BED manifest binds the exact BED bytes, BED6 column contract, complete region set, assembly identity, evidence, and region-set digest.
+
+### Step 7: Select serpine1_regions in the Locus figure Saved region set IDs field and compose the view. Confirm the three compact saved-region overlays align with the transcript/CDS, occupancy, TP73 score, and reporter rows
+
+**GUI**
+
+Select `serpine1_regions` in the Locus figure `Saved region set IDs` field and compose the view. Confirm the three compact saved-region overlays align with the transcript/CDS, occupancy, TP73 score, and reporter rows.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli --state /tmp/gentle-region-import.json shell 'regions inspect {"set_id":"serpine1_regions","region_id":"serpine1_manual_candidate"}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Select `serpine1_regions` in the Locus figure `Saved region set IDs` field and compose the view. Confirm the three compact saved-region overlays align with the transcript/CDS, occupancy, TP73 score, and reporter rows. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The saved-region overlay uses the locus report's explicit local-axis mapping and appears once on the plus-strand SERPINE1 locus.
+
+![A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation.](../artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg)
+
+*Figure: A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
+
+> SVG text labels: `SERPINE1 promoter-reporter architectures | 5' -> 3' display, genomic 101121158 -> 101139263 | strand + | assembly GRCh38 | annotation Ensembl 116 pinned public fixture | upstrea...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+
+### Step 8: Import the BED with its manifest into a fresh project and inspect the region-set digest. Try the BED alone only with an explicit assembly/reference request; GENtle does not infer GRCh38 from chromosome 7
+
+**GUI**
+
+Import the BED with its manifest into a fresh project and inspect the region-set digest. Try the BED alone only with an explicit assembly/reference request; GENtle does not infer GRCh38 from chromosome 7.
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Import the BED with its manifest into a fresh project and inspect the region-set digest. Try the BED alone only with an explicit assembly/reference request; GENtle does not infer GRCh38 from chromosome 7. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> A manifest-bound import round-trips losslessly; bare BED requires an explicit genome reference and does not trigger liftover or network access.
+
+
+## Complete Workflow Replay
+
+When an individual GUI gesture has no standalone shell command, replay the complete canonical workflow:
+
+```bash
+gentle_cli workflow @docs/examples/workflows/portable_genomic_regions_offline.json
+gentle_cli shell 'workflow @docs/examples/workflows/portable_genomic_regions_offline.json'
+```
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -43,23 +251,6 @@ The reason for selecting a region is equally important, but it is not the geomet
   - Why it matters: BED6 cannot carry complete assembly, evidence, projection, and digest semantics. The manifest binds those records to the exact BED bytes.
   - How to derive it: Keep the generated `.bed.manifest.json` beside the BED and supply both paths when importing.
 
-## When This Routine Is Useful
-
-- You want to send a promoter or enhancer candidate to a colleague without an off-by-one ambiguity.
-- You want to retain why a region was selected without turning an annotation or occupancy signal into a verdict.
-- You need BED for another tool but also need a lossless round trip back into GENtle.
-- You want selected regions to remain reusable after the original evidence file is unavailable.
-- You want to compare saved candidates on the same strand-aware locus axis as transcripts, CDS, occupancy, motif scores, and reporter architectures.
-
-## What You Learn
-
-- Distinguish canonical genomic coordinates, human display coordinates, BED coordinates, and sequence-local coordinates.
-- Keep genomic strand distinct from a locus viewer's local/display orientation.
-- Explain why region geometry, selection purpose, and evidence provenance are separate fields.
-- Capture manual, provider-annotation, and occupancy-derived regions through the same engine-owned contract.
-- Use canonical JSON for lossless sharing and BED6 plus its manifest for external-tool interoperability.
-- Recognize assembly mismatch as an error that requires an explicit liftover workflow rather than an automatic coordinate change.
-
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
@@ -68,131 +259,10 @@ The reason for selecting a region is equally important, but it is not the geomet
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
 - **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
 
-## At a Glance
-
-1. Open the pinned SERPINE1 tutorial locus and select a short genomic span in th...
-2. In Saved genomic regions, choose a set ID, label the selection, and save it. ...
-3. Use Copy human coordinates (1-based inclusive), then Copy BED row (0-based ha...
-4. Copy the canonical ROI JSON and confirm it contains zero_based_half_open, the...
-5. Capture the synthetic Ensembl regulatory row from the Locus figure table and ...
-6. Export JSON... for lossless exchange, then BED + manifest... for a BED6 consu...
-7. Select serpine1_regions in the Locus figure Saved region set IDs field and co...
-8. Import the BED with its manifest into a fresh project and inspect the region-...
-
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Open the pinned SERPINE1 tutorial locus and select a short genomic span in th...
-
-GUI: Open the pinned SERPINE1 tutorial locus and select a short genomic span in the DNA view. Open its context menu and choose `Save/share selected genomic region...`.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/portable_genomic_regions_offline.json
-```
-
-> Expected: The selected local span becomes one canonical GRCh38 genomic interval; local and genomic coordinates are both retained and explicitly labelled.
-
-### Step 2: In Saved genomic regions, choose a set ID, label the selection, and save it. ...
-
-GUI: In `Saved genomic regions`, choose a set ID, label the selection, and save it. Confirm the table shows assembly, 1-based inclusive coordinates, strand, `manual_span`, and evidence availability.
-
-CLI:
-
-```bash
-jq '.regions[] | {region_id,label,interval,selection_method,evidence,identity_sha256,content_sha256}' artifacts/portable_genomic_regions.region_set.json
-```
-
-> Expected: Saving the manual span uses the shared `CaptureGenomicRegion` operation rather than a GUI-only feature annotation.
-
-### Step 3: Use Copy human coordinates (1-based inclusive), then Copy BED row (0-based ha...
-
-GUI: Use `Copy human coordinates (1-based inclusive)`, then `Copy BED row (0-based half-open)`. Compare the boundaries: BED start is one less; the inclusive human end equals the BED-exclusive end.
-
-CLI:
-
-```bash
-cat artifacts/portable_genomic_regions.bed
-```
-
-> Expected: The human representation is 1-based inclusive and the BED representation is 0-based half-open; a one-base region remains one base in both forms.
-
-### Step 4: Copy the canonical ROI JSON and confirm it contains zero_based_half_open, the...
-
-GUI: Copy the canonical ROI JSON and confirm it contains `zero_based_half_open`, the GRCh38 assembly/accession, contig identity, local projection, selection method, and both identity and content digests.
-
-CLI:
-
-```bash
-jq '{bed_sha256,coordinate_convention,columns,region_set_sha256:.region_set.content_sha256}' artifacts/portable_genomic_regions.bed.manifest.json
-```
-
-> Expected: Canonical JSON carries the complete portable record. Label and notes can change the content digest without changing the immutable identity digest.
-
-### Step 5: Capture the synthetic Ensembl regulatory row from the Locus figure table and ...
-
-GUI: Capture the synthetic Ensembl regulatory row from the Locus figure table and the synthetic CUT&RUN support window from its support-window table. Confirm the three rows retain different methods and evidence statements.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-region-import.json shell 'regions import {"path":"artifacts/portable_genomic_regions.bed","format":"bed","manifest_path":"artifacts/portable_genomic_regions.bed.manifest.json"}'
-```
-
-> Expected: The Ensembl and CUT&RUN captures retain source IDs and conservative non-claims rather than becoming generic prose or causal assertions.
-
-### Step 6: Export JSON... for lossless exchange, then BED + manifest... for a BED6 consu...
-
-GUI: Export `JSON...` for lossless exchange, then `BED + manifest...` for a BED6 consumer. Keep the manifest beside the BED when the region set may return to GENtle.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-region-import.json shell 'regions list'
-```
-
-> Expected: The BED manifest binds the exact BED bytes, BED6 column contract, complete region set, assembly identity, evidence, and region-set digest.
-
-### Step 7: Select serpine1_regions in the Locus figure Saved region set IDs field and co...
-
-GUI: Select `serpine1_regions` in the Locus figure `Saved region set IDs` field and compose the view. Confirm the three compact saved-region overlays align with the transcript/CDS, occupancy, TP73 score, and reporter rows.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-region-import.json shell 'regions inspect {"set_id":"serpine1_regions","region_id":"serpine1_manual_candidate"}'
-```
-
-> Expected: The saved-region overlay uses the locus report's explicit local-axis mapping and appears once on the plus-strand SERPINE1 locus.
-
-![A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation.](../artifacts/portable_genomic_regions_offline/artifacts/portable_genomic_regions.locus.svg)
-
-*Figure: A pinned public Ensembl-116 SERPINE1 locus with three saved regions: a manual candidate, a synthetic Ensembl-regulatory annotation, and a synthetic CUT&RUN support window. Their shared position is for inspection and does not establish binding or causal regulation. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
-
-> SVG text labels: `SERPINE1 promoter-reporter architectures | 5' -> 3' display, genomic 101121158 -> 101139263 | strand + | assembly GRCh38 | annotation Ensembl 116 pinned public fixture | upstrea...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
-
-### Step 8: Import the BED with its manifest into a fresh project and inspect the region-...
-
-GUI: Import the BED with its manifest into a fresh project and inspect the region-set digest. Try the BED alone only with an explicit assembly/reference request; GENtle does not infer GRCh38 from chromosome 7.
-
-> Expected: A manifest-bound import round-trips losslessly; bare BED requires an explicit genome reference and does not trigger liftover or network access.
-
-
-## Command Equivalent (After GUI)
-
-Run the same routine non-interactively once the GUI flow is clear:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/portable_genomic_regions_offline.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/portable_genomic_regions_offline.json'
-```
-
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/portable_genomic_regions_offline.json
+gentle_cli workflow @docs/examples/workflows/portable_genomic_regions_offline.json
 cargo run --bin gentle_examples_docs -- tutorial-generate
 cargo run --bin gentle_examples_docs -- tutorial-check
 ```

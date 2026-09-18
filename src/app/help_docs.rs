@@ -36,6 +36,29 @@ impl GENtleApp {
             "{}\ntype: {}\nstatus: {}",
             entry.path, entry.entry_type, entry.status
         );
+        if let Some(minutes) = entry.estimated_minutes {
+            summary.push_str(&format!("\ntime: about {minutes} minutes"));
+        }
+        if let Some(difficulty) = entry.difficulty.as_deref() {
+            summary.push_str("\ndifficulty: ");
+            summary.push_str(difficulty);
+        }
+        if let Some(network) = entry.network.as_deref() {
+            summary.push_str("\nnetwork: ");
+            summary.push_str(network);
+        }
+        if !entry.interfaces.is_empty() {
+            summary.push_str("\ninterfaces: ");
+            summary.push_str(&entry.interfaces.join(", "));
+        }
+        if let Some(starting_state) = entry.starting_state.as_deref() {
+            summary.push_str("\nstart: ");
+            summary.push_str(starting_state);
+        }
+        if !entry.produces.is_empty() {
+            summary.push_str("\nproduces: ");
+            summary.push_str(&entry.produces.join(", "));
+        }
         summary.push('\n');
         summary.push_str(&crate::workflow_examples::tutorial_review_badge_label(
             entry.review_status.as_deref(),
@@ -121,32 +144,15 @@ impl GENtleApp {
         let Some((front_matter, body)) = Self::split_leading_markdown_front_matter(markdown) else {
             return markdown.to_string();
         };
-        let chapter_id = Self::markdown_front_matter_value(front_matter, "chapter_id");
-        let source_example = Self::markdown_front_matter_value(front_matter, "source_example");
-        let mut note = String::from("_Provenance note: ");
-        match (chapter_id, source_example) {
-            (Some(chapter_id), Some(source_example)) => {
-                note.push_str("this generated tutorial is tracked as chapter `");
-                note.push_str(&chapter_id);
-                note.push_str("` from workflow `");
-                note.push_str(&source_example);
-                note.push_str("`.");
-            }
-            (Some(chapter_id), None) => {
-                note.push_str("this generated tutorial is tracked as chapter `");
-                note.push_str(&chapter_id);
-                note.push_str("`.");
-            }
-            (None, Some(source_example)) => {
-                note.push_str("this generated tutorial is tracked from workflow `");
-                note.push_str(&source_example);
-                note.push_str("`.");
-            }
-            (None, None) => {
-                note.push_str("this generated tutorial has machine-readable source metadata.");
-            }
-        }
-        note.push_str(" The note is only there to preserve tutorial provenance; the hands-on walkthrough starts here, and full canonical source details are repeated at the end._\n\n");
+        let tier = Self::markdown_front_matter_value(front_matter, "tier")
+            .unwrap_or_else(|| "unspecified tier".to_string());
+        let automated = Self::markdown_front_matter_value(front_matter, "automated_status")
+            .unwrap_or_else(|| "automation not recorded".to_string());
+        let review = Self::markdown_front_matter_value(front_matter, "review_status")
+            .unwrap_or_else(|| "review not recorded".to_string());
+        let note = format!(
+            "_Quick facts: `{tier}` · `{automated}` · review `{review}`. Full provenance is at the end._\n\n"
+        );
         Self::insert_markdown_note_after_first_heading(body, &note)
     }
 

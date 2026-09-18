@@ -19,7 +19,7 @@ gentle_cli features tss-tfbs-profiles \
   --expected-assembly synthetic-assembly-v1 \
   --expected-annotation-release synthetic-annotation-v1 \
   --output-dir tss-example \
-  --formats svg,png,pdf
+  --formats svg,png,pdf,vector_pdf
 ```
 
 The output parent must already exist; choose a fresh destination. This tiny
@@ -750,6 +750,7 @@ cargo test --locked --no-default-features --lib tss_ -- --test-threads=1
 cargo test --locked --no-default-features --lib tfbs_track_panel::tests
 cargo test --locked --no-default-features --lib svg_png::tests
 cargo test --locked --no-default-features --lib svg_pdf::tests
+cargo test --locked --no-default-features --lib svg_vector_pdf::tests
 cargo test --locked --no-default-features --bin gentle_cli tss_
 cargo test --locked --no-default-features --bin gentle_cli test_parse_global_args
 ```
@@ -770,6 +771,11 @@ This checks all 58 records, transcript memberships and 13 selection joins. It is
 not a substitute for generating and visually reviewing the five-gene outputs on
 the final producer revision. The full release and native GUI gates remain with
 the release auditor.
+
+`pdf` is the lossless raster-backed compatibility representation. `vector_pdf`
+is a separate static vector representation with selectable embedded text and
+receipt-bound backend/font provenance. It does not preserve SVG `<title>` hover
+portably; publish the SVG peer when interactive hit details are required.
 
 For Glen's next acceptance, use a fresh directory and retain the original
 `44b73e4a` bundle. First use the report-only export command above with

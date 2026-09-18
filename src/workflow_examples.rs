@@ -81,6 +81,18 @@ pub struct TutorialCatalogEntry {
     #[serde(default)]
     pub notes: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starting_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub produces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_reviewed_at: Option<String>,
@@ -177,6 +189,18 @@ pub struct TutorialSourceCatalogSection {
     pub audiences: Vec<String>,
     #[serde(default)]
     pub notes: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_minutes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starting_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub produces: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -194,10 +218,20 @@ pub struct TutorialSourceGeneratedChapterSection {
     pub use_cases: Vec<String>,
     #[serde(default)]
     pub gui_steps: Vec<String>,
+    /// Optional short, human-written headings for the corresponding GUI steps.
+    /// Missing headings are derived without truncating prose into an ellipsis.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_titles: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cli_steps: Vec<String>,
+    /// Natural-language examples for the in-app Agent Assistant. These are
+    /// displayed for review and are never executed by tutorial generation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_rationales: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -464,6 +498,12 @@ impl TutorialSourceCatalogSection {
             source: self.source,
             audiences: self.audiences,
             notes: self.notes,
+            estimated_minutes: self.estimated_minutes,
+            difficulty: self.difficulty,
+            network: self.network,
+            interfaces: self.interfaces,
+            starting_state: self.starting_state,
+            produces: self.produces,
             review_status: Some(review.status),
             codex_reviewed_at: review.codex_reviewed_at,
             human_reviewed_at: review.human_reviewed_at,
@@ -501,8 +541,11 @@ impl TutorialSourceGeneratedChapterSection {
             narrative: self.narrative,
             use_cases: self.use_cases,
             gui_steps: self.gui_steps,
+            step_titles: self.step_titles,
             cli_steps: self.cli_steps,
+            agent_steps: self.agent_steps,
             step_expectations: self.step_expectations,
+            step_rationales: self.step_rationales,
             prerequisites: self.prerequisites,
             local_execution_note: self.local_execution_note,
             learning_objectives: self.learning_objectives,
@@ -680,9 +723,15 @@ pub struct TutorialChapter {
     #[serde(default)]
     pub gui_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_titles: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cli_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub agent_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub step_rationales: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1936,6 +1985,24 @@ pub fn load_tutorial_manifest(manifest_path: &Path) -> Result<TutorialManifest, 
             if gui_step.trim().is_empty() {
                 return Err(format!(
                     "Tutorial chapter '{}' contains blank gui_steps entry",
+                    chapter.id
+                ));
+            }
+        }
+        for (field, values) in [
+            ("step_titles", &chapter.step_titles),
+            ("agent_steps", &chapter.agent_steps),
+            ("step_rationales", &chapter.step_rationales),
+        ] {
+            if values.len() > chapter.gui_steps.len() {
+                return Err(format!(
+                    "Tutorial chapter '{}' has more {field} than gui_steps",
+                    chapter.id
+                ));
+            }
+            if values.iter().any(|value| value.trim().is_empty()) {
+                return Err(format!(
+                    "Tutorial chapter '{}' contains blank {field} entry",
                     chapter.id
                 ));
             }
@@ -4008,7 +4075,7 @@ fn truncate_markdown_one_line(value: &str, max_chars: usize) -> String {
 }
 
 fn truncate_at_a_glance_step(value: &str) -> String {
-    truncate_markdown_one_line(&value.replace('`', ""), 80)
+    normalize_markdown_one_line(&value.replace('`', ""))
 }
 
 fn markdown_inline_code(value: &str) -> String {
@@ -4695,15 +4762,35 @@ fn tutorial_step_at(steps: &[String], idx: usize) -> Option<&str> {
         .filter(|step| !step.is_empty())
 }
 
-fn tutorial_step_heading(gui_step: &str) -> String {
-    let mut heading = gui_step.trim().trim_end_matches('.').replace('`', "");
-    if heading.chars().count() > 80 {
-        heading = truncate_markdown_one_line(&heading, 80);
+fn tutorial_step_heading(chapter: &TutorialChapter, idx: usize, gui_step: &str) -> String {
+    if let Some(title) = tutorial_step_at(&chapter.step_titles, idx) {
+        return title.trim_end_matches('.').to_string();
     }
+    let normalized = normalize_markdown_one_line(&gui_step.replace('`', ""));
+    // Punctuation can belong to accessions, paths or coordinates. Only an
+    // explicit step title may abbreviate the source instruction.
+    let mut heading = normalized.trim_end_matches('.').to_string();
     if let Some(first) = heading.get_mut(0..1) {
         first.make_ascii_uppercase();
     }
     heading
+}
+
+fn tutorial_agent_step(chapter: &TutorialChapter, idx: usize, gui_step: &str) -> String {
+    tutorial_step_at(&chapter.agent_steps, idx)
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            format!(
+                "In the current GENtle project, help me perform this tutorial step: {} Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.",
+                gui_step.trim()
+            )
+        })
+}
+
+fn tutorial_cli_for_reader(command: &str) -> String {
+    command
+        .replace("cargo run --bin gentle_cli -- ", "gentle_cli ")
+        .replace("cargo run -q --bin gentle_cli -- ", "gentle_cli ")
 }
 
 fn tutorial_chapter_has_complete_cli_steps(chapter: &TutorialChapter) -> bool {
@@ -4809,13 +4896,13 @@ fn render_tutorial_step_graphics(
 
 fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> String {
     let mut out = String::new();
-    out.push_str("\n## GUI First\n\n");
+    out.push_str("\n## Walkthrough: GUI, CLI and Inner Agent\n\n");
     if chapter.gui_steps.is_empty() {
-        out.push_str("- No GUI-first steps are required for this chapter.\n");
+        out.push_str("- No interactive steps are required for this chapter.\n");
         return out;
     }
     if !chapter.cli_steps.is_empty() {
-        out.push_str("CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.\n\n");
+        out.push_str("Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.\n\nIn the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.\n\n");
     }
     for (idx, step) in chapter.gui_steps.iter().enumerate() {
         let step = step.trim();
@@ -4831,20 +4918,29 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> St
         out.push_str(&format!(
             "### Step {}: {}\n\n",
             idx + 1,
-            tutorial_step_heading(step)
+            tutorial_step_heading(chapter, idx, step)
         ));
-        out.push_str("GUI: ");
+        out.push_str("**GUI**\n\n");
         out.push_str(step);
         out.push_str("\n\n");
         if let Some(cli_step) = cli_step {
-            out.push_str("CLI:\n\n");
+            out.push_str("**CLI (terminal)**\n\n");
             out.push_str("```bash\n");
-            out.push_str(cli_step);
+            out.push_str(&tutorial_cli_for_reader(cli_step));
             out.push_str("\n```\n\n");
         }
+        out.push_str("**Ask the inner agent**\n\n");
+        out.push_str("> ");
+        out.push_str(&tutorial_agent_step(chapter, idx, step));
+        out.push_str("\n\n");
         if let Some(expectation) = expectation {
-            out.push_str("> Expected: ");
+            out.push_str("**Expected**\n\n> ");
             out.push_str(expectation);
+            out.push_str("\n\n");
+        }
+        if let Some(rationale) = tutorial_step_at(&chapter.step_rationales, idx) {
+            out.push_str("**Why it matters**\n\n");
+            out.push_str(rationale);
             out.push_str("\n\n");
         }
         out.push_str(&render_tutorial_step_graphics(chapter, idx + 1, output_dir));
@@ -5054,41 +5150,43 @@ fn render_tutorial_chapter_markdown(
         out.push('\n');
     }
     out.push_str(&render_tutorial_guided_walkthrough_see_also(chapter));
-    out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
-    out.push_str(&render_tutorial_local_execution_note(chapter));
-    out.push_str(&render_tutorial_parameters_that_matter(chapter));
-    out.push_str("\n## When This Routine Is Useful\n\n");
-    for use_case in &chapter.use_cases {
-        out.push_str("- ");
-        out.push_str(use_case.trim());
-        out.push('\n');
-    }
-    out.push_str("\n## What You Learn\n\n");
+    out.push_str("\n## What You Will Accomplish\n\n");
     for objective in &chapter.learning_objectives {
         out.push_str("- ");
         out.push_str(objective.trim());
         out.push('\n');
     }
-    out.push_str(&render_tutorial_concepts_compact(chapter, concept_by_id)?);
+    out.push_str("\n## Before You Start\n");
+    out.push_str(&render_tutorial_prerequisites(chapter, chapter_by_id)?);
+    out.push_str(&render_tutorial_local_execution_note(chapter));
+    out.push_str("\n**Useful when:**\n\n");
+    for use_case in &chapter.use_cases {
+        out.push_str("- ");
+        out.push_str(use_case.trim());
+        out.push('\n');
+    }
     out.push_str(&render_tutorial_at_a_glance(chapter));
     out.push_str(&render_tutorial_gui_steps(chapter, output_dir));
     if !tutorial_chapter_has_complete_cli_steps(chapter) {
-        out.push_str("\n## Command Equivalent (After GUI)\n\n");
-        out.push_str("Run the same routine non-interactively once the GUI flow is clear:\n\n");
+        out.push_str("\n## Complete Workflow Replay\n\n");
+        out.push_str("When an individual GUI gesture has no standalone shell command, replay the complete canonical workflow:\n\n");
         out.push_str("```bash\n");
-        out.push_str("cargo run --bin gentle_cli -- workflow @");
+        out.push_str("gentle_cli workflow @");
         out.push_str(&workflow_path);
         out.push('\n');
-        out.push_str("cargo run --bin gentle_cli -- shell 'workflow @");
+        out.push_str("gentle_cli shell 'workflow @");
         out.push_str(&workflow_path);
         out.push_str("'\n");
         out.push_str("```\n");
     }
+    out.push_str("\n## Interpretation and Reference\n");
+    out.push_str(&render_tutorial_parameters_that_matter(chapter));
+    out.push_str(&render_tutorial_concepts_compact(chapter, concept_by_id)?);
     if !chapter.follow_up_commands.is_empty() {
         out.push_str("\n## Follow-up Commands\n\n");
         out.push_str("```bash\n");
         for command in &chapter.follow_up_commands {
-            out.push_str(command.trim());
+            out.push_str(&tutorial_cli_for_reader(command.trim()));
             out.push('\n');
         }
         out.push_str("```\n");
@@ -6413,8 +6511,11 @@ mod tests {
             narrative: "Synthetic tutorial narrative.".to_string(),
             use_cases: vec!["Exercise tutorial review metadata.".to_string()],
             gui_steps: vec!["Open the tutorial.".to_string()],
+            step_titles: vec![],
             cli_steps: vec![],
+            agent_steps: vec![],
             step_expectations: vec![],
+            step_rationales: vec![],
             prerequisites: vec![],
             local_execution_note: None,
             learning_objectives: vec!["Understand tutorial review metadata.".to_string()],
@@ -8943,6 +9044,42 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_step_headings_preserve_accessions_ranges_paths_and_complete_instructions() {
+        let mut chapter = minimal_tutorial_chapter("heading_contract");
+        for instruction in [
+            "Fetch GenBank accession NM_001126241.3.",
+            "Open test_files/pGEX_3X.fasta.",
+            "Paint the upstream window 61720..62000, then inspect chr1:62000.",
+            "Inspect A. Keep the complete instruction, including its second sentence.",
+            "Open Patterns -> PCR Designer with the current selection before adjusting the flank windows for the selected core region.",
+        ] {
+            assert_eq!(
+                tutorial_step_heading(&chapter, 0, instruction),
+                instruction.trim_end_matches('.')
+            );
+        }
+        chapter.step_titles.push("Open the PCR Designer".into());
+        assert_eq!(
+            tutorial_step_heading(&chapter, 0, "A longer fallback instruction."),
+            "Open the PCR Designer"
+        );
+    }
+
+    #[test]
+    fn tutorial_walkthrough_distinguishes_terminal_commands_from_gui_shell_intents() {
+        let mut chapter = minimal_tutorial_chapter("interface_contract");
+        chapter.gui_steps = vec!["Open the PCR Designer.".into()];
+        chapter.cli_steps = vec!["gentle_cli shell 'ui open pcr-design'".into()];
+        let markdown = render_tutorial_gui_steps(&chapter, Path::new("."));
+        assert!(markdown.contains("**CLI (terminal)**"));
+        assert!(!markdown.contains("**CLI / GUI Shell**"));
+        assert!(markdown.contains("without the executable prefix or outer quotes"));
+        assert!(markdown.contains("a headless CLI returns the UI intent but does not open a GUI"));
+        assert!(markdown.contains("does not inherit the open GUI project's unsaved state"));
+        assert!(markdown.contains("a listing command only inspects results"));
+    }
+
+    #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
         let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
@@ -8965,14 +9102,18 @@ mod tests {
         let chapter = generated.join("chapters/02-01_load_branch_reverse_complement_pgex_fasta.md");
         let markdown = std::fs::read_to_string(&chapter).expect("read generated chapter markdown");
         assert!(markdown.starts_with("---\nchapter_id: "));
-        assert!(markdown.contains("## What You Learn"));
+        assert!(markdown.contains("## What You Will Accomplish"));
         assert!(markdown.contains("## Applied Concepts"));
         assert!(!markdown.contains("Reoccurs in:"));
-        assert!(markdown.contains("## GUI First"));
+        assert!(markdown.contains("## Walkthrough: GUI, CLI and Inner Agent"));
+        assert!(markdown.contains("**Ask the inner agent**"));
+        assert!(markdown.contains("Do not execute it until I approve."));
         assert!(markdown.contains("## Parameters That Matter"));
         assert!(
-            markdown.find("## Parameters That Matter").unwrap()
-                < markdown.find("## GUI First").unwrap()
+            markdown
+                .find("## Walkthrough: GUI, CLI and Inner Agent")
+                .unwrap()
+                < markdown.find("## Parameters That Matter").unwrap()
         );
         assert!(markdown.contains("## Tutorial Provenance"));
         assert!(markdown.contains("review_status: "));
@@ -8985,9 +9126,12 @@ mod tests {
             std::fs::read_to_string(&online_chapter).expect("read online chapter markdown");
         assert!(online_markdown.contains("> **How to Run This Locally**"));
         assert!(online_markdown.contains("### Step 1:"));
-        assert!(online_markdown.contains("CLI:\n\n```bash\nGENTLE_TEST_ONLINE=1 cargo run"));
-        assert!(online_markdown.contains("> Expected:"));
-        assert!(!online_markdown.contains("## Command Equivalent (After GUI)"));
+        assert!(
+            online_markdown
+                .contains("**CLI (terminal)**\n\n```bash\nGENTLE_TEST_ONLINE=1 gentle_cli")
+        );
+        assert!(online_markdown.contains("**Expected**\n\n>"));
+        assert!(!online_markdown.contains("## Complete Workflow Replay"));
 
         let simple_pcr_chapter = generated.join("chapters/04-01_simple_pcr_selection_gui.md");
         let simple_pcr_markdown =
@@ -9001,12 +9145,9 @@ mod tests {
             std::fs::read_to_string(&promoter_chapter).expect("read promoter chapter markdown");
         assert!(promoter_markdown.contains("**Prerequisites:** Read [Chapter 1:"));
         assert!(promoter_markdown.contains("### Step 8:"));
-        assert!(promoter_markdown.contains("CLI:\n\n```bash\ncargo run --bin gentle_cli"));
-        assert!(
-            promoter_markdown
-                .contains("CLI snippets use GENtle's default `.gentle_state.json` state")
-        );
-        assert!(promoter_markdown.contains("> Expected: `tfbs_score_tracks.svg`"));
+        assert!(promoter_markdown.contains("**CLI (terminal)**\n\n```bash\ngentle_cli"));
+        assert!(promoter_markdown.contains("CLI snippets assume an installed `gentle_cli`"));
+        assert!(promoter_markdown.contains("**Expected**\n\n> `tfbs_score_tracks.svg`"));
         assert!(!promoter_markdown.contains("## Command Equivalent (After GUI)"));
         assert!(promoter_markdown.contains("## What This Chapter Produces"));
         assert!(promoter_markdown.contains("> SVG text labels:"));

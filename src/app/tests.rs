@@ -6804,17 +6804,14 @@ fn help_display_markdown_adds_soft_breaks_for_tutorial_style_inline_code() {
 
 #[test]
 fn help_display_markdown_summarizes_generated_tutorial_front_matter() {
-    let markdown = "---\nchapter_id: \"load_branch_reverse_complement_pgex_fasta\"\nsource_example: \"docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json\"\n---\n\n# Load FASTA\n\nBody line.\n";
+    let markdown = "---\nchapter_id: \"load_branch_reverse_complement_pgex_fasta\"\ntier: \"core\"\nautomated_status: \"passed\"\nreview_status: \"codex_reviewed\"\nsource_example: \"docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json\"\n---\n\n# Load FASTA\n\nBody line.\n";
     let rendered = GENtleApp::help_display_markdown(markdown);
     let normalized = rendered.replace('\u{200B}', "");
 
     assert!(!normalized.starts_with("---"));
-    assert!(normalized.starts_with("# Load FASTA\n\n_Provenance note:"));
-    assert!(normalized.contains("chapter `load_branch_reverse_complement_pgex_fasta`"));
-    assert!(normalized.contains(
-        "workflow `docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json`"
-    ));
-    assert!(normalized.contains("the hands-on walkthrough starts here"));
+    assert!(normalized.starts_with("# Load FASTA\n\n_Quick facts:"));
+    assert!(normalized.contains("`core` · `passed` · review `codex_reviewed`"));
+    assert!(normalized.contains("Full provenance is at the end."));
     assert!(normalized.contains("\n\nBody line."));
 }
 

@@ -26,7 +26,90 @@ This chapter exists to remove setup friction from Gibson specialist testing. The
 
 See also: guided walkthrough [docs/tutorial/03-05_gibson_specialist_testing_gui.md](../../03-05_gibson_specialist_testing_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
+## What You Will Accomplish
+
+- Use executable tutorial projects as deterministic GUI test baselines.
+- Recognize the stable sequence IDs that the Gibson testing guide expects.
+- Replay the same baseline from GUI and CLI without changing biological setup.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 4: Gibson two-fragment overlap planning baseline](./03-03_gibson_two_fragment_overlap_preview.md) first.
+
+**Useful when:**
+
+- You want to test `Patterns -> Gibson...` without manually importing files first.
+- You want a stable tutorial-project baseline that can be opened from the GUI and replayed from the CLI.
+- You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+Each step pairs GUI instructions with related terminal commands or guidance and a review-only inner-agent prompt. Some steps require GUI interaction; a listing command only inspects results, it does not perform the design. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox; a separate CLI process does not inherit the open GUI project's unsaved state.
+
+In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the Gibson specialist starter project from File -> Open Tutorial Project
+
+**GUI**
+
+Open the Gibson specialist starter project from `File -> Open Tutorial Project...`.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Open the Gibson specialist starter project from `File -> Open Tutorial Project...`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The workflow loads the same starter inputs that the GUI tutorial-project menu opens, without requiring manual sequence import.
+
+### Step 2: Confirm the starter contains gibson_destination_pgex (circular) and gibson_insert_demo (linear)
+
+**GUI**
+
+Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).
+
+**CLI (terminal)**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear). Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The workflow result contains `gibson_destination_pgex` from `test_files/pGEX-3X.gb` and `gibson_insert_demo` from the tutorial insert FASTA.
+
+### Step 3: Continue in the automatically opened Gibson Specialist Testing Tutorial from Step 3 onward
+
+**GUI**
+
+Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward.
+
+**CLI (terminal)**
+
+```bash
+cargo run --bin gentle_examples_docs -- tutorial-catalog-check
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The tutorial catalog remains linked so the generated starter chapter points readers to the hand-written Gibson specialist walkthrough.
+
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -40,69 +123,16 @@ See also: guided walkthrough [docs/tutorial/03-05_gibson_specialist_testing_gui.
   - Why it matters: This is the canonical executable setup layer behind the hand-written Gibson testing walkthrough.
   - How to derive it: Select the chapter from `Open Tutorial Project...` or run the canonical workflow JSON directly.
 
-## When This Routine Is Useful
-
-- You want to test `Patterns -> Gibson...` without manually importing files first.
-- You want a stable tutorial-project baseline that can be opened from the GUI and replayed from the CLI.
-- You want one deterministic starting state for checking overlaps, primer suggestions, cartoon rendering, and export behavior.
-
-## What You Learn
-
-- Use executable tutorial projects as deterministic GUI test baselines.
-- Recognize the stable sequence IDs that the Gibson testing guide expects.
-- Replay the same baseline from GUI and CLI without changing biological setup.
-
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
 - **Deterministic Workflows** (`deterministic_workflows`): Operation chains should produce stable IDs and comparable outputs across repeated runs.
 - **Sequence Lineage** (`sequence_lineage`): Derived sequences are explicit products linked to upstream inputs and operations.
 
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Open the Gibson specialist starter project from File -> Open Tutorial Project...
-
-GUI: Open the Gibson specialist starter project from `File -> Open Tutorial Project...`.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
-```
-
-> Expected: The workflow loads the same starter inputs that the GUI tutorial-project menu opens, without requiring manual sequence import.
-
-### Step 2: Confirm the starter contains gibson_destination_pgex (circular) and gibson_in...
-
-GUI: Confirm the starter contains `gibson_destination_pgex` (circular) and `gibson_insert_demo` (linear).
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
-```
-
-> Expected: The workflow result contains `gibson_destination_pgex` from `test_files/pGEX-3X.gb` and `gibson_insert_demo` from the tutorial insert FASTA.
-
-### Step 3: Continue in the automatically opened Gibson Specialist Testing Tutorial from ...
-
-GUI: Continue in the automatically opened `Gibson Specialist Testing Tutorial` from `Step 3` onward.
-
-CLI:
-
-```bash
-cargo run --bin gentle_examples_docs -- tutorial-catalog-check
-```
-
-> Expected: The tutorial catalog remains linked so the generated starter chapter points readers to the hand-written Gibson specialist walkthrough.
-
-
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
+gentle_cli workflow @docs/examples/workflows/gibson_specialist_testing_baseline.json
 ```
 
 ## Checkpoints

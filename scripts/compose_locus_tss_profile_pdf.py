@@ -513,6 +513,7 @@ def publish_composite(
     genbank_bytes: bytes | None = None, output_genbank: Path | None = None,
     embl_bytes: bytes | None = None, output_embl: Path | None = None,
     output_svg_directory: Path | None = None, output_svg_zip: Path | None = None,
+    pdf_representation: str = "raster",
 ) -> dict[str, Any]:
     require((genbank_bytes is None) == (output_genbank is None), "GenBank content/path must be supplied together")
     require((embl_bytes is None) == (output_embl is None), "EMBL content/path must be supplied together")
@@ -551,7 +552,11 @@ def publish_composite(
         staged_by_path = dict(zip(outputs, partials))
         render_pages = ([staged_by_path[output_svg_directory / p["file"]]
                          for p in receipt["output"]["svg_bundle"]["pages"]] if bundled else page_paths)
-        command = [str(gentle_cli), "svg-pdf-set", str(partial_pdf),
+        require(pdf_representation in {"raster", "vector"},
+                "PDF representation must be raster or vector")
+        renderer_command = ("svg-vector-pdf-set" if pdf_representation == "vector"
+                            else "svg-pdf-set")
+        command = [str(gentle_cli), renderer_command, str(partial_pdf),
                    *[str(path) for path in render_pages]]
         result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=900)
         summary = json.loads(result.stdout)
@@ -567,11 +572,19 @@ def publish_composite(
                 require(font.get("families") and font.get("post_script_name")
                         and isinstance(font.get("face_index"), int) and font["face_index"] >= 0,
                         "multi-page renderer returned an incomplete used-font identity")
+        if pdf_representation == "vector":
+            require(summary.get("embedded_text") is True
+                    and summary.get("svg_interactivity_preserved") is False
+                    and summary.get("svg_uri_links_preserved") is False
+                    and summary.get("pdf_representation")
+                    == "static multipage vector PDF with embedded selectable text",
+                    "vector renderer returned an incomplete representation contract")
         require(partial_pdf.is_file() and partial_pdf.stat().st_size > 0,
                 "multi-page renderer produced no PDF")
         require(partial_fasta.is_file() and partial_fasta.stat().st_size > 0,
                 "selected-TSS FASTA export produced no records")
         receipt["producer"]["renderer_summary"] = summary
+        receipt["producer"]["pdf_representation"] = pdf_representation
         receipt["output"].update({
             "pdf_sha256": sha256(partial_pdf), "pdf_bytes": partial_pdf.stat().st_size,
             "selected_tss_fasta_sha256": sha256(partial_fasta),
@@ -722,7 +735,8 @@ def compose(args: argparse.Namespace) -> dict[str, Any]:
                              output_pdf, output_fasta, output_receipt, genbank_bytes, output_genbank,
                              embl_bytes, output_embl,
                              args.output_svg_directory.resolve() if getattr(args, "output_svg_directory", None) else None,
-                             args.output_svg_zip.resolve() if getattr(args, "output_svg_zip", None) else None)
+                             args.output_svg_zip.resolve() if getattr(args, "output_svg_zip", None) else None,
+                             getattr(args, "pdf_representation", "raster"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -738,6 +752,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gentle-cli", type=Path, required=True)
     parser.add_argument("--producer-revision", required=True)
     parser.add_argument("--output-pdf", type=Path, required=True)
+    parser.add_argument("--pdf-representation", choices=("raster", "vector"), default="raster",
+                        help="PDF backend; vector keeps geometry/selectable text but not SVG hover")
     parser.add_argument("--output-fasta", type=Path, required=True)
     parser.add_argument("--output-genbank", type=Path, help="Optional annotated selected windows from indexed, receipt-bound GenBank exports")
     parser.add_argument("--output-embl", type=Path, help="Optional annotated selected windows from indexed, receipt-bound EMBL exports")

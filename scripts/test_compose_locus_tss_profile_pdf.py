@@ -349,12 +349,35 @@ class CompositeLocusTssPdfTests(unittest.TestCase):
         fasta = self.args().output_fasta.read_text()
         self.assertIn("promoter_id=selected", fasta)
         self.assertNotIn("promoter_id=other", fasta)
+        self.assertEqual(receipt["producer"]["pdf_representation"], "raster")
         self.assertEqual(receipt["horizontal_alignment"], {
             "page_width": 1400.0,
             "plot_left": 255.0,
             "plot_right": 1050.0,
             "policy": "context and detail pages share the canonical locus plot frame",
         })
+
+    def test_vector_pdf_representation_uses_typed_renderer_and_binds_contract(self):
+        args = self.args()
+        args.pdf_representation = "vector"
+
+        def render(command, **kwargs):
+            self.assertEqual(command[1], "svg-vector-pdf-set")
+            Path(command[2]).write_bytes(b"%PDF-1.7\nsynthetic vector")
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps({
+                "page_count": len(command) - 3,
+                "pdf_representation": "static multipage vector PDF with embedded selectable text",
+                "embedded_text": True,
+                "svg_interactivity_preserved": False,
+                "svg_uri_links_preserved": False,
+                "pages": [{"font_identity_status": target.FONT_IDENTITY_STATUS,
+                           "font_identities": []} for _ in command[3:]],
+            }), stderr="")
+
+        with mock.patch.object(target.subprocess, "run", side_effect=render):
+            receipt = target.compose(args)
+        self.assertEqual(receipt["producer"]["pdf_representation"], "vector")
+        self.assertTrue(args.output_pdf.read_bytes().startswith(b"%PDF-1.7"))
         self.assertEqual(receipt["locus_matrix_bindings"], [{
             "source_id": "MA9991.1", "locus_track_id": "synthetic_matrix",
         }])
