@@ -4455,6 +4455,10 @@ Shared shell command:
         `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json`
         (synthetic sequence; not orderable human PATZ1 primers)
     - Gene isoform-assay study planner:
+      - PCR Designer's `Gene assay study` mode uses these same commands; it
+        does not add a second planner or publication narrative. The bounded
+        [GUI/Shell tutorial](tutorial/04-08_gene_assay_study_gui.md) includes an
+        offline preparation helper, explicitly pending dossier and two reviews.
       - `primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE [--normalize-only] [--normalized-request OUTPUT.json] [--path PLAN.json] [--workflow WORKFLOW.json]`
       - normalization content-binds the complete request and all effective
         defaults before the first approval. With `--normalize-only`, stdout is

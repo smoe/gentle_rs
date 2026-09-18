@@ -284,8 +284,10 @@ supports these controls, but this walkthrough is not a live GUI sign-off:
 5. Use the GUI Shell for exact JSON-based continuation. For example,
    `primers show-transcript-assay-panel patz1_sybr_juc_panel` inspects the
    persisted panel. The same `primers plan-gene-isoform-study` and specificity
-   commands above are Shell routes; this guide does not claim dedicated study
-   approval or aggregate-finalization buttons. Replace `$OUT` with the actual
+   commands above are Shell routes. The newer
+   [04.08 Gene assay study workspace](04-08_gene_assay_study_gui.md) adds explicit
+   study inspection and two-stage review; aggregate specificity finalization
+   still uses the shared Shell. Replace `$OUT` with the actual
    absolute path inside the GUI Shell, which is not Bash.
 
 After catalog generation, Help or Agent Assistant can open this teaching text

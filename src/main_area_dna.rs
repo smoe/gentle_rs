@@ -76,6 +76,7 @@ mod genomic_regions_ui;
 mod locus_inspector;
 mod tss_view;
 
+mod gene_assay_study_ui;
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
 
@@ -1478,6 +1479,7 @@ pub struct MainAreaDna {
     cached_terminal_exon_rt_primer_pool_report: Option<Arc<TerminalExonRtPrimerPoolReport>>,
     transcript_assay_panel_ui: TranscriptAssayPanelUiState,
     cached_transcript_assay_panel_report: Option<Arc<TranscriptAssayPanelReport>>,
+    gene_assay_study_ui: gene_assay_study_ui::GeneAssayStudyUi,
     cached_experimental_assay_handoff: Option<Arc<ExperimentalAssayHandoffReport>>,
     sequencing_confirmation_ui: SequencingConfirmationUiState,
     primer_backend: PrimerDesignBackend,
@@ -2361,6 +2363,7 @@ impl MainAreaDna {
             cached_terminal_exon_rt_primer_pool_report: None,
             transcript_assay_panel_ui: TranscriptAssayPanelUiState::default(),
             cached_transcript_assay_panel_report: None,
+            gene_assay_study_ui: Default::default(),
             cached_experimental_assay_handoff: None,
             sequencing_confirmation_ui: SequencingConfirmationUiState::default(),
             primer_backend: PrimerDesignBackend::Auto,
@@ -19820,14 +19823,34 @@ impl MainAreaDna {
             {
                 self.op_status = err;
             }
-            if ui
+            let panel_action = ui
                 .button("Design all-transcript panel")
                 .on_hover_text(
                     "Open PCR Designer with this complete splicing group as the source for endpoint, SYBR, or TaqMan transcript-panel design",
-                )
-                .clicked()
-            {
+                );
+            if panel_action.clicked() {
                 self.seed_transcript_assay_panel_from_splicing_view(view);
+            }
+            let study_action = ui.button("Gene assay study...").on_hover_text(
+                "Inspect a saved gene-study plan, review its evidence and continue primer-pair design in PCR Designer",
+            );
+            if study_action.clicked() {
+                self.seed_transcript_assay_panel_from_splicing_view(view);
+                self.pcr_designer_mode = PcrDesignerMode::GeneAssayStudy;
+            }
+            #[cfg(feature = "gui-test-support")]
+            for (response, id) in [
+                (&panel_action, "splicing.transcript_panel.open"),
+                (&study_action, "splicing.gene_assay_study.open"),
+            ] {
+                crate::gui_test_support::register_response(
+                    response, id, "window.splicing_expert",
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        &view.seq_id,
+                        &view.target_feature_id.to_string(),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button, false,
+                );
             }
             ui.label(
                 egui::RichText::new("Quick actions: send a genomic ROI, design one qPCR assay, or compare an assay panel across every mature-transcript class in this group.")
@@ -21482,6 +21505,7 @@ impl MainAreaDna {
     }
 
     fn poll_primer_design_task(&mut self, ctx: &egui::Context) {
+        self.poll_gene_assay_study_task(ctx);
         if self.primer_design_task.is_none() {
             return;
         }

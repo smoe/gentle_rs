@@ -1,8 +1,11 @@
 # Internal .11 Integration And Transcript Capture
 
 Planning baseline: 2026-09-18, `origin/main` at `84f34a9e`.
-Development branch: `codex/internal.11`. The `.10` release remains owned by
-`main`; this document neither declares it released nor waives its gates.
+Integration branch: `codex/internal.11`, now merged into local `main` and
+`gentle_rs_2_main`. Development continues on `gentle_rs_2_main` with the
+[gene-informed primer-pair GUI](gene_assay_study_gui_plan.md) as the primary
+.11 workflow. The capture programme below remains separate. This document
+neither declares `.10` released nor waives its gates.
 No version bump, tag, push or publication is part of this integration.
 Claude consultation was offered; this plan is not Claude-reviewed.
 

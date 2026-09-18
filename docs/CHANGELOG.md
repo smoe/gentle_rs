@@ -28,6 +28,39 @@
   engine, shell and GUI-handler regressions; live TP73 acceptance remains Glen's
   separate task.
 
+## 2026-09-18 - Gene-Informed Primer-Pair Study Workspace
+
+- Continue `.11` on `gentle_rs_2_main`, fast-forwarded to local `main` at
+  `8597a6ee`; no `.10` release, version, tag or publication changes.
+- Add `Gene assay study` to the existing PCR Designer and a direct entry from
+  Splicing Expert. Inspect saved typed plans, declared evidence and missing
+  assessments, transcript scope, automatic recommendations and explicit
+  overrides without inheriting execution authority from imported files.
+- Present both selected primers on a mature-cDNA axis, stored per-transcript
+  product predictions and selection evidence. Distinguish source-sequence
+  comparison panels from plan-bound results; rename the candidate sequence
+  table so it no longer implies order approval. Biological calculations and
+  persisted report fields are unchanged.
+- Reuse shared normalization, planning, approved workflow execution and
+  canonical dossier export. Separate planning review from exact-workflow
+  review, invalidate review on edits, and use managed background tasks with
+  progress, cancellation, receipts and stale-project protection. Require new
+  output directories and reject reused panel identities.
+- Add catalogued manual/hybrid tutorial [04.08](tutorial/04-08_gene_assay_study_gui.md),
+  a supplied-binary offline preparation helper, and a
+  [forwardable screenshot request for Glen](gene_assay_study_glen_acceptance.md).
+  Reuse the public PATZ1 fixture without weakening it: comparison panels do not
+  establish feasibility of the stricter separate study plan, and the teaching
+  dossier remains pending. Original paper-facing source inputs, live GUI
+  screenshots and human/experimental approval remain outstanding.
+- Verification: Python tutorial suite (86 tests, 12 optional skips), supplied-CLI
+  helper replay, catalog/manifest and formatting/whitespace checks passed.
+  Initial Rust tests found a stale-plan attachment defect; committed-revision
+  receipts and a post-commit-edit regression address it. Final Rust rebuild,
+  semantic-feature check and generated-tutorial rerun remain with Glen at the
+  user's request; see the [exact handoff](gene_assay_study_gui_plan.md#verification-handoff).
+  This is an implementation slice, not a release or scientific acceptance.
+
 ## 2026-09-18 - Genuinely Headless Container Distribution
 
 - Build only CLI, MCP and the examples helper with Cargo default features

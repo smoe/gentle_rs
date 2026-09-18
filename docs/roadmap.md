@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-18 - `.11` starts on `codex/internal.11`; [integration/capture plan](internal_11_plan.md). `.10` release work stays on `main`.
+Last session: 2026-09-18 - `.11` continues on `gentle_rs_2_main`; [primer-pair study GUI](gene_assay_study_gui_plan.md) and [tutorial/Glen checkpoints](tutorial/04-08_gene_assay_study_gui.md). `.10` release actions remain out of scope.
 Glen approved `.10` preparation; final-SHA/package acceptance and owner publication approval remain pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -90,7 +90,7 @@ Pre-release finishing scope:
    Validate DuckDB boundaries/limits, scan filters and selected-package GUI staleness; have Glen inspect [imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) on both strands. Native TSS follow-up (not an added `.10` gate): GUI acceptance, full report-bound traces/hits/reporters and native export; retain [flat-file limits and readability plan](tss_annotated_sequence_readability_plan.md). Glen: regenerate [source-coherent Ensembl/RefSeq pages](transcript_source_presentation.md) from one enriched locus and verify mappings/PDF/SVG/HTML receipts; synthetic coverage is not real-data acceptance. Keep the [standalone comparison](transcript_source_presentation.md#standalone-comparison-review) deferred rather than adding a second source-join implementation.
 6. Continue the [responsive-command migration](asynchronous_command_execution_plan.md#reconciled-codex-plan-2026-09-14): validate BLAST start-v2 deferred diagnostics, bounded FIFO/cancellation and observation-only status at the merged revision. Preserve DEC-026 merging and [DEC-048](decisions.md#dec-048-command-submission-and-observation-never-wait-for-execution); audit general managed-command queuing/dependencies and result/file/job semantics before expanding beyond the BLAST queue.
    Have Glen validate genome preparation, Run/slash, live navigation/conversation and cancellation at one revision; extend the synthetic growing-journal cost probe to a representative project before claiming bounded UI lock latency. Keep cross-process control, durable admission and other adapters pending. No private T2T/model run in development; general asynchronous migration is not complete.
-7. On `.11`, follow the [integration/capture plan](internal_11_plan.md): independently validate tutorial/vector-PDF integration, then add a typed capture GUI, permitted-multilocus specificity, evidence ranking and reviewed order handoff; replay TP73/E2F1/TP53/TP63/PATZ1/FUS/MDM2/MDM4 with joint 5'/3' selection. Assess accession-bound RefSeq parsing separately. Discovery and terminal-exon binding do not establish experimental or intact-CDS acceptance.
+7. On `.11`, prioritize [gene-informed primer-PAIR study GUI](gene_assay_study_gui_plan.md), not single-primer capture. Have Glen annotate [04.08](tutorial/04-08_gene_assay_study_gui.md) at G1-G6 and supply an original typed paper-facing dossier/source bundle; live GUI, real-data and order approval remain pending. Preserve the separate [capture/PDF follow-ups](internal_11_plan.md), including pool-specific references and RefSeq accession matching; no capture experimental acceptance is implied.
 
 Current non-goals:
 

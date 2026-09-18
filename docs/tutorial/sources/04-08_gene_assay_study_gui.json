@@ -1,0 +1,16 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "gene_assay_study_gui",
+  "title": "Review an Alternative-Splicing Primer-Pair Study from Gene Evidence to Dossier",
+  "catalog": {
+    "order": 63,
+    "path": "docs/tutorial/04-08_gene_assay_study_gui.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["gui_first", "primer_design", "transcript_analysis", "wet_lab_biologists"],
+    "notes": "Synthetic PATZ1 alternative-splicing primer-pair study in PCR Designer, anchored in Splicing Expert. Inspect saved gene-study evidence, primer footprints and transcript products; normalize and separately review planning/execution; keep missing specificity and pending canonical dossiers explicit. Not a Nanopore single-primer capture pool. Glen's live screenshots and scientific acceptance are pending.",
+    "group": "04",
+    "group_position": 8
+  }
+}
