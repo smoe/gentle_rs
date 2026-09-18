@@ -2559,6 +2559,8 @@ def _preview_text(text: str, *, max_lines: int = 6, max_chars: int = 600) -> str
 def _infer_command_compatibility_note(
     command: list[str] | None,
     stderr_text: str,
+    *,
+    cli_args: list[str] | None = None,
 ) -> str | None:
     if not command:
         return None
@@ -2567,13 +2569,11 @@ def _infer_command_compatibility_note(
     if not stderr:
         return None
 
-    requested = ""
-    if len(command) >= 3 and command[1] == "shell":
-        requested = command[2]
-    elif len(command) >= 3:
-        requested = " ".join(command[1:3])
-    elif len(command) >= 2:
-        requested = command[1]
+    # Launchers can contain several argv entries; do not interpret them as GENtle commands.
+    args = cli_args if cli_args is not None else command[1:]
+    if args[:1] == ["--state"]:
+        args = args[2:]
+    requested = args[1] if len(args) >= 2 and args[0] == "shell" else " ".join(args[:2])
 
     requested = requested.strip()
     if not requested:
@@ -2616,6 +2616,7 @@ def _build_failure_summary(
         effective_note = _infer_command_compatibility_note(
             command,
             step.get("stderr", ""),
+            cli_args=step.get("cli_args"),
         )
     summary = {
         "stage": stage,
@@ -4044,6 +4045,7 @@ def _run_cli_command(
     ended_utc = _now_utc_iso()
     step = {
         "command": command,
+        "cli_args": list(cli_args),
         "started_utc": started_utc,
         "ended_utc": ended_utc,
         "exit_code": run_result.returncode,

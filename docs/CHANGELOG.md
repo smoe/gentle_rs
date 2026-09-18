@@ -38,6 +38,17 @@
   runs are not hairpin/dimer Tm values; complete oligos, reaction stages and
   explicit chemical assumptions remain necessary for review.
 
+## 2026-09-17 - Windows ClawBio Parity Fixtures
+
+- Replace the affected workflow/path and PNG-summary Bash fixtures with native
+  Python fixtures, preserving literal workflow-file arguments and native paths.
+  Retain the artifact assertions and separate real SVG rasterization tests.
+- Bind compatibility diagnostics to actual GENtle arguments rather than a
+  one-token executable assumption; cover interpreter, Cargo, container and
+  state-file prefixes without losing the full executed command.
+- Windows CI rerun remains required; local wrapper tests are not Windows
+  packaging or scientific acceptance.
+
 ## 2026-09-17 - TSS Collection Snapshot And Truncation Review
 
 - Replace cache-sensitive source/member hashes with versioned authoritative
