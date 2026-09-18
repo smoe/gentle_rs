@@ -609,6 +609,7 @@ pub(super) enum PcrDesignerMode {
     QpcrAssays,
     TranscriptPanels,
     TerminalExonRtPool,
+    GeneAssayStudy,
 }
 
 impl PcrDesignerMode {
@@ -618,6 +619,7 @@ impl PcrDesignerMode {
             Self::QpcrAssays => "qPCR",
             Self::TranscriptPanels => "Transcript panels",
             Self::TerminalExonRtPool => "RT primer pool",
+            Self::GeneAssayStudy => "Gene assay study",
         }
     }
 
@@ -634,6 +636,9 @@ impl PcrDesignerMode {
             }
             Self::TerminalExonRtPool => {
                 "RT-primer-pool mode appends one shared fixed 5-prime adapter to ranked sequence-specific 3-prime segments near explicitly selected terminal-exon starts."
+            }
+            Self::GeneAssayStudy => {
+                "Review declared gene evidence, plan primer-pair studies, inspect saved panels and export the canonical dossier. This is not a transcript-capture pool."
             }
         }
     }
@@ -4852,7 +4857,7 @@ impl MainAreaDna {
                 });
         }
 
-        egui::CollapsingHeader::new("Order-ready primers")
+        egui::CollapsingHeader::new("Candidate primer sequences (not order approval)")
             .default_open(false)
             .show(ui, |ui| {
                 egui::Grid::new("transcript_assay_order_primers")
@@ -5568,6 +5573,11 @@ impl MainAreaDna {
             }
         });
         if let Some(report) = self.cached_transcript_assay_panel_report.clone() {
+            Self::render_selected_transcript_pair(
+                ui,
+                report.as_ref(),
+                &mut self.gene_assay_study_ui.selected_pair,
+            );
             Self::render_transcript_assay_panel_report(ui, report.as_ref());
             ui.horizontal_wrapped(|ui| {
                 if ui
@@ -5604,7 +5614,7 @@ impl MainAreaDna {
         }
     }
 
-    fn render_pcr_designer_mode_selector(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn render_pcr_designer_mode_selector(&mut self, ui: &mut egui::Ui) {
         ui.group(|ui| {
             ui.label("PCR Designer mode");
             ui.horizontal_wrapped(|ui| {
@@ -5613,6 +5623,7 @@ impl MainAreaDna {
                     PcrDesignerMode::QpcrAssays,
                     PcrDesignerMode::TranscriptPanels,
                     PcrDesignerMode::TerminalExonRtPool,
+                    PcrDesignerMode::GeneAssayStudy,
                 ] {
                     let selected = self.pcr_designer_mode == mode;
                     if ui
@@ -7347,6 +7358,10 @@ impl MainAreaDna {
         // that viewport as well as from the parent DNA viewer so completion is
         // published even when the parent viewport is idle or occluded.
         self.poll_primer_design_task(ctx);
+        if self.pcr_designer_mode == PcrDesignerMode::GeneAssayStudy {
+            self.render_gene_assay_study(ui);
+            return;
+        }
         if self.pcr_designer_mode == PcrDesignerMode::TerminalExonRtPool {
             self.render_terminal_exon_rt_primer_pool_designer(ui);
             return;
@@ -7370,6 +7385,7 @@ impl MainAreaDna {
                 PcrDesignerMode::QpcrAssays => "Paint + ROI",
                 PcrDesignerMode::TranscriptPanels => "Transcript context",
                 PcrDesignerMode::TerminalExonRtPool => "RT-primer targets",
+                PcrDesignerMode::GeneAssayStudy => "Gene study",
             });
             if self.pcr_designer_mode == PcrDesignerMode::TranscriptPanels {
                 if let Some(view) =
@@ -7487,6 +7503,7 @@ impl MainAreaDna {
                 PcrDesignerMode::QpcrAssays => "qPCR Constraints + Run",
                 PcrDesignerMode::TranscriptPanels => "Transcript Panel + Matrix",
                 PcrDesignerMode::TerminalExonRtPool => "RT Primer Pool",
+                PcrDesignerMode::GeneAssayStudy => "Gene study",
             });
             egui::ScrollArea::vertical()
                 .id_salt("pcr_designer_pair_scroll")

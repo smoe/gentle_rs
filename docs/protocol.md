@@ -11250,6 +11250,14 @@ Primer-pair alternative frontier:
     report carries the v2 schema above and is available through list/show/export
     shell routes.
 - Gene isoform-assay study planning:
+  - PCR Designer's `Gene assay study` mode is a thin consumer of these same
+    request/plan/workflow and publication contracts. Saved-plan inspection is
+    not execution approval. The two in-session reviews are invalidated by
+    request/project changes; they do not manufacture persisted scientific
+    approval or order readiness. The GUI revalidates bound inputs before
+    dispatch and uses the shared exact-workflow verifier and managed snapshots.
+    Managed receipts include `result_structural_revision` at commit, allowing
+    consumers to reject later edits without rejecting the command's own changes.
   - `primers plan-gene-isoform-study REQUEST_JSON_OR_@FILE` consumes
     `gentle.gene_isoform_assay_study_plan_request.v1` and, during planning,
     returns `gentle.gene_isoform_assay_study_plan.v1` without running primer

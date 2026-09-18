@@ -2990,7 +2990,7 @@ Controls:
   specialist so pair-PCR and qPCR setup can stay out of the crowded lower
   `Engine Ops` pane.
 - the dedicated `PCR Designer` now has an explicit
-  `Pair PCR | qPCR | Transcript panels | RT primer pool` mode switch; ROI
+  `Pair PCR | qPCR | Transcript panels | RT primer pool | Gene assay study` mode switch; ROI
   seeding is shared for the first two modes, transcript panels use a complete
   annotated Splicing Expert group, and RT-primer pools use explicitly ordered
   transcript targets.
@@ -4909,7 +4909,7 @@ qPCR form:
   coordinate fields so large genomic positions remain easy to enter
 - in the dedicated `PCR Designer`, qPCR is now a first-class mode rather than
   an Engine-Ops-only appendix:
-  - `Pair PCR | qPCR | Transcript panels | RT primer pool` selector switches the right-hand
+  - `Pair PCR | qPCR | Transcript panels | RT primer pool | Gene assay study` selector switches the right-hand
     constraints/run panel between the three workflows
   - the left-hand paint/selection workflow stays shared so the same painted or
     formula-defined ROI can feed either pair-PCR or qPCR without switching
@@ -4971,6 +4971,26 @@ qPCR form:
     store and export path
   - Tm is visible but deliberately excluded from this workflow's ranking.
     Whole-transcriptome/genome specificity is also not implied by this report
+- `Gene assay study` is a session-scoped mode in the same PCR Designer, also
+  opened by Splicing Expert's `Gene assay study...` action:
+  - inspect a typed saved `gentle.gene_isoform_assay_study_plan.v1` for the
+    current source sequence, its declared evidence/missing assessments,
+    transcript scope, recommendation/override and exact operation digests
+  - inspect persisted panels on that sequence, explicitly distinguishing
+    comparison panels from plan-bound results; selected-pair views show both
+    primer footprints on mature cDNA and each transcript's stored products
+  - load a planning request, edit its short-product hard ceiling or full JSON,
+    normalize through the engine, review it before planning, then separately
+    review the exact workflow before execution; edits/project changes invalidate
+    review, and imported plans do not inherit execution authority
+  - managed background tasks expose progress and cancellation; stale results
+    cannot replace project state. New output directories and panel identities
+    preserve prior results; external file effects are not rolled back
+  - canonical dossier export takes the same explicit hash-bound publication
+    request as CLI/OpenClaw. Missing handoffs stay pending; no automatic order
+    submission or alternate GUI scientific narrative is introduced
+  - walkthrough: [04.08](tutorial/04-08_gene_assay_study_gui.md). Live GUI and
+    real-data acceptance are pending; the synthetic fixture is not a human assay
 - `Transcript panels` is a thin GUI over the shared
   `DesignTranscriptAssayPanel` operation:
   - Splicing Expert's `Design all-transcript panel` action supplies the source
@@ -4996,7 +5016,8 @@ qPCR form:
     with required/preferred priority and Primer3 overlap controls
   - the saved-report view shows the transcript-by-assay product matrix,
     endpoint band sizes, junction evaluations, short SYBR junction assays,
-    order-ready primers, and the per-cell oligo-dT 5-prime reach status
+    candidate primer sequences (not order approval), and the per-cell oligo-dT
+    5-prime reach status
   - an empty oligo-dT threshold reports annotation-derived distances without
     making a categorical risk call; a user-supplied threshold enables the
     corresponding within/elevated matrix labels

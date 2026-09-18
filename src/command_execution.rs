@@ -37,6 +37,9 @@ pub struct CommandReceipt {
     pub job_id: u64,
     pub owner_instance: u64,
     pub result_instance: Option<u64>,
+    /// Revision at commit, so UI consumers can detect later edits without
+    /// confusing the command's own structural changes with stale results.
+    pub result_structural_revision: Option<u64>,
     pub runtime_frame_id: Option<String>,
     pub command_sha256: String,
     pub state: RuntimeStatusFrameState,
@@ -153,7 +156,8 @@ impl CommandExecutionService {
         )
     }
 
-    #[cfg(test)]
+    /// Admit trusted in-process work with the same snapshot, cancellation and
+    /// commit rules as shell commands. Callers own input/approval validation.
     pub(crate) fn submit_work<F>(
         &self,
         engine: Arc<RwLock<GentleEngine>>,
@@ -238,6 +242,7 @@ impl CommandExecutionService {
                     job_id: id,
                     owner_instance: owner,
                     result_instance: None,
+                    result_structural_revision: None,
                     runtime_frame_id: None,
                     command_sha256,
                     state: RuntimeStatusFrameState::Waiting,
@@ -295,6 +300,10 @@ impl CommandExecutionService {
                             job.receipt.phase = p.phase.clone();
                             callback_frame.update_from_progress(p.phase, p.item, p.bytes_done, p.bytes_total, p.percent);
                         }
+                        OperationProgress::PrimerDesign(p) => {
+                            job.receipt.phase = format!("{}: {}", p.design_kind, p.stage);
+                            callback_frame.update_detail(p.detail);
+                        }
                         _ => {}
                     }
                     true
@@ -320,6 +329,7 @@ impl CommandExecutionService {
                     job.published = true;
                     job.receipt.phase = "committed".into();
                     job.receipt.result_instance = Some(live.instance_id());
+                    job.receipt.result_structural_revision = Some(live.structural_revision());
                     job.receipt.committed_operations = job.receipt.computed_operations.unwrap_or(0);
                     job.receipt.result_sha256 = Some(digest);
                     old
