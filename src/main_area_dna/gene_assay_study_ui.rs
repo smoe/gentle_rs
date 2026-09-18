@@ -541,7 +541,13 @@ fn value_result(value: serde_json::Value) -> Result<ShellRunResult, String> {
     })
 }
 
-fn study_button(ui: &mut egui::Ui, enabled: bool, label: &str, _id: &str, _seq_id: &str) -> bool {
+fn study_button(
+    ui: &mut egui::Ui,
+    enabled: bool,
+    label: &str,
+    _id: &'static str,
+    _seq_id: &str,
+) -> bool {
     let response = ui.add_enabled(enabled, egui::Button::new(label));
     #[cfg(feature = "gui-test-support")]
     crate::gui_test_support::register_response(
