@@ -93,7 +93,9 @@ jobs:
 
       - name: Verify immutable candidate identity
         shell: bash
-        run: python3 scripts/release_candidate.py verify
+        run: |
+          python3 scripts/release_candidate.py verify
+          test -f scripts/package_desktop.py
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -214,11 +216,11 @@ jobs:
             fi
             echo "app_bundle=${app_bundle}"
 
-            stage_dir="$RUNNER_TEMP/gentle_dmg_stage"
+            stage_dir="$(mktemp -d "$RUNNER_TEMP/gentle-dmg.XXXXXX")"
             echo "stage_dir=${stage_dir}"
-            rm -rf "$stage_dir"
-            mkdir -p "$stage_dir"
-            cp -R "$app_bundle" "$stage_dir/"
+            python3 scripts/package_desktop.py stage --platform macos --repo . \
+              --binaries "${CARGO_TARGET_DIR}/release" --tag "${RELEASE_TAG#refs/tags/}" \
+              --app-bundle "$app_bundle" --destination "$stage_dir/$(basename "$app_bundle")"
             installer="${CARGO_TARGET_DIR}/release/bundle/osx/gentle-${RELEASE_TAG#refs/tags/}.dmg"
             echo "installer=${installer}"
             hdiutil create \
@@ -234,46 +236,25 @@ jobs:
             package="gentle-${tag}-linux-x64"
             stage_parent="$(mktemp -d "$RUNNER_TEMP/gentle-linux.XXXXXX")"
             stage="$stage_parent/$package"
-            mkdir -p "$stage/bin" dist
-            for binary in gentle gentle_cli gentle_mcp gentle_js gentle_lua gentle_examples_docs gentle_publication_report; do
-              install -m755 "${CARGO_TARGET_DIR}/release/$binary" "$stage/bin/$binary"
-              ldd "$stage/bin/$binary" >> "$stage/runtime-libraries.txt"
-            done
-            if grep -q 'not found' "$stage/runtime-libraries.txt"; then
-              echo "Unresolved runtime library in Linux package"
-              exit 1
-            fi
-            # Include only tracked resources, never a developer's downloaded caches.
-            git ls-files -z -- assets icons docs test_files integrations/python \
-              data/resources/affymetrix/platform_registry.json README.md CONTRIBUTING.md copyright \
-              | tar --null -T - -cf - | tar -xf - -C "$stage"
-            cp docs/linux_tarball.md "$stage/START-HERE.md"
-            git rev-parse HEAD > "$stage/REVISION"
-            printf '%s\n' "$tag" > "$stage/VERSION"
-            (
-              cd "$stage"
-              find . -type f ! -name SHA256SUMS -print0 | sort -z \
-                | xargs -0 sha256sum > SHA256SUMS
-            )
+            python3 scripts/package_desktop.py stage --platform linux --repo . \
+              --binaries "${CARGO_TARGET_DIR}/release" --tag "$tag" --destination "$stage"
             out_dir="${CARGO_TARGET_DIR}/release/bundle/tar"
             mkdir -p "$out_dir"
             installer="$out_dir/${package}.tar.gz"
             tar -czf "$installer" -C "$stage_parent" "$package"
           else
-            exe_path="${CARGO_TARGET_DIR}/release/gentle.exe"
-            echo "runner.os=${{ runner.os }}"
-            echo "RELEASE_TAG=${RELEASE_TAG}"
-            echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
-            echo "exe_path=${exe_path}"
-            if [[ ! -f "$exe_path" ]]; then
-              echo "Windows binary not found: $exe_path"
-              exit 1
-            fi
+            tag="${RELEASE_TAG#refs/tags/}"
+            package="gentle-${tag}"
+            stage_parent="$(mktemp -d "$RUNNER_TEMP/gentle-windows.XXXXXX")"
+            python3 scripts/package_desktop.py stage --platform windows --repo . \
+              --binaries "${CARGO_TARGET_DIR}/release" --tag "$tag" \
+              --destination "$stage_parent/$package"
             out_dir="${CARGO_TARGET_DIR}/release/bundle/zip"
             mkdir -p "$out_dir"
             installer="$out_dir/gentle-${RELEASE_TAG#refs/tags/}.zip"
             echo "installer=${installer}"
-            powershell -NoProfile -Command "Compress-Archive -Path '$exe_path' -DestinationPath '$installer' -Force"
+            python3 -c 'import shutil, sys; shutil.make_archive(sys.argv[1], "zip", sys.argv[2], sys.argv[3])' \
+              "${installer%.zip}" "$stage_parent" "$package"
             echo "created installer:"
             ls -la "$installer"
           fi
@@ -289,13 +270,15 @@ jobs:
           mount_point="$RUNNER_TEMP/gentle_dmg_mount"
           mkdir -p "$mount_point"
           hdiutil attach "$installer" -mountpoint "$mount_point" -nobrowse -quiet
+          trap 'hdiutil detach "$mount_point" -quiet' EXIT
           app_path="$(find "$mount_point" -maxdepth 2 -name '*.app' | head -n 1)"
           if [[ -z "$app_path" ]]; then
             echo "No .app bundle found in mounted DMG"
             exit 1
           fi
           test -f "$app_path/Contents/Info.plist"
-          hdiutil detach "$mount_point" -quiet
+          python3 scripts/package_desktop.py smoke --platform macos --root "$app_path" \
+            --revision "$EXPECTED_REVISION" --checkout "$GITHUB_WORKSPACE"
 
       - name: Smoke test Windows package
         if: runner.os == 'Windows'
@@ -319,15 +302,10 @@ jobs:
           New-Item -ItemType Directory -Path $extract -Force | Out-Null
           Expand-Archive -Path $resolvedInstaller -DestinationPath $extract -Force
 
-          $exe = Get-ChildItem -Path $extract -Filter gentle.exe -Recurse | Select-Object -First 1
-          if (-not $exe) {
-            throw "No gentle.exe found after ZIP extraction"
-          }
-          if ($exe.Length -le 0) {
-            throw "Extracted gentle.exe is empty"
-          }
-          Write-Host "zip_extracted_exe=$($exe.FullName)"
-          Write-Host "zip_extracted_exe_size_bytes=$($exe.Length)"
+          $package = Join-Path $extract ("gentle-" + $env:RELEASE_TAG.Replace("refs/tags/", ""))
+          python scripts/package_desktop.py smoke --platform windows --root "$package" `
+            --revision "$env:EXPECTED_REVISION" --checkout "$env:GITHUB_WORKSPACE"
+          if ($LASTEXITCODE -ne 0) { throw "Extracted Windows package smoke failed" }
 
       - name: Smoke test Linux package
         if: runner.os == 'Linux'
@@ -337,18 +315,8 @@ jobs:
           extract="$(mktemp -d "$RUNNER_TEMP/gentle-linux-smoke.XXXXXX")"
           tar -xzf "${{ steps.collect.outputs.installer_path }}" -C "$extract"
           package="$extract/gentle-${RELEASE_TAG#refs/tags/}-linux-x64"
-          test "$(cat "$package/REVISION")" = "$(git rev-parse HEAD)"
-          cd "$package"
-          sha256sum -c SHA256SUMS
-          ./bin/gentle --version
-          ./bin/gentle_cli capabilities
-          ./bin/gentle_mcp --help
-          ./bin/gentle_js --version
-          ./bin/gentle_lua --version
-          ./bin/gentle_examples_docs --help
-          ./bin/gentle_publication_report --help
-          test -s assets/genomes.json
-          test -s docs/tutorial/manifest.json
+          python3 scripts/package_desktop.py smoke --platform linux --root "$package" \
+            --revision "$EXPECTED_REVISION" --checkout "$GITHUB_WORKSPACE"
 
       - name: Normalize installer filename
         id: normalize

@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-09-18 - Desktop Package Contents And Extraction Checks
+
+- Stage the same seven desktop entrypoints and tracked resources on Windows,
+  macOS and Linux. Windows no longer archives only `gentle.exe`; macOS includes
+  CLI/MCP/script helpers and tutorial fixtures as well as the app. Keep downloaded
+  caches out of all packages, including cargo-bundle's copied resource tree;
+  retain the generated icon declared by the macOS app's `Info.plist`.
+- Bind every staged package to its revision and file checksums. Check the mounted
+  DMG or extracted archive away from the checkout, executing capabilities,
+  entrypoint help/version commands and tutorial-manifest validation. Keep native
+  CI and live GUI/scientific acceptance distinct from offline packaging tests.
+- Add synthetic layout, ZIP/tar round-trip, removed-checkout relocation,
+  missing-resource/binary, tampering and error-propagation tests to release-policy
+  CI. Published `.10` archives, tags, versions and release permissions are unchanged.
+- Validation: 13 packaging tests and 35 existing release-policy/container tests
+  passed, plus workflow YAML/Bash syntax, whitespace and release-gate checks.
+  The offline locked Cargo check was stopped during a fresh dependency build
+  under concurrent build/disk pressure; no Rust source changed. Native package
+  execution, live GUI checks and Glen's exact-SHA acceptance remain pending.
+
 ## 2026-09-18 - Internal .11 Review Reconciliation
 
 - Correct the release notes, process, roadmap and gel documentation against the

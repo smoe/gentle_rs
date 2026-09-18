@@ -1,9 +1,12 @@
 # Release Process
 
-This project publishes installable desktop packages for:
+The current installer workflow prepares these layouts; published artifacts
+retain the layout of their tagged source:
 
-- macOS: `.dmg`
-- Windows: `.zip` (contains `gentle.exe`)
+- macOS: `.dmg` containing the app, all native entrypoints in
+  `Contents/MacOS/`, and tracked resources in `Contents/Resources/`
+- Windows: `.zip` containing a `gentle-<tag>/` directory, all native entrypoints
+  in `bin/`, and tracked resources alongside it
 - Linux: `.tar.gz` for x86-64, built on Ubuntu 24.04; GUI plus CLI/MCP/script
   entrypoints and tracked resources. See [Linux tarball quick start](linux_tarball.md).
 
@@ -16,7 +19,7 @@ Container Registry (GHCR); a tag push alone only runs build checks:
   `ghcr.io/<owner>/<repo>:latest` by an explicitly approved publish run
 - GUI and embedded JS/Lua are no longer built or redistributed in containers;
   historical `gui` / `<tag>-gui` images are not refreshed. Bare tags and `latest`
-  now mean headless, not browser GUI. Native installers remain unchanged.
+  now mean headless, not browser GUI. Native builds retain GUI and scripting.
 - current image platform: `linux/amd64`
 
 The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
@@ -63,7 +66,9 @@ version bump or publication is authorized by this document.
 After the tutorial fix and candidate changes are merged, record one clean
 candidate commit and use it for both workflows. Run these commands only when
 that commit is available on GitHub and includes the candidate-verification
-helper. The `--ref main` selects the workflow definition, while `candidate_sha`
+and desktop-packaging helpers. The current installer workflow rejects older
+sources without its packaging helper before compilation. The `--ref main`
+selects the workflow definition, while `candidate_sha`
 selects the exact source to build; both revisions are retained in the receipts.
 Keep `main` frozen at the candidate while dispatching the acceptance runs.
 
@@ -292,18 +297,32 @@ requires its own approved publication event.
 
 ## Smoke Checks in Release Workflow
 
-- macOS:
-  - mounts the `.dmg`
-  - verifies an `.app` bundle exists with `Contents/Info.plist`
-- Windows:
-  - extracts the ZIP package
-  - verifies `gentle.exe` is present and non-empty
-- Linux:
-  - extracts the tarball into a fresh directory and verifies its file checksums
-  - verifies the retained full revision matches the tag checkout
-  - runs every packaged entrypoint's version/help/capabilities smoke from the
-    extracted directory and checks required resource files
-  - does not claim live graphical, scientific or cross-distribution acceptance
+`scripts/package_desktop.py` stages the same seven entrypoints and tracked
+resource inventory on all three platforms. It excludes untracked caches,
+rejects resource links outside the checkout, and records `REVISION`, `VERSION`
+and `SHA256SUMS`. On macOS it replaces cargo-bundle's resource-directory copy
+in a fresh app, retaining its declared generated icon, so local downloads cannot
+enter the DMG through a bundle glob.
+Linux still records `ldd` output and rejects unresolved runtime libraries.
+
+After mounting the DMG or extracting the ZIP/tarball under runner temporary
+storage, the workflow checks the full inventory and candidate revision. It
+runs every packaged entrypoint's version/help smoke, `gentle_cli capabilities`
+and `gentle_examples_docs tutorial-manifest-check` with the packaged resource
+directory as cwd, outside the checkout. A missing binary/resource, changed
+checksum, failing command or stale tutorial manifest fails the job. macOS
+detaches the mounted image even on failure; Windows propagates Python failure.
+
+For command-line use, start from the extracted Windows/Linux directory (with
+its `assets/` and `docs/`) and invoke `bin/gentle_cli[.exe]`. In a copied macOS
+app, use `Contents/Resources/` as cwd and invoke `../MacOS/gentle_cli`.
+Keep the whole package together, not just one executable.
+
+Offline Python tests use synthetic Git repositories and executable stand-ins;
+they check layouts, archive round-trips, relocation and failure propagation.
+Native CI must still run the real binaries. These smoke checks are not live
+GUI acceptance, arbitrary-cwd compatibility, scientific acceptance, code
+signing or proof that external tools such as BLAST/Primer3 are installed.
 
 ## Rollback / Recovery
 
