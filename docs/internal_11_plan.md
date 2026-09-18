@@ -30,12 +30,16 @@ those omissions; the earlier reconciliation did not establish their completion.
 | P1: desktop packages | Shared staging and extracted-package checks now cover all seven entrypoints and tracked resources on Windows/macOS/Linux. Offline tests cover layouts, archive round-trips, relocation and failures. Native CI must still run `gentle_cli capabilities`, MCP and tutorial-manifest validation from the actual packages; receipts and live GUI acceptance remain required. |
 | A1: exact-SHA acceptance | Glen: TP73/DeltaNp73 inventory, materialization, reload, validated scans and native inspection, plus branch/reverse-complement, digest and bounded Simple-PCR tutorial chapters. Bind binary, project, input and receipt hashes to one new candidate; retain the old `.10` ledger separately. |
 
-T3 focused verification: `cargo test --lib --locked --offline -j 1` passed with
-filters `tss_workspace::tests` (22), `engine_shell::tests::tss_` (4) and
+T3 focused verification after rebase on `main` at `d9f75837`:
+`cargo test --lib --locked --offline -j 1` passed with
+filters `tss_workspace::tests` (24), `engine_shell::tests::tss_` (4) and
 `app::tests::tss_` (4), each with `-- --test-threads=1`.
 `cargo check -q --locked --offline -j 1`, `cargo fmt --check` and
 `git diff --check` also passed. These working-tree checks do not replace the
 full-workspace or real-data/live-GUI acceptance at the final candidate SHA.
+Main's new synthetic GUI tutorial oracle was explicitly refreshed from the
+engine-emitted preview. Its independent workflow test, generated-tutorial check
+and catalog/manifest consistency tests passed; no user collection was migrated.
 
 Optional follow-ups, not prerequisites silently added to this patch:
 

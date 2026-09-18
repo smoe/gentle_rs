@@ -28,7 +28,12 @@ are never merged; their common label only selects both for this artificial demo.
 `tss_collection_gui_oracle` workflow stores the resulting explicit approval and
 selected IDs, not a general-purpose approval override. Reproduce/check it with
 `cargo test --lib tss_tutorial_starter -- --nocapture`; compare the emitted
-request and IDs before updating the oracle after a deliberate fixture change.
+request and IDs before updating the oracle after a deliberate fixture or
+grouping-contract change. The 2026-09-18 refresh uses resolved gene IDs rather
+than display labels in TSS identity; DNA, starts, strands, memberships and
+window lengths are unchanged. This is explicit reapproval of this public
+synthetic oracle only, not a migration of saved user collections.
 `tss_gui_acceptance_starter_and_oracle_are_independent_and_report_bound` checks
 the fixed approval, report assertions, persistence, stale rejection, forgetting
-and undo. No screenshot or human sign-off is bundled.
+and undo, including the sequence IDs named by the GUI state verifiers.
+No screenshot or human sign-off is bundled.

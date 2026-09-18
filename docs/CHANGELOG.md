@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-18 - TSS Tutorial Rebase Integration
+
+- Retain main's saved-collection browser and offline GUI tutorial when rebasing
+  the gene-identity fix. Refresh the public synthetic oracle's exact approval
+  and sequence IDs from the engine-emitted preview, plus its source/manifest
+  state assertions. DNA, coordinates, strands and memberships are unchanged;
+  no saved user collection is migrated or implicitly reapproved.
+- Extend the independent starter/oracle regression to check every sequence ID
+  named by the GUI state verifiers, not just report fields and completion facts.
+- Post-rebase verification: 24 TSS engine, four shell and four GUI-handler tests;
+  the independent starter/oracle test, generated-tutorial check, two catalog/
+  manifest consistency tests and 17 Python tutorial-runner tests all passed.
+  Offline locked Cargo check, formatting and whitespace checks also passed.
+  Live GUI and full-workspace acceptance remain separate.
+
 ## 2026-09-18 - TSS Gene Identity Follow-Up
 
 - Resolve missing transcript gene labels from unambiguous same-source/strand

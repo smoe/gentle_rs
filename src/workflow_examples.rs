@@ -8040,6 +8040,13 @@ mod tests {
                 {
                     assert_eq!(schema, "gentle.tss_collection.v1");
                     assert_tutorial_report_verifier(&json, required_fields, assertions);
+                } else if let TutorialGuiVerifier::State { seq_ids, .. } = verifier {
+                    for seq_id in seq_ids {
+                        assert!(
+                            oracle.state().sequences.contains_key(seq_id),
+                            "TSS tutorial state verifier references missing oracle sequence {seq_id}"
+                        );
+                    }
                 }
             }
         }
