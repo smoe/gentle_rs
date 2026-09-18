@@ -3234,6 +3234,12 @@ Shared shell command:
         pretending the absent names are loaded in the active enzyme catalog
     - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
+    - `primers design-transcript-capture-pool REQUEST_JSON_OR_@FILE`
+      - offline exact-site discovery for explicit transcript sets, sense or
+        antisense roles, UTR/range windows, sharing permissions and fixed-oligo
+        stage-aware pool diagnostics; never an approved assay or order
+      - use `primers list-reports`, `show-report`, and `export-report` for the
+        saved result; see [request examples and limits](transcript_capture_pools.md)
     - `primers design-terminal-exon-rt-pool REQUEST_JSON_OR_@FILE`
       - the optional request object `genomic_specificity` accepts
         `target_genome_id`, optional `catalog_path`/`cache_dir`, and
@@ -3292,6 +3298,10 @@ Shared shell command:
         report additionally contains exhaustive, content-fingerprint-bound
         genomic-DNA exact-hit evidence; it still does not claim
         whole-transcriptome specificity
+      - self/cross-complementarity is reported as complementary-base runs,
+        not thermodynamic hairpin/dimer predictions; see
+        [self- and cross-interaction review](transcript_capture_pools.md#self--and-cross-interaction-review)
+        for the existing checks and the separate Primer3 follow-up
     - `primers design-qpcr REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers specificity REPORT_ID --pair-rank N --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`
     - `primers specificity --forward SEQ --reverse SEQ --target-genome GENOME_ID [--max-target-amplicon-bp N | --readiness-max-amplicon-bp N --exploratory-max-amplicon-bp N] [--report-detail compact|full] [--min-primer-coverage-fraction F] [--max-3prime-mismatches N] [--three-prime-window-bp N] [--min-total-mismatches-to-unintended-target N] [--max-hits-per-primer N] [--path OUTPUT.json]`

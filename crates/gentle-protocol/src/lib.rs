@@ -5572,6 +5572,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "PcrMutagenesis",
     "DesignPrimerPairs",
     "DesignTerminalExonRtPrimerPool",
+    "DesignTranscriptCapturePool",
     "ExportTerminalExonRtPrimerPoolReport",
     "DesignPrimerGroupTarget",
     "ExportPrimerSpecificityAlignmentHtml",

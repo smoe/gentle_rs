@@ -19513,6 +19513,22 @@ fn sequencing_primer_suggest_descriptor(id: &str, description: &str) -> Value {
     })
 }
 
+fn transcript_capture_descriptor(id: &str) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": "true", "requires_confirmation": false,
+        "args": [
+            {"name": "REQUEST_JSON", "required": true, "detail": "gentle.transcript_capture_pool_request.v1 with explicit roles, windows, budgets and stages"},
+            {"name": "TARGET_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "repeat for every loaded annotated DNA source in request.targets[].sources[]"},
+            {"name": "REPORT_ID", "required": true, "subject_kind": "report", "detail": "request.report_id"}
+        ],
+        "reads": [{"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}],
+        "effects": [{"fact": "report.exists", "subject": {"arg": "REPORT_ID"}, "report_kind": "transcript_capture_pool", "equals": "transcript_capture_pool", "effect_kind": "must_on_success"}],
+        "precondition_expr": {"all": [{"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}]},
+        "description": "Discover exact sense/antisense capture sites across explicit transcript targets, distinguish retained isoform information and jointly assess fixed-oligo interactions by stage. Persists a bounded proposal, never specificity approval or an order.",
+        "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn primer_design_operation_descriptor(id: &str, report_kind: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -25603,6 +25619,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "primer_design",
             "Generate and persist a ranked insertion-primer design report through the shared engine operation.",
         ),
+        transcript_capture_descriptor("DesignTranscriptCapturePool"),
+        transcript_capture_descriptor("primers design-transcript-capture-pool"),
         json!({
             "id": "primers design-terminal-exon-rt-pool",
             "kind": "operation",
@@ -31577,6 +31595,9 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
             json!({"fact": "sequence.exists", "subject": {"arg": "TEMPLATE_SEQ_ID"}}),
         ]),
         "primers design-terminal-exon-rt-pool" | "DesignTerminalExonRtPrimerPool" => Some(vec![
+            json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
+        ]),
+        "primers design-transcript-capture-pool" | "DesignTranscriptCapturePool" => Some(vec![
             json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}}),
         ]),
         "primers list-reports" => Some(vec![]),
@@ -60091,6 +60112,7 @@ fn execute_primers_command(
         ShellCommand::PrimersListReports => {
             let reports = engine.list_primer_design_reports();
             let terminal_exon_rt_primer_pools = engine.list_terminal_exon_rt_primer_pool_reports();
+            let transcript_capture_pool_ids = engine.list_transcript_capture_pool_report_ids();
             let specificity_reports = engine.list_primer_specificity_reports();
             Ok(ShellRunResult {
                 state_changed: false,
@@ -60100,13 +60122,19 @@ fn execute_primers_command(
                     "reports": reports,
                     "terminal_exon_rt_primer_pool_count": terminal_exon_rt_primer_pools.len(),
                     "terminal_exon_rt_primer_pools": terminal_exon_rt_primer_pools,
+                    "transcript_capture_pool_ids": transcript_capture_pool_ids,
                     "specificity_report_count": specificity_reports.len(),
                     "specificity_reports": specificity_reports,
                 }),
             })
         }
         ShellCommand::PrimersShowReport { report_id } => {
-            if let Ok(report) = engine.get_primer_design_report(report_id) {
+            if let Ok(report) = engine.get_transcript_capture_pool_report(report_id) {
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({"report_kind": "transcript_capture_pool", "report": report}),
+                })
+            } else if let Ok(report) = engine.get_primer_design_report(report_id) {
                 let simple_pcr_pairs = primer_design_simple_pcr_pairs_json(&report);
                 Ok(ShellRunResult {
                     state_changed: false,
@@ -60140,7 +60168,15 @@ fn execute_primers_command(
             }
         }
         ShellCommand::PrimersExportReport { report_id, path } => {
-            if let Ok(report) = engine.get_primer_design_report(report_id) {
+            if engine.get_transcript_capture_pool_report(report_id).is_ok() {
+                let report = engine
+                    .export_transcript_capture_pool_report(report_id, path)
+                    .map_err(|error| error.to_string())?;
+                Ok(ShellRunResult {
+                    state_changed: false,
+                    output: json!({"schema": "gentle.transcript_capture_pool_export.v1", "report_id": report.report_id, "path": path}),
+                })
+            } else if let Ok(report) = engine.get_primer_design_report(report_id) {
                 engine
                     .export_primer_design_report(report_id, path)
                     .map_err(|error| error.to_string())?;

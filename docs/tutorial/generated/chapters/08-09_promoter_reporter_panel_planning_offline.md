@@ -26,7 +26,186 @@ A reporter-panel design is not one opaque cloning command. GENtle first binds th
 
 This chapter stays offline by using a repository-owned 240 bp synthetic MCS-layout vector and a 151 bp synthetic promoter fragment. The vector is deliberately not pGL4.10 and the fragment is not real TP73 regulatory DNA. V1 requires the explicit `p53_family_core_disruption_v1` policy rather than silently applying p53-family substitutions to a generic promoter request. The candidate response element is sequence-motif evidence only, and its stated-rule mutant is a testable sequence proposal rather than proof of lost occupancy or reporter function.
 
+## What You Will Accomplish
+
+- Distinguish read-only panel planning from digest-approved project mutation and file export.
+- Explain which source, vector, workflow, product, and path facts are bound by the proposal digest.
+- Inspect a fixed p53-family core-edit rule and its PWM/restriction-site audits without turning either into a functional claim.
+- Require an explicit mutation policy and keep study-specific caveats bound to the reviewed request rather than adding gene-specific prose globally.
+- Recognize why the synthetic MCS fixture validates only against its own catalog identity and must be rejected as pGL4.10.
+- Use the same engine contract from the Promoter design GUI and the `promoters panel-*` shell routes.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 24: Promoter Design Artifact Slice (Offline Synthetic TP73 Locus)](./08-03_promoter_design_artifact_slice_offline.md) first.
+
+**Useful when:**
+
+- You want to inspect every construct, primer, warning, and output path before a panel changes project state.
+- You want a deterministic offline example of exact-vector validation and shared panel cloning strategy selection.
+- You want scripts to fail closed when a proposal or any bound input drifts after review.
+- You want wild-type and stated-rule motif-mutant products without treating a PWM score change as functional proof.
+
+## At a Glance
+
+1. Open the synthetic MCS vector fixture and synthetic panel source sequence in GENtle.
+2. Open Promoter design for the synthetic source and expand Promoter-reporter panel.
+3. Paste the request JSON from docs/examples/assets/promoter_reporter_panel_demo_request.json, adjusting only the loaded sequence IDs or output directory when needed.
+4. Click Plan panel; confirm the vector validation is verified, the selected motif interval is 88..108, and both wild-type and mutant circular products are listed.
+5. Review the shared cloning strategy, primer readiness, exact output paths, warnings, and the non-claims that motif evidence is not occupancy or functional proof.
+6. Type the displayed full proposal digest into the approval field. The materialization button remains disabled for a missing or different digest.
+7. Click Materialize approved panel only after review; confirm the receipt lists project sequence IDs, GenBank/SVG outputs, and the construct/primer manifest.
+8. Change a bound candidate or vector input and confirm the old digest is rejected as stale rather than silently reused.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: Open the synthetic MCS vector fixture and synthetic panel source
+
+**GUI**
+
+Open the synthetic MCS vector fixture and synthetic panel source sequence in GENtle.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Open the synthetic MCS vector fixture and synthetic panel source sequence in GENtle. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The canonical workflow executes entirely offline and completes the read-only panel plan.
+
+### Step 2: Open Promoter design
+
+**GUI**
+
+Open `Promoter design` for the synthetic source and expand `Promoter-reporter panel`.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path":"test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb","as_id":"synthetic_panel_vector"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Open `Promoter design` for the synthetic source and expand `Promoter-reporter panel`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The exact 240 bp circular synthetic vector is loaded under the ID required by the request.
+
+### Step 3: Paste the request JSON from docs/examples/assets/promoter_reporter_panel_demo_request
+
+**GUI**
+
+Paste the request JSON from `docs/examples/assets/promoter_reporter_panel_demo_request.json`, adjusting only the loaded sequence IDs or output directory when needed.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path":"docs/examples/assets/promoter_reporter_panel_demo_source.fasta","as_id":"synthetic_panel_source"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Paste the request JSON from `docs/examples/assets/promoter_reporter_panel_demo_request.json`, adjusting only the loaded sequence IDs or output directory when needed. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The 151 bp candidate source is loaded under the candidate set's pinned sequence ID.
+
+![Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10.](../artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg)
+
+*Figure: Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
+
+> SVG text labels: `GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1) | 240 bp | MCS | luc2_demo | 9 BsrI | 11 HapII, MnoI, MspI | 11 Cfr10 | 12 HpaII`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+
+### Step 4: Click Plan panel
+
+**GUI**
+
+Click `Plan panel`; confirm the vector validation is verified, the selected motif interval is `88..108`, and both wild-type and mutant circular products are listed.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-promoter-panel-state.json shell 'promoters panel-plan @docs/examples/assets/promoter_reporter_panel_demo_request.json --path /tmp/gentle-promoter-panel-proposal.json'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Click `Plan panel`; confirm the vector validation is verified, the selected motif interval is `88..108`, and both wild-type and mutant circular products are listed. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Planning writes one proposal JSON but does not add the proposed fragments, primers, or constructs to project state.
+
+![Linear map of the 151 bp synthetic promoter-fragment input.](../artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg)
+
+*Figure: Linear map of the 151 bp synthetic promoter-fragment input. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
+
+> SVG text labels: `MaeII | TthI | NspHI,SphI | AquI,BstSI,Cfr9I,NspIII,NspSAI,XcyI | HapII,MnoI,MspI | AvaI,SecI,XmaI | HpaII | SmaI`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
+
+### Step 5: Review the shared cloning strategy
+
+**GUI**
+
+Review the shared cloning strategy, primer readiness, exact output paths, warnings, and the non-claims that motif evidence is not occupancy or functional proof.
+
+**CLI / GUI Shell**
+
+```bash
+jq '{proposal_id,proposal_digest,vector_validation,cloning_strategy,members,products,artifacts,warnings,nonclaims}' /tmp/gentle-promoter-panel-proposal.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Review the shared cloning strategy, primer readiness, exact output paths, warnings, and the non-claims that motif evidence is not occupancy or functional proof. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The proposal exposes the vector hash/validation, candidate binding, stated-rule mutation audit, shared strategy, primers, circular product hashes, artifact paths, warnings, and non-claims.
+
+### Step 6: Type the displayed full proposal digest into the approval field
+
+**GUI**
+
+Type the displayed full proposal digest into the approval field. The materialization button remains disabled for a missing or different digest.
+
+**CLI / GUI Shell**
+
+```bash
+DIGEST=$(jq -r .proposal_digest /tmp/gentle-promoter-panel-proposal.json); gentle_cli --state /tmp/gentle-promoter-panel-state.json shell "promoters panel-materialize @/tmp/gentle-promoter-panel-proposal.json --approve $DIGEST"
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Type the displayed full proposal digest into the approval field. The materialization button remains disabled for a missing or different digest. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Materialization succeeds only when the supplied digest exactly matches a freshly recomputed proposal; it then writes GenBank/SVG files and a tabular construct/primer manifest.
+
+7. Click `Materialize approved panel` only after review; confirm the receipt lists project sequence IDs, GenBank/SVG outputs, and the construct/primer manifest.
+8. Change a bound candidate or vector input and confirm the old digest is rejected as stale rather than silently reused.
+
+## Complete Workflow Replay
+
+When an individual GUI gesture has no standalone shell command, replay the complete canonical workflow:
+
+```bash
+gentle_cli workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json
+gentle_cli shell 'workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json'
+```
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -40,22 +219,6 @@ This chapter stays offline by using a repository-owned 240 bp synthetic MCS-layo
   - Why it matters: Artifact paths are part of the approval basis and existing files are never overwritten.
   - How to derive it: Choose a new empty directory before planning; re-plan if the destination changes.
 
-## When This Routine Is Useful
-
-- You want to inspect every construct, primer, warning, and output path before a panel changes project state.
-- You want a deterministic offline example of exact-vector validation and shared panel cloning strategy selection.
-- You want scripts to fail closed when a proposal or any bound input drifts after review.
-- You want wild-type and stated-rule motif-mutant products without treating a PWM score change as functional proof.
-
-## What You Learn
-
-- Distinguish read-only panel planning from digest-approved project mutation and file export.
-- Explain which source, vector, workflow, product, and path facts are bound by the proposal digest.
-- Inspect a fixed p53-family core-edit rule and its PWM/restriction-site audits without turning either into a functional claim.
-- Require an explicit mutation policy and keep study-specific caveats bound to the reviewed request rather than adding gene-specific prose globally.
-- Recognize why the synthetic MCS fixture validates only against its own catalog identity and must be rejected as pGL4.10.
-- Use the same engine contract from the Promoter design GUI and the `promoters panel-*` shell routes.
-
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
@@ -63,117 +226,6 @@ This chapter stays offline by using a repository-owned 240 bp synthetic MCS-layo
 - **Promoter Motif Controls** (`promoter_motif_controls`): Foreground promoter motif signals should be compared with matched controls before being treated as candidate enrichment, depletion, or co-occurrence evidence.
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
 - **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
-
-## At a Glance
-
-1. Open the synthetic MCS vector fixture and synthetic panel source sequence in ...
-2. Open Promoter design for the synthetic source and expand Promoter-reporter pa...
-3. Paste the request JSON from docs/examples/assets/promoter_reporter_panel_demo...
-4. Click Plan panel; confirm the vector validation is verified, the selected mot...
-5. Review the shared cloning strategy, primer readiness, exact output paths, war...
-6. Type the displayed full proposal digest into the approval field. The material...
-7. Click Materialize approved panel only after review; confirm the receipt lists...
-8. Change a bound candidate or vector input and confirm the old digest is reject...
-
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: Open the synthetic MCS vector fixture and synthetic panel source sequence in ...
-
-GUI: Open the synthetic MCS vector fixture and synthetic panel source sequence in GENtle.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json
-```
-
-> Expected: The canonical workflow executes entirely offline and completes the read-only panel plan.
-
-### Step 2: Open Promoter design for the synthetic source and expand Promoter-reporter panel
-
-GUI: Open `Promoter design` for the synthetic source and expand `Promoter-reporter panel`.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path":"test_files/fixtures/reporter_vectors/synthetic_mcs_backbone.gb","as_id":"synthetic_panel_vector"}}'
-```
-
-> Expected: The exact 240 bp circular synthetic vector is loaded under the ID required by the request.
-
-### Step 3: Paste the request JSON from docs/examples/assets/promoter_reporter_panel_demo...
-
-GUI: Paste the request JSON from `docs/examples/assets/promoter_reporter_panel_demo_request.json`, adjusting only the loaded sequence IDs or output directory when needed.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json op '{"LoadFile":{"path":"docs/examples/assets/promoter_reporter_panel_demo_source.fasta","as_id":"synthetic_panel_source"}}'
-```
-
-> Expected: The 151 bp candidate source is loaded under the candidate set's pinned sequence ID.
-
-![Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10.](../artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.synthetic_vector.svg)
-
-*Figure: Circular map of the explicitly synthetic MCS-layout vector used to exercise exact-vector validation; this is not pGL4.10. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
-
-> SVG text labels: `GENTLE_SYNTHETIC_MCS (GENTLE_SYNTHETIC_MCS.1) | 240 bp | MCS | luc2_demo | 9 BsrI | 11 HapII, MnoI, MspI | 11 Cfr10 | 12 HpaII`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
-
-### Step 4: Click Plan panel; confirm the vector validation is verified, the selected mot...
-
-GUI: Click `Plan panel`; confirm the vector validation is verified, the selected motif interval is `88..108`, and both wild-type and mutant circular products are listed.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json shell 'promoters panel-plan @docs/examples/assets/promoter_reporter_panel_demo_request.json --path /tmp/gentle-promoter-panel-proposal.json'
-```
-
-> Expected: Planning writes one proposal JSON but does not add the proposed fragments, primers, or constructs to project state.
-
-![Linear map of the 151 bp synthetic promoter-fragment input.](../artifacts/promoter_reporter_panel_planning_offline/artifacts/promoter_reporter_panel_demo.source.svg)
-
-*Figure: Linear map of the 151 bp synthetic promoter-fragment input. Regenerate with `cargo run --bin gentle_examples_docs -- tutorial-generate`.*
-
-> SVG text labels: `MaeII | TthI | NspHI,SphI | AquI,BstSI,Cfr9I,NspIII,NspSAI,XcyI | HapII,MnoI,MspI | AvaI,SecI,XmaI | HpaII | SmaI`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
-
-### Step 5: Review the shared cloning strategy, primer readiness, exact output paths, war...
-
-GUI: Review the shared cloning strategy, primer readiness, exact output paths, warnings, and the non-claims that motif evidence is not occupancy or functional proof.
-
-CLI:
-
-```bash
-jq '{proposal_id,proposal_digest,vector_validation,cloning_strategy,members,products,artifacts,warnings,nonclaims}' /tmp/gentle-promoter-panel-proposal.json
-```
-
-> Expected: The proposal exposes the vector hash/validation, candidate binding, stated-rule mutation audit, shared strategy, primers, circular product hashes, artifact paths, warnings, and non-claims.
-
-### Step 6: Type the displayed full proposal digest into the approval field. The material...
-
-GUI: Type the displayed full proposal digest into the approval field. The materialization button remains disabled for a missing or different digest.
-
-CLI:
-
-```bash
-DIGEST=$(jq -r .proposal_digest /tmp/gentle-promoter-panel-proposal.json); cargo run --bin gentle_cli -- --state /tmp/gentle-promoter-panel-state.json shell "promoters panel-materialize @/tmp/gentle-promoter-panel-proposal.json --approve $DIGEST"
-```
-
-> Expected: Materialization succeeds only when the supplied digest exactly matches a freshly recomputed proposal; it then writes GenBank/SVG files and a tabular construct/primer manifest.
-
-7. Click `Materialize approved panel` only after review; confirm the receipt lists project sequence IDs, GenBank/SVG outputs, and the construct/primer manifest.
-8. Change a bound candidate or vector input and confirm the old digest is rejected as stale rather than silently reused.
-
-## Command Equivalent (After GUI)
-
-Run the same routine non-interactively once the GUI flow is clear:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json
-cargo run --bin gentle_cli -- shell 'workflow @docs/examples/workflows/promoter_reporter_panel_planning_offline.json'
-```
 
 ## Follow-up Commands
 

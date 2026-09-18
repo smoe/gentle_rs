@@ -12389,6 +12389,7 @@ Error: `{err}`"
                 primerbank_search_report: None,
                 external_primer_pair_import_report: None,
                 terminal_exon_rt_primer_pool: None,
+                transcript_capture_pool: None,
                 primer_variant_screen: None,
                 transcript_assay_cdna_similarity_map: None,
                 transcript_assay_specificity_redesign: None,

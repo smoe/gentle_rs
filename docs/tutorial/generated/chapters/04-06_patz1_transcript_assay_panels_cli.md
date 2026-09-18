@@ -30,7 +30,276 @@ The final step composes, rather than redesigns, the three persisted panels with 
 
 Each selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. For a real complete panel, prepare or import catalogued genomic-DNA and whole-cDNA BLAST resources, then use `primers transcript-assay-specificity-plan` and always call `primers transcript-assay-specificity-finalize` with the scheduler's execution manifest. GENtle distinguishes a completed biological `specificity_fail`, a completed but geometrically `not_assessed` result, and incomplete or failed execution evidence; only `pass` is accepted. Until a handoff is actually executed and finalized, this offline tutorial honestly retains `genomic_confirmation_status: not_run`.
 
+## What You Will Accomplish
+
+- Distinguish endpoint isoform discovery from short primer-only junction validation.
+- Run a complete externally tagged `DesignTranscriptAssayPanel` operation through the direct primer CLI route.
+- Interpret exact mature-cDNA equivalence classes and transcript-by-assay product matrices conservatively.
+- Read first-end x terminal-end reactions and predicted band sizes without treating a missing long product as proof of transcript absence.
+- Require every supplied junction to be evaluated or returned with an explicit unresolved reason.
+- Separate BLAST job planning and execution from GENtle's import-time specificity interpretation.
+- Interpret `pass`, `specificity_fail`, `not_assessed`, and `incomplete` as distinct whole-panel outcomes.
+- Separate transcript-annotation commonality, PSR support, product-length practicality, and the existing primer score in the selection rationale.
+- Compose existing evidence and assay panels into one digest-bound review manifest without rerunning design or specificity.
+- Distinguish one measured differential-junction observation from its transcript projections, and verify that a selected-pair audit is bound to the exact panel-design operation.
+- Persist, list, inspect, and export transcript assay reports from one explicit project state.
+
+## Before You Start
+
 **Prerequisites:** Read [Chapter 13: Determine and review PCR primer pairs (offline)](./04-02_pcr_selection_batch_primer_pairs_offline.md) first.
+
+**Useful when:**
+
+- You want a command-line-only route for endpoint RT-PCR, SYBR qPCR, or TaqMan-compatible transcript-panel design.
+- You want a first-end x terminal-end reaction matrix with predicted band sizes across every annotated mature transcript.
+- You want short primer-only assays directed at required or preferred exon-exon junction evidence.
+- You want a routine common-region screen whose structural claim comes from transcript annotation while PSR support remains separate.
+- You need to preserve every shared operation field instead of relying only on convenience flags.
+- You want one digest-bound review manifest joining existing common-control, junction-validation, and endpoint reports without rerunning them.
+- You want an external scheduler to own BLAST process completion while GENtle retains deterministic specificity inputs and interpretation.
+- You need complete-panel acceptance to distinguish a biological specificity failure from unavailable target geometry or failed external execution.
+- You want persisted reports that can be listed, shown, exported, or consumed through MCP, JavaScript, Lua, and workflows.
+
+## At a Glance
+
+1. No GUI is required. Optionally open the synthetic fixture in PCR Designer to inspect the same transcript classes and assay modes graphically.
+2. If using the GUI for comparison, select the PATZ1-like gene feature and confirm that its transcript order follows mature 5-prime to 3-prime orientation despite the minus-strand genomic locus.
+3. Use the endpoint mode with oligo-dT cDNA, isoform_end_matrix, strict coverage, and a 10,000 bp maximum product to mirror the first CLI operation.
+4. Review Primer3 preflight only when using the external backend; the deterministic tutorial itself uses the internal backend.
+5. Inspect the endpoint reaction and band-size matrices, including the reverse-transcription-completeness warning for long 5-prime reach.
+6. Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created.
+7. Use the routine common-region tier with a pan-transcript objective to mirror the third CLI operation; compare its annotation evidence, preferred-range classification, PSR/JUC rows, and rejected alternatives.
+8. Inspect the persisted panel rows and export the same report JSON used by the CLI path.
+9. GENtle does not yet provide a dedicated GUI composer for the compound routine. Use the GUI Shell with primers compose-gene-assay-routine and the same JSON request when an in-application handoff is useful; this reaches the shared operation rather than GUI-local logic.
+10. Inspect the returned routine roles, evidence and panel digests, uncovered classes, and specificity status. Composition is review-only and must not alter the selected sequence or silently rerun a panel.
+11. Inspect the per-assay specificity handoff templates; replace GENOME_ID and OUTPUT_DIR only when a prepared reference and an external BLAST runner are available.
+
+## Walkthrough: GUI, CLI and Inner Agent
+
+The three routes below describe the same operation. CLI snippets assume an installed `gentle_cli` and use GENtle's default `.gentle_state.json` unless stated otherwise. From a source checkout, replace `gentle_cli` with `cargo run --bin gentle_cli --`. Add `--state PATH` or `--project PATH` for an explicit sandbox. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
+
+### Step 1: No GUI is required
+
+**GUI**
+
+No GUI is required. Optionally open the synthetic fixture in PCR Designer to inspect the same transcript classes and assay modes graphically.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli workflow @docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: No GUI is required. Optionally open the synthetic fixture in PCR Designer to inspect the same transcript classes and assay modes graphically. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The canonical offline workflow writes complete endpoint, discriminating SYBR, and routine common-region `gentle.transcript_assay_panel.v2` reports from committed synthetic inputs.
+
+### Step 2: If using the GUI for comparison
+
+**GUI**
+
+If using the GUI for comparison, select the PATZ1-like gene feature and confirm that its transcript order follows mature 5-prime to 3-prime orientation despite the minus-strand genomic locus.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json op '{"LoadFile":{"path":"test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb","as_id":"patz1_transcript_assay_demo"}}'
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: If using the GUI for comparison, select the PATZ1-like gene feature and confirm that its transcript order follows mature 5-prime to 3-prime orientation despite the minus-strand genomic locus. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The explicit project state contains the minus-strand PATZ1-like locus under the deterministic sequence id used by both operations.
+
+### Step 3: Use the endpoint mode with oligo-dT cDNA
+
+**GUI**
+
+Use the endpoint mode with oligo-dT cDNA, `isoform_end_matrix`, strict coverage, and a 10,000 bp maximum product to mirror the first CLI operation.
+
+**CLI / GUI Shell**
+
+```bash
+jq '.workflow.ops[2] | .DesignTranscriptAssayPanel.path="/tmp/patz1_endpoint_end_matrix.report.json"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_endpoint.operation.json && jq '.workflow.ops[3] | .DesignTranscriptAssayPanel.path="/tmp/patz1_sybr_juc_panel.report.json"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_sybr.operation.json && jq '.workflow.ops[4] | .DesignTranscriptAssayPanel.path="/tmp/patz1_routine_common_region_screen.report.json"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_routine.operation.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Use the endpoint mode with oligo-dT cDNA, `isoform_end_matrix`, strict coverage, and a 10,000 bp maximum product to mirror the first CLI operation. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The three `@FILE` payloads are the exact externally tagged operations from the canonical workflow, with only their output paths redirected to `/tmp`.
+
+### Step 4: Review Primer3 preflight only when using the external backend
+
+**GUI**
+
+Review Primer3 preflight only when using the external backend; the deterministic tutorial itself uses the internal backend.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Review Primer3 preflight only when using the external backend; the deterministic tutorial itself uses the internal backend. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Primer3 preflight reports whether the external executable is reachable; its result does not alter the internal-backend tutorial run.
+
+### Step 5: Inspect the endpoint reaction and band-size matrices
+
+**GUI**
+
+Inspect the endpoint reaction and band-size matrices, including the reverse-transcription-completeness warning for long 5-prime reach.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_endpoint.operation.json --backend internal
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Inspect the endpoint reaction and band-size matrices, including the reverse-transcription-completeness warning for long 5-prime reach. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The endpoint report is complete, primer-only, uses the 10,000 bp ceiling, and contains designed end reactions plus at least three distinct predicted band sizes.
+
+### Step 6: Use primer-only SYBR mode
+
+**GUI**
+
+Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_sybr.operation.json --backend internal
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The SYBR report is primer-only and includes a selected assay spanning the required synthetic Clariom JUC junction.
+
+### Step 7: Use the routine common-region tier
+
+**GUI**
+
+Use the routine common-region tier with a pan-transcript objective to mirror the third CLI operation; compare its annotation evidence, preferred-range classification, PSR/JUC rows, and rejected alternatives.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_routine.operation.json --backend internal
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Use the routine common-region tier with a pan-transcript objective to mirror the third CLI operation; compare its annotation evidence, preferred-range classification, PSR/JUC rows, and rejected alternatives. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The routine report uses `pan_transcript`, records annotation-confirmed common-region evidence, and treats any overlapping PSR row only as independent support.
+
+### Step 8: Inspect the persisted panel rows and export the same report
+
+**GUI**
+
+Inspect the persisted panel rows and export the same report JSON used by the CLI path.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers list-transcript-assay-panels && gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_routine_common_region_screen && gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Inspect the persisted panel rows and export the same report JSON used by the CLI path. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.
+
+### Step 9: GENtle does not yet provide a dedicated GUI composer
+
+**GUI**
+
+GENtle does not yet provide a dedicated GUI composer for the compound routine. Use the GUI Shell with `primers compose-gene-assay-routine` and the same JSON request when an in-application handoff is useful; this reaches the shared operation rather than GUI-local logic.
+
+**CLI / GUI Shell**
+
+```bash
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers compose-gene-assay-routine '{"label":"Synthetic PATZ1 common-control, junction, and endpoint review","isoform_evidence_path":"test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json","expected_isoform_evidence_sha256":"sha256:267a8fc00da8fea653dd440259987b20fc68422554cfed8bbff61809d4eeaaf5","transcript_assay_panel_report_ids":["patz1_routine_common_region_screen","patz1_sybr_juc_panel","patz1_endpoint_end_matrix"]}' --path /tmp/patz1_gene_transcript_assay_routine.report.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: GENtle does not yet provide a dedicated GUI composer for the compound routine. Use the GUI Shell with `primers compose-gene-assay-routine` and the same JSON request when an in-application handoff is useful; this reaches the shared operation rather than GUI-local logic. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The compound routine is a pure read over the exact evidence bytes and persisted panel reports; its three roles are common_control, junction_validation, and endpoint_structure.
+
+### Step 10: Inspect the returned routine roles
+
+**GUI**
+
+Inspect the returned routine roles, evidence and panel digests, uncovered classes, and specificity status. Composition is review-only and must not alter the selected sequence or silently rerun a panel.
+
+**CLI / GUI Shell**
+
+```bash
+jq '{schema, isoform_evidence_sha256, roles:[.assay_panels[].role], specificity_accepted:[.assay_panels[].specificity_accepted], experimental_sequence:.recommended_experimental_sequence}' /tmp/patz1_gene_transcript_assay_routine.report.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Inspect the returned routine roles, evidence and panel digests, uncovered classes, and specificity status. Composition is review-only and must not alter the selected sequence or silently rerun a panel. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> The compound routine keeps every panel's specificity acceptance false in this offline run instead of promoting a planned follow-up to a completed check.
+
+### Step 11: Inspect the per-assay specificity handoff templates
+
+**GUI**
+
+Inspect the per-assay specificity handoff templates; replace `GENOME_ID` and `OUTPUT_DIR` only when a prepared reference and an external BLAST runner are available.
+
+**CLI / GUI Shell**
+
+```bash
+jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json
+```
+
+**Ask the inner agent**
+
+> In the current GENtle project, help me perform this tutorial step: Inspect the per-assay specificity handoff templates; replace `GENOME_ID` and `OUTPUT_DIR` only when a prepared reference and an external BLAST runner are available. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+
+**Expected**
+
+> Every selected assay exposes a non-executing `primers specificity-plan` template, and the report honestly retains `genomic_confirmation_status: not_run` in this offline tutorial.
+
+
+## Interpretation and Reference
 
 ## Parameters That Matter
 
@@ -59,32 +328,6 @@ Each selected assay also records a `primers specificity-plan` follow-up template
   - Why it matters: Aggregate finalization verifies every declared command and output identity atomically, inherits the panel's allowed product ceiling for readiness, and keeps biological failure, unavailable target geometry, and execution failure separate.
   - How to derive it: Prepare a catalogued `genomic_dna` or `transcriptome_cdna` BLAST resource, generate one panel handoff, execute every declared command, and return the completed execution manifest even when a process fails. Accept only a final `pass`.
 
-## When This Routine Is Useful
-
-- You want a command-line-only route for endpoint RT-PCR, SYBR qPCR, or TaqMan-compatible transcript-panel design.
-- You want a first-end x terminal-end reaction matrix with predicted band sizes across every annotated mature transcript.
-- You want short primer-only assays directed at required or preferred exon-exon junction evidence.
-- You want a routine common-region screen whose structural claim comes from transcript annotation while PSR support remains separate.
-- You need to preserve every shared operation field instead of relying only on convenience flags.
-- You want one digest-bound review manifest joining existing common-control, junction-validation, and endpoint reports without rerunning them.
-- You want an external scheduler to own BLAST process completion while GENtle retains deterministic specificity inputs and interpretation.
-- You need complete-panel acceptance to distinguish a biological specificity failure from unavailable target geometry or failed external execution.
-- You want persisted reports that can be listed, shown, exported, or consumed through MCP, JavaScript, Lua, and workflows.
-
-## What You Learn
-
-- Distinguish endpoint isoform discovery from short primer-only junction validation.
-- Run a complete externally tagged `DesignTranscriptAssayPanel` operation through the direct primer CLI route.
-- Interpret exact mature-cDNA equivalence classes and transcript-by-assay product matrices conservatively.
-- Read first-end x terminal-end reactions and predicted band sizes without treating a missing long product as proof of transcript absence.
-- Require every supplied junction to be evaluated or returned with an explicit unresolved reason.
-- Separate BLAST job planning and execution from GENtle's import-time specificity interpretation.
-- Interpret `pass`, `specificity_fail`, `not_assessed`, and `incomplete` as distinct whole-panel outcomes.
-- Separate transcript-annotation commonality, PSR support, product-length practicality, and the existing primer score in the selection rationale.
-- Compose existing evidence and assay panels into one digest-bound review manifest without rerunning design or specificity.
-- Distinguish one measured differential-junction observation from its transcript projections, and verify that a selected-pair audit is bound to the exact panel-design operation.
-- Persist, list, inspect, and export transcript assay reports from one explicit project state.
-
 ## Applied Concepts
 
 - **Shared Engine Contract** (`shared_engine_contract`): GUI, CLI, shell, and scripting interfaces execute the same operation semantics.
@@ -92,166 +335,15 @@ Each selected assay also records a `primers specificity-plan` follow-up template
 - **Artifact Exports** (`artifact_exports`): Representative outputs (CSV/protocol/SVG/text) are retained for auditability and sharing.
 - **Tutorial Drift Checks** (`tutorial_drift_checks`): Tutorial content is generated from executable examples and verified in automated checks.
 
-## At a Glance
-
-1. No GUI is required. Optionally open the synthetic fixture in PCR Designer to ...
-2. If using the GUI for comparison, select the PATZ1-like gene feature and confi...
-3. Use the endpoint mode with oligo-dT cDNA, isoform_end_matrix, strict coverage...
-4. Review Primer3 preflight only when using the external backend; the determinis...
-5. Inspect the endpoint reaction and band-size matrices, including the reverse-t...
-6. Use primer-only SYBR mode with required junction evidence to mirror the secon...
-7. Use the routine common-region tier with a pan-transcript objective to mirror ...
-8. Inspect the persisted panel rows and export the same report JSON used by the ...
-9. GENtle does not yet provide a dedicated GUI composer for the compound routine...
-10. Inspect the returned routine roles, evidence and panel digests, uncovered cla...
-11. Inspect the per-assay specificity handoff templates; replace GENOME_ID and OU...
-
-## GUI First
-
-CLI snippets use GENtle's default `.gentle_state.json` state unless they say otherwise. Add `--state PATH` or `--project PATH` when you want an explicit sandboxed state file for copied commands.
-
-### Step 1: No GUI is required. Optionally open the synthetic fixture in PCR Designer to ...
-
-GUI: No GUI is required. Optionally open the synthetic fixture in PCR Designer to inspect the same transcript classes and assay modes graphically.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json
-```
-
-> Expected: The canonical offline workflow writes complete endpoint, discriminating SYBR, and routine common-region `gentle.transcript_assay_panel.v2` reports from committed synthetic inputs.
-
-### Step 2: If using the GUI for comparison, select the PATZ1-like gene feature and confi...
-
-GUI: If using the GUI for comparison, select the PATZ1-like gene feature and confirm that its transcript order follows mature 5-prime to 3-prime orientation despite the minus-strand genomic locus.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json op '{"LoadFile":{"path":"test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb","as_id":"patz1_transcript_assay_demo"}}'
-```
-
-> Expected: The explicit project state contains the minus-strand PATZ1-like locus under the deterministic sequence id used by both operations.
-
-### Step 3: Use the endpoint mode with oligo-dT cDNA, isoform_end_matrix, strict coverage...
-
-GUI: Use the endpoint mode with oligo-dT cDNA, `isoform_end_matrix`, strict coverage, and a 10,000 bp maximum product to mirror the first CLI operation.
-
-CLI:
-
-```bash
-jq '.workflow.ops[2] | .DesignTranscriptAssayPanel.path="/tmp/patz1_endpoint_end_matrix.report.json"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_endpoint.operation.json && jq '.workflow.ops[3] | .DesignTranscriptAssayPanel.path="/tmp/patz1_sybr_juc_panel.report.json"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_sybr.operation.json && jq '.workflow.ops[4] | .DesignTranscriptAssayPanel.path="/tmp/patz1_routine_common_region_screen.report.json"' docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json > /tmp/patz1_routine.operation.json
-```
-
-> Expected: The three `@FILE` payloads are the exact externally tagged operations from the canonical workflow, with only their output paths redirected to `/tmp`.
-
-### Step 4: Review Primer3 preflight only when using the external backend; the determinis...
-
-GUI: Review Primer3 preflight only when using the external backend; the deterministic tutorial itself uses the internal backend.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3
-```
-
-> Expected: Primer3 preflight reports whether the external executable is reachable; its result does not alter the internal-backend tutorial run.
-
-### Step 5: Inspect the endpoint reaction and band-size matrices, including the reverse-t...
-
-GUI: Inspect the endpoint reaction and band-size matrices, including the reverse-transcription-completeness warning for long 5-prime reach.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_endpoint.operation.json --backend internal
-```
-
-> Expected: The endpoint report is complete, primer-only, uses the 10,000 bp ceiling, and contains designed end reactions plus at least three distinct predicted band sizes.
-
-### Step 6: Use primer-only SYBR mode with required junction evidence to mirror the secon...
-
-GUI: Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_sybr.operation.json --backend internal
-```
-
-> Expected: The SYBR report is primer-only and includes a selected assay spanning the required synthetic Clariom JUC junction.
-
-### Step 7: Use the routine common-region tier with a pan-transcript objective to mirror ...
-
-GUI: Use the routine common-region tier with a pan-transcript objective to mirror the third CLI operation; compare its annotation evidence, preferred-range classification, PSR/JUC rows, and rejected alternatives.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers design-transcript-assay-panel @/tmp/patz1_routine.operation.json --backend internal
-```
-
-> Expected: The routine report uses `pan_transcript`, records annotation-confirmed common-region evidence, and treats any overlapping PSR row only as independent support.
-
-### Step 8: Inspect the persisted panel rows and export the same report JSON used by the ...
-
-GUI: Inspect the persisted panel rows and export the same report JSON used by the CLI path.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers list-transcript-assay-panels && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_routine_common_region_screen && cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json
-```
-
-> Expected: Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.
-
-### Step 9: GENtle does not yet provide a dedicated GUI composer for the compound routine...
-
-GUI: GENtle does not yet provide a dedicated GUI composer for the compound routine. Use the GUI Shell with `primers compose-gene-assay-routine` and the same JSON request when an in-application handoff is useful; this reaches the shared operation rather than GUI-local logic.
-
-CLI:
-
-```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers compose-gene-assay-routine '{"label":"Synthetic PATZ1 common-control, junction, and endpoint review","isoform_evidence_path":"test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json","expected_isoform_evidence_sha256":"sha256:267a8fc00da8fea653dd440259987b20fc68422554cfed8bbff61809d4eeaaf5","transcript_assay_panel_report_ids":["patz1_routine_common_region_screen","patz1_sybr_juc_panel","patz1_endpoint_end_matrix"]}' --path /tmp/patz1_gene_transcript_assay_routine.report.json
-```
-
-> Expected: The compound routine is a pure read over the exact evidence bytes and persisted panel reports; its three roles are common_control, junction_validation, and endpoint_structure.
-
-### Step 10: Inspect the returned routine roles, evidence and panel digests, uncovered cla...
-
-GUI: Inspect the returned routine roles, evidence and panel digests, uncovered classes, and specificity status. Composition is review-only and must not alter the selected sequence or silently rerun a panel.
-
-CLI:
-
-```bash
-jq '{schema, isoform_evidence_sha256, roles:[.assay_panels[].role], specificity_accepted:[.assay_panels[].specificity_accepted], experimental_sequence:.recommended_experimental_sequence}' /tmp/patz1_gene_transcript_assay_routine.report.json
-```
-
-> Expected: The compound routine keeps every panel's specificity acceptance false in this offline run instead of promoting a planned follow-up to a completed check.
-
-### Step 11: Inspect the per-assay specificity handoff templates; replace GENOME_ID and OU...
-
-GUI: Inspect the per-assay specificity handoff templates; replace `GENOME_ID` and `OUTPUT_DIR` only when a prepared reference and an external BLAST runner are available.
-
-CLI:
-
-```bash
-jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json
-```
-
-> Expected: Every selected assay exposes a non-executing `primers specificity-plan` template, and the report honestly retains `genomic_confirmation_status: not_run` in this offline tutorial.
-
-
 ## Follow-up Commands
 
 ```bash
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_endpoint_end_matrix
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_sybr_juc_panel
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_routine_common_region_screen
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_endpoint_end_matrix /tmp/patz1_endpoint_end_matrix.export.json
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json
-cargo run --bin gentle_cli -- --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_endpoint_end_matrix
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_sybr_juc_panel
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers show-transcript-assay-panel patz1_routine_common_region_screen
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_endpoint_end_matrix /tmp/patz1_endpoint_end_matrix.export.json
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers export-transcript-assay-panel patz1_sybr_juc_panel /tmp/patz1_sybr_juc_panel.export.json
+gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers preflight --backend primer3
 jq '.' /tmp/patz1_gene_transcript_assay_routine.report.json
 jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json
 cargo run --bin gentle_examples_docs -- tutorial-check

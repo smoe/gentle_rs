@@ -9355,6 +9355,16 @@ Operation progress/cancellation semantics:
 - `require_all_mutations` (default `true`) controls whether all or at least one
   mutation must be introduced.
 
+`DesignTranscriptCapturePool { request }` persists
+`gentle.transcript_capture_pool.v1` from the strict
+`gentle.transcript_capture_pool_request.v1` request. It discovers exact sites
+across explicit transcript universes with independent roles, windows, budgets
+and sharing permission; reports retained sequence equivalence and stage-aware
+fixed-oligo interactions. This is a bounded proposal, not specificity or order
+approval. See [the contract, ranking and limits](transcript_capture_pools.md).
+It adds a default-empty `transcript_capture_pools` map without changing the
+`gentle.primer_design_reports.v1` store version or legacy RT-pool semantics.
+
 `DesignTerminalExonRtPrimerPool` contract (implemented baseline):
 
 - Purpose:

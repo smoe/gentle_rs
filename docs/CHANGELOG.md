@@ -11,6 +11,45 @@
 - Windows CI rerun remains required; local wrapper tests are not Windows
   packaging or scientific acceptance.
 
+## 2026-09-17 - Human-Readable Three-Interface Tutorials
+
+- Reorder generated chapters around learner outcome, prerequisites, a full
+  at-a-glance path and the walkthrough before parameter/provenance reference.
+- Keep GUI, installed-CLI/GUI-Shell and review-only inner-agent examples beside
+  each operation. Generated agent prompts ask for the exact command and
+  expected result but never authorize or perform execution.
+- Add optional concise step titles and rationales to the existing v4 tutorial
+  source contract. Preserve backward readability and derive safe fallback
+  headings without reusing truncated prose as section titles.
+- Replace Help's opening provenance paragraph with compact quick facts; retain
+  complete canonical provenance at each generated chapter's end.
+- Put task choice first on the tutorial landing page, add quick reader metadata
+  for the Simple PCR and cDNA/genomic dotplot guides, and embed the existing
+  public Simple-PCR walkthrough captures in its hand-written companion.
+
+## 2026-09-17 - Transcript Capture Discovery
+
+- Add gene-agnostic, shared-engine exact-site discovery across annotated
+  transcript sets, with explicit primer roles/windows, independent budgets
+  and sharing permissions. Preserve legacy terminal-exon RT-pool behavior.
+- Persist source-bound capture reports with omitted bases, retained-sequence
+  equivalence, all retained-candidate occurrences and stage-aware fixed-oligo
+  diagnostics. Expose the typed operation and shared shell/introspection path.
+- Declare the capture command's MCP `op` projection in glossary metadata and
+  refresh the parity matrix, including the merged TSS collection routes.
+- Keep specificity, actual amplification, order handoff and real-gene
+  acceptance explicitly unassessed; see `transcript_capture_pools.md`.
+- Keep each capture target's candidate-retention quota bound to actual target
+  coverage, not merely permission to share. Cover unequal transcript-set
+  sizes so one target cannot displace every candidate for another.
+- Document the local release-bound order/orientation review separately from
+  experimental acceptance: a terminal-exon site is not necessarily a 3-prime
+  UTR site, and exact binding coverage does not establish intact CDS capture.
+- Clarify the existing terminal-exon/capture pool self- and cross-interaction
+  checks and the separate Primer3 thermodynamic follow-up. Complementary-base
+  runs are not hairpin/dimer Tm values; complete oligos, reaction stages and
+  explicit chemical assumptions remain necessary for review.
+
 ## 2026-09-17 - TSS Collection Snapshot And Truncation Review
 
 - Replace cache-sensitive source/member hashes with versioned authoritative

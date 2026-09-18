@@ -1124,6 +1124,12 @@ fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
 
 fn smoke_command_override(path: &str) -> Option<&'static str> {
     match path {
+        // Hand-crafted parser-only request; execution requires loaded annotations.
+        "primers design-transcript-capture-pool" => Some(concat!(
+            "primers design-transcript-capture-pool '",
+            r#"{"schema":"gentle.transcript_capture_pool_request.v1","report_id":"demo","targets":[],"cdna_synthesis":"oligo_dt"}"#,
+            "'",
+        )),
         // Hand-crafted parser fixtures only; execution still validates image and calibration.
         "gel-image import" => {
             Some(r#"gel-image import '{"image_id":"demo","path":"synthetic.png"}'"#)

@@ -18,6 +18,10 @@ use std::collections::{BTreeMap, HashMap};
 mod reporter_fragment_selection;
 pub use reporter_fragment_selection::*;
 
+#[path = "protocol/transcript_capture.rs"]
+mod transcript_capture;
+pub use transcript_capture::*;
+
 use crate::genomes::{BlastDatabaseInspectionReport, BlastSubjectAnnotation};
 use crate::primerbank::PrimerBankSearchReport;
 
@@ -5416,6 +5420,8 @@ pub struct OpResult {
     pub external_primer_pair_import_report: Option<Box<ExternalPrimerPairImportReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_exon_rt_primer_pool: Option<Box<TerminalExonRtPrimerPoolReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transcript_capture_pool: Option<Box<TranscriptCapturePoolReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_variant_screen: Option<Box<PrimerVariantScreenReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

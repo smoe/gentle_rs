@@ -1388,6 +1388,25 @@ impl GentleEngine {
                 ..ProjectFact::default()
             });
         }
+        for report in self
+            .read_primer_design_store()
+            .transcript_capture_pools
+            .into_values()
+        {
+            facts.push(ProjectFact {
+                fact: "report.exists".to_string(),
+                subject: fact_subject(FactSubjectKind::Report, report.report_id.clone()),
+                value: Some(serde_json::json!("transcript_capture_pool")),
+                basis: Some(FactBasis {
+                    report_id: report.report_id,
+                    report_kind: "transcript_capture_pool".to_string(),
+                    evidence_class: EvidenceClass::HardFact,
+                    op_id: Some(report.op_id),
+                    run_id: Some(report.run_id),
+                }),
+                ..ProjectFact::default()
+            });
+        }
         for report in self.list_qpcr_design_reports() {
             facts.push(ProjectFact {
                 fact: "report.exists".to_string(),

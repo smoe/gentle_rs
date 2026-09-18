@@ -2868,6 +2868,7 @@ struct PrimerDesignStore {
     reports: HashMap<String, PrimerDesignReport>,
     qpcr_reports: HashMap<String, QpcrDesignReport>,
     terminal_exon_rt_primer_pools: HashMap<String, TerminalExonRtPrimerPoolReport>,
+    transcript_capture_pools: HashMap<String, TranscriptCapturePoolReport>,
     primer_specificity_reports: HashMap<String, PrimerSpecificityReport>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
     transcript_assay_fallback_executions: HashMap<String, TranscriptAssayFallbackExecutionReport>,
@@ -4586,6 +4587,11 @@ pub enum Operation {
     },
     DesignTerminalExonRtPrimerPool {
         request: TerminalExonRtPrimerPoolRequest,
+    },
+    /// Discover exact transcript-binding capture oligos and propose a bounded
+    /// mixed-role pool without approving specificity or placing an order.
+    DesignTranscriptCapturePool {
+        request: TranscriptCapturePoolRequest,
     },
     /// Design one exact-binding primer pair shared by related loaded
     /// sequences after deterministic common-interval planning.
@@ -12752,6 +12758,7 @@ impl GentleEngine {
         if store.reports.is_empty()
             && store.qpcr_reports.is_empty()
             && store.terminal_exon_rt_primer_pools.is_empty()
+            && store.transcript_capture_pools.is_empty()
             && store.primer_specificity_reports.is_empty()
             && store.transcript_assay_panels.is_empty()
             && store.transcript_assay_fallback_executions.is_empty()

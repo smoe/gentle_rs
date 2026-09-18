@@ -69,6 +69,18 @@
         "visual_learning"
       ],
       "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.",
+      "estimated_minutes": 30,
+      "difficulty": "routine",
+      "network": "online setup; local analysis",
+      "interfaces": [
+        "GUI",
+        "CLI / GUI Shell",
+        "inner agent"
+      ],
+      "starting_state": "TP73 cDNA accession and a prepared GRCh38 Ensembl reference",
+      "produces": [
+        "pairwise dotplot analysis"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
@@ -348,6 +360,18 @@
         "primer_design"
       ],
       "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
+      "estimated_minutes": 20,
+      "difficulty": "beginner",
+      "network": "offline",
+      "interfaces": [
+        "GUI",
+        "CLI / GUI Shell",
+        "inner agent"
+      ],
+      "starting_state": "Bundled TP73 tutorial project with an 800-base extract",
+      "produces": [
+        "primer-pair report"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",

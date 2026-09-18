@@ -6237,6 +6237,20 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
     match tokens[1].as_str() {
         "primerbank" => parse_primers_primerbank_command(tokens),
         "oligo-order" => parse_primers_oligo_order_command(tokens),
+        "design-transcript-capture-pool" => {
+            if tokens.len() != 3 {
+                return Err(
+                    "primers design-transcript-capture-pool requires REQUEST_JSON_OR_@FILE".into(),
+                );
+            }
+            let request: crate::engine::TranscriptCapturePoolRequest =
+                serde_json::from_str(&parse_json_payload(&tokens[2])?)
+                    .map_err(|error| format!("Invalid transcript capture request JSON: {error}"))?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::DesignTranscriptCapturePool { request })
+                    .map_err(|error| error.to_string())?,
+            })
+        }
         "design" => {
             if tokens.len() < 3 {
                 return Err(
