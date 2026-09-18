@@ -33,6 +33,22 @@
   keep lab-dependent capture specificity/order readiness and calibrated cofactor
   ranking deferred. Record manual gel inclusion without claiming real-image QC.
 
+## 2026-09-18 - Agent-Guided Transcript Primer-Pair Inspection
+
+- Add shared, explicit `ui open|focus|close splicing-expert SEQ_ID FEATURE_ID`
+  intents and MCP/catalog discovery. Reuse the existing annotation-first
+  expert, preserve an already-open inspection, defer opening while its DNA
+  loads and cancel only the matching pending/open expert. Closing never
+  deletes a sequence, feature or report; headless calls report `applied=false`.
+- Supply inner models a compact transcript-assay control card and expand the
+  AI task playbook: resolve real feature IDs, distinguish common detection
+  from isoform discrimination, review coverage and evidence, and require
+  separate specificity/complete-oligo QA before reviewed ordering. No primer
+  algorithm, biological acceptance threshold or order state is changed.
+- Add synthetic route, MCP parity, plus/minus expert lifecycle and prompt
+  parsing regressions. Live GUI/inner-model and scientific acceptance remain
+  separate from deterministic tests.
+
 ## 2026-09-18 - Headless Container Build Resources
 
 - Copy `icons/` into the Docker builder before compilation: `build.rs` checks

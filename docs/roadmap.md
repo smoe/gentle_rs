@@ -120,7 +120,7 @@ and preserve the shared `ui ...` intent catalog across menu, command palette,
 shell, agent, MCP, and ClawBio discovery. Useful work here is parity,
 discoverability, confirmation wording, and `ui_intent`-shaped operator handoff;
 defer autonomous planning policy or biology-specific reasoning that is not
-backed by current engine records.
+backed by current engine records. For `.11`, Glen should validate explicit Splicing Expert open/focus/close and the [transcript-assay playbook](ai_task_playbooks.md#playbook-12-gene-informed-primer-pairs-and-isoform-discrimination) with a live inner agent: real feature IDs, assay objectives, coverage and separate QA gates. This is not an added `.10` gate or order approval.
 
 For ClawBio/OpenClaw specifically, keep new integration work centered on
 descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and

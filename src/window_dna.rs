@@ -39,6 +39,7 @@ enum DeferredAnalysisFocus {
     TataBoxes,
     TssInventory,
     TssView,
+    SplicingExpert(usize),
     GenomicRegionManager,
     RnaReadReport(String),
     PrimerDesign(String),
@@ -75,6 +76,25 @@ pub struct WindowDna {
 }
 
 impl WindowDna {
+    pub(crate) fn apply_splicing_expert_intent(
+        &mut self,
+        action: crate::engine_shell::UiIntentAction,
+        feature_id: usize,
+    ) -> Result<String, String> {
+        if action == crate::engine_shell::UiIntentAction::Close {
+            if matches!(self.deferred_analysis_focus, Some(DeferredAnalysisFocus::SplicingExpert(id)) if id == feature_id)
+            {
+                self.deferred_analysis_focus = None;
+                return Ok("Cancelled pending Splicing Expert opening; sequence retained".into());
+            }
+        } else if self.pending_dna_load.is_some() {
+            self.deferred_analysis_focus = Some(DeferredAnalysisFocus::SplicingExpert(feature_id));
+            return Ok("Splicing Expert queued until the DNA sequence finishes loading".into());
+        }
+        self.main_area
+            .apply_splicing_expert_intent(action, feature_id)
+    }
+
     pub(crate) fn focus_tss_view(&mut self) {
         if self.pending_dna_load.is_some() {
             self.deferred_analysis_focus = Some(DeferredAnalysisFocus::TssView);
@@ -174,6 +194,11 @@ impl WindowDna {
             DeferredAnalysisFocus::TataBoxes => self.main_area.open_tata_boxes(),
             DeferredAnalysisFocus::TssInventory => self.main_area.open_tss_inventory(),
             DeferredAnalysisFocus::TssView => self.focus_tss_view(),
+            DeferredAnalysisFocus::SplicingExpert(feature_id) => {
+                // A stale feature is an expert-action error, not a DNA load failure.
+                self.main_area
+                    .open_splicing_expert_for_feature(feature_id, "deferred UI intent");
+            }
             DeferredAnalysisFocus::GenomicRegionManager => {
                 self.main_area.open_genomic_region_manager(None);
             }
@@ -881,6 +906,21 @@ impl WindowDna {
 mod tests {
     use super::*;
     use crate::engine::Engine;
+
+    #[test]
+    fn splicing_expert_deferred_error_does_not_hide_loaded_dna() {
+        let dna = DNAsequence::from_sequence("ACGT").unwrap();
+        let engine = Arc::new(RwLock::new(GentleEngine::default()));
+        let mut window = WindowDna::new(dna, "seq1".into(), engine);
+        window.deferred_analysis_focus = Some(DeferredAnalysisFocus::SplicingExpert(999));
+        window.apply_deferred_analysis_focus();
+        assert!(window.deferred_analysis_focus.is_none());
+        assert!(window.deferred_load_message.is_none());
+        assert_eq!(
+            window.main_area.dna().read().unwrap().get_forward_string(),
+            "ACGT"
+        );
+    }
 
     #[test]
     fn deferred_sequence_loading_uses_bounded_repaint_polling() {

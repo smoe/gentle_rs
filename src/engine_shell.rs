@@ -1726,6 +1726,11 @@ pub enum ShellCommand {
         action: UiIntentAction,
         seq_id: String,
     },
+    UiSplicingExpert {
+        action: UiIntentAction,
+        seq_id: String,
+        feature_id: usize,
+    },
     UiTssCollection {
         action: UiIntentAction,
         collection_id: String,
@@ -9348,6 +9353,14 @@ impl ShellCommand {
                     action.as_str()
                 )
             }
+            Self::UiSplicingExpert {
+                action,
+                seq_id,
+                feature_id,
+            } => format!(
+                "request GUI {} for Splicing Expert '{seq_id}' feature {feature_id}",
+                action.as_str()
+            ),
             Self::UiSequenceSelection {
                 seq_id,
                 start_0based,
@@ -30858,7 +30871,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
-                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "required loaded sequence id for sequence-window or splicing-expert"},
+                {"name": "FEATURE_ID", "required": false, "subject_kind": "other", "detail": "required zero-based feature id for splicing-expert; discover via features query"},
                 {"name": "--genome-id|--helpers|--catalog|--cache-dir|--filter|--species|--latest", "required": false, "subject_kind": "other", "detail": "prepared-reference selection options"}
             ],
             "reads": [
@@ -30881,7 +30895,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
-                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"},
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "required loaded sequence id for sequence-window or splicing-expert"},
+                {"name": "FEATURE_ID", "required": false, "subject_kind": "other", "detail": "required zero-based feature id for splicing-expert; discover via features query"},
                 {"name": "--genome-id|--helpers|--catalog|--cache-dir|--filter|--species|--latest", "required": false, "subject_kind": "other", "detail": "prepared-reference selection options"}
             ],
             "reads": [
@@ -30904,7 +30919,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "requires_confirmation": false,
             "args": [
                 {"name": "TARGET", "required": true, "subject_kind": "other", "detail": "UI target such as sequence-window, pcr-design, prepared-references, or agent-assistant"},
-                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "loaded sequence id when TARGET is sequence-window"}
+                {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "required loaded sequence id for sequence-window or splicing-expert"},
+                {"name": "FEATURE_ID", "required": false, "subject_kind": "other", "detail": "required zero-based feature id for splicing-expert; closes only the bound expert"}
             ],
             "reads": [
                 {"fact": "ui.host_available", "equals": true}
@@ -40534,6 +40550,25 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::UiListIntents)
         }
         "selection" | "select" => parse_ui_sequence_selection_command(tokens),
+        action_raw
+            if UiIntentAction::parse(action_raw).is_some()
+                && tokens.get(2).and_then(|raw| UiIntentTarget::parse(raw))
+                    == Some(UiIntentTarget::SplicingExpert) =>
+        {
+            if tokens.len() != 5 || tokens[3].trim().is_empty() {
+                return Err(
+                    "ui open|focus|close splicing-expert requires SEQ_ID FEATURE_ID".into(),
+                );
+            }
+            let feature_id = tokens[4].parse::<usize>().map_err(|_| {
+                "splicing-expert FEATURE_ID must be a zero-based non-negative integer".to_string()
+            })?;
+            Ok(ShellCommand::UiSplicingExpert {
+                action: UiIntentAction::parse(action_raw).unwrap(),
+                seq_id: tokens[3].trim().to_string(),
+                feature_id,
+            })
+        }
         action_raw
             if tokens.len() >= 3
                 && UiIntentAction::parse(action_raw).is_some()
@@ -67023,6 +67058,7 @@ fn execute_ui_command(
                         "ui focus configuration [SECTION]",
                         "ui close configuration",
                         "ui open sequence-window SEQ_ID",
+                        "ui open|focus|close splicing-expert SEQ_ID FEATURE_ID",
                         "ui open|focus|close tss-view --collection COLLECTION_ID",
                         "ui focus sequence-window SEQ_ID",
                         "ui close sequence-window SEQ_ID",
@@ -67146,6 +67182,22 @@ fn execute_ui_command(
                 }),
             })
         }
+        ShellCommand::UiSplicingExpert {
+            action,
+            seq_id,
+            feature_id,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_splicing_expert_intent.v1",
+                "ui_intent": {
+                    "action": action.as_str(), "target": "splicing-expert",
+                    "seq_id": seq_id, "feature_id": feature_id
+                },
+                "applied": false,
+                "message": "UI intent recorded; a GUI host must resolve the loaded sequence/feature and open, focus or close its Splicing Expert. No sequence, feature or report is deleted. For headless inspection use inspect-feature-expert SEQ_ID splicing FEATURE_ID."
+            }),
+        }),
         ShellCommand::UiSequenceWindow { action, seq_id } => Ok(ShellRunResult {
             state_changed: false,
             output: json!({
@@ -68095,6 +68147,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::UiTutorialGuide { .. }
             | ShellCommand::UiConfiguration { .. }
             | ShellCommand::UiSequenceWindow { .. }
+            | ShellCommand::UiSplicingExpert { .. }
             | ShellCommand::UiTssCollection { .. }
             | ShellCommand::UiSequenceSelection { .. }
             | ShellCommand::UiPreparedGenomes { .. }
@@ -68801,6 +68854,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UiTutorialGuide { .. }
         | ShellCommand::UiConfiguration { .. }
         | ShellCommand::UiSequenceWindow { .. }
+        | ShellCommand::UiSplicingExpert { .. }
         | ShellCommand::UiTssCollection { .. }
         | ShellCommand::UiSequenceSelection { .. }
         | ShellCommand::UiPreparedGenomes { .. }

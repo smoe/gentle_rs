@@ -16640,6 +16640,64 @@ fn refresh_description_cache_includes_variant_reasoning_context() {
 }
 
 #[test]
+fn splicing_expert_intent_reuses_inspection_and_closes_only_bound_feature() {
+    use crate::engine_shell::UiIntentAction;
+    // Hand-crafted transcript geometry; no biological performance claim.
+    for reverse in [false, true] {
+        let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(10)).unwrap();
+        let location = Location::Join(vec![
+            Location::simple_range(2, 8),
+            Location::simple_range(12, 20),
+        ]);
+        dna.features_mut().push(Feature {
+            kind: "mRNA".into(),
+            location: if reverse {
+                Location::Complement(Box::new(location))
+            } else {
+                location
+            },
+            qualifiers: vec![
+                ("gene".into(), Some("SYNTHETIC".into())),
+                ("transcript_id".into(), Some("TX1".into())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert("locus".into(), dna.clone());
+        let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+        let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+        let mut area = MainAreaDna::new(dna, Some("locus".into()), Some(engine.clone()));
+        area.apply_splicing_expert_intent(UiIntentAction::Open, 0)
+            .unwrap();
+        let view = area.splicing_expert_window_view.clone().unwrap();
+        assert_eq!(view.strand, if reverse { "-" } else { "+" });
+        area.splicing_locus_status = "Keep reviewed evidence".into();
+        for action in [UiIntentAction::Open, UiIntentAction::Focus] {
+            area.apply_splicing_expert_intent(action, 0).unwrap();
+            assert!(Arc::ptr_eq(
+                &view,
+                area.splicing_expert_window_view.as_ref().unwrap()
+            ));
+            assert_eq!(area.splicing_locus_status, "Keep reviewed evidence");
+        }
+        assert!(
+            area.apply_splicing_expert_intent(UiIntentAction::Open, 999)
+                .is_err()
+        );
+        area.apply_splicing_expert_intent(UiIntentAction::Close, 999)
+            .unwrap();
+        assert!(area.show_splicing_expert_window);
+        area.apply_splicing_expert_intent(UiIntentAction::Close, 0)
+            .unwrap();
+        assert!(!area.show_splicing_expert_window);
+        assert!(!area.splicing_expert_window_focus_requested);
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
 fn open_splicing_expert_for_feature_opens_window_on_explicit_request() {
     let mut dna =
         DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");

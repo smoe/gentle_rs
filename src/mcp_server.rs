@@ -650,7 +650,12 @@ fn tool_list() -> Value {
                     },
                     "seq_id": {
                         "type": "string",
-                        "description": "Loaded sequence id, required when target is sequence-window."
+                        "description": "Loaded sequence id, required for sequence-window and splicing-expert."
+                    },
+                    "feature_id": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Zero-based feature id from features query, required for splicing-expert."
                     },
                     "item_id": {
                         "type": "string",
@@ -3354,6 +3359,27 @@ fn ui_intent_tool_result(default_state_path: &str, arguments: &Value) -> Value {
         Ok(value) => value,
         Err(err) => return tool_result_text(err, "text", true),
     };
+    if UiIntentTarget::parse(&target) == Some(UiIntentTarget::SplicingExpert) {
+        let seq_id = match required_string_arg(&args, "seq_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let feature_id = match required_usize_arg(&args, "feature_id") {
+            Ok(value) => value,
+            Err(err) => return tool_result_text(err, "text", true),
+        };
+        let tokens = vec![
+            "ui".into(),
+            action,
+            "splicing-expert".into(),
+            seq_id,
+            feature_id.to_string(),
+        ];
+        return match run_non_mutating_shell_tool(default_state_path, &args, tokens, "ui_intent") {
+            Ok(output) => tool_result_json(output, false),
+            Err(err) => tool_result_text(err, "text", true),
+        };
+    }
     if target == "sequence-window" {
         let seq_id = match required_string_arg(&args, "seq_id") {
             Ok(value) => value,
@@ -5641,6 +5667,33 @@ mod tests {
             mcp_sequence_intent["result"]["structuredContent"],
             expected_sequence_intent
         );
+
+        for action in ["open", "focus", "close"] {
+            let result = run_tool(
+                DEFAULT_MCP_STATE_PATH,
+                "ui_intent",
+                json!({
+                    "action": action, "target": "splicing-expert", "seq_id": "locus", "feature_id": 2
+                }),
+            );
+            let expected = run_shared_ui_command(vec![
+                "ui".into(),
+                action.into(),
+                "splicing-expert".into(),
+                "locus".into(),
+                "2".into(),
+            ]);
+            assert_eq!(result["result"]["isError"], false);
+            assert_eq!(result["result"]["structuredContent"], expected);
+        }
+        let missing_feature = run_tool(
+            DEFAULT_MCP_STATE_PATH,
+            "ui_intent",
+            json!({
+                "action": "open", "target": "splicing-expert", "seq_id": "locus"
+            }),
+        );
+        assert_eq!(missing_feature["result"]["isError"], true);
 
         for (target, item_id) in [
             ("recent-project", "recent-deadbeef"),

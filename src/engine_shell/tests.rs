@@ -40644,6 +40644,48 @@ fn execute_ui_intents_lists_shared_target_metadata() {
 }
 
 #[test]
+fn splicing_expert_ui_intents_are_explicit_non_mutating_and_headless() {
+    let mut engine = GentleEngine::new();
+    for action in ["open", "focus", "close"] {
+        let command = parse_shell_line(&format!("ui {action} splicing-expert 'gene locus' 2"))
+            .expect("explicit expert intent");
+        assert!(
+            matches!(&command, ShellCommand::UiSplicingExpert { seq_id, feature_id: 2, .. } if seq_id == "gene locus")
+        );
+        let result = execute_shell_command(&mut engine, &command).expect("headless intent");
+        assert!(!result.state_changed);
+        assert_eq!(result.output["applied"], false);
+        assert_eq!(
+            result.output["schema"],
+            "gentle.ui_splicing_expert_intent.v1"
+        );
+        assert_eq!(result.output["ui_intent"]["action"], action);
+        assert_eq!(result.output["ui_intent"]["seq_id"], "gene locus");
+        assert_eq!(result.output["ui_intent"]["feature_id"], 2);
+    }
+    for invalid in [
+        "ui open splicing-expert",
+        "ui open splicing-expert seq",
+        "ui open splicing-expert '' 0",
+        "ui open splicing-expert seq -1",
+        "ui open splicing-expert seq ENST123",
+        "ui close splicing-expert seq 0 extra",
+    ] {
+        assert!(parse_shell_line(invalid).is_err(), "must reject {invalid}");
+    }
+    let catalog = execute_shell_command(&mut engine, &ShellCommand::UiListIntents).unwrap();
+    let entry = catalog.output["target_details"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["target"] == "splicing-expert")
+        .expect("discoverable target");
+    assert_eq!(entry["arguments"][0]["name"], "seq_id");
+    assert_eq!(entry["arguments"][1]["name"], "feature_id");
+    assert_eq!(entry["arguments"][1]["required"], true);
+}
+
+#[test]
 fn execute_ui_sequence_window_records_non_mutating_intent() {
     let mut engine = GentleEngine::new();
     let out = execute_shell_command(

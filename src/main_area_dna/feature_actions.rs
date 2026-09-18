@@ -8,7 +8,7 @@
 use super::*;
 
 impl MainAreaDna {
-    pub(super) fn feature_kind_supports_splicing_expert(kind_upper: &str) -> bool {
+    pub(crate) fn feature_kind_supports_splicing_expert(kind_upper: &str) -> bool {
         matches!(
             kind_upper,
             "MRNA" | "TRANSCRIPT" | "NCRNA" | "MISC_RNA" | "EXON" | "GENE" | "CDS"
@@ -93,7 +93,7 @@ impl MainAreaDna {
         ctx.request_repaint();
     }
 
-    pub(super) fn open_splicing_expert_for_feature(
+    pub(crate) fn open_splicing_expert_for_feature(
         &mut self,
         feature_id: usize,
         source: &str,
@@ -113,6 +113,38 @@ impl MainAreaDna {
                 false
             }
         }
+    }
+
+    /// Apply a subject-bound window action without changing sequences or reports.
+    pub(crate) fn apply_splicing_expert_intent(
+        &mut self,
+        action: crate::engine_shell::UiIntentAction,
+        feature_id: usize,
+    ) -> Result<String, String> {
+        use crate::engine_shell::UiIntentAction;
+        let matching_window = self.show_splicing_expert_window
+            && self.splicing_expert_window_feature_id == Some(feature_id);
+        if action == UiIntentAction::Close {
+            if matching_window {
+                self.show_splicing_expert_window = false;
+                self.splicing_expert_window_focus_requested = false;
+                self.splicing_expert_window_pending_initial_render = false;
+            }
+            return Ok(if matching_window {
+                "Closed Splicing Expert; sequence, features and reports retained".into()
+            } else {
+                "Requested Splicing Expert is already closed; other feature windows unchanged"
+                    .into()
+            });
+        }
+        if matching_window {
+            // Repeated open/focus must not clear the user's evidence or selection.
+            self.splicing_expert_window_focus_requested = true;
+            return Ok("Focused existing Splicing Expert".into());
+        }
+        let view = self.splicing_expert_view_for_feature(feature_id)?;
+        self.open_splicing_expert_window_for_view(&view);
+        Ok("Opened Splicing Expert".into())
     }
 
     pub(super) fn open_rna_read_mapping_for_feature(

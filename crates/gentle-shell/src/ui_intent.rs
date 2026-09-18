@@ -141,6 +141,7 @@ pub enum UiIntentTarget {
     BlastHelperSequence,
     GelImageEditor,
     TssView,
+    SplicingExpert,
 }
 
 const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
@@ -164,6 +165,7 @@ const UI_INTENT_TARGETS: [UiIntentTarget; UiIntentTarget::COUNT] = [
     UiIntentTarget::BlastHelperSequence,
     UiIntentTarget::GelImageEditor,
     UiIntentTarget::TssView,
+    UiIntentTarget::SplicingExpert,
 ];
 
 const UI_INTENT_ACTION_NAMES: [&str; 3] = ["open", "focus", "close"];
@@ -234,6 +236,18 @@ const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
 ];
 const UI_INTENT_ARGUMENTS_DEFAULT: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_GENOME_ID];
 const UI_INTENT_ARGUMENTS_NONE: [UiIntentArgument; 0] = [];
+const UI_INTENT_ARGUMENTS_SPLICING: [UiIntentArgument; 2] = [
+    UiIntentArgument {
+        name: "seq_id",
+        required: true,
+        detail: "Loaded annotated sequence id; never infer from the active window.",
+    },
+    UiIntentArgument {
+        name: "feature_id",
+        required: true,
+        detail: "Zero-based feature id from features query; selects the same splicing group as inspect-feature-expert SEQ_ID splicing FEATURE_ID.",
+    },
+];
 const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 1] = [UiIntentArgument {
     name: "collection_id",
     required: false,
@@ -279,7 +293,7 @@ pub struct UiIntentTargetCatalogRow {
 
 impl UiIntentTarget {
     /// Number of stable UI-intent destinations.
-    pub const COUNT: usize = 20;
+    pub const COUNT: usize = 21;
 
     /// Stable catalog order used by shell, MCP, and GUI discoverability.
     pub fn all() -> &'static [Self] {
@@ -291,6 +305,7 @@ impl UiIntentTarget {
         match raw.trim().to_ascii_lowercase().as_str() {
             "gel-image-editor" | "gel_image_editor" => Some(Self::GelImageEditor),
             "tss-view" | "tss_view" => Some(Self::TssView),
+            "splicing-expert" | "splicing_expert" => Some(Self::SplicingExpert),
             "open-sequence" | "open_sequence" | "sequence-file" | "sequence_file" => {
                 Some(Self::OpenSequence)
             }
@@ -357,6 +372,7 @@ impl UiIntentTarget {
         match self {
             Self::GelImageEditor => "gel-image-editor",
             Self::TssView => "tss-view",
+            Self::SplicingExpert => "splicing-expert",
             Self::OpenSequence => "open-sequence",
             Self::RecentProject => "recent-project",
             Self::TutorialProject => "tutorial-project",
@@ -383,6 +399,7 @@ impl UiIntentTarget {
         match self {
             Self::GelImageEditor => "Gel Image Analysis",
             Self::TssView => "TSS / Regulatory View",
+            Self::SplicingExpert => "Splicing Expert",
             Self::OpenSequence => "Open Sequence",
             Self::RecentProject => "Open Recent Project",
             Self::TutorialProject => "Open Tutorial Project",
@@ -412,6 +429,9 @@ impl UiIntentTarget {
     /// Short discoverability copy for command palettes, agent helpers, and MCP.
     pub fn discoverability_detail(self) -> &'static str {
         match self {
+            Self::SplicingExpert => {
+                "Open/focus/close the Splicing Expert for explicit SEQ_ID FEATURE_ID. Inspect annotated isoforms, exon/junction evidence and primer/qPCR seeds. Closing retains project data; headless hosts only record the intent."
+            }
             Self::GelImageEditor => {
                 "Mark imported gel lanes and bands, confirm ladder sizes, and export measured results."
             }
@@ -461,6 +481,9 @@ impl UiIntentTarget {
     /// Search keywords shared across UI-intent discoverability surfaces.
     pub fn discoverability_keywords(self) -> &'static str {
         match self {
+            Self::SplicingExpert => {
+                "splicing isoform transcript exon junction primer pair qpcr assay evidence"
+            }
             Self::GelImageEditor => "gel image agarose western SDS ladder band sizing bp kDa",
             Self::TssView => {
                 "tss transcript starts collection promoter regulatory cutrun chromatin motif annotated sequence viewer Transkriptionsstartstellen"
@@ -509,7 +532,7 @@ impl UiIntentTarget {
             Self::TutorialGuide => "Help",
             Self::Configuration => "Settings",
             Self::FeatureLocationEditor => "Edit",
-            Self::TssView => "DNA viewer",
+            Self::TssView | Self::SplicingExpert => "DNA viewer",
             Self::PcrDesign | Self::SequencingConfirmation | Self::GelImageEditor => "Patterns",
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
@@ -530,7 +553,9 @@ impl UiIntentTarget {
             Self::RecentProject | Self::TutorialProject | Self::TutorialGuide => {
                 &UI_INTENT_OPEN_ACTION_NAMES
             }
-            Self::Configuration | Self::GelImageEditor | Self::TssView => &UI_INTENT_ACTION_NAMES,
+            Self::Configuration | Self::GelImageEditor | Self::TssView | Self::SplicingExpert => {
+                &UI_INTENT_ACTION_NAMES
+            }
             Self::PreparedReferences
             | Self::PrepareReferenceGenome
             | Self::RetrieveGenomeSequence
@@ -550,6 +575,7 @@ impl UiIntentTarget {
     /// Stable optional arguments accepted by the target's discoverability contract.
     pub fn optional_arguments(self) -> &'static [&'static str] {
         match self {
+            Self::SplicingExpert => &UI_INTENT_OPTIONAL_ARGUMENTS_NONE,
             Self::TssView => &UI_INTENT_OPTIONAL_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES,
             Self::Configuration => &UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION,
@@ -567,6 +593,7 @@ impl UiIntentTarget {
     /// Structured argument contract accepted by this target.
     pub fn arguments(self) -> &'static [UiIntentArgument] {
         match self {
+            Self::SplicingExpert => &UI_INTENT_ARGUMENTS_SPLICING,
             Self::TssView => &UI_INTENT_ARGUMENTS_TSS,
             Self::PreparedReferences => &UI_INTENT_ARGUMENTS_PREPARED_REFERENCES,
             Self::RecentProject | Self::TutorialProject => {
@@ -622,6 +649,8 @@ mod tests {
 
     const TARGET_ALIAS_CASES: &[(&str, UiIntentTarget)] = &[
         ("open-sequence", UiIntentTarget::OpenSequence),
+        ("splicing-expert", UiIntentTarget::SplicingExpert),
+        ("splicing_expert", UiIntentTarget::SplicingExpert),
         ("open_sequence", UiIntentTarget::OpenSequence),
         ("sequence-file", UiIntentTarget::OpenSequence),
         ("sequence_file", UiIntentTarget::OpenSequence),
@@ -745,6 +774,7 @@ mod tests {
         match target {
             UiIntentTarget::GelImageEditor
             | UiIntentTarget::TssView
+            | UiIntentTarget::SplicingExpert
             | UiIntentTarget::OpenSequence
             | UiIntentTarget::RecentProject
             | UiIntentTarget::TutorialProject
@@ -804,6 +834,7 @@ mod tests {
             UiIntentTarget::BlastHelperSequence,
             UiIntentTarget::GelImageEditor,
             UiIntentTarget::TssView,
+            UiIntentTarget::SplicingExpert,
         ];
         assert_eq!(UiIntentTarget::COUNT, expected.len());
         assert_eq!(UiIntentTarget::all(), expected.as_slice());
@@ -859,7 +890,14 @@ mod tests {
             assert!(!row.title.trim().is_empty());
             assert!(!row.detail.trim().is_empty());
             assert!(!row.keywords.trim().is_empty());
-            if *target == UiIntentTarget::TssView {
+            if *target == UiIntentTarget::SplicingExpert {
+                assert_eq!(row.menu_path, "DNA viewer");
+                assert_eq!(row.actions, ["open", "focus", "close"]);
+                assert_eq!(row.arguments.len(), 2);
+                assert!(row.arguments.iter().all(|argument| argument.required));
+                assert_eq!(row.arguments[0].name, "seq_id");
+                assert_eq!(row.arguments[1].name, "feature_id");
+            } else if *target == UiIntentTarget::TssView {
                 // A display-mode transition lives in the DNA toolbar, not a new global menu.
                 assert_eq!(row.menu_path, "DNA viewer");
                 assert_eq!(row.actions, ["open", "focus", "close"]);

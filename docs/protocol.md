@@ -5263,6 +5263,7 @@ Shell/engine quick-install contracts:
         `ui open tutorial-guide TUTORIAL_ID`,
         `ui open|focus configuration [SECTION]`,
         `ui open sequence-window SEQ_ID`, `ui focus sequence-window SEQ_ID`,
+        `ui open|focus|close splicing-expert SEQ_ID FEATURE_ID`,
         `ui close TARGET`, or `ui close sequence-window SEQ_ID`
     - for `target = prepared-references`, optional query flags can resolve
       `selected_genome_id` deterministically through the same helper path used
@@ -5274,6 +5275,9 @@ Shell/engine quick-install contracts:
   - result:
     - generic structured payload schema: `gentle.ui_intent.v1`
     - specialized schemas: `gentle.ui_recent_project_intent.v1`,
+      `gentle.ui_splicing_expert_intent.v1` (explicit `seq_id` and zero-based
+      `feature_id`; MCP `ui_intent` accepts the same required arguments for
+      `target=splicing-expert`; no project mutation),
       `gentle.ui_tutorial_project_intent.v1`,
       `gentle.ui_tutorial_guide_intent.v1`, and
       `gentle.ui_configuration_intent.v1`

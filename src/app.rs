@@ -5807,6 +5807,7 @@ Error: `{err}`"
                     !matches!(
                         target,
                         UiIntentTarget::RecentProject
+                            | UiIntentTarget::SplicingExpert
                             | UiIntentTarget::TutorialProject
                             | UiIntentTarget::TutorialGuide
                     )

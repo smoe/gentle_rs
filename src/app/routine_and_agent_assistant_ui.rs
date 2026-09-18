@@ -3489,6 +3489,14 @@ impl GENtleApp {
     }
 
     pub(super) fn try_apply_shell_ui_intent(&mut self, command: &ShellCommand) -> Option<String> {
+        if let ShellCommand::UiSplicingExpert {
+            action,
+            seq_id,
+            feature_id,
+        } = command
+        {
+            return Some(self.apply_splicing_expert_intent(*action, seq_id, *feature_id));
+        }
         if let ShellCommand::UiTssCollection {
             action,
             collection_id,
@@ -3592,6 +3600,7 @@ impl GENtleApp {
             self.app_status = summary.clone();
         }
         match target {
+            UiIntentTarget::SplicingExpert => return Some("Splicing Expert requires explicit SEQ_ID FEATURE_ID; use ui open splicing-expert SEQ_ID FEATURE_ID".into()),
             UiIntentTarget::OpenSequence => self.prompt_open_sequence(),
             UiIntentTarget::TssView => return Some(self.apply_tss_view_intent(true)),
             UiIntentTarget::RecentProject => {
@@ -3921,6 +3930,10 @@ impl GENtleApp {
 
     fn apply_close_ui_intent_target(&mut self, target: UiIntentTarget) -> String {
         let was_open = match target {
+            UiIntentTarget::SplicingExpert => {
+                return "Splicing Expert requires explicit SEQ_ID FEATURE_ID; no window was closed"
+                    .into();
+            }
             UiIntentTarget::TssView => return self.apply_tss_view_intent(false),
             UiIntentTarget::GelImageEditor => {
                 let was_open = self.gel_image_editor.open;
@@ -4006,6 +4019,63 @@ impl GENtleApp {
                 self.apply_open_or_focus_sequence_window_intent(action, seq_id)
             }
             UiIntentAction::Close => self.apply_close_sequence_window_intent(seq_id),
+        }
+    }
+
+    fn apply_splicing_expert_intent(
+        &mut self,
+        action: UiIntentAction,
+        seq_id: &str,
+        feature_id: usize,
+    ) -> String {
+        if action != UiIntentAction::Close {
+            let guard = match self.engine.read() {
+                Ok(guard) => guard,
+                Err(_) => return "Splicing Expert not opened: engine lock unavailable".into(),
+            };
+            let Some(dna) = guard.state().sequences.get(seq_id) else {
+                return format!("Splicing Expert not opened: no loaded sequence '{seq_id}'");
+            };
+            let Some(feature) = dna.features().get(feature_id) else {
+                return format!(
+                    "Splicing Expert not opened: feature {feature_id} absent from '{seq_id}'; use features query"
+                );
+            };
+            if !crate::main_area_dna::MainAreaDna::feature_kind_supports_splicing_expert(
+                &feature.kind.to_string().trim().to_ascii_uppercase(),
+            ) {
+                return "Splicing Expert not opened: selected feature does not support splicing-linked actions".into();
+            }
+        }
+        if action != UiIntentAction::Close && self.find_open_sequence_viewport_id(seq_id).is_none()
+        {
+            self.open_sequence_window(seq_id);
+        }
+        let result = if let Some(viewport) = self.find_open_sequence_viewport_id(seq_id) {
+            self.windows
+                .get(&viewport)
+                .and_then(|window| window.write().ok())
+                .ok_or_else(|| "DNA window lock unavailable".to_string())
+                .and_then(|mut window| window.apply_splicing_expert_intent(action, feature_id))
+        } else if let Some(window) = self
+            .new_windows
+            .iter_mut()
+            .find(|window| window.sequence_id().as_deref() == Some(seq_id))
+        {
+            window.apply_splicing_expert_intent(action, feature_id)
+        } else {
+            Ok("Requested Splicing Expert is already closed; project data retained".into())
+        };
+        if result.is_ok() && action != UiIntentAction::Close {
+            self.queue_focus_viewport(egui::ViewportId::from_hash_of((
+                "splicing_expert_viewport",
+                seq_id,
+                feature_id,
+            )));
+        }
+        match result {
+            Ok(message) => format!("{message} ({seq_id}, feature {feature_id})"),
+            Err(error) => format!("Splicing Expert not changed: {error}"),
         }
     }
 

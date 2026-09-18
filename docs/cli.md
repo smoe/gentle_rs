@@ -3032,6 +3032,12 @@ Shared shell command:
     - `ui focus configuration [external-applications|agent-systems|microarrays|graphics|language]`
     - `ui close configuration`
     - `ui open sequence-window SEQ_ID`
+    - `ui open|focus|close splicing-expert SEQ_ID FEATURE_ID`
+      - Requires the loaded annotated sequence and zero-based feature id from
+        `features query`; opens the same group as
+        `inspect-feature-expert SEQ_ID splicing FEATURE_ID` in a GUI host.
+        Repeated open/focus reuses the inspection; close retains sequences and
+        reports. CLI/MCP only records `applied=false`, not remote GUI success.
     - `ui focus sequence-window SEQ_ID`
     - `ui open|focus|close tss-view --collection COLLECTION_ID` (bounded, persisted TSS collection; headless reports `applied=false`)
     - `promoters tss-inventory REQUEST_JSON_OR_@FILE` (read-only exact-start preview)

@@ -7059,6 +7059,7 @@ fn command_palette_includes_shared_ui_intent_entries() {
         if matches!(
             target,
             UiIntentTarget::RecentProject
+                | UiIntentTarget::SplicingExpert
                 | UiIntentTarget::TutorialProject
                 | UiIntentTarget::TutorialGuide
         ) {
@@ -7391,6 +7392,7 @@ fn assert_command_palette_ui_intent_side_effect(app: &GENtleApp, target: UiInten
         }
         UiIntentTarget::OpenSequence
         | UiIntentTarget::TssView
+        | UiIntentTarget::SplicingExpert
         | UiIntentTarget::RecentProject
         | UiIntentTarget::TutorialProject
         | UiIntentTarget::TutorialGuide
@@ -11232,6 +11234,59 @@ fn focusing_rna_mapping_from_windows_menu_renders_child_above_sequence_window() 
         "focused RNA-read Mapping should render as a foreground hosted layer above its middle-order DNA host"
     );
     crate::egui_compat::discard_test_pass_output(&ctx);
+}
+
+#[test]
+fn splicing_expert_agent_route_binds_subject_and_cancels_pending_open() {
+    let mut app = GENtleApp::default();
+    // Small hand-crafted annotation for UI routing, not an assay fixture.
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(10)).unwrap();
+    dna.features_mut().push(gb_io::seq::Feature {
+        kind: "mRNA".into(),
+        location: gb_io::seq::Location::simple_range(2, 20),
+        qualifiers: vec![("gene".into(), Some("SYNTHETIC".into()))],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("locus".into(), dna);
+    app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
+    for (command, expected) in [
+        ("ui open splicing-expert missing 0", "no loaded sequence"),
+        ("ui open splicing-expert locus 999", "feature 999 absent"),
+        ("ui close splicing-expert locus 0", "already closed"),
+    ] {
+        let status = app
+            .try_apply_shell_ui_intent(&parse_shell_line(command).unwrap())
+            .unwrap();
+        assert!(status.contains(expected), "{status}");
+        assert!(app.new_windows.is_empty());
+    }
+    for action in ["open", "focus"] {
+        let command = parse_shell_line(&format!("ui {action} splicing-expert locus 0")).unwrap();
+        let status = app.try_apply_shell_ui_intent(&command).unwrap();
+        assert!(status.contains("queued"), "{status}");
+        assert_eq!(app.new_windows.len(), 1);
+    }
+    let close = parse_shell_line("ui close splicing-expert locus 0").unwrap();
+    assert!(
+        app.try_apply_shell_ui_intent(&close)
+            .unwrap()
+            .contains("Cancelled pending")
+    );
+    assert!(
+        app.try_apply_shell_ui_intent(&close)
+            .unwrap()
+            .contains("already closed")
+    );
+    assert_eq!(
+        app.new_windows.len(),
+        1,
+        "closing the expert retains its DNA viewer"
+    );
+    assert_eq!(
+        serde_json::to_value(app.engine.read().unwrap().state()).unwrap(),
+        before
+    );
 }
 
 #[test]

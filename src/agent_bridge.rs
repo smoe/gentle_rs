@@ -164,12 +164,20 @@ const OPENAI_COMPAT_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434/v1";
 pub const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 pub const ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
 
+const AGENT_TRANSCRIPT_ASSAY_CONTROL_CARD: &str = r#"Transcript-aware primer-pair workflow:
+- Ask the assay goal: shared-gene detection, isoform discrimination, endpoint RT-PCR or qPCR; bind species, assembly/annotation and intended/excluded transcripts. Single-primer Nanopore capture is a different workflow, not a PCR pair.
+- Discover a loaded annotated locus with state-summary, then features query SEQ_ID --limit 20 --include-qualifiers. Use actual returned zero-based feature IDs, never transcript accession strings or guessed IDs.
+- inspect-feature-expert SEQ_ID splicing FEATURE_ID returns structured annotation/evidence, not a window. To show it use ui open splicing-expert SEQ_ID FEATURE_ID; ui focus or ui close with the same operands reuses or closes that expert without deleting data. Headless applied=false means no GUI was opened.
+- primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID --mode distinguish_transcript --transcript-id ID prepares a transcript-bound qPCR request; it does not design an order-ready pair. For a multi-transcript panel, consult help primers design-transcript-assay-panel, choose its objective explicitly and review coverage/non-covered classes. Never substitute a generic genomic ROI for a requested isoform distinction.
+- Review gene/isoform evidence, feasibility and pair-by-transcript products; annotation alone is not expression evidence. RT-PCR/qPCR needs transcriptome specificity separately from genomic carryover. Check complete oligos including tails, hairpins, self-dimers and co-present cross-dimers using existing QA routes. Candidates are not assessed/order-ready; missing evidence remains unknown. Use execution="ask" for design, retrieval and materialization; never auto-order."#;
+
 pub(crate) fn agent_bridge_system_prompt() -> String {
     format!(
-        "{}\n\n{}\n\n{}",
+        "{}\n\n{}\n\n{}\n\n{}",
         AGENT_BRIDGE_SYSTEM_PROMPT,
         crate::engine::project_fact_registry_prompt_block(),
         AGENT_INTROSPECTION_CONTROL_CARD,
+        AGENT_TRANSCRIPT_ASSAY_CONTROL_CARD,
     )
 }
 
@@ -8199,6 +8207,27 @@ mod tests {
         )
         .expect_err("future schema major should fail");
         assert!(err.starts_with("AGENT_SCHEMA_UNSUPPORTED:"));
+    }
+
+    #[test]
+    fn splicing_expert_primer_control_card_is_sent_and_parser_grounded() {
+        let prompt = agent_bridge_system_prompt();
+        assert!(prompt.contains(AGENT_TRANSCRIPT_ASSAY_CONTROL_CARD));
+        for command in [
+            "features query locus --limit 20 --include-qualifiers",
+            "inspect-feature-expert locus splicing 0",
+            "ui open splicing-expert locus 0",
+            "ui focus splicing-expert locus 0",
+            "ui close splicing-expert locus 0",
+            "primers seed-qpcr-from-splicing locus 0 --mode distinguish_transcript --transcript-id TX1",
+            "help primers design-transcript-assay-panel",
+            "primers design-transcript-assay-panel locus 0 --assay-kind endpoint-rt-pcr --objective minimal-discrimination-panel --coverage-policy require-all",
+        ] {
+            crate::engine_shell::parse_shell_line(command)
+                .unwrap_or_else(|err| panic!("{command}: {err}"));
+        }
+        assert!(prompt.contains("Candidates are not assessed/order-ready"));
+        assert!(prompt.contains("transcriptome specificity separately from genomic carryover"));
     }
 
     #[test]

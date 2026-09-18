@@ -1,6 +1,6 @@
 # AI Task Playbooks for GENtle
 
-Last updated: 2026-08-31
+Last updated: 2026-09-18
 
 This document is a compact operating guide for AI assistants that suggest GENtle
 workflows. It is intentionally practical: the assistant should use these
@@ -421,6 +421,81 @@ approval digest was supplied.
 External retrieval, mutation design, and final materialization remain
 confirmation-gated. A proposal predicts constructs; it does not establish
 biological activity or execute a wet-lab experiment.
+
+## Playbook 12: Gene-Informed Primer Pairs And Isoform Discrimination
+
+First clarify the measurement: detect all intended transcripts, distinguish
+isoforms/classes, compare endpoint RT-PCR product sizes, or quantify by qPCR.
+Single-primer Nanopore capture is a different workflow, not a PCR pair. Bind
+species, assembly, annotation release and the intended/excluded transcripts;
+do not silently pick a canonical transcript or discard difficult isoforms.
+
+Use an existing annotated locus or the prepared-reference route in Playbook 5.
+An isolated cDNA cannot establish the gene's complete isoform universe. Discover
+the actual sequence and feature identifiers before using these templates:
+
+```text
+state-summary
+features query SEQ_ID --limit 20 --include-qualifiers
+inspect-feature-expert SEQ_ID splicing FEATURE_ID
+ui open splicing-expert SEQ_ID FEATURE_ID
+```
+
+`FEATURE_ID` is the returned zero-based feature index, not a transcript accession
+or exon number. Re-query after annotation edits/imports; these are not stable
+identifiers across changes. Page through feature-query results if necessary. The inspector
+returns structured data; only the `ui` command opens the Splicing Expert in a
+GUI host. `ui focus` with the same operands reuses the window; `ui close` closes
+only that feature's expert and retains sequences/reports. Headless CLI/MCP
+returns `applied=false`; it has not opened a window remotely.
+
+Review the transcript selector, exon/junction geometry and Evidence view. Keep
+annotated structure, expression/array support, RNA-read support and absent
+evidence separate. The expert can seed primer/qPCR requests; a seed is neither
+a designed pair nor specificity evidence. For one chosen transcript:
+
+```text
+primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID --mode distinguish_transcript --transcript-id TRANSCRIPT_ID
+```
+
+Inspect the returned operation before proposing its execution. For a
+multi-transcript endpoint panel, an explicit starting template is:
+
+```text
+help primers design-transcript-assay-panel
+primers design-transcript-assay-panel SEQ_ID FEATURE_ID --assay-kind endpoint-rt-pcr --objective minimal-discrimination-panel --coverage-policy require-all
+```
+
+Confirm the objective, cDNA-synthesis method, product-length constraints and
+evidence requirements before design. Use `pan-transcript` instead when common
+detection is intended. Do not substitute a generic genomic ROI for an isoform
+distinction. Where an evidence-backed plan already supplies exact operation
+payloads, reuse them and their approval contracts rather than recreating them
+from prose. Read-only `primers inspect-transcript-assay-feasibility` accepts the
+same operation payload before the design is run.
+
+After design, review every pair against the intended transcript universe:
+predicted products, missed classes, non-target products, oligo-dT reach and
+coverage limitations. `require-all` failure is not permission to switch to
+`best-effort`; request approval for that tradeoff. Identical assayed sequence
+cannot establish which otherwise distinct isoform produced the signal.
+
+Use the saved panel's `primers transcript-assay-specificity-plan` and
+`primers transcript-assay-specificity-finalize` path for bound external checks.
+For RT-PCR/qPCR, transcriptome specificity and genomic carryover are separate
+gates. A short/top-hit BLAST list does not prove exhaustive specificity.
+Assess complete synthesized oligos, including any adapters/tails: hairpins,
+self-dimers and cross-dimers between oligos that will actually coexist. Use
+existing QA/handoff routes discovered through `help primers`, not invented
+thermodynamic scores. Retain conditions, backend and evidence provenance.
+
+Keep **candidate**, **assessed** and **order-ready under a named policy** distinct.
+Missing or stale evidence remains unknown. Assemble an order form only after
+review of the bound experimental handoff; never treat window opening, a design
+report or a vendor handoff packet as an experiment or an order submission.
+
+The bridge supplies a compact version of this guidance to inner models; this
+document remains the fuller reference, not an assumed filesystem attachment.
 
 ## Tiny Local-Model Primer
 

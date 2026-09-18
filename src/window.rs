@@ -84,6 +84,16 @@ impl Window {
         }
     }
 
+    pub(crate) fn apply_splicing_expert_intent(
+        &mut self,
+        action: crate::engine_shell::UiIntentAction,
+        feature_id: usize,
+    ) -> Result<String, String> {
+        match self {
+            Self::Dna(window) => window.apply_splicing_expert_intent(action, feature_id),
+        }
+    }
+
     pub(crate) fn set_tss_view(&mut self, enabled: bool) -> Result<(), String> {
         match self {
             Self::Dna(window) => window.set_tss_view(enabled),

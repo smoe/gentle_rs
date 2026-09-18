@@ -973,6 +973,12 @@ Feature tree grouping:
 - Single-click on feature rows or feature glyphs now selects/focuses only; it
   no longer auto-opens the Splicing Expert window.
 - Open splicing-linked expert windows deliberately via:
+  - Agent Assistant or GUI Shell: `ui open splicing-expert SEQ_ID FEATURE_ID`,
+    using a loaded sequence and a zero-based ID from `features query`.
+    `ui focus` reuses that inspection without clearing evidence; `ui close`
+    with the same operands closes only that expert, retaining project data.
+    Opening waits for a lazy DNA viewer to finish loading. No active-window
+    or canonical-transcript guess is made.
   - double-click a feature row
   - double-click a feature glyph on the DNA map
   - right-click context menu from feature tree or map
