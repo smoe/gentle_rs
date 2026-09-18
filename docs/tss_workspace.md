@@ -21,15 +21,30 @@ evidence of experimentally established transcription initiation.
    existing or still-loading windows are reused. Larger inventories can be
    materialized as smaller, explicitly selected collections.
 
+For an existing collection, enter its ID and choose **Inspect stored collection**.
+Validation runs in the background; a valid result lists member coordinates and
+transcripts and offers **Copy collection JSON**. A stale/legacy result shows the
+engine's diagnostic instead of claiming the members are valid. To remove that
+registry entry, choose **Forget registry entry...**, review the named ID and
+confirm. Changing the ID cancels this confirmation. Sequences, open windows and
+lineage are retained, and the metadata removal is undoable. Normally use a new
+collection ID for re-derivation: forgetting does not authorize sequence overwrite.
+
 Missing flanks are shown as unavailable, never silently clipped. Extend the
 anchored parent locus and preview again, or explicitly choose smaller flanks.
 Missing transcript annotation produces an explanatory error, not an empty
-biological conclusion. Clipped or uncertain 5-prime ends and absent gene linkage
-appear as nonselectable diagnostics in `excluded_transcripts`. A fuzzy 3-prime
+biological conclusion. Clipped or uncertain 5-prime ends appear as nonselectable
+diagnostics in `excluded_transcripts`. Annotations without gene linkage instead
+appear in `unassigned_transcripts`: these are locus-level diagnostics, not
+exclusions from every requested gene and not proven unrelated transcripts. A fuzzy 3-prime
 end alone does not invalidate an exact 5-prime start. A CDS alone
 does not establish a TSS. Annotation support is based on imported transcript
 features, including GenBank/EMBL features, not an assumption that every genome
 annotation format has a transcript index.
+Both `complement(join(...))` and uniformly reverse-oriented
+`join(complement(...),complement(...))` are supported; mixed-strand joins remain
+unsupported. Extraction uses the same endpoint interpretation to preserve loss
+of a first exon rather than inventing a TSS at a surviving boundary.
 
 Prepared-genome transcript indexing is a separate capability: it currently
 supports tabular GTF/GFF, not GenBank/XML. A whole-index request for GenBank/XML
@@ -102,6 +117,24 @@ the intended JASPAR model for a biological analysis. Typed map operations accept
 `{"source_kind":"tss_collection","collection_id":"tp73_tss"}` as their
 `collection_subject`, retaining that identity in the report.
 
+The same identity-preserving flag also accepts the existing restriction-scan,
+digest and primer-specificity operations:
+
+```text
+collections run restriction-scan --tss-collection tp73_tss --enzyme EcoRI
+collections run digest --tss-collection tp73_tss --enzyme EcoRI --dry-run
+```
+
+Digest application still requires the preview's exact plan fingerprint and
+explicit `--apply`. Neither example designs or validates primers. For
+`collections run primer-specificity --tss-collection ID`, supply the normal
+`--pair-rank` or `--pair-index` and `--target-genome`, plus `--member-report`
+bindings when reports cannot be resolved uniquely. Primer-report bindings do not
+replace collection membership. All four routes reject competing gene-set or
+sequence subjects; TFBS/restriction/digest also reject member-sequence overrides.
+The engine validates every member before mapping, including before external
+specificity work. Unsupported or stale membership is never silently skipped.
+
 To discard a stale or legacy registry entry, use
 `promoters tss-forget tp73_tss` (`ForgetTssCollection` through `op`). This is a
 metadata mutation requiring the usual agent/MCP confirmation, undoable in the
@@ -120,6 +153,11 @@ the host still reports a queued request.
 
 - Starts group only when gene identity, annotation source, genomic reference,
   coordinate and strand agree. All source transcript feature memberships remain.
+  A missing `gene_id` can be filled for grouping only when the same gene label
+  maps to exactly one explicit ID among this locus's transcript annotations in
+  the same source and strand. The report explains the association and retains
+  the original annotations. Conflicting IDs and differing sources/strands remain
+  separate; no gene assignment is inferred merely from overlap.
 - Local and genomic strands are independent. Each output reads transcript
   5-prime to 3-prime, with TSS at local base `upstream_bp + 1`; negative-strand
   genomic labels therefore decrease along that output.
@@ -139,7 +177,8 @@ the host still reports a queued request.
   missing members cannot silently reuse stale geometry through collection
   navigation; inspect such records individually and derive a new collection.
 - The `subject` is a typed `tss_collection` reference accepted by
-  `ScanTfbsHitsCollection`. It uses project-sequence map policies but revalidates
+  the supported TFBS, restriction, digest and primer-specificity collection
+  operations. It uses project-sequence map policies but revalidates
   persisted membership, sequence/annotation snapshots and anchors first. Raw
   `--seq-ids` scans remain ordinary sequence scans without TSS freshness claims.
   Its read-only scan is optional. No motif, occupancy,
@@ -172,6 +211,12 @@ error propagation. These are shared-engine tests, not desktop acceptance.
 Prepared GenBank input is previewed, materialized and reopened in separate test
 processes; regressions cover cache refresh, metadata-only removal/undo, edited
 member scan refusal, fuzzy 3-prime ends and clipped first exons on both strands.
+Follow-up regressions cover both reverse-join encodings and extraction, ambiguous
+gene aliases, locus-level unassigned diagnostics, all four scan/map flags, and
+background GUI collection inspection/confirmed metadata-only removal. Older
+stored reports remain readable: an absent `unassigned_transcripts` defaults to
+empty and is omitted on serialization. New previews whose grouping or diagnostics
+change need a new approval; existing stored collections are not rewritten.
 
 Glen's live TP73 acceptance remains separate: use the exact candidate binary and
 loaded reference, compare inventory membership to source transcripts, repeat

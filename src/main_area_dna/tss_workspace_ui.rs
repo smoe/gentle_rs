@@ -9,6 +9,7 @@ struct TssTask {
     revision: u64,
     mutating: bool,
     started: Instant,
+    forgotten_collection: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +23,8 @@ pub(super) struct TssWorkspace {
     report: Option<Arc<TssInventoryReport>>,
     task: Option<TssTask>,
     materialized_collection: Option<String>,
+    inspected_collection: Option<Arc<TssCollectionReport>>,
+    forget_confirmation: Option<String>,
     status: String,
 }
 
@@ -37,6 +40,8 @@ impl Default for TssWorkspace {
             report: None,
             task: None,
             materialized_collection: None,
+            inspected_collection: None,
+            forget_confirmation: None,
             status: String::new(),
         }
     }
@@ -74,7 +79,13 @@ impl MainAreaDna {
             revision,
             mutating,
             started: Instant::now(),
+            forgotten_collection: match &operation {
+                Operation::ForgetTssCollection { collection_id } => Some(collection_id.clone()),
+                _ => None,
+            },
         });
+        self.tss_inventory_ui.inspected_collection = None;
+        self.tss_inventory_ui.forget_confirmation = None;
         self.tss_inventory_ui.status = "TSS operation running in the background".into();
         std::thread::spawn(move || {
             let result = if mutating {
@@ -116,7 +127,13 @@ impl MainAreaDna {
                     .as_ref()
                     .map(|r| r.collection_id.clone());
                 self.handle_operation_success(result, task.started);
-                self.tss_inventory_ui.status = "Collection is stored. Open its TSS windows below; no TFBS or occupancy analysis has been run.".into();
+                self.tss_inventory_ui.status = if let Some(id) = task.forgotten_collection {
+                    format!(
+                        "Forgot registry entry '{id}'. Sequences, windows and lineage are retained. Use a new collection ID to avoid overwriting retained sequences."
+                    )
+                } else {
+                    "Collection is stored. Open its TSS windows below; no TFBS or occupancy analysis has been run.".into()
+                };
             }
             Ok(mut result) => {
                 let revision = self
@@ -129,14 +146,41 @@ impl MainAreaDna {
                         "Project changed during preview; inspect again".into();
                     return;
                 }
+                if let Some(collection) = result.tss_collection.take() {
+                    self.tss_inventory_ui.materialized_collection =
+                        Some(collection.collection_id.clone());
+                    self.tss_inventory_ui.inspected_collection = Some(Arc::new(*collection));
+                    self.tss_inventory_ui.status = "Collection and all member snapshots validated. This does not establish TFBS, occupancy or primer specificity.".into();
+                    ctx.request_repaint();
+                    return;
+                }
                 self.tss_inventory_ui.report = result.tss_inventory.take().map(|r| Arc::new(*r));
                 self.tss_inventory_ui.selected.clear();
                 self.tss_inventory_ui.status =
                     "Preview ready. Select the starts to materialize and approve below.".into();
             }
-            Err(error) => self.tss_inventory_ui.status = error.to_string(),
+            Err(error) => {
+                self.tss_inventory_ui.materialized_collection = None;
+                self.tss_inventory_ui.status = error.to_string();
+            }
         }
         ctx.request_repaint();
+    }
+
+    fn request_tss_forget(&mut self) {
+        let id = self.tss_inventory_ui.collection.trim();
+        if self.tss_inventory_ui.task.is_none() && !id.is_empty() {
+            self.tss_inventory_ui.forget_confirmation = Some(id.into());
+        }
+    }
+
+    fn confirm_tss_forget(&mut self) {
+        if let Some(id) = self.tss_inventory_ui.forget_confirmation.take()
+            && id == self.tss_inventory_ui.collection.trim()
+            && self.tss_inventory_ui.task.is_none()
+        {
+            self.start_tss_operation(Operation::ForgetTssCollection { collection_id: id }, true);
+        }
     }
 
     pub(super) fn render_tss_workspace(&mut self, ctx: &egui::Context) {
@@ -162,8 +206,29 @@ impl MainAreaDna {
                     ui.label("Gene");
                     ui.text_edit_singleline(&mut self.tss_inventory_ui.gene);
                     ui.label("Collection ID");
-                    ui.text_edit_singleline(&mut self.tss_inventory_ui.collection);
+                    if ui.text_edit_singleline(&mut self.tss_inventory_ui.collection).changed() {
+                        self.tss_inventory_ui.forget_confirmation = None;
+                        self.tss_inventory_ui.inspected_collection = None;
+                    }
                 });
+                ui.horizontal_wrapped(|ui| {
+                    let has_id = !self.tss_inventory_ui.collection.trim().is_empty();
+                    if ui.add_enabled(has_id, egui::Button::new("Inspect stored collection")).clicked() {
+                        self.start_tss_operation(Operation::GetTssCollection {
+                            collection_id: self.tss_inventory_ui.collection.trim().into(),
+                        }, false);
+                    }
+                    if ui.add_enabled(has_id, egui::Button::new("Forget registry entry...")).clicked() {
+                        self.request_tss_forget();
+                    }
+                });
+                if let Some(id) = self.tss_inventory_ui.forget_confirmation.clone() {
+                    ui.label(format!("Forget '{id}'? Only registry metadata is removed; sequences and lineage remain. Re-derivation normally needs a new collection ID."));
+                    ui.horizontal(|ui| {
+                        if ui.button("Confirm forget registry entry").clicked() { self.confirm_tss_forget(); }
+                        if ui.button("Cancel").clicked() { self.tss_inventory_ui.forget_confirmation = None; }
+                    });
+                }
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Upstream bp");
                     ui.add(
@@ -190,6 +255,35 @@ impl MainAreaDna {
                 ctx.request_repaint_after(Duration::from_millis(100));
             }
             ui.label(&self.tss_inventory_ui.status);
+            if let Some(collection) = self.tss_inventory_ui.inspected_collection.clone() {
+                ui.label(format!(
+                    "{}: {} validated windows; gene {}",
+                    collection.collection_id,
+                    collection.members.len(),
+                    collection.inventory.request.gene_query
+                ));
+                ui.monospace(&collection.collection_membership_fingerprint_sha256);
+                if ui.button("Copy collection JSON").clicked()
+                    && let Ok(json) = serde_json::to_string_pretty(collection.as_ref())
+                {
+                    ui.ctx().copy_text(json);
+                }
+                egui::ScrollArea::vertical()
+                    .id_salt("tss_collection_members")
+                    .max_height(160.0)
+                    .show(ui, |ui| {
+                        for member in &collection.members {
+                            ui.label(format!(
+                                "{}: {}:{} ({:?}) | {}",
+                                member.tss.output_seq_id,
+                                member.tss.genomic_tss.reference.contig_name,
+                                member.tss.genomic_tss.start_0based + 1,
+                                member.tss.genomic_tss.strand,
+                                member.tss.transcript_ids.join(", ")
+                            ));
+                        }
+                    });
+            }
             if let Some(id) = self.tss_inventory_ui.materialized_collection.clone() {
                 if ui
                     .add_enabled(
@@ -274,6 +368,9 @@ impl MainAreaDna {
                                 )),
                             );
                         }
+                        for unassigned in &report.unassigned_transcripts {
+                            ui.add_enabled(false, egui::Label::new(format!("Unassigned in locus: {} (feature {}); gene linkage unavailable", unassigned.transcript_id, unassigned.feature_id)));
+                        }
                         for row in &report.rows {
                             let mut selected = self.tss_inventory_ui.selected.contains(&row.tss_id);
                             let label = format!(
@@ -318,6 +415,116 @@ impl MainAreaDna {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn finish_task(area: &mut MainAreaDna, ctx: &egui::Context) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while area.tss_inventory_ui.task.is_some() && Instant::now() < deadline {
+            area.poll_tss_task(ctx);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(area.tss_inventory_ui.task.is_none());
+    }
+
+    #[test]
+    fn tss_workspace_inspects_stale_failure_and_explicitly_forgets_without_deleting() {
+        let mut engine = crate::engine::synthetic_tss_engine(false);
+        let request = crate::engine::synthetic_tss_approval(&engine);
+        let collection = engine
+            .apply(Operation::MaterializeTssWindows { request })
+            .unwrap()
+            .tss_collection
+            .unwrap();
+        let member_id = collection.members[0].tss.output_seq_id.clone();
+        let dna = engine.state().sequences["locus"].clone();
+        let shared = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("locus".into()), Some(shared.clone()));
+        let ctx = egui::Context::default();
+        area.open_tss_inventory();
+        area.tss_inventory_ui.collection = "toy_tss".into();
+        let before = serde_json::to_value(shared.read().unwrap().state()).unwrap();
+        area.start_tss_operation(
+            Operation::GetTssCollection {
+                collection_id: "toy_tss".into(),
+            },
+            false,
+        );
+        finish_task(&mut area, &ctx);
+        assert_eq!(
+            area.tss_inventory_ui
+                .inspected_collection
+                .as_ref()
+                .unwrap()
+                .members
+                .len(),
+            2
+        );
+        assert_eq!(
+            serde_json::to_value(shared.read().unwrap().state()).unwrap(),
+            before
+        );
+        shared
+            .write()
+            .unwrap()
+            .state_mut()
+            .sequences
+            .get_mut(&member_id)
+            .unwrap()
+            .features_mut()
+            .clear();
+        area.start_tss_operation(
+            Operation::GetTssCollection {
+                collection_id: "toy_tss".into(),
+            },
+            false,
+        );
+        finish_task(&mut area, &ctx);
+        assert!(area.tss_inventory_ui.inspected_collection.is_none());
+        assert!(area.tss_inventory_ui.status.contains("edited"));
+        let before = serde_json::to_value(shared.read().unwrap().state()).unwrap();
+        area.request_tss_forget();
+        assert!(area.tss_inventory_ui.task.is_none());
+        assert_eq!(
+            serde_json::to_value(shared.read().unwrap().state()).unwrap(),
+            before
+        );
+        area.tss_inventory_ui.collection = "different_id".into();
+        area.confirm_tss_forget();
+        assert!(area.tss_inventory_ui.task.is_none());
+        assert_eq!(
+            serde_json::to_value(shared.read().unwrap().state()).unwrap(),
+            before
+        );
+        area.tss_inventory_ui.collection = "toy_tss".into();
+        area.request_tss_forget();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                area.render_tss_workspace(ui.ctx())
+            });
+            output.textures_delta.clear();
+        }
+        area.confirm_tss_forget();
+        finish_task(&mut area, &ctx);
+        assert!(
+            area.tss_inventory_ui
+                .status
+                .contains("Forgot registry entry")
+        );
+        let mut expected = before;
+        expected["metadata"]["tss_collections_v1"]
+            .as_object_mut()
+            .unwrap()
+            .remove("toy_tss");
+        assert_eq!(
+            serde_json::to_value(shared.read().unwrap().state()).unwrap(),
+            expected
+        );
+        shared.write().unwrap().undo_last_operation().unwrap();
+        assert!(
+            shared.read().unwrap().state().metadata["tss_collections_v1"]
+                .get("toy_tss")
+                .is_some()
+        );
+    }
 
     #[test]
     fn tss_workspace_preview_is_background_read_only_and_form_bound() {

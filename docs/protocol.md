@@ -13576,9 +13576,22 @@ it follows project-sequence lifting policies, not a new generic loop.
 member sequences and lineage even when the collection is stale or legacy.
 Inventory `snapshot_algorithm=gentle.tss_biological_snapshot.v1` excludes computed
 caches from approval/member hashes. Legacy absent algorithms fail closed on reuse.
-`excluded_transcripts` retains typed per-feature diagnostics for missing gene
-links, uncertain/clipped 5-prime ends or invalid genomic bounds. Exact 5-prime
-starts remain usable when only the 3-prime endpoint is fuzzy.
+`excluded_transcripts` retains typed per-gene diagnostics for uncertain/clipped
+5-prime ends or invalid genomic bounds. Additive `unassigned_transcripts` holds
+locus-level annotations without gene links, not exclusions from the requested
+gene. It defaults to empty and is omitted when empty, preserving serialization
+of older bound reports. Legacy `MissingGeneLink` exclusions remain readable.
+Exact 5-prime starts remain usable when only the 3-prime endpoint is fuzzy.
+Uniformly oriented nested complement/join locations use the same endpoint
+resolver for inventory and extraction truncation markers; mixed strands fail
+closed. A missing gene ID can be associated through an unambiguous explicit
+label-to-ID link within the same loaded locus, source and strand, with an
+explanation and original feature memberships retained. This can change a new
+preview's digest; old approvals are never silently replaced.
+Shared-shell `--tss-collection` is supported for TFBS, restriction scan, digest
+and primer specificity. Sequence/member overrides remain disallowed; explicit
+primer-report bindings remain supported. Digest application retains its separate
+plan-fingerprint approval. No generic map operation is added.
 `tss_collection.exists` reports stored collection identity, not member freshness.
 
 `ui open|focus|close tss-view --collection ID` returns

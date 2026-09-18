@@ -525,6 +525,11 @@ before scanning; metadata-only forgetting preserves sequences and lineage.
 Transcript 5-prime truncation must survive extraction, including dropped first
 exons. A surviving exon boundary cannot become an exact annotated TSS merely
 because a file library clips locations without marking them partial.
+Inventory and extraction share uniform-strand endpoint interpretation, including
+both complement/join encodings; neither may use a majority-strand guess for an
+exact TSS. Missing gene IDs may be associated only through an unambiguous
+explicit label/ID link in the same loaded locus, source and strand. Unlinked
+annotations remain locus-level unassigned records, not gene-specific exclusions.
 
 Collection wrappers over non-persisted child scans own those reports directly
 and must describe aggregate completeness. A retained-row cap is not evidence

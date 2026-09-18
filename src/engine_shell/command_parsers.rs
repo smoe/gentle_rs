@@ -8639,6 +8639,7 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
     let mut gene_set_report_id: Option<String> = None;
     let mut seq_ids = Vec::new();
     let mut member_bindings = Vec::new();
+    let mut tss_collection_id: Option<String> = None;
     let mut pair_rank: Option<usize> = None;
     let mut pair_index: Option<usize> = None;
     let mut target_genome_id: Option<String> = None;
@@ -8675,6 +8676,13 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
                     return Err("--seq-ids requires at least one non-empty sequence id".to_string());
                 }
                 seq_ids.extend(parsed);
+            }
+            "--tss-collection" => {
+                let id = parse_option_path(tokens, &mut idx, "--tss-collection", COMMAND)?;
+                if id.trim().is_empty() || tss_collection_id.is_some() {
+                    return Err("--tss-collection requires one nonempty collection ID".into());
+                }
+                tss_collection_id = Some(id);
             }
             "--member-report" | "--member-binding" => {
                 let flag = tokens[idx].clone();
@@ -8734,19 +8742,12 @@ pub(super) fn parse_collections_command(tokens: &[String]) -> Result<ShellComman
             "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
         ));
     }
-    let collection_subject = if let Some(report_id) = gene_set_report_id {
-        if report_id.is_empty() {
-            return Err("GENE_SET_REPORT_ID must not be empty".to_string());
-        }
-        CollectionSubjectRef::GeneSetResolution { report_id }
-    } else {
-        if seq_ids.is_empty() {
-            return Err(format!(
-                "{COMMAND} requires GENE_SET_REPORT_ID or --seq-ids ID,..."
-            ));
-        }
-        CollectionSubjectRef::ProjectSequences { seq_ids }
-    };
+    let collection_subject = parse_tss_or_sequence_collection_subject(
+        COMMAND,
+        tss_collection_id,
+        gene_set_report_id,
+        seq_ids,
+    )?;
     if pair_rank.is_some() == pair_index.is_some() {
         return Err(format!(
             "{COMMAND} requires exactly one of --pair-rank N or --pair-index N"
@@ -8954,9 +8955,40 @@ pub(super) fn parse_digest_command(tokens: &[String]) -> Result<ShellCommand, St
     })
 }
 
+fn parse_tss_or_sequence_collection_subject(
+    command: &str,
+    tss_collection_id: Option<String>,
+    gene_set_report_id: Option<String>,
+    seq_ids: Vec<String>,
+) -> Result<CollectionSubjectRef, String> {
+    if let Some(collection_id) = tss_collection_id {
+        if gene_set_report_id.is_some() || !seq_ids.is_empty() {
+            return Err(
+                "--tss-collection cannot be combined with gene-set or sequence arguments".into(),
+            );
+        }
+        return Ok(CollectionSubjectRef::TssCollection { collection_id });
+    }
+    if let Some(report_id) = gene_set_report_id {
+        if report_id.is_empty() || !seq_ids.is_empty() {
+            return Err(format!(
+                "{command} requires a nonempty GENE_SET_REPORT_ID, exclusive with --seq-ids"
+            ));
+        }
+        Ok(CollectionSubjectRef::GeneSetResolution { report_id })
+    } else if seq_ids.is_empty() {
+        Err(format!(
+            "{command} requires GENE_SET_REPORT_ID, --seq-ids ID,... or --tss-collection ID"
+        ))
+    } else {
+        Ok(CollectionSubjectRef::ProjectSequences { seq_ids })
+    }
+}
+
 fn parse_collections_run_digest(tokens: &[String]) -> Result<ShellCommand, String> {
     const COMMAND: &str = "collections run digest";
     let mut gene_set_report_id: Option<String> = None;
+    let mut tss_collection_id: Option<String> = None;
     let mut seq_ids = Vec::new();
     let mut member_bindings = Vec::new();
     let mut enzymes = Vec::new();
@@ -9009,6 +9041,13 @@ fn parse_collections_run_digest(tokens: &[String]) -> Result<ShellCommand, Strin
                     stable_member_id: member_id.to_string(),
                     seq_id: seq_id.to_string(),
                 });
+            }
+            "--tss-collection" => {
+                let id = parse_option_path(tokens, &mut idx, "--tss-collection", COMMAND)?;
+                if id.trim().is_empty() || tss_collection_id.is_some() {
+                    return Err("--tss-collection requires one nonempty collection ID".into());
+                }
+                tss_collection_id = Some(id);
             }
             "--enzyme" => {
                 let enzyme = parse_option_path(tokens, &mut idx, "--enzyme", COMMAND)?;
@@ -9066,19 +9105,15 @@ fn parse_collections_run_digest(tokens: &[String]) -> Result<ShellCommand, Strin
             "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
         ));
     }
-    let collection_subject = if let Some(report_id) = gene_set_report_id {
-        if report_id.is_empty() {
-            return Err("GENE_SET_REPORT_ID must not be empty".to_string());
-        }
-        CollectionSubjectRef::GeneSetResolution { report_id }
-    } else {
-        if seq_ids.is_empty() {
-            return Err(format!(
-                "{COMMAND} requires GENE_SET_REPORT_ID or --seq-ids ID,..."
-            ));
-        }
-        CollectionSubjectRef::ProjectSequences { seq_ids }
-    };
+    if tss_collection_id.is_some() && !member_bindings.is_empty() {
+        return Err("--tss-collection cannot be combined with member-sequence bindings".into());
+    }
+    let collection_subject = parse_tss_or_sequence_collection_subject(
+        COMMAND,
+        tss_collection_id,
+        gene_set_report_id,
+        seq_ids,
+    )?;
     if !dry_run
         && expected_plan_fingerprint_sha256
             .as_deref()
@@ -9109,6 +9144,7 @@ fn parse_collections_run_digest(tokens: &[String]) -> Result<ShellCommand, Strin
 fn parse_collections_run_restriction_scan(tokens: &[String]) -> Result<ShellCommand, String> {
     const COMMAND: &str = "collections run restriction-scan";
     let mut gene_set_report_id: Option<String> = None;
+    let mut tss_collection_id: Option<String> = None;
     let mut seq_ids = Vec::new();
     let mut member_bindings = Vec::new();
     let mut enzymes = Vec::new();
@@ -9161,6 +9197,13 @@ fn parse_collections_run_restriction_scan(tokens: &[String]) -> Result<ShellComm
                     seq_id: seq_id.to_string(),
                 });
             }
+            "--tss-collection" => {
+                let id = parse_option_path(tokens, &mut idx, "--tss-collection", COMMAND)?;
+                if id.trim().is_empty() || tss_collection_id.is_some() {
+                    return Err("--tss-collection requires one nonempty collection ID".into());
+                }
+                tss_collection_id = Some(id);
+            }
             "--enzyme" => {
                 let enzyme = parse_option_path(tokens, &mut idx, "--enzyme", COMMAND)?;
                 if enzyme.trim().is_empty() {
@@ -9203,19 +9246,15 @@ fn parse_collections_run_restriction_scan(tokens: &[String]) -> Result<ShellComm
             "{COMMAND} accepts either GENE_SET_REPORT_ID or --seq-ids, not both"
         ));
     }
-    let collection_subject = if let Some(report_id) = gene_set_report_id {
-        if report_id.is_empty() {
-            return Err("GENE_SET_REPORT_ID must not be empty".to_string());
-        }
-        CollectionSubjectRef::GeneSetResolution { report_id }
-    } else {
-        if seq_ids.is_empty() {
-            return Err(format!(
-                "{COMMAND} requires GENE_SET_REPORT_ID or --seq-ids ID,..."
-            ));
-        }
-        CollectionSubjectRef::ProjectSequences { seq_ids }
-    };
+    if tss_collection_id.is_some() && !member_bindings.is_empty() {
+        return Err("--tss-collection cannot be combined with member-sequence bindings".into());
+    }
+    let collection_subject = parse_tss_or_sequence_collection_subject(
+        COMMAND,
+        tss_collection_id,
+        gene_set_report_id,
+        seq_ids,
+    )?;
 
     Ok(ShellCommand::CollectionsRunRestrictionScan {
         collection_subject,

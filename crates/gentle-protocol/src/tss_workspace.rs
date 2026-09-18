@@ -63,6 +63,10 @@ pub struct TssInventoryReport {
     pub rows: Vec<TssInventoryRow>,
     #[serde(default)]
     pub excluded_transcripts: Vec<TssExcludedTranscript>,
+    /// Locus-level annotations with no gene linkage, not exclusions from the requested gene.
+    /// Omitted when empty to preserve serialization of existing bound collections.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unassigned_transcripts: Vec<TssExcludedTranscript>,
     pub warnings: Vec<String>,
 }
 

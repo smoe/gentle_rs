@@ -21748,6 +21748,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",
             vec![
                 json!({"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"}),
+                json!({"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates persisted members; exclusive with gene-set and sequence arguments; primer-report bindings remain supported"}),
                 json!({"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "project sequence ids; alternative to GENE_SET_REPORT_ID"}),
                 json!({"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "report", "detail": "repeated MEMBER_ID=PRIMER_REPORT_ID bindings"}),
                 json!({"name": "TARGET_GENOME_ID", "required": true, "subject_kind": "other", "detail": "prepared genomic-DNA or transcriptome-cDNA resource id"}),
@@ -23104,6 +23105,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "true",
             "requires_confirmation": true,
             "args": [
+                {"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates persisted members; exclusive with gene-set, sequence and member-sequence bindings"},
                 {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
                 {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
                 {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},
@@ -23197,6 +23199,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
+                {"name": "TSS_COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--tss-collection ID validates persisted members; exclusive with gene-set, sequence and member-sequence bindings"},
                 {"name": "GENE_SET_REPORT_ID", "required": false, "subject_kind": "report", "detail": "persisted gene-set resolution artifact id; alternative to SEQ_IDS"},
                 {"name": "SEQ_IDS", "required": false, "subject_kind": "sequence", "detail": "loaded project sequence ids; alternative to GENE_SET_REPORT_ID"},
                 {"name": "MEMBER_BINDINGS", "required": false, "subject_kind": "sequence", "detail": "repeated MEMBER_ID=SEQ_ID bindings required for logical gene-set members"},

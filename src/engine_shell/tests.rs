@@ -12,6 +12,77 @@
 use super::*;
 
 #[test]
+fn tss_collection_map_flags_preserve_subject_validation_and_approvals() {
+    let mut engine = crate::engine::synthetic_tss_engine(false);
+    let request = crate::engine::synthetic_tss_approval(&engine);
+    let report = engine
+        .apply(Operation::MaterializeTssWindows { request })
+        .unwrap()
+        .tss_collection
+        .unwrap();
+    let lines = [
+        "collections run restriction-scan --tss-collection toy_tss --enzyme EcoRI",
+        "collections run digest --tss-collection toy_tss --enzyme EcoRI --dry-run",
+        "collections run primer-specificity --tss-collection toy_tss --pair-index 0 --target-genome synthetic_unavailable",
+    ];
+    for line in lines {
+        let parsed = parse_shell_line(line).unwrap();
+        let subject = match &parsed {
+            ShellCommand::CollectionsRunRestrictionScan {
+                collection_subject, ..
+            }
+            | ShellCommand::CollectionsRunDigest {
+                collection_subject, ..
+            }
+            | ShellCommand::CollectionsRunPrimerSpecificity {
+                collection_subject, ..
+            } => collection_subject,
+            _ => panic!("wrong route"),
+        };
+        assert!(
+            matches!(subject, CollectionSubjectRef::TssCollection {collection_id} if collection_id == "toy_tss")
+        );
+        for extra in ["--seq-ids other", "--tss-collection duplicate"] {
+            assert!(parse_shell_line(&format!("{line} {extra}")).is_err());
+        }
+        assert!(
+            parse_shell_line(&line.replace("--tss-collection", "other --tss-collection")).is_err()
+        );
+        assert!(parse_shell_line(&line.replace("toy_tss", "''")).is_err());
+    }
+    assert!(
+        parse_shell_line("collections run digest --tss-collection toy_tss --enzyme EcoRI --apply")
+            .is_err()
+    );
+    for kind in ["restriction-scan", "digest"] {
+        assert!(parse_shell_line(&format!("collections run {kind} --tss-collection toy_tss --enzyme EcoRI --member-sequence x=y")).is_err());
+    }
+    // Primer-report bindings remain usable; unlike sequence overrides, they do not replace membership.
+    assert!(parse_shell_line(&format!("{} --member-report x=report", lines[2])).is_ok());
+    let before = serde_json::to_value(engine.state()).unwrap();
+    for line in &lines[..2] {
+        let result = execute_shell_command(&mut engine, &parse_shell_line(line).unwrap()).unwrap();
+        assert!(!result.state_changed);
+        assert!(result.output.to_string().contains("toy_tss"));
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+    engine
+        .state_mut()
+        .sequences
+        .get_mut(&report.members[0].tss.output_seq_id)
+        .unwrap()
+        .features_mut()
+        .clear();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    for line in lines {
+        let error =
+            execute_shell_command(&mut engine, &parse_shell_line(line).unwrap()).unwrap_err();
+        assert!(error.to_string().contains("edited"), "{line}: {error}");
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
 fn tss_workspace_shell_preview_apply_collection_and_window_intent() {
     let mut engine = crate::engine::synthetic_tss_engine(false);
     let approved = crate::engine::synthetic_tss_approval(&engine);
