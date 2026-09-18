@@ -543,6 +543,70 @@ pub fn collect_location_strands(location: &Location, reverse: bool, strands: &mu
     }
 }
 
+/// A local, uniformly oriented transcript endpoint. Fuzziness at the opposite
+/// end does not make this endpoint uncertain.
+pub(crate) struct TranscriptFivePrimeEndpoint {
+    pub position: usize,
+    pub reverse: bool,
+    pub exact: bool,
+}
+
+/// Resolve range/join/complement geometry without a majority-strand guess.
+/// Both complement(join(...)) and join(complement(...), ...) are supported;
+/// mixed strands, remote locations and uncertain ordering are not.
+pub(crate) fn transcript_five_prime_endpoint(
+    feature: &Feature,
+) -> Option<TranscriptFivePrimeEndpoint> {
+    fn collect(
+        location: &Location,
+        reverse: bool,
+        ends: &mut Vec<(i64, i64, bool, bool, bool)>,
+    ) -> Option<()> {
+        match location {
+            Location::Range((s, before), (e, after)) if *s >= 0 && e > s => {
+                ends.push((*s, *e, before.0, after.0, reverse));
+                Some(())
+            }
+            Location::Complement(inner) => collect(inner, !reverse, ends),
+            Location::Join(parts) if !parts.is_empty() => {
+                for part in parts {
+                    collect(part, reverse, ends)?;
+                }
+                Some(())
+            }
+            _ => None,
+        }
+    }
+    let mut ends = Vec::new();
+    collect(&feature.location, false, &mut ends)?;
+    let reverse = ends.first()?.4;
+    if ends.iter().any(|end| end.4 != reverse) {
+        return None;
+    }
+    let reverse = if location_contains_complement(&feature.location) {
+        reverse
+    } else {
+        feature_strand_qualifier_is_reverse(feature).unwrap_or(reverse)
+    };
+    let position = if reverse {
+        ends.iter().map(|end| end.1 - 1).max()?
+    } else {
+        ends.iter().map(|end| end.0).min()?
+    };
+    let exact = ends.iter().all(|end| {
+        if reverse {
+            end.1 - 1 != position || !end.3
+        } else {
+            end.0 != position || !end.2
+        }
+    });
+    Some(TranscriptFivePrimeEndpoint {
+        position: usize::try_from(position).ok()?,
+        reverse,
+        exact,
+    })
+}
+
 pub fn feature_is_reverse(feature: &Feature) -> bool {
     let mut strands = Vec::new();
     collect_location_strands(&feature.location, false, &mut strands);

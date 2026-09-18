@@ -16,6 +16,18 @@ pub struct GuiProminentGlossaryEntry {
 
 const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
     GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-collection",
+        menu_path: "Transcript starts > Inspect stored collection",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-forget",
+        menu_path: "Transcript starts > Forget registry entry... > Confirm forget registry entry",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "promoters tss-inventory",
         menu_path: "DNA Sequence Viewer > TFBS scan > Transcript starts / TSS windows...",
         palette_title: "Transcript Starts / TSS Windows",

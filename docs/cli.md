@@ -3039,6 +3039,9 @@ Shared shell command:
     - `promoters tss-collection COLLECTION_ID` (persisted collection and member validation; [walkthrough](tss_workspace.md))
     - `promoters tss-forget COLLECTION_ID` (metadata only; retains member sequences and lineage)
     - `collections run tfbs-scan --tss-collection COLLECTION_ID --motif TOKEN [--path OUTPUT.json]` (validates all members before scanning; exclusive with gene-set/sequence/member-binding arguments)
+    - `collections run restriction-scan --tss-collection COLLECTION_ID --enzyme NAME` (same validated membership; no member-sequence override)
+    - `collections run digest --tss-collection COLLECTION_ID --enzyme NAME --dry-run` (application still needs `--apply --expected-plan-fingerprint-sha256 SHA256`)
+    - `collections run primer-specificity --tss-collection COLLECTION_ID --pair-index N --target-genome GENOME_ID [--member-report MEMBER_ID=PRIMER_REPORT_ID]...` (validates membership before specificity; existing primer-report and backend requirements still apply)
     - `ui close TARGET`
     - `ui close sequence-window SEQ_ID`
     - `ui prepared-genomes [--helpers] [--catalog PATH] [--cache-dir PATH] [--filter TEXT] [--species TEXT] [--latest]`

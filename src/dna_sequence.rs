@@ -446,12 +446,12 @@ impl DNAsequence {
                     continue;
                 }
                 if let Ok((s, e)) = feature.location.find_bounds() {
-                    let start = if matches!(feature.location, gb_io::seq::Location::Complement(_)) {
-                        e - 1
-                    } else {
-                        s
-                    };
-                    if (start < from as i64 || start >= end as i64)
+                    let start_removed =
+                        crate::feature_location::transcript_five_prime_endpoint(feature)
+                            .map(|endpoint| endpoint.position < from || endpoint.position >= end)
+                            // Do not turn clipped unsupported geometry into an exact start.
+                            .unwrap_or(s < from as i64 || e > end as i64);
+                    if start_removed
                         && !feature
                             .qualifiers
                             .iter()

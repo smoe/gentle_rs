@@ -6723,7 +6723,14 @@ missing. Headless execution records the intent with `applied=false`.
 For an annotated anchored locus, **TFBS scan > Transcript starts / TSS windows...**
 now provides a background inventory, explicit row selection and approval, then
 collection-targeted opening. Truncated or uncertain 5-prime starts and unlinked
-transcripts appear as nonselectable diagnostic rows, not candidate TSSs. Feature
+transcripts appear as nonselectable diagnostic rows, not candidate TSSs; unlinked
+records are labelled locus-level unassigned rather than exclusions from the gene.
+**Inspect stored collection** validates the entered collection ID in the
+background and exposes members, the fingerprint and copyable JSON. Stale or
+legacy metadata produces the shared engine diagnostic. **Forget registry
+entry...** requires a second, ID-bound confirmation and retains all sequences,
+windows and lineage; use a new ID for re-derivation rather than overwriting them.
+Feature
 cache refresh does not mark an intact collection edited; changed bases,
 annotations or genomic anchors still prevent reuse. `ui open|focus|close tss-view --collection ID`
 targets that persisted collection independently of the active viewer. See the

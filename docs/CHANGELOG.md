@@ -10,6 +10,24 @@
   matching Docker copy before compilation; reproduce the missing-icons failure
   before the fix. Release tags and published artifacts are unchanged.
 
+## 2026-09-18 - TSS Workflow Review Follow-Ups
+
+- Share exact transcript endpoint interpretation between TSS inventory and
+  extraction: support both reverse-join encodings without promoting clipped
+  first exons, fuzzy starts or mixed strands to exact TSSs.
+- Group mixed gene-ID annotations only through unambiguous source/strand-bound
+  gene-label links; retain original feature provenance. Separate locus-level
+  unassigned transcripts from requested-gene exclusions, preserving legacy
+  report readability and stored collection bindings.
+- Expose validated TSS subjects on restriction-scan, digest and primer-specificity
+  shell routes as well as TFBS. Preserve digest approvals, member freshness and
+  primer-report requirements; no generic MapCollection is introduced.
+- Add background collection inspection and explicitly confirmed metadata-only
+  forgetting to the existing TSS GUI workspace, with copied JSON, stale
+  diagnostics and retained-sequence/name-collision guidance. Add deterministic
+  engine, shell and GUI-handler regressions; live TP73 acceptance remains Glen's
+  separate task.
+
 ## 2026-09-18 - Genuinely Headless Container Distribution
 
 - Build only CLI, MCP and the examples helper with Cargo default features

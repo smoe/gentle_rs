@@ -520,14 +520,216 @@ pub(super) mod tests {
             unrelated
                 .qualifiers
                 .retain(|(k, _)| !matches!(k.as_ref(), "gene" | "gene_id"));
-            dna.features_mut().extend([f, unrelated]);
+            dna.features_mut().extend([
+                f,
+                unrelated,
+                transcript("other_gene", "OTHER", 250, 650, reverse),
+            ]);
             let report = e.inspect_tss_inventory(&request()).unwrap();
             assert_eq!(report.rows.len(), 1);
             assert_eq!(
-                report.excluded_transcripts[0].reason,
+                report.unassigned_transcripts[0].reason,
                 TssTranscriptExclusionReason::MissingGeneLink
             );
+            assert!(report.excluded_transcripts.is_empty());
+            let mut other = request();
+            other.gene_query = "OTHER".into();
+            let other_report = e.inspect_tss_inventory(&other).unwrap();
+            assert_eq!(other_report.rows.len(), 1);
+            assert!(other_report.excluded_transcripts.is_empty());
+            assert_eq!(
+                other_report.unassigned_transcripts,
+                report.unassigned_transcripts
+            );
         }
+    }
+
+    #[test]
+    fn tss_compound_reverse_forms_share_exact_start_and_truncation_behavior() {
+        let mut e = engine(false);
+        let dna = e.state.sequences.get_mut("locus").unwrap();
+        dna.features_mut().clear();
+        let parts = vec![
+            Location::simple_range(100, 200),
+            Location::simple_range(400, 500),
+            Location::simple_range(800, 900),
+        ];
+        for (id, location) in [
+            (
+                "outer",
+                Location::Complement(Box::new(Location::Join(parts.clone()))),
+            ),
+            (
+                "inner",
+                Location::Join(
+                    parts
+                        .into_iter()
+                        .rev()
+                        .map(|p| Location::Complement(Box::new(p)))
+                        .collect(),
+                ),
+            ),
+        ] {
+            let mut f = transcript(id, "TOY", 100, 900, true);
+            f.location = location;
+            dna.features_mut().push(f);
+        }
+        let report = e.inspect_tss_inventory(&request()).unwrap();
+        assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.rows[0].tss_local_0based, 899);
+        assert_eq!(report.rows[0].transcript_ids, ["inner", "outer"]);
+        assert_eq!(report.rows[0].local_strand, "-");
+        for (from, to, truncated) in [(50, 750, true), (50, 850, true), (350, 950, false)] {
+            let cropped = e.state.sequences["locus"]
+                .extract_region_preserving_features(from, to)
+                .unwrap();
+            assert_eq!(cropped.features().len(), 2);
+            for f in cropped.features() {
+                assert_eq!(
+                    f.qualifiers
+                        .iter()
+                        .any(|(k, _)| k.as_ref() == "gentle_transcript_5prime_truncated"),
+                    truncated
+                );
+            }
+        }
+        let req = approved(&e);
+        let (collection, _) = e.materialize_tss_windows(&req).unwrap();
+        assert_eq!(collection.members.len(), 1);
+        assert!(e.get_tss_collection("toy_tss").is_ok());
+    }
+
+    #[test]
+    fn tss_compound_fuzzy_and_mixed_strands_stay_fail_closed() {
+        let mut e = engine(false);
+        let dna = e.state.sequences.get_mut("locus").unwrap();
+        dna.features_mut().clear();
+        for (id, upper_fuzzy, mixed) in [
+            ("fuzzy_three", false, false),
+            ("fuzzy_five", true, false),
+            ("mixed", false, true),
+        ] {
+            let mut f = transcript(id, "TOY", 100, 900, true);
+            let first = Location::Range(
+                (100, gb_io::seq::Before(true)),
+                (200, gb_io::seq::After(false)),
+            );
+            f.location = Location::Join(vec![
+                if mixed {
+                    first
+                } else {
+                    Location::Complement(Box::new(first))
+                },
+                Location::Complement(Box::new(Location::Range(
+                    (800, gb_io::seq::Before(false)),
+                    (900, gb_io::seq::After(upper_fuzzy)),
+                ))),
+            ]);
+            dna.features_mut().push(f);
+        }
+        let report = e.inspect_tss_inventory(&request()).unwrap();
+        assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.rows[0].transcript_ids, ["fuzzy_three"]);
+        assert_eq!(report.excluded_transcripts.len(), 2);
+        assert!(
+            report
+                .excluded_transcripts
+                .iter()
+                .all(|x| x.reason == TssTranscriptExclusionReason::UncertainFivePrimeEnd)
+        );
+        let cropped = e.state.sequences["locus"]
+            .extract_region_preserving_features(750, 950)
+            .unwrap();
+        let mixed = cropped
+            .features()
+            .iter()
+            .find(|f| f.qualifier_values("transcript_id").any(|id| id == "mixed"))
+            .unwrap();
+        assert!(
+            mixed
+                .qualifiers
+                .iter()
+                .any(|(k, _)| k.as_ref() == "gentle_transcript_5prime_truncated")
+        );
+        let mut f = transcript("qualifier_reverse", "TOY", 100, 900, false);
+        f.qualifiers.push(("strand".into(), Some("-".into())));
+        let endpoint = crate::feature_location::transcript_five_prime_endpoint(&f).unwrap();
+        assert!(endpoint.reverse && endpoint.exact);
+        assert_eq!(endpoint.position, 899);
+        let mut dna = DNAsequence::from_sequence(&"A".repeat(1000)).unwrap();
+        dna.features_mut().push(f);
+        let cropped = dna.extract_region_preserving_features(50, 750).unwrap();
+        assert!(
+            cropped.features()[0]
+                .qualifiers
+                .iter()
+                .any(|(k, _)| k.as_ref() == "gentle_transcript_5prime_truncated")
+        );
+    }
+
+    #[test]
+    fn tss_mixed_gene_links_merge_only_unambiguous_same_source_and_strand() {
+        for scenario in ["unique", "ambiguous", "other_source", "other_strand"] {
+            let mut e = engine(false);
+            let dna = e.state.sequences.get_mut("locus").unwrap();
+            dna.features_mut().clear();
+            let known = transcript("known", "TOY", 300, 700, false);
+            let mut unknown = transcript("no_id", "TOY", 300, 700, false);
+            unknown.qualifiers.retain(|(k, _)| k.as_ref() != "gene_id");
+            if scenario == "other_source" {
+                unknown.qualifiers.retain(|(k, _)| k.as_ref() != "source");
+                unknown
+                    .qualifiers
+                    .push(("source".into(), Some("other".into())));
+            }
+            if scenario == "other_strand" {
+                unknown.location = Location::Complement(Box::new(Location::simple_range(100, 301)));
+            }
+            dna.features_mut().extend([known, unknown]);
+            if scenario == "ambiguous" {
+                let mut conflict = transcript("conflict", "TOY", 300, 700, false);
+                conflict.qualifiers.retain(|(k, _)| k.as_ref() != "gene_id");
+                conflict
+                    .qualifiers
+                    .push(("gene_id".into(), Some("different_gene".into())));
+                dna.features_mut().push(conflict);
+            }
+            let report = e.inspect_tss_inventory(&request()).unwrap();
+            assert_eq!(
+                report.rows.len(),
+                match scenario {
+                    "unique" => 1,
+                    "ambiguous" => 3,
+                    _ => 2,
+                },
+                "{scenario}"
+            );
+            if scenario == "unique" {
+                assert_eq!(report.rows[0].transcript_ids, ["known", "no_id"]);
+                let mut by_id = request();
+                by_id.gene_query = "gene_TOY".into();
+                assert_eq!(
+                    e.inspect_tss_inventory(&by_id).unwrap().rows[0].transcript_ids,
+                    ["known", "no_id"]
+                );
+            } else {
+                assert!(
+                    report
+                        .rows
+                        .iter()
+                        .any(|r| r.gene_id.is_none() && r.transcript_ids == ["no_id"])
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tss_empty_unassigned_field_preserves_legacy_bound_json() {
+        let report = engine(false).inspect_tss_inventory(&request()).unwrap();
+        let value = serde_json::to_value(&report).unwrap();
+        assert!(value.get("unassigned_transcripts").is_none());
+        let decoded: TssInventoryReport = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), value);
     }
 
     #[test]
@@ -702,32 +904,12 @@ pub(super) mod tests {
     }
 }
 
-fn exact_five_prime_location(location: &Location) -> bool {
-    fn intervals(location: &Location, ranges: &mut Vec<(i64, bool, i64, bool)>) -> bool {
-        match location {
-            Location::Range((s, before), (e, after)) if *s >= 0 && e > s => {
-                ranges.push((*s, before.0, *e, after.0));
-                true
-            }
-            Location::Join(parts) => {
-                !parts.is_empty() && parts.iter().all(|p| intervals(p, ranges))
-            }
-            _ => false,
-        }
-    }
-    let (inner, reverse) = match location {
-        Location::Complement(inner) => (inner.as_ref(), true),
-        _ => (location, false),
-    };
-    let mut ranges = Vec::new();
-    if !intervals(inner, &mut ranges) {
-        return false;
-    }
-    if reverse {
-        ranges.iter().max_by_key(|r| r.2).is_some_and(|r| !r.3)
-    } else {
-        ranges.iter().min_by_key(|r| r.0).is_some_and(|r| !r.1)
-    }
+fn annotation_source(feature: &Feature) -> String {
+    GentleEngine::first_nonempty_feature_qualifier(
+        feature,
+        &["annotation_source", "source", "annotation_release"],
+    )
+    .unwrap_or_else(|| "project_annotation".into())
 }
 
 fn feature(kind: &str, start: usize, end: usize, label: String, note: String) -> Feature {
@@ -775,6 +957,30 @@ impl GentleEngine {
         let source_snapshot_sha256 = biological_snapshot(dna, &anchor)?;
         let mut groups: BTreeMap<String, TssInventoryRow> = BTreeMap::new();
         let mut excluded_transcripts = Vec::new();
+        let mut unassigned_transcripts = Vec::new();
+        let mut linkage_notes = Vec::new();
+        // Only explicit, unambiguous aliases in this locus/source/strand may fill a missing ID.
+        let mut gene_ids_by_label: BTreeMap<(String, bool, String), BTreeSet<String>> =
+            BTreeMap::new();
+        for f in dna.features() {
+            if Self::construct_reasoning_role_from_feature(f) != Some(ConstructRole::Transcript) {
+                continue;
+            }
+            if let (Some(label), Some(id), Some(endpoint)) = (
+                Self::first_nonempty_feature_qualifier(f, &["gene", "gene_name", "locus_tag"]),
+                Self::first_nonempty_feature_qualifier(f, &["gene_id", "locus_tag"]),
+                crate::feature_location::transcript_five_prime_endpoint(f),
+            ) {
+                gene_ids_by_label
+                    .entry((
+                        annotation_source(f),
+                        endpoint.reverse,
+                        label.to_ascii_lowercase(),
+                    ))
+                    .or_default()
+                    .insert(id);
+            }
+        }
         let mut transcript_count = 0;
         for (feature_id, f) in dna.features().iter().enumerate() {
             if Self::construct_reasoning_role_from_feature(f) != Some(ConstructRole::Transcript) {
@@ -795,16 +1001,34 @@ impl GentleEngine {
             )
             .is_none()
             {
-                excluded_transcripts.push(excluded(
+                unassigned_transcripts.push(excluded(
                     TssTranscriptExclusionReason::MissingGeneLink,
-                    "Gene linkage unavailable; not assigned to this gene by overlap guessing",
+                    "Locus-level annotation with unavailable gene linkage; neither assigned to nor excluded from the requested gene",
                 ));
                 continue;
             }
-            let (gene_label, gene_id) = Self::transcript_gene_metadata(dna, f, feature_id);
+            let (gene_label, mut gene_id) = Self::transcript_gene_metadata(dna, f, feature_id);
+            let endpoint = crate::feature_location::transcript_five_prime_endpoint(f);
+            let annotation_source = annotation_source(f);
+            let mut inferred_link = false;
+            if gene_id.is_none()
+                && let (Some(label), Some(endpoint)) = (&gene_label, &endpoint)
+                && let Some(ids) = gene_ids_by_label.get(&(
+                    annotation_source.clone(),
+                    endpoint.reverse,
+                    label.to_ascii_lowercase(),
+                ))
+                && ids.len() == 1
+            {
+                gene_id = ids.first().cloned();
+                inferred_link = true;
+            }
             if !gene_label
                 .as_deref()
                 .is_some_and(|s| s.eq_ignore_ascii_case(&request.gene_query))
+                && !gene_id
+                    .as_deref()
+                    .is_some_and(|id| id == request.gene_query)
                 && !Self::feature_matches_identifier(
                     f,
                     feature_id,
@@ -820,13 +1044,13 @@ impl GentleEngine {
                     "TSS inventory exceeds 10,000 matching transcript features",
                 ));
             }
-            if !exact_five_prime_location(&f.location) {
+            let Some(endpoint) = endpoint.filter(|endpoint| endpoint.exact) else {
                 excluded_transcripts.push(excluded(
                     TssTranscriptExclusionReason::UncertainFivePrimeEnd,
                     "Partial, fuzzy or unsupported transcript 5-prime end; exact TSS unavailable",
                 ));
                 continue;
-            }
+            };
             if f.qualifiers
                 .iter()
                 .any(|(k, _)| k.as_ref() == "gentle_transcript_5prime_truncated")
@@ -843,12 +1067,8 @@ impl GentleEngine {
                     "Transcript annotation lies outside the source sequence",
                 ));
             }
-            let reverse = feature_is_reverse(f);
-            let tss = if reverse {
-                ranges.iter().map(|r| r.1 - 1).max().unwrap()
-            } else {
-                ranges[0].0
-            };
+            let reverse = endpoint.reverse;
+            let tss = endpoint.position;
             let local_strand = if reverse {
                 GenomicRegionStrand::Minus
             } else {
@@ -886,11 +1106,9 @@ impl GentleEngine {
                     continue;
                 }
             }
-            let annotation_source = Self::first_nonempty_feature_qualifier(
-                f,
-                &["annotation_source", "source", "annotation_release"],
-            )
-            .unwrap_or_else(|| "project_annotation".into());
+            if inferred_link {
+                linkage_notes.push(format!("{transcript_id} (feature {feature_id}): missing gene_id resolved to {} through an unambiguous explicit gene-label link in the same source and strand; original annotations retained.", gene_id.as_deref().unwrap()));
+            }
             let identity = hash(&(
                 &request.seq_id,
                 &gene_id,
@@ -955,9 +1173,13 @@ impl GentleEngine {
         }
         let mut report = TssInventoryReport {
             schema: "gentle.tss_inventory.v1".into(), snapshot_algorithm: SNAPSHOT_ALGORITHM.into(), request: request.clone(), source_snapshot_sha256,
-            approval_sha256: String::new(), rows, excluded_transcripts,
+            approval_sha256: String::new(), rows, excluded_transcripts, unassigned_transcripts,
             warnings: vec!["Scope: transcript features on this loaded, anchored project locus only; not all possible biological starts or a cross-source consensus. No TFBS or CUT&RUN analysis was run.".into()],
         };
+        report.warnings.extend(linkage_notes);
+        if !report.unassigned_transcripts.is_empty() {
+            report.warnings.push(format!("{} locus-level transcript annotations have no gene link; see unassigned_transcripts. They are not counted as exclusions from this gene.", report.unassigned_transcripts.len()));
+        }
         if !report.excluded_transcripts.is_empty() {
             report.warnings.push(format!(
                 "{} transcript annotations excluded from exact-start candidates; inspect excluded_transcripts. Unavailable starts are not evidence of absent promoters.",

@@ -2459,14 +2459,14 @@
       },
       {
          "aliases": [], "engine_operations": ["GetTssCollection"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "promoters tss-collection",
          "summary": "Validate a persisted TSS collection and its typed TssCollection subject for optional collection scans.",
          "usage": "promoters tss-collection COLLECTION_ID"
       },
       {
          "aliases": [], "engine_operations": ["ForgetTssCollection"],
-         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "promoters tss-forget",
          "summary": "Forget collection metadata only, retaining member sequences and lineage, including for stale or legacy collections.",
          "usage": "promoters tss-forget COLLECTION_ID"
@@ -4473,7 +4473,7 @@
          ],
          "path": "collections run primer-specificity",
          "summary": "Map GENtle's existing local-BLAST primer specificity assessment over project sequences or a persisted gene-set resolution, retaining per-member failures and produced report IDs.",
-         "usage": "collections run primer-specificity [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-report MEMBER_ID=PRIMER_REPORT_ID]... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
+         "usage": "collections run primer-specificity [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-report MEMBER_ID=PRIMER_REPORT_ID]... (--pair-rank N | --pair-index N) --target-genome GENOME_ID [--policy JSON_OR_@FILE] [--catalog PATH] [--cache-dir DIR] [--path OUTPUT.json]"
       },
       {
          "aliases": [],
@@ -4488,7 +4488,7 @@
          ],
          "path": "collections run restriction-scan",
          "summary": "Map the shared restriction-site scanner over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution.",
-         "usage": "collections run restriction-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]"
+         "usage": "collections run restriction-scan [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-sequence MEMBER_ID=SEQ_ID]... [--enzyme NAME]... [--max-sites-per-enzyme N] [--no-cut-geometry] [--path OUTPUT.json]"
       },
       {
          "aliases": [],
@@ -4532,7 +4532,7 @@
          ],
          "path": "collections run digest",
          "summary": "Preview or apply the shared restriction digest over loaded project sequences or explicitly sequence-bound members of a persisted gene-set resolution.",
-         "usage": "collections run digest [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,...] [--member-sequence MEMBER_ID=SEQ_ID]... --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX] [--dry-run | --apply --expected-plan-fingerprint-sha256 SHA256] [--path OUTPUT.json]"
+         "usage": "collections run digest [GENE_SET_REPORT_ID | --seq-ids SEQ_ID,... | --tss-collection COLLECTION_ID] [--member-sequence MEMBER_ID=SEQ_ID]... --enzyme NAME [--enzyme NAME ...] [--enzymes CSV] [--output-prefix PREFIX] [--dry-run | --apply --expected-plan-fingerprint-sha256 SHA256] [--path OUTPUT.json]"
       },
       {
          "aliases": [],
