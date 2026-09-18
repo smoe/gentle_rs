@@ -46,16 +46,17 @@ actual execution and package validation remain GitHub's responsibility.
 
 ## Candidate Approval
 
-`v0.1.0-internal.10` remains unreleased pending Glen's exact-candidate readiness
-verdict and the release owner's approval. A Git tag, draft release, successful
-build or individual passing test is not release sign-off. Do not advance the
-candidate to `.11` merely because a `.10` tag exists.
+`v0.1.0-internal.10` was published as a prerelease on 2026-09-18 at
+17:37:26 UTC, at `84f34a9e479d0dee5d8476aba29c379d370f57e1`, **without recorded
+exact-candidate acceptance**. Its [gate ledger](release_notes/release_notes_v0.1.0-internal.10.md#exact-candidate-gate-ledger)
+remains Pending. Publication, a successful build or an individual passing test
+is not scientific or installed-package sign-off.
 
-The existing `.10` tag points to `052cf125`, not the current development
-candidate. Leave that tag unchanged unless the release owner explicitly
-authorizes reconciliation after reviewing the accepted SHA. Packaging builds
-the tag's revision; an older tag must not stand in for the candidate evaluated
-by Glen.
+Keep the published tag unchanged. `.11` development includes later fixes and
+the merged tutorial/vector-PDF integration; it needs a separately named
+candidate and receipts. Packaging builds the selected revision: rerunning the
+`.10` tag cannot incorporate later container or installer fixes. No tag change,
+version bump or publication is authorized by this document.
 
 ## Build-Only Candidate Verification
 
@@ -77,8 +78,10 @@ gh workflow run container.yml --ref main \
 Manual runs default to **build-only**. They require the full 40-character commit
 SHA and a version label matching `Cargo.toml`; branch names and abbreviated
 SHAs are rejected. The version label need not be an existing tag. In particular,
-the older `.10` tag does not prevent evaluating the new `.10` candidate, and no
-tag is created or moved. Build/check jobs have read-only repository permission;
+the published `.10` tag does not prevent build-only validation of a later SHA
+while its Cargo version still matches that label. Such a run is not a new `.10`
+release or acceptance of the old tag. No tag is created or moved.
+Build/check jobs have read-only repository permission;
 the write-capable publication jobs are skipped.
 
 Download the Actions artifacts from those specific run IDs, not from a generic

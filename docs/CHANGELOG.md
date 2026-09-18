@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-09-18 - Internal .11 Review Reconciliation
+
+- Correct the release notes, process, roadmap and gel documentation against the
+  published `.10` tag `84f34a9e`: publication at 17:37:26 UTC occurred without a
+  recorded exact-candidate verdict. Preserve Pending acceptance rows and name
+  the failed release-container run; do not attribute later headless fixes or
+  tutorial/vector-PDF integration to the tag. No tag or release was changed.
+- Incorporate Claude's scope review against local `8597a6ee`: TSS endpoint,
+  exclusion and gene-link fixes already landed in `085b98ec`, and the `.11`
+  integration branch is merged. Prioritize packaging and exact-SHA acceptance;
+  keep lab-dependent capture specificity/order readiness and calibrated cofactor
+  ranking deferred. Record manual gel inclusion without claiming real-image QC.
+
 ## 2026-09-18 - Headless Container Build Resources
 
 - Copy `icons/` into the Docker builder before compilation: `build.rs` checks

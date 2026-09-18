@@ -31,8 +31,9 @@ of treating this GUI-enabled tarball as a minimal headless distribution.
 
 ## Extract And Run
 
-For the intended `.10` archive, once approved and published from the accepted
-revision (not the existing, unapproved `.10` tag):
+For a `.10` archive, once it is attached to the release, verify its receipt
+against the published `84f34a9e` source. Publication is not installed-package
+or scientific acceptance; later candidate artifacts must name their own SHA:
 
 ```bash
 tar -xzf gentle-v0.1.0-internal.10-linux-x64.tar.gz

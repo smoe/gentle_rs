@@ -1,12 +1,54 @@
-# Internal .11 Integration And Transcript Capture
+# Internal .11 Workflow Completion And Acceptance
 
-Planning baseline: 2026-09-18, `origin/main` at `84f34a9e`.
-Development branch: `codex/internal.11`. The `.10` release remains owned by
-`main`; this document neither declares it released nor waives its gates.
-No version bump, tag, push or publication is part of this integration.
-Claude consultation was offered; this plan is not Claude-reviewed.
+Reconciled: 2026-09-18, local development HEAD `8597a6ee`. The published `.10`
+tag is `84f34a9e`; its [acceptance ledger](release_notes/release_notes_v0.1.0-internal.10.md#exact-candidate-gate-ledger)
+remains pending. `codex/internal.11` was merged at `8597a6ee`; it no longer
+needs a separate integration decision. No version bump, tag, push or publication
+is part of this follow-up.
 
-## Integration Boundaries
+## Review Reconciliation
+
+Claude's supplied review used `85bd9fdb`. The original Codex plan below treated
+capture GUI, specificity and order handoff as successive implementation slices.
+Claude correctly prioritized release-status repair, TSS correctness, packaged
+runtime parity and external acceptance, and identified missing lab inputs for
+capture specificity and order readiness. This revision incorporates that
+feedback after checking the newer tree; no fresh Claude CLI review is claimed.
+
+| Review item | Current evidence and remaining action |
+| --- | --- |
+| R0: release status | `.10` is published without recorded exact-candidate acceptance; preserve its Pending ledger. Later fixes need their own SHA. Manual gel commits are in the tag, not an unmerged `.11` branch. |
+| T1/T2: endpoints and exclusions | `085b98ec` shares `transcript_five_prime_endpoint` between extraction and inventory and adds locus-level `unassigned_transcripts`. Existing tests cover both reverse-join forms, 5'/3' clipping, fuzzy/mixed strands and legacy JSON. Do not reimplement. |
+| T3: canonical gene links | The same commit resolves label-only links only with one source/strand-compatible gene ID; tests cover unique, ambiguous, different-source and different-strand cases. Retain real-data acceptance of saved collections. |
+| P1: desktop packages | Make Windows ZIP and macOS DMG include the same entrypoints and tracked resources as Linux. Test extracted packages outside the checkout with `gentle_cli capabilities`, MCP and tutorial-manifest validation. Native CI receipts remain required. |
+| A1: exact-SHA acceptance | Glen: TP73/DeltaNp73 inventory, materialization, reload, validated scans and native inspection, plus branch/reverse-complement, digest and bounded Simple-PCR tutorial chapters. Bind binary, project, input and receipt hashes to one new candidate; retain the old `.10` ledger separately. |
+
+Optional follow-ups, not prerequisites silently added to this patch:
+
+- T4: restriction-scan, digest and primer-specificity already accept
+  `--tss-collection`; TFBS did before. Consider construct-reasoning separately,
+  with parser exclusivity and parity tests. Do not mechanically enable physical
+  pool operations on TSS windows.
+- N1: migrate only TSS preview/materialize/open workers to the existing managed
+  service, with held-worker cancellation/status tests and a representative
+  synthetic journal-copy benchmark. General scheduling/dependencies, durable
+  recovery and the other GUI workers remain deferred.
+- C1: explicit CDS/isoform-retention requirements with unknown boundaries
+  reported as unassessed, never pass. This does not establish specificity.
+- G1: real-image memory/repaint acceptance and verified ladders for the shipped
+  manual gel editor. Automatic peak detection remains deferred.
+- Discuss deprecated ClawBio normalizer removal; "earliest .11" is not consent.
+
+Capture single-primer reference assessment, Primer3 `ntthal`, order-ready state
+and procurement handoff are deferred until the retained order sheet, exact
+protocol oligos and co-presence stages exist. Only pair specificity currently
+exists. Calibrated cofactor prioritization also remains deferred until the
+experimental-anchor contract, expression binding, explicit background universe
+and enrichment exist; private CUT&RUN inputs must not enter public fixtures.
+
+## Integrated Work And Boundaries
+
+The tutorial/PDF integration described here is merged; see verification below.
 
 1. Preserve Glen's tutorial history by merging
    `bot/tutorial-human-readable-20260917` (`cfd83bcc`). Review generated and
@@ -27,8 +69,8 @@ Claude consultation was offered; this plan is not Claude-reviewed.
    assembly identity and reject conflicting repeated headers. Do not broaden
    assembly compatibility as a side effect of enabling a PDF backend.
 
-The starting branch also retains `ea6f9009`, the Windows ClawBio fixture fix
-awaiting integration into `.10`; it is not a new `.11` feature.
+The starting branch retained `ea6f9009`, the Windows ClawBio fixture fix. It is
+now integrated, but remains outside the published `.10` tag.
 
 ## Verified Capture Baseline
 
@@ -53,7 +95,11 @@ See [the current contract](transcript_capture_pools.md),
   and provider-neutral external-service preflight/export. Extend their joins;
   do not build a parallel aligner, procurement model or GUI-only algorithm.
 
-## Small Implementation Slices
+## Deferred Capture Design
+
+Retain these design constraints for later review, not as committed `.11`
+deliverables. The lab-input gate above precedes specificity/order implementation;
+the eight-gene replay cannot substitute guessed oligos or biological targets.
 
 ### A. Capture Workspace And Reproducible Request
 

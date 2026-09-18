@@ -1,6 +1,9 @@
 # Measured Gel Image Sizing
 
-This is `.11` development on `codex/gel-image-dev`, not a `.10` release gate.
+The manual editor is included in the published `.10` source tag (`6fedd4de`
+and `76ac480a`). Its release inclusion does not establish real-image or native
+performance acceptance. `.11` follow-up is acceptance and verified ladder
+catalogs; automatic peak detection remains deferred.
 Manual calibration is available in a point-and-click editor and through the
 same shared engine/Shell contract. Automatic band detection is not yet available.
 

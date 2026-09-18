@@ -1,29 +1,34 @@
-# Release Notes / Changelog: `v0.1.0-internal.10` (unreleased candidate)
+# Release Notes / Changelog: `v0.1.0-internal.10`
 
-Updated: 2026-09-15, ahead of owner-managed tagging and publication.
+Updated: 2026-09-18, after publication and a read-only GitHub status check.
 
-Status: **unreleased; preparation approved, exact-candidate acceptance and
-release-owner publication approval pending**. Glen's earlier successful runs
-are historical evidence, not a verdict on a newly selected SHA.
-The existing tag at `052cf125` is not evidence of release approval
-and does not identify the current development candidate. It remains unchanged;
-reconciling it with an accepted candidate SHA requires explicit owner approval.
-The premature `.11` designation is withdrawn. Its intended work and pending
-acceptance ledger are included here, not deferred to a different release.
-Historical validation notes do not certify the current candidate, and
-unrecorded checks have not been retroactively marked passed.
+Status: **published without recorded exact-candidate acceptance**. The
+[GitHub prerelease](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.10),
+"10th Internal Preview (Not for External Use)", was published at
+2026-09-18 17:37:26 UTC. Its tag identifies
+`84f34a9e479d0dee5d8476aba29c379d370f57e1`. Publication is an observed event,
+not a retrospective readiness verdict. Glen's earlier successful runs remain
+historical evidence; the Pending ledger below is not waived or restarted.
+
+At this check the release had no attached assets. The
+[installer run](https://github.com/smoe/gentle_rs/actions/runs/35375443963)
+was still running, while the
+[release-triggered container run](https://github.com/smoe/gentle_rs/actions/runs/35375444006)
+had failed. The headless-container change `85bd9fdb` and subsequent fixes are
+after the tag; rerunning the tag does not include them. Later `.11` development
+and acceptance must name their own SHA, not silently redefine this release.
 
 | Release field | Value |
 | --- | --- |
-| Status | Unreleased; preparation approved, final-SHA/package acceptance and owner publication approval pending |
-| Target date | After exact-candidate acceptance; no release date committed |
+| Status | Published prerelease; exact-candidate acceptance unrecorded, artifacts pending at the status check |
+| Publication date | 2026-09-18 17:37:26 UTC |
 | Previous tag | `v0.1.0-internal.9` (2026-06-05) |
 | Primary story | Genome-anchored evidence, transcript-aware assays and auditable promoter/TSS reporter design |
-| Manual GUI smoke | Required before release approval; exact candidate revision pending |
+| Manual GUI smoke | Pending at the tagged revision; later-SHA checks must be identified separately |
 
 This internal release covers the work after `v0.1.0-internal.9`, tagged on
-2026-06-05. The existing tag comparison is historical only; it does not include
-later candidate work or prove that `.10` was released:
+2026-06-05. This comparison identifies the published source, not later fixes
+or evidence that its acceptance gates passed:
 
 ```text
 v0.1.0-internal.9..v0.1.0-internal.10
@@ -31,8 +36,8 @@ v0.1.0-internal.9..v0.1.0-internal.10
 
 [Open the GitHub comparison.](https://github.com/smoe/gentle_rs/compare/v0.1.0-internal.9...v0.1.0-internal.10)
 
-For the actual acceptance scope, record and compare `v0.1.0-internal.9` with
-the full candidate SHA used by Glen, rather than relying on that older tag.
+For subsequent acceptance, record the full SHA used by Glen and distinguish it
+from the published tag whenever they differ.
 
 The main release story is a genome-anchored TP73 evidence viewer. GENtle can
 open the GRCh38.p14 TP73 locus and inspect exon and transcript structure,
@@ -48,7 +53,7 @@ and external agent integration, probe-region and RNA evidence handling,
 gene-set/promoter reasoning, review-gated material handoffs, and the amount of
 expensive GUI work that runs safely away from the egui thread.
 
-## Current Candidate Additions
+## Tagged Additions
 
 - Inspect TP73 genome-anchored tracks and PATZ1 negative-strand transcript,
   motif, occupancy and assay evidence through shared engine/GUI contracts.
@@ -81,12 +86,15 @@ expensive GUI work that runs safely away from the egui thread.
 - Reproduce branch/reverse-complement, digest and Simple-PCR tutorials through
   ordinary Linux X11 input with native-window/coordinate binding and retained
   screenshot provenance. Starter projects must not contain completed results.
-- Build a Linux x64 tarball, Windows ZIP and macOS DMG at one declared candidate
-  SHA, with a headless Linux CLI/MCP GHCR image. Containers no longer compile
-  or redistribute GUI or embedded JS/Lua; native installers are unchanged.
-  New bare container release tags and `latest` now mean headless, while old
-  GUI tags are no longer refreshed. Download availability and
-  installed-package acceptance remain pending; see the ledger below.
+- Add the [manual measured-gel editor](../gel_image_analysis.md): explicit
+  ladder-band calibration, measured bands, sizing diagnostics and shared-engine
+  exports. Commits `6fedd4de` and `76ac480a` are in this tag. Verified ladder
+  catalogs and real-image performance acceptance remain pending; automatic
+  peak detection is not implemented.
+- Define Linux tarball, Windows ZIP and macOS DMG builds at one declared SHA.
+  The tagged Windows ZIP contains only the GUI executable. Self-contained
+  desktop packaging and the genuinely headless container changes belong to
+  later revisions; download and installed-package acceptance remain pending.
 - Check generated tutorials in both LF and CRLF local checkouts on every
   sampled native CI host. Byte-hashed fixtures and `Cargo.lock` retain LF;
   receipt verification remains strict rather than normalizing away changes.
@@ -138,8 +146,13 @@ their exact revision, not promoted to current-candidate acceptance.
 
 Build-only CI verification is available through the
 [candidate packaging instructions](../release.md#build-only-candidate-verification).
-It retains packages and receipts without releasing `.10`; implementation of
-that path does not mark any of the following acceptance gates passed.
+It retains packages and receipts without publishing or altering the existing
+release; implementation of that path does not mark acceptance gates passed.
+
+This carried-forward ledger is bound to the published source
+`84f34a9e479d0dee5d8476aba29c379d370f57e1`. Its rows remain Pending unless
+exact-revision evidence is recorded. Checks of a newer `.11` candidate must
+record that full SHA separately; they cannot certify the older tagged source.
 
 Before evaluation, record the full candidate SHA, clean-tree status,
 `Cargo.lock` SHA-256, Rust version, build features/profile, host and relevant
@@ -158,12 +171,12 @@ commits. After a fix, select the new candidate and rerun its gates.
 | Copied-state IRF9/Q00978 acceptance | Glen, private copied-state evidence | Pending |
 | GUI and specificity benchmark acceptance | Glen | Pending |
 | TP73 CUT&RUN/evidence-viewer and PATZ1 locus-composer proof | Glen / CI | Pending |
-| Headless Docker target, `runtime-cli` (no GUI/JS/Lua) | Container CI | Pending |
+| Headless Docker target, `runtime-cli` (no GUI/JS/Lua) | Container CI | Pending on a later candidate; required changes are not in this tag |
 | Linux tarball, Windows ZIP and macOS DMG from the exact candidate | Release CI | Pending; build-only dispatch does not require retagging |
 | Extracted/copied desktop package launch, resources and tutorial availability away from the checkout | Native Windows/macOS testers | Pending; current workflow archive checks do not establish this |
 | macOS optional `screenshot-capture` compilation | macOS CI | Pending; Linux cannot validate this |
-| Clean tree, version/tag/SHA consistency and generated-artifact checks | Release owner | Pending; existing tag is not the current candidate |
-| Explicit readiness verdict and release authorization | Glen / release owner | Pending |
+| Clean tree, version/tag/SHA consistency and generated-artifact checks | Release owner | Pending; published source identified above, acceptance not recorded |
+| Explicit exact-candidate readiness verdict | Glen / release owner | Pending; publication occurred without a recorded verdict here |
 
 Use [the release checklist](../release.md) for entrypoint commands,
 [GUI acceptance instructions](../testing.md#61-tutorial-gui-acceptance-contracts)
@@ -201,9 +214,9 @@ not native Windows/macOS installer acceptance or final-candidate certification.
 - Screenshot files explain interaction; typed sequence/report checks remain
   the scientific oracle. No background capture authority is added.
 
-This document does not authorize tagging, retagging or publication. Keep `.10`
-unreleased until Glen supplies the readiness verdict and the release owner
-approves the exact-candidate evidence.
+This status correction does not authorize retagging or further publication.
+Keep the historical ledger intact and obtain Glen's readiness verdict and
+owner approval on exact-candidate evidence before a subsequent release.
 
 ## Highlights
 

@@ -1,7 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-09-18 - `.11` starts on `codex/internal.11`; [integration/capture plan](internal_11_plan.md). `.10` release work stays on `main`.
-Glen approved `.10` preparation; final-SHA/package acceptance and owner publication approval remain pending.
+Last session: 2026-09-18 - Reconcile published `.10` status and narrow the [`.11` plan](internal_11_plan.md) to packaging and workflow acceptance.
+`.10` is published at `84f34a9e` without recorded exact-candidate acceptance; its ledger remains pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -20,7 +20,7 @@ Maintenance invariant:
 
 ## Release Gate
 
-Current candidate: `v0.1.0-internal.10` (preparation approved, not release acceptance).
+Published baseline: `v0.1.0-internal.10` at `84f34a9e479d0dee5d8476aba29c379d370f57e1`. Next `.11` candidate SHA remains to be selected.
 
 Active aim: genome-anchored evidence, transcript-linked promoter recurrence, regulatory-region comparison and approved reporter designs.
 
@@ -47,7 +47,7 @@ Proof path:
   occupancy, TP73 motif scoring, provenance, and assay continuation on one
   negative-strand axis.
 - [Fixture provenance and regeneration notes](../test_files/fixtures/evidence_viewer/README.md).
-- Draft [`.10` release notes and exact-candidate gate ledger](release_notes/release_notes_v0.1.0-internal.10.md).
+- Published [`.10` release notes and pending exact-candidate gate ledger](release_notes/release_notes_v0.1.0-internal.10.md).
 
 Release acceptance:
 
@@ -66,10 +66,10 @@ Release acceptance:
 
 Release cut line:
 
-- Release `.10` only after Glen's readiness verdict, exact-candidate gates and owner approval.
-- Packaging needs CI proof; [tag reconciliation](release.md#candidate-approval) needs explicit owner authorization.
+- Carry the unrecorded `.10` acceptance forward without erasing its historical ledger; bind each new verdict to the selected `.11` SHA.
+- Packaging needs native CI proof; retain the published tag and require Glen's readiness verdict and owner approval before a subsequent release.
 
-Pre-release finishing scope:
+Outstanding acceptance scope:
 - Glen reports five-gene export QC at `d978b0c4` with LOCUS-column fix `d37bd427`; recheck the [selected annotated downloads](integrated_locus_tss_profiles.md), receipts and raw signal/motif provenance at the final candidate. Before offering EMBL, re-export into fresh directories and independently compare GenBank/EMBL/FASTA sequences and annotations. [Synthetic format-parity coverage](sequence_format_parity.md) does not replace his September 13 real-data acceptance.
 - Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation; obtain canonical
   CD44/TGFB1/SERPINE1 region sets before real-candidate analysis; verify overlapping TSS bands, zero-position peaks and per-TSS CUT&RUN/TFBS arrays against continuation-page IDs in the exact supplied bundle, never infer missing ROIs.
@@ -82,7 +82,7 @@ Pre-release finishing scope:
 ## Next Session Priorities
 
 1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots. Exercise the [TSS collection workflow](tss_workspace.md#acceptance) on TP73: membership, strands/flanks, separate-process approval, cache refresh, DeltaNp73-only cropped locus, validated scans, repeated opening and inner-agent handoff. Include stored-collection inspection and confirmed stale-registry removal without deleting sequences. Check unsupported-index warnings and locus-level unassigned transcripts remain distinct from loaded-feature coverage and gene-specific exclusions.
-2. Run the `.10` ledger: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs.
+2. Carry forward the `.10` ledger at one named new candidate: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs. Keep the tagged-source ledger unchanged.
    Keep tutorial 08.13's live GUI capture and real Parquet acceptance separate from the [synthetic TSS tutorial replay](tss_tfbs_profiles.md#rescoring-existing-reports) and mocked tests. For private five-gene rescoring, first obtain the old scored report/receipt and exact matrix/context bindings; the [historical input inventory](tss_tfbs_profiles.md#check-input-completeness-before-regeneration) alone is not acceptance.
 3. Owner: run [build-only CI packaging](release.md#build-only-candidate-verification) at the same SHA; retain receipts before approval. Validate extracted/copied Windows/macOS apps away from the checkout, including assets and tutorials; Windows currently packages only the GUI executable. Tagging and upload remain owner-managed.
 4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.
@@ -90,7 +90,7 @@ Pre-release finishing scope:
    Validate DuckDB boundaries/limits, scan filters and selected-package GUI staleness; have Glen inspect [imported-hit triangles](tss_tfbs_profiles.md#imported-duckdb-motif-hits) on both strands. Native TSS follow-up (not an added `.10` gate): GUI acceptance, full report-bound traces/hits/reporters and native export; retain [flat-file limits and readability plan](tss_annotated_sequence_readability_plan.md). Glen: regenerate [source-coherent Ensembl/RefSeq pages](transcript_source_presentation.md) from one enriched locus and verify mappings/PDF/SVG/HTML receipts; synthetic coverage is not real-data acceptance. Keep the [standalone comparison](transcript_source_presentation.md#standalone-comparison-review) deferred rather than adding a second source-join implementation.
 6. Continue the [responsive-command migration](asynchronous_command_execution_plan.md#reconciled-codex-plan-2026-09-14): validate BLAST start-v2 deferred diagnostics, bounded FIFO/cancellation and observation-only status at the merged revision. Preserve DEC-026 merging and [DEC-048](decisions.md#dec-048-command-submission-and-observation-never-wait-for-execution); audit general managed-command queuing/dependencies and result/file/job semantics before expanding beyond the BLAST queue.
    Have Glen validate genome preparation, Run/slash, live navigation/conversation and cancellation at one revision; extend the synthetic growing-journal cost probe to a representative project before claiming bounded UI lock latency. Keep cross-process control, durable admission and other adapters pending. No private T2T/model run in development; general asynchronous migration is not complete.
-7. On `.11`, follow the [integration/capture plan](internal_11_plan.md): independently validate tutorial/vector-PDF integration, then add a typed capture GUI, permitted-multilocus specificity, evidence ranking and reviewed order handoff; replay TP73/E2F1/TP53/TP63/PATZ1/FUS/MDM2/MDM4 with joint 5'/3' selection. Assess accession-bound RefSeq parsing separately. Discovery and terminal-exon binding do not establish experimental or intact-CDS acceptance.
+7. Follow the [reconciled `.11` scope](internal_11_plan.md#review-reconciliation): finish package parity and exact-SHA TP73/DeltaNp73/tutorial acceptance; independently verify tutorial/vector-PDF integration. Keep TSS managed-worker migration and explicit capture-retention requirements optional. Defer capture specificity/thermodynamics/order readiness until the lab inputs are retained; defer calibrated cofactor ranking until anchor, expression and background contracts exist. Audit the shipped manual gel editor on real images; automatic peak detection remains deferred.
 
 Current non-goals:
 
@@ -366,7 +366,7 @@ wet-lab conclusions or unconfirmed mutations.
   and one provenance-bound review bundle.
 - GuideRNA off-target ranking and macro-template packaging.
 - Cross-tool parity synthesis for Serial Cloner, MacVector, and SnapGene.
-- `.11` measured gels: [ladder catalogs, reviewed peak detection and real-image/native-editor performance acceptance](gel_image_analysis.md#remaining-work); excluded from `.10`.
+- Measured gels: [verified ladders and real-image/native-editor acceptance](gel_image_analysis.md#remaining-work) for the manual editor included in `.10`; automatic peak detection remains deferred.
 - Weekly/monthly maintenance chore automation rollout from
   [`maintenance_chore_plan.md`](maintenance_chore_plan.md).
 - First regular release: local-first GENtle server with optional browser interaction and shared project/job ownership; deferred beyond internal releases, with WebAssembly portability considered separately.
