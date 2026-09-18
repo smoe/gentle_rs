@@ -136,157 +136,64 @@ cargo check
 
 If this succeeds, your core contributor toolchain is in place.
 
-## Alternative: run GENtle through Docker
+## Alternative: run headless GENtle through Docker
 
-If you do not want to prepare a local Rust toolchain first, GENtle can also be
-run through the Debian-first container image.
+The Debian-first container provides CLI, MCP, the examples helper, the Python
+wrapper and scientific helper tools. It does not compile or redistribute the
+GUI or embedded JavaScript/Lua. Use a native installation for those interfaces.
 
-This route is currently aimed at macOS and Linux hosts.
-
-### Build the images locally
-
-From the repository root:
+### Build and run locally
 
 ```sh
-docker build --target runtime-gui -t gentle:gui-local .
 docker build --target runtime-cli -t gentle:cli-local .
+docker run --rm -it -v "$(pwd)":/work gentle:cli-local cli capabilities
 ```
 
-The in-tree Dockerfile currently defaults to Debian `forky` so it can use the
-Debian-packaged `rust-all` toolchain that matches GENtle's current dependency
-set.
-
-The image includes:
-
-- the GUI
-- `gentle_cli`
-- the MCP server
-- the embedded JavaScript and Lua shells
-- the Python wrapper path
-- external helper-tool support already wired into GENtle
-
-### Start the GUI in a browser
-
-```sh
-docker run --rm -it \
-  -p 6080:6080 \
-  -v "$(pwd)":/work \
-  gentle:gui-local
-```
-
-Then open:
-
-- <http://localhost:6080/vnc.html?autoconnect=1&resize=scale>
-
-### Run the CLI from the image
-
-```sh
-docker run --rm -it \
-  -v "$(pwd)":/work \
-  gentle:cli-local capabilities
-```
+The builder uses Debian `forky` / `rust-all`, Cargo `--no-default-features`
+and an explicit headless binary list. It does not merely remove GUI files
+after compiling them.
 
 ### Recommended AI / MCP route
 
-For AI tools and other non-interactive automation, the easiest and lowest-latency
-container route is the published image in headless `mcp` mode.
-
-Why this is the preferred route:
-
-- no GUI startup
-- no `Xvfb` / `openbox` / `noVNC` overhead
-- stdio transport matches how MCP clients normally talk to tools
-- the same shared engine operations are used as in GUI/CLI mode
-- successful mutating MCP calls persist directly to the mounted project/state file
-
-Example:
+MCP uses stdio without a desktop or VNC session. Keep stdin open without a TTY,
+and mount an explicit project/state path:
 
 ```sh
-docker run --rm -i \
-  -v "$(pwd)":/work \
-  ghcr.io/smoe/gentle_rs:cli \
-  mcp --state /work/project.gentle.json
+docker run --rm -i -v "$(pwd)":/work \
+  ghcr.io/smoe/gentle_rs:cli mcp --state /work/project.gentle.json
 ```
 
-This is usually the best starting point when integrating GENtle as a capability
-for another agent/tool. The GUI container route remains useful for human
-inspection, but not for low-latency tool execution.
+Successful mutating MCP calls persist to the mounted state file. Docker callers
+must use the `cli` prefix for CLI subcommands, such as `cli capabilities`.
 
-ClawBio/OpenClaw users on Linux can also point the copied GENtle skill scaffold
-at an Apptainer/Singularity image built from the same OCI release:
+### Published images
+
+Owner-approved publications supply a `linux/amd64` headless image under
+`:cli`, `:<tag>-cli`, `:<tag>` and `:latest`. A tag push alone validates
+but does not publish. New bare tags and `latest` are no longer GUI images;
+historical `:gui` / `:<tag>-gui` tags are not refreshed.
+
+Prefer a versioned tag or digest for reproducible runs. Arm64 container
+publication remains deferred.
+
+### Apptainer / Singularity
+
+Linux users consume the same OCI image:
 
 ```sh
 apptainer pull gentle.sif docker://ghcr.io/smoe/gentle_rs:cli
+apptainer run gentle.sif capabilities
+```
+
+For ClawBio/OpenClaw, use the copied skill launcher, which binds the current
+directory to `/work` and executes `gentle_cli`:
+
+```sh
 export GENTLE_CLI_CMD='skills/gentle-cloning/gentle_apptainer_cli.sh /absolute/path/to/gentle.sif'
 ```
 
-The included launcher binds the current working directory into `/work` inside
-the image and executes `gentle_cli ...` so the ClawBio wrapper can reuse the
-same `GENTLE_CLI_CMD` contract it already uses for Docker.
-
-### Pull a published release image from GHCR
-
-The GitHub workflow publishes installable container images for release tags
-matching `v*`.
-
-Current publication scope:
-
-- published GHCR images are currently `linux/amd64`
-- `linux/arm64` publication from GitHub Actions is temporarily paused because
-  the emulated `qemu-aarch64` build path is crashing during Debian package
-  configuration
-- GUI images are published as:
-  - `ghcr.io/OWNER/gentle_rs:latest`
-  - `ghcr.io/OWNER/gentle_rs:v...`
-  - `ghcr.io/OWNER/gentle_rs:gui`
-- headless images are published as:
-  - `ghcr.io/OWNER/gentle_rs:cli`
-  - `ghcr.io/OWNER/gentle_rs:v...-cli`
-
-Generic form:
-
-```sh
-docker pull ghcr.io/OWNER/gentle_rs:latest
-```
-
-For your repository at `github.com/smoe/gentle_rs`, that becomes:
-
-```sh
-docker pull ghcr.io/smoe/gentle_rs:latest
-docker run --rm -it \
-  -p 6080:6080 \
-  -v "$(pwd)":/work \
-  ghcr.io/smoe/gentle_rs:latest
-```
-
-Version-specific tags are also published for each release, for example:
-
-```sh
-docker pull ghcr.io/smoe/gentle_rs:v0.1.0
-docker pull ghcr.io/smoe/gentle_rs:v0.1.0-cli
-```
-
-For headless CLI/MCP use, prefer:
-
-```sh
-docker pull ghcr.io/smoe/gentle_rs:cli
-docker run --rm -it \
-  -v "$(pwd)":/work \
-  ghcr.io/smoe/gentle_rs:cli capabilities
-```
-
-### Linux users who prefer Apptainer / Singularity
-
-GENtle currently keeps the Dockerfile as the single maintained image
-definition. Linux users can consume the same OCI image from Apptainer instead
-of maintaining a separate `.def` recipe.
-
-See:
-
-- `docs/container.md`
-- GitHub releases/tags must be pushed first so the release-image workflow can
-  publish GUI tags (`ghcr.io/OWNER/gentle_rs:latest`, `v...`) and the matching
-  headless tags (`ghcr.io/OWNER/gentle_rs:cli`, `v...-cli`)
+See [the container guide](docs/container.md) for Python, helpers, mounting,
+compatibility limits and [the release process](docs/release.md) for publication.
 
 ## Run GENtle
 
@@ -345,7 +252,7 @@ cargo run --bin gentle_cli -- --version
 Container note:
 
 - the Docker image provides the same shared-entrypoint routes through
-  `gui-web`, `cli`, `mcp`, `js`, and `lua`
+  `cli`, `mcp` and `examples-docs`; GUI and embedded JS/Lua are native-only
 - for AI/tool integration, `mcp --state /work/PROJECT.gentle.json` is the
   preferred headless route
 - full details live in `docs/container.md`

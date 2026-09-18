@@ -639,11 +639,11 @@ Rules:
 
 - maintain one primary OCI image definition (`Dockerfile`) rather than
   parallel Dockerfile + Apptainer/Singularity recipes by default
-- the primary image should include complete end-user functionality:
-  - GUI
+- the published image is genuinely headless, built with `--no-default-features`
+  and an explicit binary list, without GUI or embedded JS/Lua dependencies:
   - CLI
   - MCP server
-  - embedded JS/Lua shells in release-style container builds
+  - documentation/example helper
   - Python wrapper availability
   - helper-tool integrations already expected by the engine (`blastn`,
     `makeblastdb`, `primer3`, BigWig conversion, RNA structure)
@@ -651,9 +651,8 @@ Rules:
   builder stages should come from Debian `rust-all`
 - non-Debian additions are acceptable only as narrow, explicit exceptions when
   a shipped GENtle feature would otherwise be unavailable in the image
-- cross-platform GUI container access should default to browser-served
-  Linux desktop export (`Xvfb` + lightweight WM + VNC/noVNC) rather than
-  host-specific X11 forwarding as the primary documented path
+- GUI and embedded scripting remain available in native distributions; do not
+  build or redistribute them, Xvfb or VNC/noVNC in the OCI image
 - Linux/Apptainer support should consume the same OCI image whenever possible
   (`docker://` / `docker-archive://`) rather than creating a separate
   packaging logic path prematurely

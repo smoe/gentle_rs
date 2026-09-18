@@ -12,9 +12,11 @@ Container Registry (GHCR); a tag push alone only runs build checks:
 
 - headless CLI image:
   `ghcr.io/<owner>/<repo>:cli` and `ghcr.io/<owner>/<repo>:<tag>-cli`
-- browser-served GUI image:
-  `ghcr.io/<owner>/<repo>:gui` and `ghcr.io/<owner>/<repo>:<tag>`
-- `latest` is updated only by an explicitly approved publish run and remains a GUI tag
+- the same headless image is published as `ghcr.io/<owner>/<repo>:<tag>` and
+  `ghcr.io/<owner>/<repo>:latest` by an explicitly approved publish run
+- GUI and embedded JS/Lua are no longer built or redistributed in containers;
+  historical `gui` / `<tag>-gui` images are not refreshed. Bare tags and `latest`
+  now mean headless, not browser GUI. Native installers remain unchanged.
 - current image platform: `linux/amd64`
 
 The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
@@ -81,9 +83,10 @@ the write-capable publication jobs are skipped.
 
 Download the Actions artifacts from those specific run IDs, not from a generic
 "latest" run. Installer runs retain three actual packages, per-platform build
-receipts and an aggregate metadata receipt. Container checks build/load both
-runtime targets, run their CLI/MCP entrypoints with container networking disabled,
-and retain local image IDs/digests and a container receipt. Docker build records
+receipts and an aggregate metadata receipt. Container checks build/load only
+`runtime-cli`, run its CLI/MCP/docs entrypoints with networking disabled,
+check runtime libraries/assets and the absence of GUI/JS/Lua binaries, and
+retain the local image ID/digest and a container receipt. Docker build records
 remain with the Actions run; container validation does not upload images to GHCR.
 These are packaging/entrypoint checks, not graphical or scientific acceptance.
 
@@ -94,7 +97,9 @@ profile and script features. Collection compares every receipt with the selected
 candidate, not merely with the other receipts; missing, stale, mixed-mode or
 modified packages fail closed. Docker retains its existing `release-fast`
 profile and Debian `forky` build arguments, distinct from the installers'
-`release` profile. Neither profile nor production optimization is changed here.
+`release` profile. Its receipt records `default_features: false`, `features: []`
+and the explicit CLI/MCP/docs binary list; the build checks that desktop and
+embedded scripting dependencies are absent. Native installer features are unchanged.
 `.gitattributes` keeps `Cargo.lock` byte-identical under LF and CRLF checkouts;
 candidate receipts continue to hash actual bytes, not normalized text. The
 offline release-policy tests exercise both Git checkout policies and reject
@@ -140,12 +145,12 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
   - Runs checks/tests on pushes to `main` and pull requests.
   - Does not publish release assets.
 - Container workflow: `.github/workflows/container.yml`
-  - Runs no-push build checks for both Debian-first runtime targets
-    (`runtime-cli`, `runtime-gui`) on tag pushes, published-release events and
+  - Runs no-push build checks for the Debian-first headless `runtime-cli`
+    target on tag pushes, published-release events and
     manual dispatch, using the resolved immutable candidate commit.
   - Publishes `linux/amd64` GHCR images only on a published-release event or
     an explicit manual `publish=true` run after matching tag/SHA checks:
-    `:cli` / `:<tag>-cli` for headless use and `:gui` / `:<tag>` for GUI use.
+    `:cli`, `:<tag>-cli`, `:<tag>` and `:latest` all refer to the headless image.
   - A tag push alone never logs into GHCR or moves `latest`.
 - Release workflow: `.github/workflows/release.yml`
   - Triggered automatically when a GitHub Release is published.
@@ -229,7 +234,7 @@ features/profile before running gates. Use the same checkout and built
 binaries for the whole evidence set. Results from nearby commits cannot be
 combined into an exact-candidate pass; the `.10` release notes contain the
 pending scientific, GUI, tutorial and packaging gate ledger. Glen owns Linux
-acceptance; Windows/macOS and both Docker runtime targets require CI evidence.
+acceptance; Windows/macOS and the headless Docker target require CI evidence.
 
 In particular, all three Linux tutorial smoke chapters must finish. The compact
 Simple-PCR input bounds the work; it does not waive the ten-minute compute
@@ -262,7 +267,7 @@ Release-workflow assumptions to re-check before tagging:
 4. Wait for `Release Installers` workflow completion.
 5. Verify GitHub Release contains all three desktop artifacts, their build
    receipts and the release-attributes inventory. Check the separate container
-   workflow for both runtime images from the same tag.
+   workflow for the headless image from the same tag.
 
 ## Manual Release Re-run
 

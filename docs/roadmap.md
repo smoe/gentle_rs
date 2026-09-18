@@ -62,7 +62,7 @@ Release acceptance:
   engine or GUI contracts to those fixture sizes.
 - Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes;
   rerun gates on candidate changes, never combine nearby revisions' passes.
-- CI must prove the Linux tarball, Windows ZIP, macOS DMG and both container targets.
+- CI must prove the Linux tarball, Windows ZIP, macOS DMG and headless `runtime-cli` container (no GUI/JS/Lua). Validate the reduced build on the release runner before claiming the OOM fixed.
 
 Release cut line:
 

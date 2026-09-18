@@ -277,6 +277,14 @@ For tool-driven external AI deployment, prefer the published GHCR image in
 headless `mcp` mode with explicit project/state mounts and stdio communication
 instead of depending on browser GUI containers.
 
+The maintained OCI distribution builds only `gentle_cli`, `gentle_mcp` and
+`gentle_examples_docs`, with Cargo default features disabled and no embedded
+JS/Lua features. It retains the Python CLI wrapper and scientific helper tools.
+Native GUI/scripting distributions are unchanged. The container dependency
+guard must reject desktop and embedded scripting runtimes before compilation.
+New bare release tags and `latest` refer to this headless image; historical
+`gui` tags are not refreshed or presented as current releases.
+
 ## DEC-017: Fixture Provenance
 
 Status: active

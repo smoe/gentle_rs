@@ -82,7 +82,10 @@ expensive GUI work that runs safely away from the egui thread.
   ordinary Linux X11 input with native-window/coordinate binding and retained
   screenshot provenance. Starter projects must not contain completed results.
 - Build a Linux x64 tarball, Windows ZIP and macOS DMG at one declared candidate
-  SHA, with separate Linux CLI/GUI GHCR images. Download availability and
+  SHA, with a headless Linux CLI/MCP GHCR image. Containers no longer compile
+  or redistribute GUI or embedded JS/Lua; native installers are unchanged.
+  New bare container release tags and `latest` now mean headless, while old
+  GUI tags are no longer refreshed. Download availability and
   installed-package acceptance remain pending; see the ledger below.
 - Check generated tutorials in both LF and CRLF local checkouts on every
   sampled native CI host. Byte-hashed fixtures and `Cargo.lock` retain LF;
@@ -155,7 +158,7 @@ commits. After a fix, select the new candidate and rerun its gates.
 | Copied-state IRF9/Q00978 acceptance | Glen, private copied-state evidence | Pending |
 | GUI and specificity benchmark acceptance | Glen | Pending |
 | TP73 CUT&RUN/evidence-viewer and PATZ1 locus-composer proof | Glen / CI | Pending |
-| Both Docker targets, `runtime-cli` and `runtime-gui` | Container CI | Pending |
+| Headless Docker target, `runtime-cli` (no GUI/JS/Lua) | Container CI | Pending |
 | Linux tarball, Windows ZIP and macOS DMG from the exact candidate | Release CI | Pending; build-only dispatch does not require retagging |
 | Extracted/copied desktop package launch, resources and tutorial availability away from the checkout | Native Windows/macOS testers | Pending; current workflow archive checks do not establish this |
 | macOS optional `screenshot-capture` compilation | macOS CI | Pending; Linux cannot validate this |

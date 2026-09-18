@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-18 - Genuinely Headless Container Distribution
+
+- Build only CLI, MCP and the examples helper with Cargo default features
+  disabled; remove GUI and embedded JS/Lua compilation and redistribution from
+  Docker. Preserve the native installer feature set and engine contracts.
+- Retain the Python wrapper, scientific helper tools and runtime assets; ship
+  fonts for headless figure export without a desktop or VNC stack. Reject removed
+  launcher modes explicitly and preserve argument-safe MCP/Apptainer dispatch.
+- Publish one headless image under `cli`, `<tag>-cli`, `<tag>` and `latest`;
+  stop refreshing GUI tags. Record disabled default features and exact binaries
+  in the build receipt, preserving candidate binding and owner publication gates.
+- Add offline launcher/workflow regressions and a resolved-dependency guard;
+  CI also checks entrypoints, missing runtime libraries and omitted binaries.
+  Actual reduced-container build and memory acceptance remain with container CI.
+
 ## 2026-09-17 - Transcript Capture Discovery
 
 - Add gene-agnostic, shared-engine exact-site discovery across annotated

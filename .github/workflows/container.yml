@@ -18,7 +18,7 @@ on:
         required: true
         type: string
       publish:
-        description: 'Push GHCR images after owner approval; tag must match candidate_sha'
+        description: 'Push headless GHCR image after owner approval; tag must match candidate_sha'
         required: false
         type: boolean
         default: false
@@ -83,47 +83,39 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build GUI container image (no push)
-        id: check-gui
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          build-args: |
-            DEBIAN_SUITE=forky
-          target: runtime-gui
-          platforms: linux/amd64
-          push: false
-          load: true
-          provenance: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:build-check-gui
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Smoke candidate containers without network access
+      - name: Smoke headless container without network access
         env:
           CLI_IMAGE: ${{ steps.check-cli.outputs.imageid }}
-          GUI_IMAGE: ${{ steps.check-gui.outputs.imageid }}
         run: |
           set -euo pipefail
-          for image in "$CLI_IMAGE" "$GUI_IMAGE"; do
-            docker run --rm --network none --entrypoint /opt/gentle/bin/gentle_cli "$image" --help
-            docker run --rm --network none --entrypoint /opt/gentle/bin/gentle_mcp "$image" --help
-          done
-          docker run --rm --network none --entrypoint /opt/gentle/bin/gentle "$GUI_IMAGE" --version
+          docker run --rm --network none "$CLI_IMAGE"
+          docker run --rm --network none "$CLI_IMAGE" cli --help
+          docker run --rm --network none "$CLI_IMAGE" mcp --help
+          docker run --rm --network none "$CLI_IMAGE" examples-docs --help
+          docker run --rm --network none --entrypoint /bin/sh "$CLI_IMAGE" -ec '
+            for bin in gentle_cli gentle_mcp gentle_examples_docs; do
+              deps=$(ldd "/opt/gentle/bin/$bin")
+              if printf "%s\n" "$deps" | grep -q "not found"; then
+                printf "%s\n" "$deps" >&2; exit 1
+              fi
+            done
+            for bin in gentle gentle_js gentle_lua; do
+              test ! -e "/opt/gentle/bin/$bin"
+            done
+            test -s /opt/gentle/assets/genomes.json
+            python3 -c "import gentle_py"
+          '
 
       - name: Retain container build identity
         env:
           CLI_IMAGE: ${{ steps.check-cli.outputs.imageid }}
-          GUI_IMAGE: ${{ steps.check-gui.outputs.imageid }}
           CLI_DIGEST: ${{ steps.check-cli.outputs.digest }}
-          GUI_DIGEST: ${{ steps.check-gui.outputs.digest }}
         run: |
           python3 scripts/release_candidate.py verify
           python3 - <<'PY'
           import json, os, pathlib, subprocess
           rows = []
-          for flavor in ("cli", "gui"):
+          for flavor in ("cli",):
               image_id = os.environ[f"{flavor.upper()}_IMAGE"]
               if not image_id.startswith("sha256:"):
                   raise SystemExit("Build did not retain a local image identity")
@@ -136,7 +128,8 @@ jobs:
               "cargo_lock_sha256": os.environ["EXPECTED_LOCK_SHA256"],
               "workflow_revision": os.environ["WORKFLOW_REVISION"],
               "mode": os.environ["CANDIDATE_MODE"], "pushed": False,
-              "profile": "release-fast", "features": ["script-interfaces"],
+              "profile": "release-fast", "default_features": False, "features": [],
+              "binaries": ["gentle_cli", "gentle_mcp", "gentle_examples_docs"],
               "build_args": {"DEBIAN_SUITE": "forky"}, "platform": "linux/amd64",
               "buildx": subprocess.check_output(["docker", "buildx", "version"], text=True).strip(),
               "images": rows,
@@ -201,25 +194,11 @@ jobs:
           tags: |
             type=raw,value=cli
             type=raw,value=${{ needs.candidate.outputs.tag }}-cli
-          labels: |
-            org.opencontainers.image.title=GENtle
-            org.opencontainers.image.description=GENtle Debian-first headless CLI/MCP container image
-            org.opencontainers.image.vendor=GENtle project
-            org.opencontainers.image.revision=${{ needs.candidate.outputs.revision }}
-
-      - name: Extract metadata (tags, labels) for GUI image
-        id: meta-gui
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=gui
-            type=raw,value=${{ needs.candidate.outputs.tag }}-gui
             type=raw,value=${{ needs.candidate.outputs.tag }}
             type=raw,value=latest
           labels: |
             org.opencontainers.image.title=GENtle
-            org.opencontainers.image.description=GENtle Debian-first GUI/CLI/MCP container image
+            org.opencontainers.image.description=GENtle Debian-first headless CLI/MCP container image
             org.opencontainers.image.vendor=GENtle project
             org.opencontainers.image.revision=${{ needs.candidate.outputs.revision }}
 
@@ -240,33 +219,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push GUI Docker image
-        id: push-gui
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: ./Dockerfile
-          build-args: |
-            DEBIAN_SUITE=forky
-          target: runtime-gui
-          platforms: linux/amd64
-          push: true
-          provenance: false
-          tags: ${{ steps.meta-gui.outputs.tags }}
-          labels: ${{ steps.meta-gui.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Generate CLI artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push-cli.outputs.digest }}
-          push-to-registry: true
-
-      - name: Generate GUI artifact attestation
-        uses: actions/attest-build-provenance@v3
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.push-gui.outputs.digest }}
           push-to-registry: true
