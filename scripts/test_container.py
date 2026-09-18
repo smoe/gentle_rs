@@ -102,6 +102,22 @@ class HeadlessEntrypointTests(unittest.TestCase):
 
 
 class ContainerContractTests(unittest.TestCase):
+    def test_builder_copies_embedded_resource_directories_before_compilation(self) -> None:
+        build_script = (ROOT / "build.rs").read_text()
+        required = re.search(r"let required_files = \[(.*?)\];", build_script, re.S)
+        self.assertIsNotNone(required, "Locate the build script's required resource list")
+        resources = re.findall(r'"([^"]+)"', required.group(1))
+        self.assertTrue(resources)
+        docker = (ROOT / "Dockerfile").read_text()
+        self.assertIn("RUN cargo build ", docker)
+        before_build = docker.split("RUN cargo build ", 1)[0]
+        for directory in sorted({Path(path).parts[0] for path in resources}):
+            with self.subTest(directory=directory):
+                self.assertIn(f"COPY {directory} ./{directory}\n", before_build)
+        for resource in resources:
+            with self.subTest(resource=resource):
+                self.assertTrue((ROOT / resource).is_file())
+
     def test_build_and_payload_are_headless_without_scripting(self) -> None:
         docker = (ROOT / "Dockerfile").read_text().replace("\\\n", "")
         command = next(line for line in docker.splitlines() if line.startswith("RUN cargo build "))

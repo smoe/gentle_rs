@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-09-18 - Headless Container Build Resources
+
+- Copy `icons/` into the Docker builder before compilation: `build.rs` checks
+  these files even with GUI features disabled. This fixes the missing-resource
+  failure in container run `35377537228`, without adding GUI dependencies or
+  icons to the runtime payload. Full image-build acceptance remains with CI.
+- Check that every embedded-resource directory declared by `build.rs` has a
+  matching Docker copy before compilation; reproduce the missing-icons failure
+  before the fix. Release tags and published artifacts are unchanged.
+
 ## 2026-09-18 - Genuinely Headless Container Distribution
 
 - Build only CLI, MCP and the examples helper with Cargo default features

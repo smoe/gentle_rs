@@ -31,6 +31,8 @@ COPY packages ./packages
 COPY crates ./crates
 COPY src ./src
 COPY assets ./assets
+# build.rs validates these resources even when GUI features are disabled.
+COPY icons ./icons
 COPY data/resources/affymetrix/platform_registry.json ./data/resources/affymetrix/
 COPY docs ./docs
 COPY integrations/python ./integrations/python
