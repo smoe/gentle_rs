@@ -18,14 +18,24 @@ Claude correctly prioritized release-status repair, TSS correctness, packaged
 runtime parity and external acceptance, and identified missing lab inputs for
 capture specificity and order readiness. This revision incorporates that
 feedback after checking the newer tree; no fresh Claude CLI review is claimed.
+His subsequent review at `b16f0453` found that T3 still lacked ID-to-label
+resolution and case-independent grouping. The bounded follow-up below addresses
+those omissions; the earlier reconciliation did not establish their completion.
 
 | Review item | Current evidence and remaining action |
 | --- | --- |
 | R0: release status | `.10` is published without recorded exact-candidate acceptance; preserve its Pending ledger. Later fixes need their own SHA. Manual gel commits are in the tag, not an unmerged `.11` branch. |
 | T1/T2: endpoints and exclusions | `085b98ec` shares `transcript_five_prime_endpoint` between extraction and inventory and adds locus-level `unassigned_transcripts`. Existing tests cover both reverse-join forms, 5'/3' clipping, fuzzy/mixed strands and legacy JSON. Do not reimplement. |
-| T3: canonical gene links | The same commit resolves label-only links only with one source/strand-compatible gene ID; tests cover unique, ambiguous, different-source and different-strand cases. Retain real-data acceptance of saved collections. |
+| T3: canonical gene links | `085b98ec` covered label-to-ID only. The follow-up adds unambiguous ID-to-label lookup before symbol filtering and groups by resolved ID (case-insensitive label fallback), retaining source/strand separation, original annotations and ambiguity warnings. Regressions cover mixed/case-only labels, ID-only distinct starts on both strands, ambiguous links and historical collection/approval safety. Glen must still check real TP73/DeltaNp73 symbol-versus-ID memberships and saved collections at the final SHA. |
 | P1: desktop packages | Shared staging and extracted-package checks now cover all seven entrypoints and tracked resources on Windows/macOS/Linux. Offline tests cover layouts, archive round-trips, relocation and failures. Native CI must still run `gentle_cli capabilities`, MCP and tutorial-manifest validation from the actual packages; receipts and live GUI acceptance remain required. |
 | A1: exact-SHA acceptance | Glen: TP73/DeltaNp73 inventory, materialization, reload, validated scans and native inspection, plus branch/reverse-complement, digest and bounded Simple-PCR tutorial chapters. Bind binary, project, input and receipt hashes to one new candidate; retain the old `.10` ledger separately. |
+
+T3 focused verification: `cargo test --lib --locked --offline -j 1` passed with
+filters `tss_workspace::tests` (22), `engine_shell::tests::tss_` (4) and
+`app::tests::tss_` (4), each with `-- --test-threads=1`.
+`cargo check -q --locked --offline -j 1`, `cargo fmt --check` and
+`git diff --check` also passed. These working-tree checks do not replace the
+full-workspace or real-data/live-GUI acceptance at the final candidate SHA.
 
 Optional follow-ups, not prerequisites silently added to this patch:
 

@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-09-18 - TSS Gene Identity Follow-Up
+
+- Resolve missing transcript gene labels from unambiguous same-source/strand
+  ID associations before symbol filtering; retain distinct starts and original
+  annotations. Group by resolved gene ID rather than display spelling, using
+  case-insensitive labels only when no ID is available. Report conflicting
+  labels without guessing a canonical name or borrowing across sources/strands.
+- Preserve stored label-sensitive collections and their approvals without
+  silent migration. Fresh grouping requires fresh approval and a new namespace
+  when the old one is occupied. Add synthetic shared-engine regressions for
+  symbol/ID membership, case variants, both strands, ambiguity, deterministic
+  display and historical saved-collection bindings.
+- Correct T3's earlier one-directional completion account. Glen's real
+  TP73/DeltaNp73 and exact-revision GUI acceptance remain pending.
+- Verification: 22 TSS engine tests, four shell tests and four GUI-handler
+  tests passed, along with offline locked Cargo check, formatting and whitespace
+  checks. Full-workspace and live-GUI acceptance were not run in this follow-up.
+
 ## 2026-09-18 - Desktop Package Contents And Extraction Checks
 
 - Stage the same seven desktop entrypoints and tracked resources on Windows,

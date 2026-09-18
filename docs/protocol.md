@@ -13611,10 +13611,17 @@ of older bound reports. Legacy `MissingGeneLink` exclusions remain readable.
 Exact 5-prime starts remain usable when only the 3-prime endpoint is fuzzy.
 Uniformly oriented nested complement/join locations use the same endpoint
 resolver for inventory and extraction truncation markers; mixed strands fail
-closed. A missing gene ID can be associated through an unambiguous explicit
-label-to-ID link within the same loaded locus, source and strand, with an
-explanation and original feature memberships retained. This can change a new
-preview's digest; old approvals are never silently replaced.
+closed. Missing gene IDs or labels can be associated through unambiguous explicit
+label-to-ID or ID-to-label links within the same loaded locus, source and strand,
+with explanations and original feature memberships retained. ASCII-case variants
+are equivalent labels. Group keys use resolved gene IDs when available, otherwise
+case-insensitive labels; display spelling is not identity. Conflicting labels
+remain unfilled with warnings, including during symbol searches; explicit ID
+queries can group the records without choosing a canonical label. New grouping
+can change TSS IDs and approval hashes. Saved label-sensitive collections remain
+validated against their stored records, without regrouping; materializing a
+changed preview requires fresh approval and a new collection namespace when an
+existing one is already bound. Old approvals are never silently replaced.
 Shared-shell `--tss-collection` is supported for TFBS, restriction scan, digest
 and primer specificity. Sequence/member overrides remain disallowed; explicit
 primer-report bindings remain supported. Digest application retains its separate

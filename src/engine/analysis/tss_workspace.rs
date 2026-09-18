@@ -828,6 +828,285 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn tss_gene_identity_unifies_case_and_id_only_records_on_both_strands() {
+        for anchor_reverse in [false, true] {
+            for reverse in [false, true] {
+                let mut e = engine(anchor_reverse);
+                let dna = e.state.sequences.get_mut("locus").unwrap();
+                dna.features_mut().clear();
+                let known = transcript("known", "TOY", 300, 700, reverse);
+                let mut lowercase = known.clone();
+                lowercase
+                    .qualifiers
+                    .retain(|(k, _)| !matches!(k.as_ref(), "gene" | "transcript_id"));
+                lowercase.qualifiers.extend([
+                    ("gene".into(), Some("toy".into())),
+                    ("transcript_id".into(), Some("lowercase".into())),
+                ]);
+                let mut id_only = transcript("id_only", "TOY", 300, 700, reverse);
+                id_only.qualifiers.retain(|(k, _)| k.as_ref() != "gene");
+                let mut label_only = transcript("label_only", "TOY", 300, 700, reverse);
+                label_only
+                    .qualifiers
+                    .retain(|(k, _)| k.as_ref() != "gene_id");
+                let mut distinct = transcript("distinct_start", "TOY", 400, 800, reverse);
+                distinct.qualifiers.retain(|(k, _)| k.as_ref() != "gene");
+                dna.features_mut()
+                    .extend([known, lowercase, id_only, label_only, distinct]);
+                let before = serde_json::to_value(e.snapshot()).unwrap();
+                let report = e.inspect_tss_inventory(&request()).unwrap();
+                assert_eq!(report.rows.len(), 2);
+                let shared = report
+                    .rows
+                    .iter()
+                    .find(|r| r.transcript_ids.len() == 4)
+                    .unwrap();
+                assert_eq!(
+                    shared.transcript_ids,
+                    ["id_only", "known", "label_only", "lowercase"]
+                );
+                assert_eq!(shared.transcript_feature_ids, [0, 1, 2, 3]);
+                assert_eq!(shared.gene_id.as_deref(), Some("gene_TOY"));
+                assert_eq!(shared.gene_label.as_deref(), Some("TOY"));
+                assert_eq!(shared.tss_local_0based, if reverse { 699 } else { 300 });
+                assert!(
+                    report
+                        .warnings
+                        .iter()
+                        .any(|s| s.contains("missing gene label resolved"))
+                );
+                for query in ["toy", "gene_TOY"] {
+                    let mut req = request();
+                    req.gene_query = query.into();
+                    assert_eq!(e.inspect_tss_inventory(&req).unwrap().rows, report.rows);
+                }
+                assert_eq!(serde_json::to_value(e.snapshot()).unwrap(), before);
+                e.state
+                    .sequences
+                    .get_mut("locus")
+                    .unwrap()
+                    .features_mut()
+                    .reverse();
+                let reordered = e.inspect_tss_inventory(&request()).unwrap();
+                for (before, after) in report.rows.iter().zip(&reordered.rows) {
+                    assert_eq!(before.tss_id, after.tss_id);
+                    assert_eq!(before.transcript_ids, after.transcript_ids);
+                    assert_eq!(before.gene_label, after.gene_label);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tss_id_to_label_resolution_rejects_ambiguity_and_cross_source_or_strand() {
+        for scenario in ["ambiguous", "other_source", "other_strand"] {
+            let mut e = engine(false);
+            let dna = e.state.sequences.get_mut("locus").unwrap();
+            dna.features_mut().clear();
+            let known = transcript("known", "TOY", 300, 700, false);
+            let mut id_only = transcript("id_only", "TOY", 300, 700, false);
+            id_only.qualifiers.retain(|(k, _)| k.as_ref() != "gene");
+            if scenario == "other_source" {
+                id_only.qualifiers.retain(|(k, _)| k.as_ref() != "source");
+                id_only
+                    .qualifiers
+                    .push(("source".into(), Some("other_annotation".into())));
+            }
+            if scenario == "other_strand" {
+                id_only.location = Location::Complement(Box::new(Location::simple_range(100, 301)));
+            }
+            dna.features_mut().extend([known, id_only]);
+            if scenario == "ambiguous" {
+                let mut conflict = transcript("conflict", "OTHER", 300, 700, false);
+                conflict.qualifiers.retain(|(k, _)| k.as_ref() != "gene_id");
+                conflict
+                    .qualifiers
+                    .push(("gene_id".into(), Some("gene_TOY".into())));
+                dna.features_mut().push(conflict);
+            }
+            let by_symbol = e.inspect_tss_inventory(&request()).unwrap();
+            assert_eq!(by_symbol.rows.len(), 1, "{scenario}");
+            assert_eq!(by_symbol.rows[0].transcript_ids, ["known"], "{scenario}");
+            let mut req = request();
+            req.gene_query = "gene_TOY".into();
+            let by_id = e.inspect_tss_inventory(&req).unwrap();
+            let row = by_id
+                .rows
+                .iter()
+                .find(|r| r.transcript_ids.iter().any(|id| id == "id_only"))
+                .unwrap();
+            assert_eq!(row.gene_label, None, "{scenario}");
+            if scenario == "ambiguous" {
+                assert_eq!(by_id.rows.len(), 1);
+                assert_eq!(row.transcript_ids, ["conflict", "id_only", "known"]);
+                assert!(
+                    by_symbol
+                        .warnings
+                        .iter()
+                        .any(|s| s.contains("conflicting gene labels"))
+                );
+                assert!(
+                    by_id
+                        .warnings
+                        .iter()
+                        .any(|s| s.contains("conflicting gene labels"))
+                );
+            } else {
+                assert_eq!(by_id.rows.len(), 2);
+                assert_eq!(row.transcript_ids, ["id_only"]);
+            }
+        }
+    }
+
+    #[test]
+    fn tss_label_only_case_variants_group_without_manufacturing_an_id() {
+        let mut e = engine(false);
+        let dna = e.state.sequences.get_mut("locus").unwrap();
+        dna.features_mut().clear();
+        for (id, label) in [("upper", "TOY"), ("lower", "toy")] {
+            let mut f = transcript(id, label, 300, 700, false);
+            f.qualifiers.retain(|(k, _)| k.as_ref() != "gene_id");
+            dna.features_mut().push(f);
+        }
+        let report = e.inspect_tss_inventory(&request()).unwrap();
+        assert_eq!(report.rows.len(), 1);
+        assert_eq!(report.rows[0].gene_id, None);
+        assert_eq!(report.rows[0].gene_label.as_deref(), Some("TOY"));
+        assert_eq!(report.rows[0].transcript_ids, ["lower", "upper"]);
+        let id = &report.rows[0].tss_id;
+        e.state
+            .sequences
+            .get_mut("locus")
+            .unwrap()
+            .features_mut()
+            .reverse();
+        let reversed = e.inspect_tss_inventory(&request()).unwrap();
+        assert_eq!(reversed.rows[0].tss_id, *id);
+        assert_eq!(reversed.rows[0].gene_label, report.rows[0].gene_label);
+    }
+
+    #[test]
+    fn tss_label_bound_saved_collections_survive_but_cannot_reapprove_new_grouping() {
+        use gentle_protocol::collection_subjects::{
+            CollectionMemberRef, CollectionSubjectKind, canonical_collection_membership_json,
+        };
+
+        let mut e = engine(false);
+        let current = e.inspect_tss_inventory(&request()).unwrap();
+        // Recreate the previous label-sensitive identity contract using the synthetic locus.
+        let mut historical = current.clone();
+        for row in &mut historical.rows {
+            let identity = hash(&(
+                &historical.request.seq_id,
+                &row.gene_id,
+                &row.gene_label,
+                &row.annotation_source,
+                &row.genomic_tss,
+            ))
+            .unwrap();
+            row.tss_id = format!("tss_{}", identity.trim_start_matches("sha256:"));
+            row.output_seq_id = format!("{}_{}", historical.request.collection_id, row.tss_id);
+        }
+        historical.approval_sha256.clear();
+        historical.approval_sha256 = hash(&historical).unwrap();
+        assert_ne!(historical.approval_sha256, current.approval_sha256);
+        let historical_request = TssMaterializeRequest {
+            inventory: historical.request.clone(),
+            expected_approval_sha256: historical.approval_sha256.clone(),
+            selected_tss_ids: historical.rows.iter().map(|r| r.tss_id.clone()).collect(),
+        };
+        let before = serde_json::to_value(e.snapshot()).unwrap();
+        assert!(
+            e.materialize_tss_windows(&historical_request)
+                .unwrap_err()
+                .message
+                .contains("stale")
+        );
+        assert_eq!(before, serde_json::to_value(e.snapshot()).unwrap());
+
+        let approved = approved(&e);
+        e.materialize_tss_windows(&approved).unwrap();
+        // Bind the saved outputs, annotations, anchors and lineage to historical IDs/approval.
+        let mut saved = serde_json::to_string(e.snapshot()).unwrap();
+        for (new, old) in current.rows.iter().zip(&historical.rows) {
+            saved = saved.replace(&new.tss_id, &old.tss_id);
+        }
+        saved = saved.replace(&current.approval_sha256, &historical.approval_sha256);
+        let mut loaded = GentleEngine::from_state(serde_json::from_str(&saved).unwrap());
+        let mut stored: TssCollectionReport =
+            serde_json::from_value(loaded.state.metadata[COLLECTIONS_KEY]["toy_tss"].clone())
+                .unwrap();
+        assert_eq!(stored.inventory, historical);
+        for member in &mut stored.members {
+            let anchor = loaded
+                .sequence_genome_anchor_summary(&member.tss.output_seq_id)
+                .unwrap();
+            member.record_snapshot_sha256 =
+                biological_snapshot(&loaded.state.sequences[&member.tss.output_seq_id], &anchor)
+                    .unwrap();
+        }
+        let members = stored
+            .members
+            .iter()
+            .map(|m| CollectionMemberRef {
+                stable_member_id: m.tss.output_seq_id.clone(),
+                seq_id: Some(m.tss.output_seq_id.clone()),
+                parent_member_id: Some(stored.inventory.request.seq_id.clone()),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        stored.collection_membership_fingerprint_sha256 =
+            sha256_prefixed_str(&canonical_collection_membership_json(
+                CollectionSubjectKind::ProjectSequences,
+                &members,
+            ));
+        loaded.state.metadata.get_mut(COLLECTIONS_KEY).unwrap()["toy_tss"] =
+            serde_json::to_value(&stored).unwrap();
+        let before = serde_json::to_value(loaded.snapshot()).unwrap();
+        assert_eq!(
+            serde_json::to_value(loaded.get_tss_collection("toy_tss").unwrap()).unwrap(),
+            serde_json::to_value(&stored).unwrap(),
+        );
+        assert!(
+            loaded
+                .materialize_tss_windows(&historical_request)
+                .unwrap_err()
+                .message
+                .contains("stale")
+        );
+        assert!(
+            loaded
+                .materialize_tss_windows(&approved)
+                .unwrap_err()
+                .message
+                .contains("namespace")
+        );
+        assert_eq!(before, serde_json::to_value(loaded.snapshot()).unwrap());
+
+        let mut fresh_request = request();
+        fresh_request.collection_id = "new_grouping".into();
+        let fresh = loaded.inspect_tss_inventory(&fresh_request).unwrap();
+        loaded
+            .materialize_tss_windows(&TssMaterializeRequest {
+                inventory: fresh.request,
+                expected_approval_sha256: fresh.approval_sha256,
+                selected_tss_ids: fresh.rows.into_iter().map(|r| r.tss_id).collect(),
+            })
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(loaded.get_tss_collection("toy_tss").unwrap()).unwrap(),
+            serde_json::to_value(&stored).unwrap(),
+        );
+        for member in &stored.members {
+            assert_eq!(
+                serde_json::to_value(loaded.snapshot()).unwrap()["sequences"]
+                    [&member.tss.output_seq_id],
+                before["sequences"][&member.tss.output_seq_id],
+            );
+        }
+    }
+
+    #[test]
     fn tss_mixed_gene_links_merge_only_unambiguous_same_source_and_strand() {
         for scenario in ["unique", "ambiguous", "other_source", "other_strand"] {
             let mut e = engine(false);
@@ -1119,8 +1398,10 @@ impl GentleEngine {
         let mut excluded_transcripts = Vec::new();
         let mut unassigned_transcripts = Vec::new();
         let mut linkage_notes = Vec::new();
-        // Only explicit, unambiguous aliases in this locus/source/strand may fill a missing ID.
+        // Only explicit, unambiguous aliases in this locus/source/strand may fill missing metadata.
         let mut gene_ids_by_label: BTreeMap<(String, bool, String), BTreeSet<String>> =
+            BTreeMap::new();
+        let mut gene_labels_by_id: BTreeMap<(String, bool, String), BTreeMap<String, String>> =
             BTreeMap::new();
         for f in dna.features() {
             if Self::construct_reasoning_role_from_feature(f) != Some(ConstructRole::Transcript) {
@@ -1138,7 +1419,17 @@ impl GentleEngine {
                         label.to_ascii_lowercase(),
                     ))
                     .or_default()
-                    .insert(id);
+                    .insert(id.clone());
+                gene_labels_by_id
+                    .entry((annotation_source(f), endpoint.reverse, id))
+                    .or_default()
+                    .entry(label.to_ascii_lowercase())
+                    .and_modify(|existing| {
+                        if label < *existing {
+                            existing.clone_from(&label);
+                        }
+                    })
+                    .or_insert(label);
             }
         }
         let mut transcript_count = 0;
@@ -1167,7 +1458,7 @@ impl GentleEngine {
                 ));
                 continue;
             }
-            let (gene_label, mut gene_id) = Self::transcript_gene_metadata(dna, f, feature_id);
+            let (mut gene_label, mut gene_id) = Self::transcript_gene_metadata(dna, f, feature_id);
             let endpoint = crate::feature_location::transcript_five_prime_endpoint(f);
             let annotation_source = annotation_source(f);
             let mut inferred_link = false;
@@ -1182,6 +1473,28 @@ impl GentleEngine {
             {
                 gene_id = ids.first().cloned();
                 inferred_link = true;
+            }
+            let labels_for_id = gene_id
+                .as_ref()
+                .zip(endpoint.as_ref())
+                .and_then(|(id, end)| {
+                    gene_labels_by_id.get(&(annotation_source.clone(), end.reverse, id.clone()))
+                });
+            let mut inferred_label = false;
+            if gene_label.is_none()
+                && let Some(labels) = labels_for_id.filter(|labels| labels.len() == 1)
+            {
+                gene_label = labels.values().next().cloned();
+                inferred_label = true;
+            }
+            if let Some(labels) = labels_for_id.filter(|labels| labels.len() > 1)
+                && (labels.contains_key(&request.gene_query.to_ascii_lowercase())
+                    || gene_id.as_deref() == Some(request.gene_query.as_str()))
+            {
+                linkage_notes.push(format!(
+                    "{transcript_id} (feature {feature_id}): gene_id {} has conflicting gene labels ({}) in source {annotation_source} on the same strand; no missing label is inferred and no canonical display label is chosen. Original annotations retained.",
+                    gene_id.as_deref().unwrap(), labels.values().cloned().collect::<Vec<_>>().join(", ")
+                ));
             }
             if !gene_label
                 .as_deref()
@@ -1269,17 +1582,38 @@ impl GentleEngine {
             if inferred_link {
                 linkage_notes.push(format!("{transcript_id} (feature {feature_id}): missing gene_id resolved to {} through an unambiguous explicit gene-label link in the same source and strand; original annotations retained.", gene_id.as_deref().unwrap()));
             }
+            if inferred_label {
+                linkage_notes.push(format!("{transcript_id} (feature {feature_id}): missing gene label resolved to {} through an unambiguous explicit gene_id link in the same source and strand; original annotations retained.", gene_label.as_deref().unwrap()));
+            }
+            // Display spelling must not split one gene's start or change its stable identity.
+            let identity_label = gene_label
+                .as_ref()
+                .filter(|_| gene_id.is_none())
+                .map(|label| label.to_ascii_lowercase());
             let identity = hash(&(
                 &request.seq_id,
                 &gene_id,
-                &gene_label,
+                &identity_label,
                 &annotation_source,
                 &genomic_tss,
             ))?;
+            if let Some(labels) = labels_for_id {
+                gene_label = (labels.len() == 1)
+                    .then(|| labels.values().next().cloned())
+                    .flatten();
+            }
             let tss_id = format!("tss_{}", identity.trim_start_matches("sha256:"));
             if let Some(row) = groups.get_mut(&tss_id) {
                 row.transcript_ids.push(transcript_id);
                 row.transcript_feature_ids.push(feature_id);
+                if let Some(label) = gene_label
+                    && row
+                        .gene_label
+                        .as_ref()
+                        .is_none_or(|existing| label < *existing)
+                {
+                    row.gene_label = Some(label);
+                }
                 continue;
             }
             let bounds = gentle_engine::tss_window_geometry::window_bounds(

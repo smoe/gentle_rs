@@ -170,9 +170,16 @@ the host still reports a queued request.
   coordinate and strand agree. All source transcript feature memberships remain.
   A missing `gene_id` can be filled for grouping only when the same gene label
   maps to exactly one explicit ID among this locus's transcript annotations in
-  the same source and strand. The report explains the association and retains
-  the original annotations. Conflicting IDs and differing sources/strands remain
-  separate; no gene assignment is inferred merely from overlap.
+  the same source and strand. Conversely, an ID-only transcript participates in
+  a symbol search when that ID has one unambiguous label in the same scope.
+  Labels differing only in ASCII case count as one label; a deterministic
+  spelling is displayed. Resolved IDs, not display labels, determine grouping;
+  label-only records use a case-insensitive label key without inventing an ID.
+  Conflicting labels are reported, not inherited or chosen as canonical. An
+  explicit ID query can still group that ID's records, with the display label
+  left unavailable and original annotations retained. Conflicting IDs and
+  differing sources/strands remain separate; no gene assignment is inferred
+  merely from overlap. Every inferred association is explained in the report.
 - Local and genomic strands are independent. Each output reads transcript
   5-prime to 3-prime, with TSS at local base `upstream_bp + 1`; negative-strand
   genomic labels therefore decrease along that output.
@@ -188,6 +195,12 @@ the host still reports a queued request.
   explicitly forget their registry entry.
 - Repeating the same approved selection reuses its sequences. A different
   selection requires another collection ID. No records are overwritten.
+- Collections created with the previous label-sensitive grouping remain
+  inspectable against their saved memberships and member snapshots; inspection
+  does not regroup or rename them. New previews use gene-identity grouping and
+  therefore may have different TSS IDs and approval hashes. Old approvals cannot
+  authorize a changed preview. Review a fresh preview under a new collection
+  ID; existing sequences and approvals are not migrated silently.
 - Collections and parent-child lineage persist with the project. Edited or
   missing members cannot silently reuse stale geometry through collection
   navigation; inspect such records individually and derive a new collection.
