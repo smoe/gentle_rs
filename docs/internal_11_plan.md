@@ -7,8 +7,9 @@ needs a separate integration decision. The
 [gene-informed primer-pair GUI](gene_assay_study_gui_plan.md), integrated from
 `gentle_rs_2_main` at `a1f5e61e`, remains the primary `.11` scientific workflow;
 package parity and exact-revision acceptance support that aim. The capture
-programme below remains separate and deferred. No version bump, tag, push or
-publication is part of this follow-up.
+programme below remains separate and deferred. No version bump, tag change,
+upstream push or publication is part of this follow-up; use only the approved
+fork for verification branches and build-only runs.
 
 ## Review Reconciliation
 
@@ -40,6 +41,37 @@ full-workspace or real-data/live-GUI acceptance at the final candidate SHA.
 Main's new synthetic GUI tutorial oracle was explicitly refreshed from the
 engine-emitted preview. Its independent workflow test, generated-tutorial check
 and catalog/manifest consistency tests passed; no user collection was migrated.
+
+### Verification Before Further Features
+
+The second Claude review distinguishes implemented fixes from unverified builds.
+The semantic-ID lifetime fix is committed as `d9f75837`; earlier pre-rebase
+checks do not establish that the merged tree builds with `gui-test-support`.
+Windows run `35386839336` at `caf84061` failed two byte-exact tutorial-index
+checks and a path-separator assertion. Preserve strict drift checking: protect
+the generated catalog/manifest with targeted LF checkout rules and compare
+the planner's output path as a filesystem path, without regenerating evidence.
+
+Before adding N1 or another scientific extension:
+
+1. Freeze one full SHA and run `ci.yml` explicitly for `macos`, `linux` and
+   `windows`. Each existing job checks all features, including
+   `gui-test-support`; sampled push CI is not an all-platform verdict.
+2. Run `container.yml` with that exact `candidate_sha` and `publish=false`.
+   Verify the candidate receipt, not just the dispatch's workflow revision;
+   a run labelled with a newer workflow can still build an older source.
+3. Run build-only `release.yml` for the same source and retain extracted-package
+   results and receipts for all three platforms. Use the version label matching
+   Cargo.toml; do not move the published `.10` tag or publish new assets.
+4. Bind Glen's TP73/DeltaNp73 and tutorial receipts to that SHA. The primer-pair
+   study GUI additionally needs the original typed publication request and its
+   digest-bound plans; neither synthetic tests nor a rendered paper substitute
+   for those missing real-data inputs.
+
+Use a branch on `smoe-bot/gentle_rs`, not a push to `smoe/gentle_rs`. Fork Git
+push access and GitHub Actions dispatch access are separate credentials; report
+an unavailable dispatch as blocked, not as a passing check. No additional feature
+scope is authorized by completion of the local regression fixes alone.
 
 Optional follow-ups, not prerequisites silently added to this patch:
 

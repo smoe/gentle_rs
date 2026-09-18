@@ -169,6 +169,13 @@ it prints a paste-ready tutorial feedback context with the chapter id, source
 JSON, workflow JSON, generated chapter path, artifact directory, failing check,
 and suggested GitHub issue-template category.
 
+The generated `docs/tutorial/catalog.json` and `docs/tutorial/manifest.json`
+also have byte-exact drift checks. Their targeted `.gitattributes` LF rules
+preserve the serializer's bytes on Windows; do not normalize away a mismatch
+inside the validator. `scripts.test_tutorial_checkouts` exercises the real
+rules in disposable LF and CRLF Git checkouts without rebuilding or changing
+scientific outputs.
+
 CI additionally runs a CLI smoke path for core tutorial chapters via:
 
 - `cargo run --bin gentle_cli -- workflow @docs/examples/workflows/<core>.json`

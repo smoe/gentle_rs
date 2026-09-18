@@ -68,6 +68,25 @@ class TutorialCheckoutTests(unittest.TestCase):
         self.assertEqual((fixed / "evidence.json").read_bytes(), self.payload)
         self.assertEqual((self.root / ".gitattributes").read_bytes(), b"# No protection\n")
 
+    def test_generated_tutorial_json_stays_byte_exact_in_both_checkout_modes(self):
+        # Use the real checkout policy with synthetic generated JSON, so removing
+        # a targeted LF rule reproduces Windows' strict drift-check failure.
+        (self.root / ".gitattributes").write_bytes(
+            (checker.ROOT / ".gitattributes").read_bytes())
+        paths = ("docs/tutorial/catalog.json", "docs/tutorial/manifest.json")
+        for relative in paths:
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(self.payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "generated JSON")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"generated-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative in paths:
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), self.payload)
+
     def test_replay_uses_existing_binary_and_forces_offline(self):
         with patch.dict(os.environ, {"GENTLE_TEST_ONLINE": "1"}), \
                 patch.object(checker.subprocess, "run") as run:

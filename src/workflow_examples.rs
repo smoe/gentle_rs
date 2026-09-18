@@ -7069,7 +7069,7 @@ mod tests {
         );
         let artifact_dir = run_dir.path().join("artifacts");
         let plan_path = artifact_dir.join("regulatory_fragment_panel.plan.json");
-        assert_eq!(path.as_deref(), plan_path.to_str());
+        assert_eq!(path.as_deref().map(Path::new), Some(plan_path.as_path()));
 
         let mut engine = GentleEngine::from_state(ProjectState::default());
         engine

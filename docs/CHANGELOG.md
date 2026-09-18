@@ -33,6 +33,22 @@
   tests passed, along with offline locked Cargo check, formatting and whitespace
   checks. Full-workspace and live-GUI acceptance were not run in this follow-up.
 
+## 2026-09-18 - Windows Tutorial Verification Follow-Up
+
+- Reproduce the two tutorial-index failures from Windows CI `35386839336` with
+  a disposable CRLF checkout. Pin only the generated catalog and manifest to
+  LF; retain strict byte comparison, with no tutorial/evidence regeneration.
+- Compare the regulatory-fragment planning test's output path as a filesystem
+  path, preserving the same expected destination across native separators.
+- Record the already-committed semantic-ID lifetime fix `d9f75837`, retain
+  main's T3 grouping/diagnostic fixes and refreshed tutorial oracle, and
+  prioritize same-SHA CI/container/package and real-data acceptance before
+  more `.11` features. No biological behavior or approval gate was changed.
+- The new checkout regression failed for both generated JSON files before the
+  fix and passed afterward. All 56 tutorial-checkout/release-policy/packaging/
+  container Python checks, formatting and whitespace checks passed. Native
+  Windows reruns and remote package/container acceptance remain separate gates.
+
 ## 2026-09-18 - Desktop Package Contents And Extraction Checks
 
 - Stage the same seven desktop entrypoints and tracked resources on Windows,
