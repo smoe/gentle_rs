@@ -1451,6 +1451,7 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
             "promoters tata-materialize",
             "promoters tss-inventory",
             "promoters tss-materialize",
+            "promoters tss-list",
             "promoters tss-collection",
             "promoters tss-forget",
             "promoters compare-architectures",

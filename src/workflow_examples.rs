@@ -7989,6 +7989,106 @@ mod tests {
     }
 
     #[test]
+    fn tss_gui_acceptance_starter_and_oracle_are_independent_and_report_bound() {
+        let source: TutorialSourceUnit = serde_json::from_str(include_str!(
+            "../docs/tutorial/sources/08-15_tss_collection_gui.json"
+        ))
+        .unwrap();
+        let contract = source.generated_chapter.unwrap().gui_acceptance.unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let by_id = example_lookup(&examples);
+        let starter_dir = TempDir::new().unwrap();
+        let oracle_dir = TempDir::new().unwrap();
+        let starter = run_example_workflow_for_project_state(
+            &by_id[&contract.starter.example_id].example,
+            Path::new("."),
+            starter_dir.path(),
+        )
+        .unwrap();
+        let oracle = run_example_workflow_for_project_state(
+            &by_id[&contract.oracle.example_id].example,
+            Path::new("."),
+            oracle_dir.path(),
+        )
+        .unwrap();
+        let starter = GentleEngine::from_state(starter);
+        let mut oracle = GentleEngine::from_state(oracle);
+        assert_eq!(starter.state().sequences.len(), 1);
+        assert_eq!(oracle.state().sequences.len(), 4);
+        assert_eq!(
+            starter
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied
+        );
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied
+        );
+        let report = oracle.get_tss_collection("tss_windows").unwrap();
+        let json = serde_json::to_value(&report).unwrap();
+        for step in &contract.steps {
+            for verifier in &step.verifiers {
+                if let TutorialGuiVerifier::Report {
+                    schema,
+                    required_fields,
+                    assertions,
+                    ..
+                } = verifier
+                {
+                    assert_eq!(schema, "gentle.tss_collection.v1");
+                    assert_tutorial_report_verifier(&json, required_fields, assertions);
+                }
+            }
+        }
+        let path = oracle_dir.path().join("reopened.json");
+        oracle.state().save_to_path(path.to_str().unwrap()).unwrap();
+        let state = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        let reopened = GentleEngine::from_state(state);
+        assert_eq!(
+            serde_json::to_value(reopened.get_tss_collection("tss_windows").unwrap()).unwrap(),
+            json
+        );
+        let member = &report.members[0].tss.output_seq_id;
+        oracle
+            .state_mut()
+            .sequences
+            .get_mut(member)
+            .unwrap()
+            .features_mut()
+            .clear();
+        assert!(
+            oracle
+                .get_tss_collection("tss_windows")
+                .unwrap_err()
+                .message
+                .contains("edited")
+        );
+        let before = serde_json::to_value(oracle.state()).unwrap();
+        oracle
+            .apply(Operation::ForgetTssCollection {
+                collection_id: "tss_windows".into(),
+            })
+            .unwrap();
+        assert!(
+            oracle
+                .list_tss_collections()
+                .unwrap()
+                .collections
+                .is_empty()
+        );
+        assert_eq!(oracle.state().sequences.len(), 4);
+        oracle.undo_last_operation().unwrap();
+        assert_eq!(serde_json::to_value(oracle.state()).unwrap(), before);
+        assert!(
+            oracle.get_tss_collection("tss_windows").is_err(),
+            "undo restores registry metadata, not stale biological content"
+        );
+    }
+
+    #[test]
     fn simple_pcr_gui_acceptance_starter_and_oracle_bound_completion_fact() {
         let manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");

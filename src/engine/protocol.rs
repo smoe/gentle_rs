@@ -5380,6 +5380,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tss_collection: Option<Box<gentle_protocol::tss_workspace::TssCollectionReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tss_collection_list: Option<Box<gentle_protocol::tss_workspace::TssCollectionListReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tss_tfbs_profiles: Option<Box<gentle_protocol::tss_profiles::TssProfileReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tss_tfbs_profile_receipt: Option<Box<gentle_protocol::tss_profiles::TssProfileReceipt>>,

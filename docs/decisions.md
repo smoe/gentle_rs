@@ -526,6 +526,10 @@ records, overhangs and genomic anchor geometry, never recomputable caches or
 unordered cache maps. Legacy cache-sensitive snapshots require explicit new
 approval, not silent migration. Typed collection maps validate all members
 before scanning; metadata-only forgetting preserves sequences and lineage.
+Registry discovery is metadata-only and never implies member validation.
+Legacy/malformed entries remain discoverable with explicit diagnostics, and
+unavailable metadata counts are distinct from zero. A validating inspection is
+bound to the current project instance and structural revision in the GUI.
 Transcript 5-prime truncation must survive extraction, including dropped first
 exons. A surviving exon boundary cannot become an exact annotated TSS merely
 because a file library clips locations without marking them partial.

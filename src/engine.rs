@@ -5843,6 +5843,7 @@ pub enum Operation {
     MaterializeTssWindows {
         request: gentle_protocol::tss_workspace::TssMaterializeRequest,
     },
+    ListTssCollections {},
     GetTssCollection {
         collection_id: String,
     },
@@ -10182,6 +10183,7 @@ impl GentleEngine {
                 | Operation::ComputeTssWindowGeometry { .. }
                 | Operation::InspectTssInventory { .. }
                 | Operation::GetTssCollection { .. }
+                | Operation::ListTssCollections { .. }
                 | Operation::PlanRegulatoryFragmentPanel { .. }
                 | Operation::PlanRegulatoryFragmentMaterialization { .. }
                 | Operation::RenderRegulatoryFragmentPanelSvg { .. }

@@ -966,7 +966,13 @@ class TutorialAcceptanceRun:
         self, project_path: Path, verifier: dict[str, Any], label: str
     ) -> dict[str, Any]:
         schema = verifier["schema"]
-        if schema != "gentle.primer_design_report.v1":
+        if schema == "gentle.primer_design_report.v1":
+            command = ["primers", "show-report", verifier["report_id"]]
+            report_path = "report"
+        elif schema == "gentle.tss_collection.v1":
+            command = ["shell", fixed_shell_command(["promoters", "tss-collection", verifier["report_id"]])]
+            report_path = "result.tss_collection"
+        else:
             raise AcceptanceFailure(
                 "harness_gap",
                 f"No fixed tutorial verifier route is registered for report schema '{schema}'",
@@ -976,21 +982,24 @@ class TutorialAcceptanceRun:
                 str(self.args.gentle_cli),
                 "--project",
                 str(project_path),
-                "primers",
-                "show-report",
-                verifier["report_id"],
+                *command,
             ],
             label,
             env=self.process_environment,
         ).payload
-        report = output.get("report")
+        try:
+            report = json_path(output, report_path)
+        except (KeyError, TypeError):
+            report = None
         if not isinstance(report, dict):
             raise AcceptanceFailure("product_failure", f"Report '{label}' is absent")
+        if schema == "gentle.tss_collection.v1" and report.get("collection_id") != verifier["report_id"]:
+            raise AcceptanceFailure("product_failure", f"Collection identity for '{label}' does not match the requested ID")
         assert_report_contract(report, verifier)
         return {
             "status": "pass",
             "schema": report.get("schema"),
-            "report_id": report.get("report_id"),
+            "report_id": report.get("report_id", report.get("collection_id")),
             "content_sha256": sha256_bytes(canonical_json_bytes(report)),
         }
 

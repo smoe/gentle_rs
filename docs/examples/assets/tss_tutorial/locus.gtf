@@ -1,0 +1,4 @@
+toy_chr	synthetic	exon	601	1100	.	+	.	gene_id "plus_gene"; gene_name "TOY"; transcript_id "plus_a"; exon_number "1";
+toy_chr	synthetic	exon	601	1200	.	+	.	gene_id "plus_gene"; gene_name "TOY"; transcript_id "plus_b"; exon_number "1";
+toy_chr	synthetic	exon	901	1250	.	+	.	gene_id "plus_gene"; gene_name "TOY"; transcript_id "plus_c"; exon_number "1";
+toy_chr	synthetic	exon	1201	1500	.	-	.	gene_id "minus_gene"; gene_name "TOY"; transcript_id "minus_a"; exon_number "1";

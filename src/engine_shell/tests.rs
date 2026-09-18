@@ -106,6 +106,20 @@ fn tss_workspace_shell_preview_apply_collection_and_window_intent() {
     let apply =
         execute_shell_command(&mut engine, &parse_shell_line(&apply_line).unwrap()).unwrap();
     assert!(apply.state_changed);
+    let listed = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("promoters tss-list").unwrap(),
+    )
+    .unwrap();
+    assert!(!listed.state_changed);
+    assert!(
+        listed
+            .output
+            .to_string()
+            .contains("gentle.tss_collection_list.v1")
+    );
+    assert!(listed.output.to_string().contains("not_checked"));
+    assert!(parse_shell_line("promoters tss-list extra").is_err());
     let show = execute_shell_command(
         &mut engine,
         &parse_shell_line("promoters tss-collection toy_tss").unwrap(),

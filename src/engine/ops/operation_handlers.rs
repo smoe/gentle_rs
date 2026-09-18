@@ -40135,6 +40135,7 @@ impl GentleEngine {
             gel_image_analysis: None,
             tss_inventory: None,
             tss_collection: None,
+            tss_collection_list: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
         };
@@ -51531,6 +51532,9 @@ impl GentleEngine {
                     result.created_seq_ids.extend(created);
                     result.messages.push(format!("TSS collection '{}' contains {} windows; matching existing outputs are reused", report.collection_id, report.members.len()));
                     result.tss_collection = Some(Box::new(report));
+                }
+                Operation::ListTssCollections {} => {
+                    result.tss_collection_list = Some(Box::new(self.list_tss_collections()?));
                 }
                 Operation::GetTssCollection { collection_id } => {
                     result.tss_collection =

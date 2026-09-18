@@ -6235,8 +6235,12 @@ impl MainAreaDna {
                 let precomputed_genomic_motif_ready =
                     (1..=MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS)
                         .contains(&precomputed_genomic_motif_count);
-                ui.menu_button("TFBS scan", |ui| {
-                    if ui.button("Transcript starts / TSS windows...").clicked() {
+                let _tss_menu = ui.menu_button("TFBS scan", |ui| {
+                    let tss_open = ui.button("Transcript starts / TSS windows...");
+                    #[cfg(feature = "gui-test-support")]
+                    crate::gui_test_support::register_response(&tss_open, crate::tutorial_gui_semantics::DNA_TSS_OPEN, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                        Some(&crate::gui_test_support::pseudonymous_subject_scope(&[self.seq_id.as_deref().unwrap_or("unnamed")])), crate::gui_test_support::GuiTestWidgetKind::Button, false);
+                    if tss_open.clicked() {
                         self.open_tss_inventory();
                         ui.close();
                     }
@@ -6369,6 +6373,9 @@ impl MainAreaDna {
                         ui.close();
                     }
                 });
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(&_tss_menu.response, crate::tutorial_gui_semantics::DNA_TFBS_MENU, crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[self.seq_id.as_deref().unwrap_or("unnamed")])), crate::gui_test_support::GuiTestWidgetKind::Button, false);
                 ui.menu_button("TFBS score tracks", |ui| {
                     ui.small(
                         "Uses the current TFBS/JASPAR motif selection from the TFBS annotation panel plus the score-track display mode configured there.",

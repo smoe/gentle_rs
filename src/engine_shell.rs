@@ -21481,6 +21481,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tss_workspace_capability_descriptor("MaterializeTssWindows", true, false),
         tss_workspace_capability_descriptor("promoters tss-materialize", true, false),
         tss_workspace_capability_descriptor("GetTssCollection", false, true),
+        tss_workspace_capability_descriptor("ListTssCollections", false, false),
+        tss_workspace_capability_descriptor("promoters tss-list", false, false),
         tss_workspace_capability_descriptor("promoters tss-collection", false, true),
         tss_workspace_capability_descriptor("ForgetTssCollection", true, true),
         tss_workspace_capability_descriptor("promoters tss-forget", true, true),
@@ -42861,6 +42863,15 @@ fn parse_gene_groups_command(tokens: &[String]) -> Result<ShellCommand, String> 
 }
 
 fn tss_workspace_capability_descriptor(id: &str, mutating: bool, collection: bool) -> Value {
+    if matches!(id, "ListTssCollections" | "promoters tss-list") {
+        return json!({
+            "id": id, "kind": "operation", "mutating": "false",
+            "requires_confirmation": false, "args": [], "reads": [], "effects": [],
+            "precondition_expr": {"all":[]}, "annotation_status":"fact_annotated",
+            "description": "Discover persisted TSS collections by ID, source locus, gene query and window count. Registry metadata only: every entry is not_checked, never validated. Legacy/invalid records remain visible. Use promoters tss-collection ID for explicit member validation.",
+            "registry": registry_metadata_for_introspection(id)
+        });
+    }
     json!({
         "id": id, "kind": "operation", "mutating": if mutating {"true"} else {"false"},
         "requires_confirmation": mutating,
@@ -42882,6 +42893,15 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
         );
     }
     match tokens[1].as_str() {
+        "tss-list" => {
+            if tokens.len() != 2 {
+                return Err("promoters tss-list takes no arguments".into());
+            }
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::ListTssCollections {})
+                    .map_err(|e| e.to_string())?,
+            })
+        }
         "tss-inventory" | "tss-materialize" | "tss-collection" | "tss-forget" => {
             if tokens.len() != 3 {
                 return Err("promoters tss-inventory REQUEST_JSON_OR_@FILE | promoters tss-materialize REQUEST_JSON_OR_@FILE | promoters tss-collection COLLECTION_ID | promoters tss-forget COLLECTION_ID (retain sequences)".into());
@@ -65410,6 +65430,7 @@ fn execute_op_command(
             | Operation::ComputeTssWindowGeometry { .. }
             | Operation::InspectTssInventory { .. }
             | Operation::GetTssCollection { .. }
+            | Operation::ListTssCollections { .. }
     ) {
         let state_changed = matches!(
             &op,

@@ -2458,6 +2458,13 @@
          "usage": "promoters tss-materialize REQUEST_JSON_OR_@FILE"
       },
       {
+         "aliases": [], "engine_operations": ["ListTssCollections"],
+         "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
+         "path": "promoters tss-list",
+         "summary": "List stored TSS collection metadata, including legacy/invalid records, without validating members; not checked is never pass.",
+         "usage": "promoters tss-list"
+      },
+      {
          "aliases": [], "engine_operations": ["GetTssCollection"],
          "interfaces": ["cli-shell", "gui-shell", "gui-menu", "cli-direct", "mcp-op"],
          "path": "promoters tss-collection",

@@ -1,0 +1,62 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "tss_collection_gui_oracle",
+  "title": "Synthetic TSS collection oracle",
+  "summary": "Independent approved derivation for comparison only. Never use as the GUI starter.",
+  "test_mode": "always",
+  "required_files": [
+    "docs/examples/assets/tss_tutorial/genomes.json",
+    "docs/examples/assets/tss_tutorial/locus.fa",
+    "docs/examples/assets/tss_tutorial/locus.gtf"
+  ],
+  "tags": [
+    "offline",
+    "gui-acceptance",
+    "tss",
+    "synthetic",
+    "oracle"
+  ],
+  "workflow": {
+    "run_id": "tss_collection_gui_oracle",
+    "ops": [
+      {
+        "PrepareGenome": {
+          "genome_id": "TutorialTssToy",
+          "catalog_path": "docs/examples/assets/tss_tutorial/genomes.json",
+          "cache_dir": "artifacts/tss_cache"
+        }
+      },
+      {
+        "ExtractGenomeRegion": {
+          "genome_id": "TutorialTssToy",
+          "chromosome": "toy_chr",
+          "start_1based": 1,
+          "end_1based": 2000,
+          "output_id": "tss_locus",
+          "include_genomic_annotation": true,
+          "catalog_path": "docs/examples/assets/tss_tutorial/genomes.json",
+          "cache_dir": "artifacts/tss_cache"
+        }
+      },
+      {
+        "MaterializeTssWindows": {
+          "request": {
+            "inventory": {
+              "seq_id": "tss_locus",
+              "gene_query": "TOY",
+              "collection_id": "tss_windows",
+              "upstream_bp": 500,
+              "downstream_bp": 200
+            },
+            "expected_approval_sha256": "sha256:bc7f85fb870e9d1e6540aa190e28d38146abbbd30dedeee9a8d1331816373399",
+            "selected_tss_ids": [
+              "tss_4e285b6c2b4a1522c495509c9de90c39aa6be5139b86e019fe4b15f7d24cb81b",
+              "tss_7e3e079cab392f081cbd8e889c33ed050ed4c41092f5b56eab8b53dc9fed3f29",
+              "tss_b7178333e220de9c3e46abbd9d563593c9eaf3b714ae9c74495200bff8fff439"
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

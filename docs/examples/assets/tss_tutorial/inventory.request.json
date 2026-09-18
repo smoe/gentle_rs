@@ -1,0 +1,7 @@
+{
+  "seq_id": "tss_locus",
+  "gene_query": "TOY",
+  "collection_id": "tss_windows",
+  "upstream_bp": 500,
+  "downstream_bp": 200
+}

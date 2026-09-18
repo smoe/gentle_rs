@@ -104,6 +104,166 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn tss_tutorial_starter_has_three_exact_starts_and_no_precompleted_task() {
+        let example: crate::workflow_examples::WorkflowExample = serde_json::from_str(
+            include_str!("../../../docs/examples/workflows/tss_collection_gui_starter.json"),
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let state = crate::workflow_examples::run_example_workflow_for_project_state(
+            &example,
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
+            dir.path(),
+        )
+        .unwrap();
+        let mut e = GentleEngine::from_state(state);
+        assert!(e.list_tss_collections().unwrap().collections.is_empty());
+        let preview = e
+            .inspect_tss_inventory(&TssInventoryRequest {
+                seq_id: "tss_locus".into(),
+                gene_query: "TOY".into(),
+                collection_id: "tss_windows".into(),
+                upstream_bp: 500,
+                downstream_bp: 200,
+            })
+            .unwrap();
+        assert_eq!(preview.rows.len(), 3);
+        assert_eq!(
+            preview
+                .rows
+                .iter()
+                .map(|r| r.tss_local_0based)
+                .collect::<Vec<_>>(),
+            [600, 900, 1499]
+        );
+        assert_eq!(
+            preview
+                .rows
+                .iter()
+                .map(|r| r.local_strand.as_str())
+                .collect::<Vec<_>>(),
+            ["+", "+", "-"]
+        );
+        assert_eq!(preview.rows[0].transcript_ids, ["plus_a", "plus_b"]);
+        let approval = TssMaterializeRequest {
+            inventory: preview.request,
+            expected_approval_sha256: preview.approval_sha256,
+            selected_tss_ids: preview.rows.iter().map(|r| r.tss_id.clone()).collect(),
+        };
+        println!(
+            "TSS_TUTORIAL_APPROVAL={}",
+            serde_json::to_string(&approval).unwrap()
+        );
+        let out = e
+            .apply(Operation::MaterializeTssWindows { request: approval })
+            .unwrap();
+        let collection = out.tss_collection.unwrap();
+        assert_eq!(collection.members.len(), 3);
+        for member in &collection.members {
+            assert_eq!(e.state.sequences[&member.tss.output_seq_id].len(), 701);
+        }
+        let report = e.get_tss_collection("tss_windows").unwrap();
+        println!(
+            "TSS_TUTORIAL_MEMBERS={}",
+            serde_json::to_string(
+                &report
+                    .members
+                    .iter()
+                    .map(|r| &r.tss.output_seq_id)
+                    .collect::<Vec<_>>()
+            )
+            .unwrap()
+        );
+    }
+
+    #[test]
+    fn tss_collection_list_is_deterministic_read_only_and_never_validates_members() {
+        let mut e = engine(false);
+        assert!(e.list_tss_collections().unwrap().collections.is_empty());
+        let request = approved(&e);
+        let collection = e
+            .apply(Operation::MaterializeTssWindows { request })
+            .unwrap()
+            .tss_collection
+            .unwrap();
+        // A real stale member must remain discoverable, never reported as validated.
+        e.state
+            .sequences
+            .remove(&collection.members[0].tss.output_seq_id);
+        let mut legacy = serde_json::to_value(collection.as_ref()).unwrap();
+        legacy["collection_id"] = serde_json::json!("a_legacy");
+        legacy["inventory"]["request"]["collection_id"] = serde_json::json!("a_legacy");
+        legacy["inventory"]
+            .as_object_mut()
+            .unwrap()
+            .remove("snapshot_algorithm");
+        let registry = e
+            .state
+            .metadata
+            .get_mut(COLLECTIONS_KEY)
+            .unwrap()
+            .as_object_mut()
+            .unwrap();
+        registry.insert("a_legacy".into(), legacy);
+        registry.insert("b_invalid".into(), serde_json::json!({"broken":true}));
+        let before = serde_json::to_value(e.snapshot()).unwrap();
+        let revision = e.structural_revision();
+        let listing = e
+            .apply(Operation::ListTssCollections {})
+            .unwrap()
+            .tss_collection_list
+            .unwrap();
+        assert_eq!(
+            listing
+                .collections
+                .iter()
+                .map(|r| r.collection_id.as_str())
+                .collect::<Vec<_>>(),
+            ["a_legacy", "b_invalid", "toy_tss"]
+        );
+        assert_eq!(
+            listing.collections[0].record_status,
+            TssCollectionRecordStatus::Legacy
+        );
+        assert_eq!(
+            listing.collections[1].record_status,
+            TssCollectionRecordStatus::Invalid
+        );
+        assert_eq!(listing.collections[1].window_count, None);
+        assert_eq!(
+            listing.collections[2].record_status,
+            TssCollectionRecordStatus::Readable
+        );
+        assert_eq!(listing.collections[2].window_count, Some(2));
+        assert_eq!(
+            listing.collections[2].source_seq_id.as_deref(),
+            Some("locus")
+        );
+        assert!(
+            listing
+                .collections
+                .iter()
+                .all(|r| r.validation_status == TssCollectionValidationStatus::NotChecked)
+        );
+        assert!(e.get_tss_collection("toy_tss").is_err());
+        assert_eq!(before, serde_json::to_value(e.snapshot()).unwrap());
+        assert_eq!(revision, e.structural_revision());
+        assert_eq!(
+            serde_json::to_vec(listing.as_ref()).unwrap(),
+            serde_json::to_vec(&e.list_tss_collections().unwrap()).unwrap()
+        );
+        e.state
+            .metadata
+            .insert(COLLECTIONS_KEY.into(), serde_json::json!([]));
+        assert!(
+            e.list_tss_collections()
+                .unwrap_err()
+                .message
+                .contains("expected an object")
+        );
+    }
+
+    #[test]
     fn tss_inventory_groups_exact_starts_and_keeps_gene_source_strand_separate() {
         let mut e = engine(false);
         let before = serde_json::to_value(e.snapshot()).unwrap();
@@ -1188,6 +1348,58 @@ impl GentleEngine {
         }
         report.approval_sha256 = hash(&report)?;
         Ok(report)
+    }
+
+    /// List stored registry metadata without hashing sequences or validating membership.
+    /// Stale members therefore remain discoverable and must be checked with `get_tss_collection`.
+    pub fn list_tss_collections(&self) -> Result<TssCollectionListReport, EngineError> {
+        let mut collections = Vec::new();
+        if let Some(value) = self.state.metadata.get(COLLECTIONS_KEY) {
+            let registry = value.as_object().ok_or_else(|| {
+                EngineError::invalid_input("Invalid TSS collection registry: expected an object; not an empty collection list")
+            })?;
+            for (id, value) in registry {
+                let mut entry = TssCollectionListEntry {
+                    collection_id: id.clone(),
+                    source_seq_id: None,
+                    gene_query: None,
+                    window_count: None,
+                    record_status: TssCollectionRecordStatus::Invalid,
+                    validation_status: TssCollectionValidationStatus::NotChecked,
+                    diagnostic: None,
+                };
+                match TssCollectionReport::deserialize(value) {
+                    Ok(report)
+                        if report.schema == "gentle.tss_collection.v1"
+                            && report.collection_id == *id
+                            && report.inventory.request.collection_id == *id =>
+                    {
+                        entry.source_seq_id = Some(report.inventory.request.seq_id);
+                        entry.gene_query = Some(report.inventory.request.gene_query);
+                        entry.window_count = Some(report.members.len());
+                        if report.inventory.snapshot_algorithm == SNAPSHOT_ALGORITHM {
+                            entry.record_status = TssCollectionRecordStatus::Readable;
+                        } else {
+                            entry.record_status = TssCollectionRecordStatus::Legacy;
+                            entry.diagnostic = Some("Legacy snapshot algorithm; explicit re-derivation required. Sequences are retained.".into());
+                        }
+                    }
+                    Ok(_) => entry.diagnostic = Some(
+                        "Stored schema or collection identity does not match the registry entry"
+                            .into(),
+                    ),
+                    Err(_) => {
+                        entry.diagnostic = Some("Stored collection record cannot be decoded".into())
+                    }
+                }
+                collections.push(entry);
+            }
+        }
+        collections.sort_by(|a, b| a.collection_id.cmp(&b.collection_id));
+        Ok(TssCollectionListReport {
+            schema: "gentle.tss_collection_list.v1".into(),
+            collections,
+        })
     }
 
     /// Return a persisted collection only while its members still match their stored snapshots.

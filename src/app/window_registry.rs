@@ -28,6 +28,12 @@ const GUI_PROMINENT_GLOSSARY_ENTRIES: &[GuiProminentGlossaryEntry] = &[
         ui_intent_target: None,
     },
     GuiProminentGlossaryEntry {
+        glossary_path: "promoters tss-list",
+        menu_path: "Transcript starts > Refresh collections",
+        palette_title: "Transcript Starts / TSS Windows",
+        ui_intent_target: None,
+    },
+    GuiProminentGlossaryEntry {
         glossary_path: "promoters tss-inventory",
         menu_path: "DNA Sequence Viewer > TFBS scan > Transcript starts / TSS windows...",
         palette_title: "Transcript Starts / TSS Windows",

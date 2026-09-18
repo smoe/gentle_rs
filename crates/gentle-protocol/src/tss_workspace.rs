@@ -2,6 +2,38 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Registry discovery is not member validation or a biological coverage claim.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TssCollectionListReport {
+    pub schema: String,
+    pub collections: Vec<TssCollectionListEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TssCollectionListEntry {
+    pub collection_id: String,
+    pub source_seq_id: Option<String>,
+    pub gene_query: Option<String>,
+    pub window_count: Option<usize>,
+    pub record_status: TssCollectionRecordStatus,
+    pub validation_status: TssCollectionValidationStatus,
+    pub diagnostic: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TssCollectionRecordStatus {
+    Readable,
+    Legacy,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TssCollectionValidationStatus {
+    NotChecked,
+}
+
 use crate::{collection_subjects::CollectionSubjectRef, genomic_regions::GenomicRegionInterval};
 
 fn upstream() -> usize {

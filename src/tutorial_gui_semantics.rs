@@ -7,6 +7,21 @@
 //! command-capable control into an execution path.
 
 pub const WINDOW_MAIN: &str = "window.main";
+pub const DNA_TFBS_MENU: &str = "dna.tfbs.menu";
+pub const DNA_TSS_OPEN: &str = "dna.tss.open";
+pub const WINDOW_TSS_WORKSPACE: &str = "window.tss_workspace";
+pub const TSS_GENE: &str = "tss.gene";
+pub const TSS_COLLECTION: &str = "tss.collection";
+pub const TSS_PREVIEW: &str = "tss.preview";
+pub const TSS_SELECT_AVAILABLE: &str = "tss.select_available";
+pub const TSS_MATERIALIZE: &str = "tss.materialize";
+pub const TSS_REFRESH: &str = "tss.refresh";
+pub const TSS_COLLECTION_ROW: &str = "tss.collection_row";
+pub const TSS_INSPECT: &str = "tss.inspect";
+pub const TSS_OPEN_WINDOWS: &str = "tss.open_windows";
+pub const TSS_FORGET: &str = "tss.forget";
+pub const TSS_CONFIRM_FORGET: &str = "tss.confirm_forget";
+pub const TSS_STATUS: &str = "tss.status";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
 pub const WINDOW_SEQUENCE_TOOLS: &str = "window.sequence_tools";
@@ -117,6 +132,111 @@ const REPLACE_TEXT: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind
 const SCROLL: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::Scroll];
 
 pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
+    TutorialGuiControlSpec {
+        semantic_id: TSS_COLLECTION_ROW,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_TFBS_MENU,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_TSS_OPEN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_TSS_WORKSPACE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_GENE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::Identifier),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_COLLECTION,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::Identifier),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_PREVIEW,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_SELECT_AVAILABLE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_MATERIALIZE,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_REFRESH,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_INSPECT,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_OPEN_WINDOWS,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_FORGET,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_CONFIRM_FORGET,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ProjectMetadata,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_STATUS,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
     TutorialGuiControlSpec {
         semantic_id: WINDOW_SEQUENCE_TOOLS,
         window_id: WINDOW_SEQUENCE_TOOLS,

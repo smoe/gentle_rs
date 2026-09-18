@@ -59,6 +59,21 @@
   matching Docker copy before compilation; reproduce the missing-icons failure
   before the fix. Release tags and published artifacts are unchanged.
 
+## 2026-09-18 - TSS Collection Browsing And Synthetic Acceptance
+
+- Add read-only `ListTssCollections` / `promoters tss-list`, with sorted registry
+  metadata and explicit not-checked, legacy and invalid states. Discovery does
+  not hash member sequences or silently validate/migrate a collection.
+- Add a refreshable collection browser to the TSS workspace; explicit inspection
+  remains asynchronous. Selection clears old validation/confirmation, and
+  displayed validation expires after project-instance or structural changes.
+- Add synthetic plus/minus starter and independent approved oracle workflows,
+  semantic controls, and a nine-step typed Linux GUI acceptance contract using
+  the shared validating collection report. The workspace is scrollable.
+- Document separate manual open/save/reopen, stale-member, confirmed forget and
+  undo acceptance. Deterministic tests are not Linux desktop or live TP73 proof;
+  those acceptance runs remain with Glen. No generic MapCollection was added.
+
 ## 2026-09-18 - TSS Workflow Review Follow-Ups
 
 - Share exact transcript endpoint interpretation between TSS inventory and

@@ -1476,6 +1476,26 @@
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
+      "id": "tss_collection_gui",
+      "title": "From annotated transcript starts to reusable TSS windows (offline)",
+      "path": "docs/tutorial/generated/chapters/08-15_tss_collection_gui.md",
+      "group": "08",
+      "group_label": "Regulatory, TFBS & Reporter Design",
+      "group_order": 8,
+      "group_position": 15,
+      "decimal_id": "08.15",
+      "type": "executable_chapter",
+      "status": "generated+checked/human-pending",
+      "source": "generated_from_tutorial_sources",
+      "audiences": [
+        "wet_lab_biologists",
+        "contributors"
+      ],
+      "notes": "Synthetic GUI acceptance subset plus a manual lifecycle checklist. Codex source review 2026-09-18: wet-lab readability, coordinates and reproducibility; native GUI, human scientific approval and live TP73 sign-off remain pending.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-18"
     }
   ]
 }

@@ -13576,6 +13576,18 @@ remain the source for TSS collections, independently of prepared-index support.
 
 ### TSS Collection Derivation
 
+`ListTssCollections {}` / `promoters tss-list` discovers persisted registry
+metadata without member hashing or validation. `OpResult.tss_collection_list`
+contains `gentle.tss_collection_list.v1`, sorted by collection ID. Each row has
+optional `source_seq_id`, `gene_query`, `window_count`, a `record_status`
+(`readable`, `legacy`, `invalid`), `validation_status: not_checked`, and an
+optional diagnostic. Missing counts are `null`, not zero. Invalid records are
+retained as rows; an invalid registry container raises `InvalidInput`.
+`GetTssCollection` remains the explicit validating route. Listing cannot imply
+validity, coverage, biological absence or authority to reuse a stale collection.
+The new operation/result field is additive; existing stored approvals and
+member fingerprints are unchanged.
+
 `InspectTssInventory { request }` is read-only and returns `tss_inventory`
 (`gentle.tss_inventory.v1`). Its request carries `seq_id`, `gene_query`,
 `collection_id`, `upstream_bp` (500) and `downstream_bp` (200). Exact source

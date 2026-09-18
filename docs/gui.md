@@ -6762,6 +6762,15 @@ cache refresh does not mark an intact collection edited; changed bases,
 annotations or genomic anchors still prevent reuse. `ui open|focus|close tss-view --collection ID`
 targets that persisted collection independently of the active viewer. See the
 [TSS workspace walkthrough and limitations](tss_workspace.md).
+
+**Refresh collections** lists stored collection IDs, gene queries, source loci
+and window counts. Select a row, then explicitly **Inspect stored collection**;
+the browser's **not checked** label is never a validity claim. Invalid/legacy
+records remain visible. Selecting another ID clears old validation and pending
+forget confirmation; project edits invalidate the displayed validation. The
+workspace scrolls on smaller screens. The [synthetic TSS tutorial](tutorial/08-15_tss_collection_gui.md)
+describes semantic GUI controls and retained acceptance evidence without
+claiming a live TP73 run.
 Prepared GenBank/XML references do not supply a tabular transcript index:
 extraction reports unavailable transcript enrichment, not zero transcripts.
 The workspace can still use transcript features already imported into the

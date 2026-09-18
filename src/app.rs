@@ -12496,6 +12496,7 @@ Error: `{err}`"
                 feature_record_curation_report: None,
                 tss_inventory: None,
                 tss_collection: None,
+                tss_collection_list: None,
                 tss_tfbs_profiles: None,
                 tss_tfbs_profile_receipt: None,
                 gel_image: None,

@@ -11,6 +11,25 @@ from scripts import tutorial_gui_acceptance as acceptance
 
 
 class TutorialGuiAcceptanceTests(unittest.TestCase):
+    def test_tss_report_uses_fixed_validating_route_not_registry_metadata(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        runner = object.__new__(acceptance.TutorialAcceptanceRun)
+        runner.args = SimpleNamespace(gentle_cli=Path("/tmp/gentle_cli"))
+        runner.process_environment = {}
+        report = {"schema": "gentle.tss_collection.v1", "collection_id": "toy", "members": [{"id": "a"}]}
+        runner.recorder = SimpleNamespace(run_json=Mock(return_value=SimpleNamespace(payload={"result": {"tss_collection": report}})))
+        verifier = {"schema": report["schema"], "report_id": "toy", "required_fields": ["members"]}
+        result = runner.show_report(Path("/tmp/project.json"), verifier, "inspect")
+        self.assertEqual(result["report_id"], "toy")
+        self.assertEqual(runner.recorder.run_json.call_args.args[0][-2:], ["shell", "promoters tss-collection toy"])
+        report["collection_id"] = "another_collection"
+        with self.assertRaises(acceptance.AcceptanceFailure):
+            runner.show_report(Path("/tmp/project.json"), verifier, "inspect")
+        runner.recorder.run_json.return_value.payload = {"result": {"tss_collection_list": {"collections": []}}}
+        with self.assertRaises(acceptance.AcceptanceFailure):
+            runner.show_report(Path("/tmp/project.json"), verifier, "inspect")
+
     def test_sequence_oracle_identity_checks_bases_topology_ends_and_features(self) -> None:
         import copy
         project = {"sequences": {"s": {"seq": {

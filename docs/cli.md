@@ -3039,6 +3039,7 @@ Shared shell command:
         Repeated open/focus reuses the inspection; close retains sequences and
         reports. CLI/MCP only records `applied=false`, not remote GUI success.
     - `ui focus sequence-window SEQ_ID`
+    - `promoters tss-list`: sorted registry metadata (`gentle.tss_collection_list.v1`), including legacy/invalid entries. Members are `not_checked`; use `promoters tss-collection ID` to validate explicitly.
     - `ui open|focus|close tss-view --collection COLLECTION_ID` (bounded, persisted TSS collection; headless reports `applied=false`)
     - `promoters tss-inventory REQUEST_JSON_OR_@FILE` (read-only exact-start preview)
     - `promoters tss-materialize REQUEST_JSON_OR_@FILE` (approval-bound selected windows)

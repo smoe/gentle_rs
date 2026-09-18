@@ -21,7 +21,14 @@ evidence of experimentally established transcription initiation.
    existing or still-loading windows are reused. Larger inventories can be
    materialized as smaller, explicitly selected collections.
 
-For an existing collection, enter its ID and choose **Inspect stored collection**.
+For an existing collection, choose **Refresh collections**, then select its row,
+or enter its ID directly. The registry browser shows the gene query, source
+locus and stored window count across the project. It does not scan or hash
+member sequences: **readable / not checked** is not a validation pass. Legacy
+and invalid entries stay visible; an unavailable count is not zero. The list is
+a snapshot: refresh it after another action changes the project.
+
+Choose **Inspect stored collection** to validate the selected ID.
 Validation runs in the background; a valid result lists member coordinates and
 transcripts and offers **Copy collection JSON**. A stale/legacy result shows the
 engine's diagnostic instead of claiming the members are valid. To remove that
@@ -142,6 +149,14 @@ GUI. It does **not** delete member sequences, close windows, or remove lineage.
 Retained sequence IDs still prevent overwriting; a fresh derivation therefore
 normally needs a new collection ID.
 
+`promoters tss-list` (`ListTssCollections` through `op`) returns
+`gentle.tss_collection_list.v1` under `result.tss_collection_list`. Its rows are
+sorted by registry ID, and `validation_status` is always `not_checked`.
+`record_status` is `readable`, `legacy`, or `invalid`; it describes stored
+metadata only. A corrupt registry is an error, not an empty list. A successfully
+listed collection can still fail `promoters tss-collection ID` after a member
+edit. Listing never rewrites, migrates or repairs stored evidence.
+
 The inner agent is explicitly guided to use this staged route for requests such
 as "alle TSS von TP73, jeweils einen in einem Fenster". When no appropriate
 locus is loaded, it must first compose existing local genome extraction/extension
@@ -199,6 +214,11 @@ genomic bounds nor truncation markers cannot be reconstructed reliably; reload
 them from authoritative annotation before making TSS claims.
 
 ## Acceptance
+
+See the [offline synthetic collection tutorial](tutorial/08-15_tss_collection_gui.md)
+for Glen's clean-profile walkthrough, machine-verifiable checkpoints and the
+separate manual save/reopen, stale-member, forget and undo checks. The runner's
+typed automated subset is not a claim that those manual checks have passed.
 
 Deterministic synthetic tests exercise shared/opposite-strand starts, overlapping
 genes, missing/partial annotation, flank refusal, all four local/genomic strand

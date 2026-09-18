@@ -1,12 +1,48 @@
 //! DNA-viewer preview/approval form for the engine-owned TSS collection workflow.
 
 use super::*;
+use crate::tutorial_gui_semantics::*;
 use gentle_protocol::tss_workspace::*;
+
+fn tss_control(
+    response: egui::Response,
+    id: &'static str,
+    seq_id: &str,
+    outcome: Option<&str>,
+) -> egui::Response {
+    #[cfg(feature = "gui-test-support")]
+    {
+        use crate::gui_test_support::{
+            GuiTestWidgetKind, pseudonymous_subject_scope, register_response_with_outcome,
+        };
+        let spec = tutorial_gui_control(id).expect("TSS control must be catalogued");
+        let kind = if spec.text_policy.is_some() {
+            GuiTestWidgetKind::TextInput
+        } else if spec.authority == TutorialGuiControlAuthority::Observe {
+            GuiTestWidgetKind::Status
+        } else {
+            GuiTestWidgetKind::Button
+        };
+        register_response_with_outcome(
+            &response,
+            id,
+            WINDOW_TSS_WORKSPACE,
+            Some(&pseudonymous_subject_scope(&[seq_id])),
+            kind,
+            false,
+            outcome,
+        );
+    }
+    #[cfg(not(feature = "gui-test-support"))]
+    let _ = (id, seq_id, outcome);
+    response
+}
 
 #[derive(Debug, Clone)]
 struct TssTask {
     receiver: Arc<Mutex<Receiver<Result<OpResult, EngineError>>>>,
     revision: u64,
+    owner: u64,
     mutating: bool,
     started: Instant,
     forgotten_collection: Option<String>,
@@ -24,6 +60,9 @@ pub(super) struct TssWorkspace {
     task: Option<TssTask>,
     materialized_collection: Option<String>,
     inspected_collection: Option<Arc<TssCollectionReport>>,
+    collection_list: Option<Arc<TssCollectionListReport>>,
+    inspected_at: Option<(u64, u64)>,
+    operation_failed: bool,
     forget_confirmation: Option<String>,
     status: String,
 }
@@ -41,6 +80,9 @@ impl Default for TssWorkspace {
             task: None,
             materialized_collection: None,
             inspected_collection: None,
+            collection_list: None,
+            inspected_at: None,
+            operation_failed: false,
             forget_confirmation: None,
             status: String::new(),
         }
@@ -66,8 +108,8 @@ impl MainAreaDna {
             self.tss_inventory_ui.status = "No project engine".into();
             return;
         };
-        let revision = match engine.try_read() {
-            Ok(e) => e.structural_revision(),
+        let (owner, revision) = match engine.try_read() {
+            Ok(e) => (e.instance_id(), e.structural_revision()),
             Err(_) => {
                 self.tss_inventory_ui.status = "Project busy; retry shortly".into();
                 return;
@@ -77,6 +119,7 @@ impl MainAreaDna {
         self.tss_inventory_ui.task = Some(TssTask {
             receiver: Arc::new(Mutex::new(rx)),
             revision,
+            owner,
             mutating,
             started: Instant::now(),
             forgotten_collection: match &operation {
@@ -85,6 +128,8 @@ impl MainAreaDna {
             },
         });
         self.tss_inventory_ui.inspected_collection = None;
+        self.tss_inventory_ui.inspected_at = None;
+        self.tss_inventory_ui.operation_failed = false;
         self.tss_inventory_ui.forget_confirmation = None;
         self.tss_inventory_ui.status = "TSS operation running in the background".into();
         std::thread::spawn(move || {
@@ -122,6 +167,7 @@ impl MainAreaDna {
         self.tss_inventory_ui.task = None;
         match outcome {
             Ok(result) if task.mutating => {
+                self.tss_inventory_ui.collection_list = None;
                 self.tss_inventory_ui.materialized_collection = result
                     .tss_collection
                     .as_ref()
@@ -136,17 +182,26 @@ impl MainAreaDna {
                 };
             }
             Ok(mut result) => {
-                let revision = self
-                    .engine
-                    .as_ref()
-                    .and_then(|e| e.try_read().ok().map(|g| g.structural_revision()));
-                if revision != Some(task.revision) {
+                let identity = self.engine.as_ref().and_then(|e| {
+                    e.try_read()
+                        .ok()
+                        .map(|g| (g.instance_id(), g.structural_revision()))
+                });
+                if identity != Some((task.owner, task.revision)) {
+                    self.tss_inventory_ui.operation_failed = true;
                     self.tss_inventory_ui.report = None;
                     self.tss_inventory_ui.status =
                         "Project changed during preview; inspect again".into();
                     return;
                 }
+                if let Some(list) = result.tss_collection_list.take() {
+                    self.tss_inventory_ui.collection_list = Some(Arc::new(*list));
+                    self.tss_inventory_ui.status = "Registry refreshed; member validation not checked. Select an entry, then inspect it explicitly.".into();
+                    ctx.request_repaint();
+                    return;
+                }
                 if let Some(collection) = result.tss_collection.take() {
+                    self.tss_inventory_ui.inspected_at = identity;
                     self.tss_inventory_ui.materialized_collection =
                         Some(collection.collection_id.clone());
                     self.tss_inventory_ui.inspected_collection = Some(Arc::new(*collection));
@@ -160,6 +215,7 @@ impl MainAreaDna {
                     "Preview ready. Select the starts to materialize and approve below.".into();
             }
             Err(error) => {
+                self.tss_inventory_ui.operation_failed = true;
                 self.tss_inventory_ui.materialized_collection = None;
                 self.tss_inventory_ui.status = error.to_string();
             }
@@ -171,6 +227,34 @@ impl MainAreaDna {
         let id = self.tss_inventory_ui.collection.trim();
         if self.tss_inventory_ui.task.is_none() && !id.is_empty() {
             self.tss_inventory_ui.forget_confirmation = Some(id.into());
+        }
+    }
+
+    fn select_tss_collection(&mut self, id: String) {
+        self.tss_inventory_ui.operation_failed = false;
+        self.tss_inventory_ui.collection = id;
+        self.tss_inventory_ui.inspected_collection = None;
+        self.tss_inventory_ui.inspected_at = None;
+        self.tss_inventory_ui.materialized_collection = None;
+        self.tss_inventory_ui.forget_confirmation = None;
+        self.tss_inventory_ui.status =
+            "Selected registry entry; member validation not checked".into();
+    }
+
+    fn invalidate_tss_inspection(&mut self) {
+        let identity = self.engine.as_ref().and_then(|e| {
+            e.try_read()
+                .ok()
+                .map(|g| (g.instance_id(), g.structural_revision()))
+        });
+        if self.tss_inventory_ui.inspected_at.is_some()
+            && self.tss_inventory_ui.inspected_at != identity
+        {
+            self.tss_inventory_ui.inspected_collection = None;
+            self.tss_inventory_ui.inspected_at = None;
+            self.tss_inventory_ui.materialized_collection = None;
+            self.tss_inventory_ui.status =
+                "Project changed since validation; inspect the collection again".into();
         }
     }
 
@@ -187,6 +271,8 @@ impl MainAreaDna {
         if !self.tss_inventory_ui.open {
             return;
         }
+        self.invalidate_tss_inspection();
+        let scope_seq = self.seq_id.clone().unwrap_or_default();
         let mut open = true;
         let spec = crate::egui_compat::HostedWindowSpec::new(
             format!(
@@ -198,34 +284,72 @@ impl MainAreaDna {
             Vec2::new(620.0, 360.0),
         );
         crate::egui_compat::show_hosted_window(ctx, &spec, &mut open, |ui| {
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_rect(
+                ui.ctx().clone(),
+                WINDOW_TSS_WORKSPACE,
+                crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                    &scope_seq,
+                ])),
+                crate::gui_test_support::GuiTestWidgetKind::Status,
+                ui.max_rect(),
+                true,
+                true,
+                true,
+                Some("ready"),
+            );
+            egui::ScrollArea::vertical().id_salt("tss_workspace_scroll").show(ui, |ui| {
             ui.label("Inspect exact annotated transcript starts on this loaded locus. Shared starts become one window; distinct starts and strands stay separate.");
             ui.small("Requires an anchored sequence with mRNA/transcript annotations. If flanks are missing, extend the locus first. These are annotation-derived candidates, not measured initiation sites.");
             let idle = self.tss_inventory_ui.task.is_none();
             ui.add_enabled_ui(idle, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label("Gene");
-                    ui.text_edit_singleline(&mut self.tss_inventory_ui.gene);
+                    tss_control(ui.text_edit_singleline(&mut self.tss_inventory_ui.gene), TSS_GENE, &scope_seq, None);
                     ui.label("Collection ID");
-                    if ui.text_edit_singleline(&mut self.tss_inventory_ui.collection).changed() {
-                        self.tss_inventory_ui.forget_confirmation = None;
-                        self.tss_inventory_ui.inspected_collection = None;
+                    if tss_control(ui.text_edit_singleline(&mut self.tss_inventory_ui.collection), TSS_COLLECTION, &scope_seq, None).changed() {
+                        self.select_tss_collection(self.tss_inventory_ui.collection.clone());
                     }
                 });
                 ui.horizontal_wrapped(|ui| {
+                    if tss_control(ui.button("Refresh collections"), TSS_REFRESH, &scope_seq, None).clicked() {
+                        self.start_tss_operation(Operation::ListTssCollections {}, false);
+                    }
                     let has_id = !self.tss_inventory_ui.collection.trim().is_empty();
-                    if ui.add_enabled(has_id, egui::Button::new("Inspect stored collection")).clicked() {
+                    if tss_control(ui.add_enabled(has_id, egui::Button::new("Inspect stored collection")), TSS_INSPECT, &scope_seq, None).clicked() {
                         self.start_tss_operation(Operation::GetTssCollection {
                             collection_id: self.tss_inventory_ui.collection.trim().into(),
                         }, false);
                     }
-                    if ui.add_enabled(has_id, egui::Button::new("Forget registry entry...")).clicked() {
+                    if tss_control(ui.add_enabled(has_id, egui::Button::new("Forget registry entry...")), TSS_FORGET, &scope_seq, None).clicked() {
                         self.request_tss_forget();
                     }
                 });
+                if let Some(list) = self.tss_inventory_ui.collection_list.clone() {
+                    if list.collections.is_empty() { ui.label("No stored TSS collections"); }
+                    egui::ScrollArea::vertical().id_salt("tss_collection_browser").max_height(110.0).show(ui, |ui| {
+                        for entry in &list.collections {
+                            let label = format!("{} | gene {} | locus {} | {} windows | {:?} / not checked",
+                                entry.collection_id,
+                                entry.gene_query.as_deref().unwrap_or("unavailable"),
+                                entry.source_seq_id.as_deref().unwrap_or("unavailable"),
+                                entry.window_count.map(|n| n.to_string()).unwrap_or_else(|| "unavailable".into()),
+                                entry.record_status);
+                            let selected = self.tss_inventory_ui.collection == entry.collection_id;
+                            let row = ui.selectable_label(selected, label);
+                            #[cfg(feature = "gui-test-support")]
+                            crate::gui_test_support::register_response(&row, TSS_COLLECTION_ROW, WINDOW_TSS_WORKSPACE,
+                                Some(&crate::gui_test_support::pseudonymous_subject_scope(&[&scope_seq, &entry.collection_id])), crate::gui_test_support::GuiTestWidgetKind::Row, selected);
+                            if row.clicked() { self.select_tss_collection(entry.collection_id.clone()); }
+                            if let Some(note) = &entry.diagnostic { row.on_hover_text(note); }
+                        }
+                    });
+                }
                 if let Some(id) = self.tss_inventory_ui.forget_confirmation.clone() {
                     ui.label(format!("Forget '{id}'? Only registry metadata is removed; sequences and lineage remain. Re-derivation normally needs a new collection ID."));
                     ui.horizontal(|ui| {
-                        if ui.button("Confirm forget registry entry").clicked() { self.confirm_tss_forget(); }
+                        if tss_control(ui.button("Confirm forget registry entry"), TSS_CONFIRM_FORGET, &scope_seq, None).clicked() { self.confirm_tss_forget(); }
                         if ui.button("Cancel").clicked() { self.tss_inventory_ui.forget_confirmation = None; }
                     });
                 }
@@ -240,7 +364,7 @@ impl MainAreaDna {
                         egui::DragValue::new(&mut self.tss_inventory_ui.downstream)
                             .range(0..=1_000_000),
                     );
-                    if ui.button("Inspect starts (no changes)").clicked() {
+                    if tss_control(ui.button("Inspect starts (no changes)"), TSS_PREVIEW, &scope_seq, None).clicked() {
                         self.start_tss_operation(
                             Operation::InspectTssInventory {
                                 request: self.tss_inventory_request(),
@@ -254,7 +378,12 @@ impl MainAreaDna {
                 ui.spinner();
                 ctx.request_repaint_after(Duration::from_millis(100));
             }
-            ui.label(&self.tss_inventory_ui.status);
+            let outcome = if !idle { "running" }
+                else if self.tss_inventory_ui.operation_failed { "failed" }
+                else if self.tss_inventory_ui.inspected_collection.is_some() { "validated" }
+                else if self.tss_inventory_ui.collection_list.is_some() { "not_checked" }
+                else { "idle" };
+            tss_control(ui.label(&self.tss_inventory_ui.status), TSS_STATUS, &scope_seq, Some(outcome));
             if let Some(collection) = self.tss_inventory_ui.inspected_collection.clone() {
                 ui.label(format!(
                     "{}: {} validated windows; gene {}",
@@ -285,11 +414,11 @@ impl MainAreaDna {
                     });
             }
             if let Some(id) = self.tss_inventory_ui.materialized_collection.clone() {
-                if ui
+                if tss_control(ui
                     .add_enabled(
                         idle,
                         egui::Button::new(format!("Open TSS collection '{id}' (up to 32 windows)")),
-                    )
+                    ), TSS_OPEN_WINDOWS, &scope_seq, None)
                     .clicked()
                 {
                     let queued = self
@@ -319,7 +448,7 @@ impl MainAreaDna {
             }
             ui.add_enabled_ui(idle && current, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("Select available").clicked() {
+                    if tss_control(ui.button("Select available"), TSS_SELECT_AVAILABLE, &scope_seq, None).clicked() {
                         self.tss_inventory_ui.selected = report
                             .rows
                             .iter()
@@ -330,11 +459,11 @@ impl MainAreaDna {
                     if ui.button("Clear selection").clicked() {
                         self.tss_inventory_ui.selected.clear();
                     }
-                    if ui
+                    if tss_control(ui
                         .add_enabled(
                             !self.tss_inventory_ui.selected.is_empty(),
                             egui::Button::new("Approve and create selected windows"),
-                        )
+                        ), TSS_MATERIALIZE, &scope_seq, None)
                         .clicked()
                     {
                         self.start_tss_operation(
@@ -398,6 +527,7 @@ impl MainAreaDna {
                         }
                     });
             });
+            });
         });
         self.tss_inventory_ui.open = open;
     }
@@ -423,6 +553,57 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert!(area.tss_inventory_ui.task.is_none());
+    }
+
+    #[test]
+    fn tss_browser_lists_without_validation_and_clears_old_inspection() {
+        let mut engine = crate::engine::synthetic_tss_engine(false);
+        let request = crate::engine::synthetic_tss_approval(&engine);
+        engine
+            .apply(Operation::MaterializeTssWindows { request })
+            .unwrap();
+        let dna = engine.state().sequences["locus"].clone();
+        let shared = Arc::new(RwLock::new(engine));
+        let mut area = MainAreaDna::new(dna, Some("locus".into()), Some(shared.clone()));
+        let ctx = egui::Context::default();
+        let before = serde_json::to_value(shared.read().unwrap().state()).unwrap();
+        area.start_tss_operation(Operation::ListTssCollections {}, false);
+        finish_task(&mut area, &ctx);
+        assert_eq!(
+            area.tss_inventory_ui
+                .collection_list
+                .as_ref()
+                .unwrap()
+                .collections
+                .len(),
+            1
+        );
+        assert!(area.tss_inventory_ui.inspected_collection.is_none());
+        area.select_tss_collection("toy_tss".into());
+        assert!(area.tss_inventory_ui.task.is_none());
+        assert!(area.tss_inventory_ui.materialized_collection.is_none());
+        area.start_tss_operation(
+            Operation::GetTssCollection {
+                collection_id: "toy_tss".into(),
+            },
+            false,
+        );
+        finish_task(&mut area, &ctx);
+        assert!(area.tss_inventory_ui.inspected_collection.is_some());
+        assert_eq!(
+            serde_json::to_value(shared.read().unwrap().state()).unwrap(),
+            before
+        );
+        // A replacement project can have the same revision: owner identity also matters.
+        let state = shared.read().unwrap().state().clone();
+        *shared.write().unwrap() = GentleEngine::from_state(state);
+        area.invalidate_tss_inspection();
+        assert!(area.tss_inventory_ui.inspected_collection.is_none());
+        assert!(
+            area.tss_inventory_ui
+                .status
+                .contains("inspect the collection again")
+        );
     }
 
     #[test]
