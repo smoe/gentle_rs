@@ -270,6 +270,15 @@ macOS auxiliary-window stability note:
 - Hosted sequence windows reserve explicit drag room inside the root workspace
   and reset stale over-wide shell state on redraw, so older or over-expanded
   DNA viewers should not become almost immovable after a title-bar drag.
+- Native sequence windows start at the same `1200 x 860` working size as hosted
+  sequence windows, with an `820 x 520` minimum. This keeps wrapped toolbar
+  rows, including `TFBS scan`, reachable on first open instead of clipping them
+  behind the sequence client area. Window managers may still clamp the initial
+  size to the available monitor.
+- The DNA toolbar panel opens at 30% of the available window height (bounded to
+  `180..420` px where space permits), may be resized down to 100 px, and keeps
+  its own vertical scroll. This gives ordinary first-open access to action rows
+  while preserving user control over map space.
 - The hosted Configuration window now uses the same safe-area clamping, and
   its Graphics-tab control rows wrap/bound their width instead of expanding
   horizontally without limit.
@@ -6782,6 +6791,11 @@ cache refresh does not mark an intact collection edited; changed bases,
 annotations or genomic anchors still prevent reuse. `ui open|focus|close tss-view --collection ID`
 targets that persisted collection independently of the active viewer. See the
 [TSS workspace walkthrough and limitations](tss_workspace.md).
+
+Collection-window requests originating in a child DNA viewer wake the root
+application poller before validation and window creation continue. This keeps
+the asynchronous request bounded while ensuring an otherwise idle root does
+not leave it queued indefinitely.
 
 **Refresh collections** lists stored collection IDs, gene queries, source loci
 and window counts. Select a row, then explicitly **Inspect stored collection**;

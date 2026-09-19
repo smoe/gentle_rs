@@ -85,6 +85,15 @@ LF policy for a hash-bound adapter input. The remaining failures were dependent
 mutex poisoning. Focused local tests pass; native Windows confirmation remains
 required and is not claimed here.
 
+Glen's `bot/gui-usability-20260919-885fac49` contribution restores the reviewed
+native DNA-window sizing, bounded/resizable toolbar, 16 MiB TSS worker and root
+poller wake-up. Its retained audit accepts the synthetic TSS lifecycle twice at
+18/18 steps on tested code `677c796a`, while explicitly withholding general GUI
+responsiveness acceptance. That evidence predates the combined Windows-fix and
+merge result and therefore cannot replace the final exact-SHA GUI gate. The
+package version also remains `0.1.0-internal.10`; a `.11` tag requires a
+separate, explicit version/release-metadata commit before candidate packaging.
+
 Before adding N1 or another scientific extension:
 
 1. Freeze one full SHA and run `ci.yml` explicitly for `macos`, `linux` and
