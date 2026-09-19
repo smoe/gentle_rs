@@ -120,6 +120,9 @@
   inherited Rust's 2 MiB thread default and could abort while cloning the
   project snapshot even though Cargo-driven tests inherited the repository's
   larger `RUST_MIN_STACK` setting.
+- Wake the root viewport when a collection-open request originates in a child
+  DNA viewer. Without that cross-viewport repaint, an idle root left the
+  validated request queued and no subject-bound member windows appeared.
 
 ## 2026-09-19 - Splicing Intent and Collection Smoke Regressions
 

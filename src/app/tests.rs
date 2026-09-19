@@ -18003,6 +18003,27 @@ fn tss_workspace_collection_open_is_deferred_and_reuses_pending_windows() {
 }
 
 #[test]
+fn tss_workspace_child_viewport_open_request_wakes_root_poller() {
+    let engine = Arc::new(RwLock::new(crate::engine::synthetic_tss_engine(false)));
+    let ctx = egui::Context::default();
+    let repaints = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = repaints.clone();
+    ctx.set_request_repaint_callback(move |info| {
+        observed.lock().unwrap().push(info.viewport_id);
+    });
+
+    assert!(super::tss_collection_ui::request_open_from_viewport(
+        &ctx, &engine, "toy_tss"
+    ));
+    assert!(repaints.lock().unwrap().contains(&egui::ViewportId::ROOT));
+
+    // Do not leak the process-global bridge request into another parallel test.
+    let mut app = GENtleApp::default();
+    app.engine = engine;
+    app.poll_tss_collection_intent(&ctx);
+}
+
+#[test]
 fn tss_workspace_preview_is_shared_only_by_explicit_draft_action() {
     let mut engine = crate::engine::synthetic_tss_engine(false);
     let request = crate::engine::synthetic_tss_approval(&engine).inventory;

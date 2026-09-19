@@ -434,7 +434,13 @@ impl MainAreaDna {
                     let queued = self
                         .engine
                         .as_ref()
-                        .is_some_and(|e| crate::app::tss_collection_ui::request_open(e, &id));
+                        .is_some_and(|e| {
+                            crate::app::tss_collection_ui::request_open_from_viewport(
+                                ui.ctx(),
+                                e,
+                                &id,
+                            )
+                        });
                     self.tss_inventory_ui.status = if queued {
                         "Window request queued; validation and loading continue in the background"
                     } else {

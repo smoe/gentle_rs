@@ -6792,6 +6792,11 @@ annotations or genomic anchors still prevent reuse. `ui open|focus|close tss-vie
 targets that persisted collection independently of the active viewer. See the
 [TSS workspace walkthrough and limitations](tss_workspace.md).
 
+Collection-window requests originating in a child DNA viewer wake the root
+application poller before validation and window creation continue. This keeps
+the asynchronous request bounded while ensuring an otherwise idle root does
+not leave it queued indefinitely.
+
 **Refresh collections** lists stored collection IDs, gene queries, source loci
 and window counts. Select a row, then explicitly **Inspect stored collection**;
 the browser's **not checked** label is never a validity claim. Invalid/legacy
