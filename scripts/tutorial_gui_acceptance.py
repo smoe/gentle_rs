@@ -57,6 +57,51 @@ SAFE_KEY_NAMES = {
     "right": "Right",
 }
 
+VISUAL_VERIFIERS = {"visible_claim", "dna_windows"}
+
+
+def needs_persisted_verification(step: dict[str, Any]) -> bool:
+    return any(v["kind"] not in VISUAL_VERIFIERS for v in step.get("verifiers", []))
+
+
+def should_save_after_step(pending: bool, step: dict[str, Any], last: bool) -> bool:
+    """Persist metadata too before a verifier reads the on-disk project."""
+    return pending and (
+        bool(step.get("scientific_effect")) or needs_persisted_verification(step) or last
+    )
+
+
+def sequence_subject_scope(seq_id: str) -> str:
+    """Mirror the versioned, length-delimited GUI subject identity, not a label."""
+    encoded = seq_id.encode("utf-8")
+    identity = b"gentle.gui.subject_scope.v1\0" + len(encoded).to_bytes(8, "big") + encoded
+    return "subject-" + hashlib.sha256(identity).hexdigest()[:32]
+
+
+def dna_windows_observation(snapshot: dict[str, Any], seq_ids: list[str]) -> dict[str, Any]:
+    """Count every visible subject, including duplicate or unexpected viewers."""
+    if not seq_ids or len(set(seq_ids)) != len(seq_ids) or any(not s.strip() for s in seq_ids):
+        raise AcceptanceFailure(
+            "tutorial_ambiguity", "DNA windows require non-empty, distinct seq_ids"
+        )
+    expected = sorted(sequence_subject_scope(s) for s in seq_ids)
+    observed = [
+        item for item in snapshot.get("items", [])
+        if item.get("semantic_id") == "window.dna_viewer"
+        and item.get("window_id") == "window.dna_viewer"
+        and item.get("state", {}).get("visible")
+    ]
+    scopes = [item.get("subject_scope") for item in observed]
+    passed = (
+        all(isinstance(scope, str) for scope in scopes)
+        and sorted(scopes) == expected
+        and all(item.get("state", {}).get("enabled") for item in observed)
+    )
+    return {
+        "kind": "dna_windows", "status": "pass" if passed else "fail",
+        "expected_subject_scopes": expected, "observed": observed,
+    }
+
 
 def should_flush_pending_save_before_step(
     pending_project_save: bool, step: dict[str, Any]
@@ -1150,6 +1195,12 @@ class TutorialAcceptanceRun:
                 f"Oracle completion fact is {oracle_completion.get('truth')!r}, expected 'satisfied'",
             )
         for step in self.acceptance["steps"]:
+            for index, verifier in enumerate(step.get("verifiers", []), start=1):
+                if verifier["kind"] == "dna_windows":
+                    self.state_verify(
+                        oracle_path, verifier, "oracle",
+                        f"oracle-check-{step['id']}-windows-{index}",
+                    )
             if not step.get("scientific_effect"):
                 continue
             before = self.fact_eval(
@@ -1405,7 +1456,9 @@ class TutorialAcceptanceRun:
             allow_unscoped_fallback=semantic_id.startswith("window."),
         )
         if item is None:
-            return False
+            return verifier == {
+                "kind": "visible_claim", "semantic_id": semantic_id, "visible": False
+            }
         state = item.get("state", {})
         for field in ("visible", "enabled", "selected"):
             if field in verifier and state.get(field) != verifier[field]:
@@ -1600,12 +1653,12 @@ class TutorialAcceptanceRun:
         visible_verifiers = [
             verifier
             for verifier in step.get("verifiers", [])
-            if verifier["kind"] == "visible_claim"
+            if verifier["kind"] in VISUAL_VERIFIERS
         ]
 
         def ready(snapshot: dict[str, Any]) -> bool:
             if not all(
-                self.visible_claim_holds(snapshot, verifier, scope)
+                self.visual_verifier_holds(snapshot, verifier, scope)
                 for verifier in visible_verifiers
             ):
                 return False
@@ -1621,6 +1674,20 @@ class TutorialAcceptanceRun:
             f"postconditions for step '{step['id']}'",
             after_generation=prior_generation,
         )
+
+    def dna_windows_verify(
+        self, snapshot: dict[str, Any], verifier: dict[str, Any]
+    ) -> dict[str, Any]:
+        mapping = self.acceptance["starter"].get("seq_id_map", {})
+        ids = [mapping.get(seq_id, seq_id) for seq_id in verifier["seq_ids"]]
+        return dna_windows_observation(snapshot, ids)
+
+    def visual_verifier_holds(
+        self, snapshot: dict[str, Any], verifier: dict[str, Any], scope: str | None
+    ) -> bool:
+        if verifier["kind"] == "dna_windows":
+            return self.dna_windows_verify(snapshot, verifier)["status"] == "pass"
+        return self.visible_claim_holds(snapshot, verifier, scope)
 
     def save_project(self, snapshot: dict[str, Any], timeout: float) -> dict[str, Any]:
         save_item = self.item_for(snapshot, "main.project.save_state")
@@ -1667,7 +1734,14 @@ class TutorialAcceptanceRun:
         for index, verifier in enumerate(step.get("verifiers", []), start=1):
             kind = verifier["kind"]
             label = f"runtime-{step['id']}-{kind}-{index}"
-            if kind == "visible_claim":
+            if kind == "dna_windows":
+                result = self.dna_windows_verify(snapshot, verifier)
+                if result["status"] != "pass":
+                    raise AcceptanceFailure(
+                        "product_failure", f"DNA window set failed in step '{step['id']}'"
+                    )
+                results.append(result)
+            elif kind == "visible_claim":
                 if not self.visible_claim_holds(snapshot, verifier, scope):
                     raise AcceptanceFailure(
                         "product_failure", f"Visible claim failed in step '{step['id']}'"
@@ -2008,8 +2082,8 @@ class TutorialAcceptanceRun:
             pending_project_save = pending_project_save or bool(
                 step.get("persists_project_state")
             )
-            should_save = pending_project_save and (
-                step.get("scientific_effect") or step_index == len(steps) - 1
+            should_save = should_save_after_step(
+                pending_project_save, step, step_index == len(steps) - 1
             )
             if should_save:
                 step_record["save"] = self.save_project(
@@ -2024,7 +2098,7 @@ class TutorialAcceptanceRun:
                 )
             elif pending_project_save:
                 step_record["save"] = {
-                    "event": "deferred_until_scientific_checkpoint",
+                    "event": "deferred_until_persisted_verification",
                     "generation": after_snapshot["generation"],
                 }
             if step.get("scientific_effect"):
@@ -2042,11 +2116,11 @@ class TutorialAcceptanceRun:
                 verifier["kind"] for verifier in step.get("verifiers", [])
             }
             step_record["visual_verdict"] = (
-                "pass" if "visible_claim" in verifier_kinds else "not_requested"
+                "pass" if verifier_kinds & VISUAL_VERIFIERS else "not_requested"
             )
             step_record["scientific_verdict"] = (
                 "pass"
-                if any(kind != "visible_claim" for kind in verifier_kinds)
+                if verifier_kinds - VISUAL_VERIFIERS
                 else "not_requested"
             )
             step_record["evidence"] = self.retain_step_evidence(step, after_snapshot)

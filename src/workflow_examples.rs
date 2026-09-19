@@ -363,6 +363,11 @@ pub enum TutorialGuiTimeoutClass {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TutorialGuiVerifier {
+    /// Exact visible DNA-window multiset, one subject-bound window per sequence.
+    /// This is visual evidence, not proof of sequence or collection contents.
+    DnaWindows {
+        seq_ids: Vec<String>,
+    },
     Facts {
         expression: FactExpression,
     },
@@ -2638,10 +2643,13 @@ fn validate_tutorial_gui_acceptance(
             _ => {}
         }
         if step.scientific_effect
-            && !step
-                .verifiers
-                .iter()
-                .any(|verifier| !matches!(verifier, TutorialGuiVerifier::VisibleClaim { .. }))
+            && !step.verifiers.iter().any(|verifier| {
+                !matches!(
+                    verifier,
+                    TutorialGuiVerifier::VisibleClaim { .. }
+                        | TutorialGuiVerifier::DnaWindows { .. }
+                )
+            })
         {
             return Err(format!(
                 "{context} scientific-effect step '{}' requires at least one engine/report/artifact/state verifier",
@@ -2879,6 +2887,16 @@ fn validate_tutorial_gui_verifier(
             if sha256.is_none() && !structured {
                 return Err(format!(
                     "{verifier_context} artifact requires sha256 or a schema with required_attributes"
+                ));
+            }
+        }
+        TutorialGuiVerifier::DnaWindows { seq_ids } => {
+            if seq_ids.is_empty()
+                || seq_ids.iter().any(|id| id.trim().is_empty())
+                || seq_ids.iter().collect::<HashSet<_>>().len() != seq_ids.len()
+            {
+                return Err(format!(
+                    "{verifier_context} DNA windows require non-empty, distinct seq_ids"
                 ));
             }
         }
@@ -7865,6 +7883,43 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_gui_acceptance_window_checks_are_visual_not_scientific() {
+        let mut manifest = load_tutorial_manifest(&tutorial_manifest_path()).unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let step = manifest
+            .chapters
+            .iter_mut()
+            .filter_map(|chapter| chapter.gui_acceptance.as_mut())
+            .flat_map(|acceptance| acceptance.steps.iter_mut())
+            .find(|step| step.scientific_effect)
+            .unwrap();
+        step.verifiers = vec![TutorialGuiVerifier::DnaWindows {
+            seq_ids: vec!["toy".into()],
+        }];
+        assert!(
+            validate_tutorial_manifest_against_examples(&manifest, &examples)
+                .unwrap_err()
+                .contains("requires at least one engine/report/artifact/state verifier")
+        );
+        let step = &manifest
+            .chapters
+            .iter()
+            .find_map(|chapter| chapter.gui_acceptance.as_ref())
+            .unwrap()
+            .steps[0];
+        for ids in [vec![], vec!["".into()], vec!["toy".into(), "toy".into()]] {
+            assert!(
+                validate_tutorial_gui_verifier(
+                    "test",
+                    step,
+                    &TutorialGuiVerifier::DnaWindows { seq_ids: ids }
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn tutorial_gui_acceptance_rejects_vacuous_report_verifiers() {
         let mut manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
@@ -8040,7 +8095,9 @@ mod tests {
                 {
                     assert_eq!(schema, "gentle.tss_collection.v1");
                     assert_tutorial_report_verifier(&json, required_fields, assertions);
-                } else if let TutorialGuiVerifier::State { seq_ids, .. } = verifier {
+                } else if let TutorialGuiVerifier::State { seq_ids, .. }
+                | TutorialGuiVerifier::DnaWindows { seq_ids } = verifier
+                {
                     for seq_id in seq_ids {
                         assert!(
                             oracle.state().sequences.contains_key(seq_id),
@@ -8057,6 +8114,48 @@ mod tests {
         assert_eq!(
             serde_json::to_value(reopened.get_tss_collection("tss_windows").unwrap()).unwrap(),
             json
+        );
+        let forget = contract
+            .steps
+            .iter()
+            .find(|step| step.id == "confirm_forget")
+            .unwrap();
+        let undo = contract
+            .steps
+            .iter()
+            .find(|step| step.id == "undo_forget")
+            .unwrap();
+        let intact = serde_json::to_value(oracle.state()).unwrap();
+        oracle
+            .apply(Operation::ForgetTssCollection {
+                collection_id: "tss_windows".into(),
+            })
+            .unwrap();
+        for verifier in &forget.verifiers {
+            if let TutorialGuiVerifier::Facts { expression } = verifier {
+                assert_eq!(
+                    oracle.evaluate_fact_expression(expression, &[]).truth,
+                    crate::engine::protocol::FactTruth::Satisfied
+                );
+            }
+        }
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(undo.before.as_ref().unwrap(), &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied
+        );
+        assert_eq!(
+            serde_json::to_value(&oracle.state().sequences).unwrap(),
+            intact["sequences"]
+        );
+        oracle.undo_last_operation().unwrap();
+        assert_eq!(serde_json::to_value(oracle.state()).unwrap(), intact);
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(undo.after.as_ref().unwrap(), &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied
         );
         let member = &report.members[0].tss.output_seq_id;
         oracle

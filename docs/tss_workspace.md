@@ -229,9 +229,10 @@ them from authoritative annotation before making TSS claims.
 ## Acceptance
 
 See the [offline synthetic collection tutorial](tutorial/08-15_tss_collection_gui.md)
-for Glen's clean-profile walkthrough, machine-verifiable checkpoints and the
-separate manual save/reopen, stale-member, forget and undo checks. The runner's
-typed automated subset is not a claim that those manual checks have passed.
+for Glen's clean-profile walkthrough and typed repeated-opening, cancellation,
+Forget/Undo checkpoints. Save/restart, visual orientation and deliberately
+stale-member GUI checks remain separate manual acceptance. Neither authoring
+the contract nor running its unit tests establishes a live GUI pass.
 
 Deterministic synthetic tests exercise shared/opposite-strand starts, overlapping
 genes, missing/partial annotation, flank refusal, all four local/genomic strand

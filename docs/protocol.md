@@ -438,6 +438,17 @@ Tutorial GUI acceptance contract:
   original ID-presence check
 - visual claims consume only `gentle.gui_semantic_snapshot.v2`; scientific
   facts/reports/state consume only the saved project or retained artifacts
+- additive `dna_windows` verifiers require non-empty, distinct `seq_ids` and
+  compare the exact visible, enabled DNA-window multiset by pseudonymous
+  sequence scope (including the source viewer when it should remain open).
+  They are visual only and cannot satisfy a scientific-effect proof requirement.
+  An absent control satisfies only a standalone `visible: false` claim, not an
+  enabled/selected/outcome claim. Checks wait for a settled, newer snapshot.
+- metadata edits are saved before typed on-disk verification, not only after
+  scientific operations. Deferred text-entry saves remain possible when the
+  step has only visual checks. Tutorial Undo is scientific-state authority
+  because history may contain biological changes, even when a particular
+  tutorial only undoes registry removal.
 - GENtle validates and answers typed questions, but the isolated external
   runner owns GUI input delivery, checkpoint evidence, and the final verdict
 

@@ -35,5 +35,7 @@ window lengths are unchanged. This is explicit reapproval of this public
 synthetic oracle only, not a migration of saved user collections.
 `tss_gui_acceptance_starter_and_oracle_are_independent_and_report_bound` checks
 the fixed approval, report assertions, persistence, stale rejection, forgetting
-and undo, including the sequence IDs named by the GUI state verifiers.
+and undo, including the sequence IDs named by the GUI state/window verifiers.
+The GUI contract also drives an intact Forget/Undo cycle and repeated opening;
+the fixture sequences and approval are unchanged by that acceptance extension.
 No screenshot or human sign-off is bundled.

@@ -21,6 +21,7 @@ pub const TSS_INSPECT: &str = "tss.inspect";
 pub const TSS_OPEN_WINDOWS: &str = "tss.open_windows";
 pub const TSS_FORGET: &str = "tss.forget";
 pub const TSS_CONFIRM_FORGET: &str = "tss.confirm_forget";
+pub const TSS_CANCEL_FORGET: &str = "tss.cancel_forget";
 pub const TSS_STATUS: &str = "tss.status";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
@@ -37,6 +38,8 @@ pub const WINDOW_REGION_CONSERVATION: &str = "window.region_conservation";
 pub const WINDOW_SPLICING_EXPERT: &str = "window.splicing_expert";
 pub const MAIN_PROJECT_SEQUENCE_OPEN: &str = "main.project.sequence.open";
 pub const MAIN_PROJECT_SAVE_STATE: &str = "main.project.save_state";
+pub const MAIN_EDIT_MENU: &str = "main.edit.menu";
+pub const MAIN_UNDO: &str = "main.edit.undo";
 pub const DNA_SELECTION_FORMULA_INPUT: &str = "dna.selection_formula.input";
 pub const DNA_SELECTION_FORMULA_APPLY: &str = "dna.selection_formula.apply";
 pub const DNA_SELECTION_STATUS: &str = "dna.selection.status";
@@ -231,6 +234,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         text_policy: None,
     },
     TutorialGuiControlSpec {
+        semantic_id: TSS_CANCEL_FORGET,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
         semantic_id: TSS_STATUS,
         window_id: WINDOW_TSS_WORKSPACE,
         authority: TutorialGuiControlAuthority::Observe,
@@ -312,6 +322,20 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         window_id: WINDOW_MAIN,
         authority: TutorialGuiControlAuthority::ViewState,
         allowed_interactions: DOUBLE_CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_EDIT_MENU,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: MAIN_UNDO,
+        window_id: WINDOW_MAIN,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
         text_policy: None,
     },
     TutorialGuiControlSpec {
@@ -708,6 +732,11 @@ mod tests {
 
     #[test]
     fn tutorial_subject_scope_is_length_framed_and_path_free() {
+        // Cross-language vector also pinned by the external acceptance runner.
+        assert_eq!(
+            pseudonymous_subject_scope(&["tss_locus"]),
+            "subject-d5d56e660296e866e6a0c16f7deed261"
+        );
         let scope = pseudonymous_subject_scope(&["tp73_locus"]);
         assert_eq!(scope.len(), 40);
         assert!(scope.starts_with("subject-"));
@@ -716,5 +745,22 @@ mod tests {
             pseudonymous_subject_scope(&["a", "bc"])
         );
         assert!(!scope.contains("tp73"));
+    }
+
+    #[test]
+    fn tutorial_tss_lifecycle_controls_preserve_authority() {
+        assert_eq!(
+            tutorial_gui_control(TSS_CANCEL_FORGET).unwrap().authority,
+            TutorialGuiControlAuthority::ViewState
+        );
+        assert_eq!(
+            tutorial_gui_control(TSS_CONFIRM_FORGET).unwrap().authority,
+            TutorialGuiControlAuthority::ProjectMetadata
+        );
+        // Undo can restore biological state, not just the registry in this tutorial.
+        assert_eq!(
+            tutorial_gui_control(MAIN_UNDO).unwrap().authority,
+            TutorialGuiControlAuthority::ScientificState
+        );
     }
 }

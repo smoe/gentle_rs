@@ -64,11 +64,18 @@ member bases/annotations with the GUI's saved project, not just a screenshot.
 
 ## Automated Linux Subset
 
-The `tss_collection_gui` contract has nine semantic steps: open the form, enter
-the gene, preview, select, approve, refresh and inspect. The external runner
+The `tss_collection_gui` contract has 18 semantic steps: open the form, enter
+the gene, preview, select, approve, refresh, inspect, open the members twice,
+cancel then confirm forgetting, undo and inspect again. The external runner
 uses ordinary X11 input to locate controls. It never executes prose or arbitrary
 shell verifiers. A fixed `GetTssCollection` verifier rejects stale members and
 checks starts, strands, shared membership and sequence content against the oracle.
+The window-set check expects exactly four subject-bound DNA viewers: the source
+locus and three members. It detects missing or duplicate viewers, but is not a
+substitute for the typed report and sequence checks. Metadata-only changes are
+saved before on-disk verifiers run. Forgetting is checked as absence of the
+registry entry together with retention of every sequence and viewer. Undo is
+followed by fresh collection validation, not merely a restored label.
 
 Inside a network-isolated Linux/Xvfb session with an EWMH window manager,
 `xdotool`, `xdpyinfo`, `xprop`, `xwininfo` and `scrot`:
@@ -85,12 +92,12 @@ Authoring and unit-testing the contract does not establish a Linux GUI pass.
 
 ## Manual Lifecycle Checks
 
-These are **not** part of the nine-step automated verdict. Use a copy of the
+These are **not** part of the 18-step automated verdict. Use a copy of the
 synthetic project and retain a checkpoint/result for each:
 
-1. **Open TSS collection**, twice. Confirm exactly three member viewers, no
-   duplicates, 701-bp sequences and the expected minus-strand orientation.
-   Queued is not yet opened. Retain screenshots and the collection JSON.
+1. Inspect the actual sequence display for 701-bp sequences and the expected
+   minus-strand orientation. The automated window count does not certify pixels
+   or every coordinate label. Retain screenshots and the collection JSON.
 2. Save, close and reopen. Refresh and inspect. Compare approval/membership
    fingerprints and member content with the saved receipt. Whole-file hashes
    may change with display state; record them without calling that a biological edit.
@@ -105,6 +112,11 @@ synthetic project and retain a checkpoint/result for each:
 5. **Undo** restores the registry entry. Validation must still reject the edited
    member: undoing forget is not undoing the earlier biological edit. Retain
    before/after state and validation receipts.
+
+The automated Forget/Undo cycle uses an intact collection. Steps 3-5 above test
+the separate stale-member case; restoring its registry must not repair or hide
+the deliberate edit. Engine regressions cover this distinction, but GUI editing
+and application restart still need their own retained live evidence.
 
 Changing collection ID cancels a pending forget confirmation. Forgetting does
 not authorize sequence overwrite; a new derivation normally needs a new name.

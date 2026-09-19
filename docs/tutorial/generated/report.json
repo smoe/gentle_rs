@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "46d201b0b31fdbef36748378d3309e170c5ccc11980e9fa506339561961439d6",
+    "README.md": "5b6a6eb63cec7084c3749023a640f34544a71b0f3be242672606a25abd05382f",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "04aff7ecdcebb8481c9e1766bc24651a5d0a909b5b6d3fc6acb2b8063dcbfa89",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -129,7 +129,7 @@
     "chapters/08-10_portable_genomic_regions_offline.md": "24d452418634e458f0e7cbc1ae7e72cd25a63a4a9b2bb1aab5b3d381af8c4edc",
     "chapters/08-11_regulatory_fragment_panel_planning_offline.md": "96abf79497c243a680e0207ba87bbf4c4d4f6bdfbfe071b8ff48969925e8623e",
     "chapters/08-12_region_homology_promoter_modules_offline.md": "45134d70d12d3205be05980e06beb1b54f0b48d53bbf2c243450f797c8162df7",
-    "chapters/08-15_tss_collection_gui.md": "4b75292974f89bd35f6ad42fec2cff6d599f8c4844c1ab464de8b234f3eeeab1"
+    "chapters/08-15_tss_collection_gui.md": "8df7d363108020e15bb7dfb54ac9bbfe31da9cb54904e8937a6da410f964b160"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
@@ -1038,7 +1038,7 @@
       ],
       "executed": true,
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-18",
+      "codex_reviewed_at": "2026-09-19",
       "retained_artifacts": []
     }
   ]

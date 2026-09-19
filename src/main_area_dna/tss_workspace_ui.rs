@@ -350,7 +350,7 @@ impl MainAreaDna {
                     ui.label(format!("Forget '{id}'? Only registry metadata is removed; sequences and lineage remain. Re-derivation normally needs a new collection ID."));
                     ui.horizontal(|ui| {
                         if tss_control(ui.button("Confirm forget registry entry"), TSS_CONFIRM_FORGET, &scope_seq, None).clicked() { self.confirm_tss_forget(); }
-                        if ui.button("Cancel").clicked() { self.tss_inventory_ui.forget_confirmation = None; }
+                        if tss_control(ui.button("Cancel"), TSS_CANCEL_FORGET, &scope_seq, None).clicked() { self.tss_inventory_ui.forget_confirmation = None; }
                     });
                 }
                 ui.horizontal_wrapped(|ui| {

@@ -3812,7 +3812,7 @@
       "example_id": "tss_collection_gui_oracle",
       "tier": "core",
       "guide_path": "docs/tutorial/08-15_tss_collection_gui.md",
-      "summary": "Preview and approve distinct annotated starts, then discover and explicitly validate the resulting collection.",
+      "summary": "Preview and approve annotated starts, validate and reopen their windows, then cancel or confirm metadata-only forgetting and undo it.",
       "narrative": "Two transcripts can share a first base without being the same transcript. In this artificial 2 kb locus, plus_a and plus_b share start 601; plus_c starts at 901; minus_a starts at 1500 on the opposite strand. Their common TOY label selects two separate gene IDs without merging them. Three 701 bp windows result, oriented in transcript direction with the annotated start at local base 501. These annotations are not experimental evidence for active promoters. The repetitive toy DNA is not suitable for primer or biological TFBS conclusions. The generated passing status refers to engine workflow replay only, not to a completed Linux/Xvfb acceptance run.",
       "use_cases": [
         "Learn why a transcript count differs from a distinct-start count.",
@@ -3825,7 +3825,10 @@
         "Set Gene to TOY; keep Collection ID tss_windows and upstream/downstream 500/200. Inspect starts without changing project state.",
         "Check starts 601 (+), 901 (+), 1500 (-), with plus_a/plus_b sharing the first row. Select available and explicitly approve creation of all three windows.",
         "Refresh collections: readable / not checked is expected, not pass. Inspect stored collection; compare the validated report with the independent oracle.",
-        "Continue the manual lifecycle checklist: open member windows, verify reverse orientation, save/reopen, edit a member and observe rejection, confirm metadata-only forgetting, then undo. These steps are not yet certified by the automated subset."
+        "Open TSS collection twice. Expect exactly three member viewers plus the original locus, with no duplicate windows. Compare persisted members with the independent oracle.",
+        "Request Forget registry entry, then Cancel. Verify the collection still validates. Request again and confirm the named entry: the registry disappears, but all sequences and open viewers remain.",
+        "Choose Edit > Undo in the main window. Inspect stored collection again: its report and member content must match the original oracle.",
+        "Continue the separate manual checklist for save/close/reopen and deliberately editing a member. Rejection of a stale member after undoing forget is not yet certified by the automated GUI subset."
       ],
       "step_expectations": [
         "The starter has one locus and no TSS collection.",
@@ -3833,7 +3836,10 @@
         "Preview exposes three exact starts and its approval digest.",
         "Only the reviewed preview and explicit selection authorize derivation.",
         "The validating engine report contains three 701 bp windows; not checked and validated are distinct.",
-        "Manual lifecycle acceptance remains separately recorded."
+        "Repeated opening reuses the same four subject-bound DNA viewers; queued is not yet opened.",
+        "Cancellation changes nothing; confirmed forgetting removes only collection registry metadata, not the member sequences.",
+        "Undo restores the collection; a fresh inspection validates the restored members.",
+        "Manual restart and stale-member GUI acceptance remain separately recorded."
       ],
       "learning_objectives": [
         "Interpret transcript-oriented starts without inferring a preferred biological TSS.",
@@ -4253,6 +4259,657 @@
                       "plus_b"
                     ]
                   }
+                ]
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "open_members",
+            "prose_step": 6,
+            "window": "window.tss_workspace",
+            "target": "tss.open_windows",
+            "subject": {
+              "sequence": "tss_locus"
+            },
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "dna_windows",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ]
+              },
+              {
+                "kind": "state",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ],
+                "compare_with_oracle": true
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "reopen_members",
+            "prose_step": 6,
+            "window": "window.tss_workspace",
+            "target": "tss.open_windows",
+            "subject": {
+              "sequence": "tss_locus"
+            },
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "dna_windows",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ]
+              },
+              {
+                "kind": "report",
+                "report_id": "tss_windows",
+                "schema": "gentle.tss_collection.v1",
+                "required_fields": [
+                  "inventory.approval_sha256",
+                  "collection_membership_fingerprint_sha256",
+                  "members.2.tss"
+                ],
+                "assertions": [
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.upstream_bp",
+                    "equals": 500
+                  },
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.downstream_bp",
+                    "equals": 200
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.genomic_tss.start_0based",
+                    "equals": 600
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.genomic_tss.start_0based",
+                    "equals": 900
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.genomic_tss.start_0based",
+                    "equals": 1499
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.local_strand",
+                    "equals": "-"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.transcript_ids",
+                    "equals": [
+                      "plus_a",
+                      "plus_b"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "request_forget",
+            "prose_step": 7,
+            "window": "window.tss_workspace",
+            "target": "tss.forget",
+            "subject": {
+              "sequence": "tss_locus"
+            },
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "tss.confirm_forget",
+                "visible": true,
+                "enabled": true
+              },
+              {
+                "kind": "report",
+                "report_id": "tss_windows",
+                "schema": "gentle.tss_collection.v1",
+                "required_fields": [
+                  "inventory.approval_sha256",
+                  "collection_membership_fingerprint_sha256",
+                  "members.2.tss"
+                ],
+                "assertions": [
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.upstream_bp",
+                    "equals": 500
+                  },
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.downstream_bp",
+                    "equals": 200
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.genomic_tss.start_0based",
+                    "equals": 600
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.genomic_tss.start_0based",
+                    "equals": 900
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.genomic_tss.start_0based",
+                    "equals": 1499
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.local_strand",
+                    "equals": "-"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.transcript_ids",
+                    "equals": [
+                      "plus_a",
+                      "plus_b"
+                    ]
+                  }
+                ]
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "cancel_forget",
+            "prose_step": 7,
+            "window": "window.tss_workspace",
+            "target": "tss.cancel_forget",
+            "subject": {
+              "sequence": "tss_locus"
+            },
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "tss.status",
+                "visible": true,
+                "outcome_role": "validated"
+              },
+              {
+                "kind": "visible_claim",
+                "semantic_id": "tss.confirm_forget",
+                "visible": false
+              },
+              {
+                "kind": "report",
+                "report_id": "tss_windows",
+                "schema": "gentle.tss_collection.v1",
+                "required_fields": [
+                  "inventory.approval_sha256",
+                  "collection_membership_fingerprint_sha256",
+                  "members.2.tss"
+                ],
+                "assertions": [
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.upstream_bp",
+                    "equals": 500
+                  },
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.downstream_bp",
+                    "equals": 200
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.genomic_tss.start_0based",
+                    "equals": 600
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.genomic_tss.start_0based",
+                    "equals": 900
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.genomic_tss.start_0based",
+                    "equals": 1499
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.local_strand",
+                    "equals": "-"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.transcript_ids",
+                    "equals": [
+                      "plus_a",
+                      "plus_b"
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "state",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ],
+                "compare_with_oracle": true
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "request_forget_again",
+            "prose_step": 7,
+            "window": "window.tss_workspace",
+            "target": "tss.forget",
+            "subject": {
+              "sequence": "tss_locus"
+            },
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "tss.confirm_forget",
+                "visible": true,
+                "enabled": true
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "confirm_forget",
+            "prose_step": 7,
+            "window": "window.tss_workspace",
+            "target": "tss.confirm_forget",
+            "subject": {
+              "sequence": "tss_locus"
+            },
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": true,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "tss.status",
+                "visible": true,
+                "outcome_role": "idle"
+              },
+              {
+                "kind": "facts",
+                "expression": {
+                  "not": {
+                    "fact": "tss_collection.exists",
+                    "subject": {
+                      "kind": "other",
+                      "id": "tss_windows"
+                    }
+                  }
+                }
+              },
+              {
+                "kind": "state",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ],
+                "compare_with_oracle": true
+              },
+              {
+                "kind": "dna_windows",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ]
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "open_edit_menu",
+            "prose_step": 8,
+            "window": "window.main",
+            "target": "main.edit.menu",
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "main.edit.undo",
+                "visible": true,
+                "enabled": true
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "undo_forget",
+            "prose_step": 8,
+            "window": "window.main",
+            "target": "main.edit.undo",
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": true,
+            "scientific_effect": true,
+            "before": {
+              "fact": "tss_collection.exists",
+              "subject": {
+                "kind": "other",
+                "id": "tss_windows"
+              }
+            },
+            "after": {
+              "fact": "tss_collection.exists",
+              "subject": {
+                "kind": "other",
+                "id": "tss_windows"
+              }
+            },
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "main.project.save_state",
+                "visible": true,
+                "enabled": true
+              },
+              {
+                "kind": "report",
+                "report_id": "tss_windows",
+                "schema": "gentle.tss_collection.v1",
+                "required_fields": [
+                  "inventory.approval_sha256",
+                  "collection_membership_fingerprint_sha256",
+                  "members.2.tss"
+                ],
+                "assertions": [
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.upstream_bp",
+                    "equals": 500
+                  },
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.downstream_bp",
+                    "equals": 200
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.genomic_tss.start_0based",
+                    "equals": 600
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.genomic_tss.start_0based",
+                    "equals": 900
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.genomic_tss.start_0based",
+                    "equals": 1499
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.local_strand",
+                    "equals": "-"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.transcript_ids",
+                    "equals": [
+                      "plus_a",
+                      "plus_b"
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "state",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ],
+                "compare_with_oracle": true
+              },
+              {
+                "kind": "dna_windows",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ]
+              }
+            ],
+            "evidence": {
+              "screenshot": "required",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "inspect_restored_collection",
+            "prose_step": 8,
+            "window": "window.tss_workspace",
+            "target": "tss.inspect",
+            "subject": {
+              "sequence": "tss_locus"
+            },
+            "interaction": {
+              "kind": "click"
+            },
+            "timeout_class": "io",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "tss.status",
+                "visible": true,
+                "outcome_role": "validated"
+              },
+              {
+                "kind": "report",
+                "report_id": "tss_windows",
+                "schema": "gentle.tss_collection.v1",
+                "required_fields": [
+                  "inventory.approval_sha256",
+                  "collection_membership_fingerprint_sha256",
+                  "members.2.tss"
+                ],
+                "assertions": [
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.upstream_bp",
+                    "equals": 500
+                  },
+                  {
+                    "kind": "value",
+                    "path": "inventory.request.downstream_bp",
+                    "equals": 200
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.genomic_tss.start_0based",
+                    "equals": 600
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.genomic_tss.start_0based",
+                    "equals": 900
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.1.tss.local_strand",
+                    "equals": "+"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.genomic_tss.start_0based",
+                    "equals": 1499
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.2.tss.local_strand",
+                    "equals": "-"
+                  },
+                  {
+                    "kind": "value",
+                    "path": "members.0.tss.transcript_ids",
+                    "equals": [
+                      "plus_a",
+                      "plus_b"
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "state",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
+                ],
+                "compare_with_oracle": true
+              },
+              {
+                "kind": "dna_windows",
+                "seq_ids": [
+                  "tss_locus",
+                  "tss_windows_tss_3802843ea468a70f5488b98934cb9d2a9c32748338caee845cb22a47ed0376de",
+                  "tss_windows_tss_4a7c324d45762e75bcb1a72513638c9c0a22676a1cf80008796ad3106cf7bfb6",
+                  "tss_windows_tss_9fec0328a5c218b980422400ce4203a7bb07e3537e5e4de3d67e98113addf134"
                 ]
               }
             ],

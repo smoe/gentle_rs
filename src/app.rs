@@ -16899,7 +16899,7 @@ Error: `{err}`"
                     ui.close();
                 }
             });
-            ui.menu_button(self.tr("menu.edit"), |ui| {
+            let _edit_menu = ui.menu_button(self.tr("menu.edit"), |ui| {
                 let undo_resp = self.track_hover_status(
                     ui.add_enabled(
                         history_ops_enabled && undo_count > 0,
@@ -16907,6 +16907,15 @@ Error: `{err}`"
                     )
                     .on_hover_text("Undo the most recent operation-level state change"),
                     "Edit > Undo",
+                );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &undo_resp,
+                    crate::tutorial_gui_semantics::MAIN_UNDO,
+                    crate::tutorial_gui_semantics::WINDOW_MAIN,
+                    None,
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
                 );
                 if undo_resp.clicked() {
                     self.undo_last_operation();
@@ -16952,6 +16961,15 @@ Error: `{err}`"
                     ui.close();
                 }
             });
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_edit_menu.response,
+                crate::tutorial_gui_semantics::MAIN_EDIT_MENU,
+                crate::tutorial_gui_semantics::WINDOW_MAIN,
+                None,
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
             ui.menu_button(self.tr("menu.settings"), |ui| {
                 if ui
                     .button(self.tr("menu.file.configuration"))

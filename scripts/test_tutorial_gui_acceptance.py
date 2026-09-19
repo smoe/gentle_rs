@@ -11,6 +11,103 @@ from scripts import tutorial_gui_acceptance as acceptance
 
 
 class TutorialGuiAcceptanceTests(unittest.TestCase):
+    def test_window_set_is_exact_subject_bound_and_detects_duplicates(self) -> None:
+        import copy
+        self.assertEqual(acceptance.sequence_subject_scope("tss_locus"),
+                         "subject-d5d56e660296e866e6a0c16f7deed261")
+        ids = ["tss_locus", "member_plus", "member_minus"]
+        items = [{"semantic_id": "window.dna_viewer", "window_id": "window.dna_viewer",
+                  "subject_scope": acceptance.sequence_subject_scope(seq_id),
+                  "state": {"visible": True, "enabled": True}} for seq_id in ids]
+        def verdict(rows):
+            return acceptance.dna_windows_observation({"items": rows}, ids)["status"]
+        self.assertEqual(verdict(list(reversed(items))), "pass")
+        self.assertEqual(verdict(items[:-1]), "fail")
+        self.assertEqual(verdict(items + [items[0]]), "fail")
+        for field, value in [("subject_scope", None), ("subject_scope", "subject-wrong"),
+                             ("state", {"visible": True, "enabled": False})]:
+            changed = copy.deepcopy(items)
+            changed[0][field] = value
+            self.assertEqual(verdict(changed), "fail")
+        for invalid in [[], ["a", "a"], [""]]:
+            with self.assertRaises(acceptance.AcceptanceFailure):
+                acceptance.dna_windows_observation({"items": items}, invalid)
+
+    def test_metadata_checkpoint_saves_before_on_disk_verification(self) -> None:
+        for kind in ["facts", "report", "state", "artifact", "expected_effects"]:
+            step = {"scientific_effect": False, "verifiers": [{"kind": kind}]}
+            self.assertTrue(acceptance.should_save_after_step(True, step, False))
+            self.assertFalse(acceptance.should_save_after_step(False, step, False))
+        for kind in acceptance.VISUAL_VERIFIERS:
+            step = {"scientific_effect": False, "verifiers": [{"kind": kind}]}
+            self.assertFalse(acceptance.should_save_after_step(True, step, False))
+            self.assertTrue(acceptance.should_save_after_step(True, step, True))
+
+    def test_runner_saves_forget_before_verifying_and_keeps_windows_visual(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        runner = object.__new__(acceptance.TutorialAcceptanceRun)
+        runner.starter_preparation = {"project_path": "/tmp/unused-project.json"}
+        runner.args = SimpleNamespace(timeouts={"io": 10, "instant": 5})
+        runner.sequence_scopes = {}
+        base = {"prose_step": 1, "window": "window.tss_workspace", "subject": {},
+                "interaction": {"kind": "click"}, "timeout_class": "io", "scientific_effect": False}
+        runner.acceptance = {"steps": [
+            {**base, "id": "forget", "target": "tss.confirm_forget", "persists_project_state": True,
+             "verifiers": [{"kind": "facts"}]},
+            {**base, "id": "windows", "target": "tss.inspect", "persists_project_state": False,
+             "verifiers": [{"kind": "dna_windows"}]},
+        ]}
+        runner.steps = []
+        runner.write_ledger = Mock()
+        runner.wait_snapshot = Mock(return_value={"generation": 3})
+        runner.item_for = Mock(return_value={"semantic_id": "target"})
+        runner.emit_x11 = Mock(return_value={})
+        runner.wait_after_interaction = Mock(return_value={"generation": 2})
+        runner.retain_step_evidence = Mock(return_value={})
+        events = []
+        def save(*args):
+            events.append("save")
+            return {"generation": 3}
+        def verify(step, *args):
+            events.append(step["id"])
+            return []
+        runner.save_project = Mock(side_effect=save)
+        runner.verify_step = Mock(side_effect=verify)
+        runner.execute_steps()
+        self.assertEqual(events, ["save", "forget", "windows"])
+        self.assertEqual(runner.steps[1]["visual_verdict"], "pass")
+        self.assertEqual(runner.steps[1]["scientific_verdict"], "not_requested")
+
+    def test_absent_confirmation_only_satisfies_explicit_absence(self) -> None:
+        runner = object.__new__(acceptance.TutorialAcceptanceRun)
+        verifier = {"kind": "visible_claim", "semantic_id": "tss.confirm_forget", "visible": False}
+        self.assertTrue(runner.visible_claim_holds({"items": []}, verifier, "subject-test"))
+        self.assertFalse(runner.visible_claim_holds({"items": []}, {**verifier, "visible": True}, "subject-test"))
+        self.assertFalse(runner.visible_claim_holds({"items": []}, {**verifier, "enabled": True}, "subject-test"))
+
+    def test_window_verifier_uses_declared_starter_mapping(self) -> None:
+        runner = object.__new__(acceptance.TutorialAcceptanceRun)
+        runner.acceptance = {"starter": {"seq_id_map": {"logical": "physical"}}}
+        snapshot = {"items": [{"semantic_id": "window.dna_viewer", "window_id": "window.dna_viewer",
+                               "subject_scope": acceptance.sequence_subject_scope("physical"),
+                               "state": {"visible": True, "enabled": True}}]}
+        self.assertEqual(runner.dna_windows_verify(snapshot, {"seq_ids": ["logical"]})["status"], "pass")
+
+    def test_window_set_is_waited_for_before_advancing(self) -> None:
+        from unittest.mock import Mock
+        runner = object.__new__(acceptance.TutorialAcceptanceRun)
+        runner.acceptance = {"starter": {}}
+        runner.wait_snapshot = Mock()
+        runner.wait_after_interaction({"id": "open", "verifiers": [
+            {"kind": "dna_windows", "seq_ids": ["member"]}]}, None, 3, 10)
+        predicate = runner.wait_snapshot.call_args.args[0]
+        self.assertFalse(predicate({"items": []}))
+        self.assertTrue(predicate({"items": [{"semantic_id": "window.dna_viewer", "window_id": "window.dna_viewer",
+                                             "subject_scope": acceptance.sequence_subject_scope("member"),
+                                             "state": {"visible": True, "enabled": True}}]}))
+        self.assertEqual(runner.wait_snapshot.call_args.kwargs["after_generation"], 3)
+
     def test_tss_report_uses_fixed_validating_route_not_registry_metadata(self) -> None:
         from types import SimpleNamespace
         from unittest.mock import Mock

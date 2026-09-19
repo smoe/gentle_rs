@@ -6779,8 +6779,10 @@ the browser's **not checked** label is never a validity claim. Invalid/legacy
 records remain visible. Selecting another ID clears old validation and pending
 forget confirmation; project edits invalidate the displayed validation. The
 workspace scrolls on smaller screens. The [synthetic TSS tutorial](tutorial/08-15_tss_collection_gui.md)
-describes semantic GUI controls and retained acceptance evidence without
-claiming a live TP73 run.
+includes typed checks for repeated opening, cancelling/confirming Forget and
+Undo with fresh inspection. It describes retained acceptance evidence without
+claiming a live GUI or TP73 run. Save/restart and stale-member GUI editing remain
+separate manual checks.
 Prepared GenBank/XML references do not supply a tabular transcript index:
 extraction reports unavailable transcript enrichment, not zero transcripts.
 The workspace can still use transcript features already imported into the

@@ -26,6 +26,29 @@
   formatting and whitespace checks passed. No full-workspace, native GUI,
   real-data or procurement acceptance is implied by these checks.
 
+## 2026-09-19 - TSS Tutorial Lifecycle Acceptance
+
+- Extend the synthetic TSS GUI contract from nine to 18 steps, including
+  repeated member opening, cancel/confirm Forget, Undo and fresh inspection.
+  An exact subject-bound DNA-window verifier detects missing or duplicate
+  viewers; independent report and sequence checks remain the scientific oracle.
+- Register Cancel, Edit and Undo semantic targets without adding an automation
+  command path. Undo retains scientific-state authority and before/after facts;
+  a visual window count cannot authorize or certify a scientific change.
+- Save pending metadata before typed on-disk verification so registry removal
+  is checked against current state, not the old project file. Explicit absent
+  confirmation controls satisfy only standalone negative visibility checks.
+- Add deterministic contract, identity, lifecycle and runner regressions.
+  No live Xvfb or TP73 acceptance is claimed; save/restart and deliberately
+  edited-member GUI checks remain on the manual checklist. No private data or
+  biological algorithms changed.
+- Verification: 15 focused Rust tests with `gui-test-support`, 31 Python
+  runner/provenance/checkout tests, helper/CLI build, offline locked Cargo
+  check, formatting and whitespace checks passed. Catalog/manifest regeneration
+  and 29-chapter tutorial generation/freshness passed with online execution
+  disabled. Two pre-existing human-review staleness warnings remain, as does
+  the non-fatal macOS large-unwind-table linker warning.
+
 ## 2026-09-18 - TSS Tutorial Rebase Integration
 
 - Retain main's saved-collection browser and offline GUI tutorial when rebasing
