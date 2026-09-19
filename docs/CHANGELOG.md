@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-09-19 - Published Release Version Guard
+
+- Accept the Cargo version as either the current candidate or published
+  baseline within the roadmap's Release Gate section, rather than falsely
+  requiring the published `.10` to remain a candidate. Keep exact-version
+  matching and all other metadata checks; synthetic LF/CRLF regressions reject
+  wrong versions and unrelated historical mentions. No version or tag changes.
+
 ## 2026-09-19 - Release Evidence and .11 Verification Handoff
 
 - Recheck the published `.10` outcome: Windows packaging succeeded, macOS was

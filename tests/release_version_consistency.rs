@@ -7,6 +7,58 @@ fn read(root: &Path, relative: &str) -> String {
     fs::read_to_string(&path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
 }
 
+fn release_gate_names_version(roadmap: &str, tag: &str) -> bool {
+    let mut lines = roadmap
+        .lines()
+        .skip_while(|line| line.trim() != "## Release Gate");
+    lines.next();
+    let candidate = format!("Current candidate: `{tag}`");
+    let published = format!("Published baseline: `{tag}`");
+    lines
+        .take_while(|line| !line.starts_with("## ") && !line.starts_with("# "))
+        .any(|line| line.starts_with(&candidate) || line.starts_with(&published))
+}
+
+// Synthetic Markdown fixtures recreated inline to exercise this metadata guard only.
+#[test]
+fn release_gate_accepts_candidate_and_published_status_with_lf_or_crlf() {
+    for status in ["Current candidate", "Published baseline"] {
+        for newline in ["\n", "\r\n"] {
+            let roadmap = format!(
+                "# Roadmap{newline}{newline}## Release Gate{newline}{newline}{status}: `v0.1.0-internal.10` at `example-sha`. Next `.11` candidate remains unselected.{newline}"
+            );
+            assert!(release_gate_names_version(&roadmap, "v0.1.0-internal.10"));
+        }
+    }
+}
+
+#[test]
+fn release_gate_accepts_next_candidate_alongside_a_published_baseline() {
+    let roadmap = "## Release Gate\nPublished baseline: `v0.1.0-internal.10`\nCurrent candidate: `v0.1.0-internal.11`\n";
+    assert!(release_gate_names_version(roadmap, "v0.1.0-internal.11"));
+    assert!(!release_gate_names_version(roadmap, "v0.1.0-internal.12"));
+}
+
+#[test]
+fn release_gate_rejects_wrong_versions_and_mentions_outside_the_gate() {
+    for roadmap in [
+        "## Release Gate\nCurrent candidate: `v0.1.0-internal.9`\n",
+        "## Release Gate\nPublished baseline: `v0.1.0-internal.9`\n",
+        "## Release Gate\nPublished baseline: `v0.1.0-internal.100`\n",
+        "## Release Gate\nCurrent candidate: `v0.1.0-internal.10.1`\n",
+        "Published baseline: `v0.1.0-internal.10`\n## Release Gate\n",
+        "## Release Gate\n## History\nPublished baseline: `v0.1.0-internal.10`\n",
+        "## Release Gate\n# History\nCurrent candidate: `v0.1.0-internal.10`\n",
+        "## Release Gate\nHistorical mention: `v0.1.0-internal.10`\n",
+        "Current candidate: `v0.1.0-internal.10`\n",
+    ] {
+        assert!(
+            !release_gate_names_version(roadmap, "v0.1.0-internal.10"),
+            "must reject {roadmap:?}"
+        );
+    }
+}
+
 #[test]
 fn release_metadata_matches_cargo_package_version() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -36,8 +88,8 @@ fn release_metadata_matches_cargo_package_version() {
     if version.contains("-internal.") {
         let roadmap = read(root, "docs/roadmap.md");
         assert!(
-            roadmap.contains(&format!("Current candidate: `{tag}`")),
-            "roadmap release gate must identify the current candidate {tag}"
+            release_gate_names_version(&roadmap, &tag),
+            "roadmap release gate must name {tag} as current candidate or published baseline"
         );
         let release_note_relative = format!("docs/release_notes/release_notes_v{version}.md");
         let release_note = read(root, &release_note_relative);
