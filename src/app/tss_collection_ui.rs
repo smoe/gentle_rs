@@ -17,6 +17,21 @@ pub(crate) fn request_open(engine: &Arc<RwLock<GentleEngine>>, collection_id: &s
     true
 }
 
+pub(crate) fn request_open_from_viewport(
+    ctx: &egui::Context,
+    engine: &Arc<RwLock<GentleEngine>>,
+    collection_id: &str,
+) -> bool {
+    let queued = request_open(engine, collection_id);
+    if queued {
+        // The request originates in a child DNA viewport, while the application-level
+        // poller that consumes it runs in the root viewport. Repainting only the child
+        // leaves an otherwise idle root asleep and the request queued indefinitely.
+        ctx.request_repaint_of(egui::ViewportId::ROOT);
+    }
+    queued
+}
+
 pub(super) struct TssWindowTask {
     engine: Weak<RwLock<GentleEngine>>,
     action: UiIntentAction,

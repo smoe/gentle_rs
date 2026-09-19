@@ -30,9 +30,11 @@ use super::{
     ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
     ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
     RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
-    SequenceIngressTask, SequenceIngressTaskKind, SequenceIngressTaskMessage,
-    TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
-    TutorialProjectTaskProgress, gui_prominent_glossary_entries, load_agent_token_file_credentials,
+    SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX, SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+    SEQUENCE_WINDOW_MIN_HEIGHT_PX, SEQUENCE_WINDOW_MIN_WIDTH_PX, SequenceIngressTask,
+    SequenceIngressTaskKind, SequenceIngressTaskMessage, TutorialProjectOpenOutcome,
+    TutorialProjectTask, TutorialProjectTaskMessage, TutorialProjectTaskProgress,
+    gui_prominent_glossary_entries, load_agent_token_file_credentials,
     preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
     preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
     request_open_about_from_native_menu,
@@ -18001,6 +18003,27 @@ fn tss_workspace_collection_open_is_deferred_and_reuses_pending_windows() {
 }
 
 #[test]
+fn tss_workspace_child_viewport_open_request_wakes_root_poller() {
+    let engine = Arc::new(RwLock::new(crate::engine::synthetic_tss_engine(false)));
+    let ctx = egui::Context::default();
+    let repaints = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = repaints.clone();
+    ctx.set_request_repaint_callback(move |info| {
+        observed.lock().unwrap().push(info.viewport_id);
+    });
+
+    assert!(super::tss_collection_ui::request_open_from_viewport(
+        &ctx, &engine, "toy_tss"
+    ));
+    assert!(repaints.lock().unwrap().contains(&egui::ViewportId::ROOT));
+
+    // Do not leak the process-global bridge request into another parallel test.
+    let mut app = GENtleApp::default();
+    app.engine = engine;
+    app.poll_tss_collection_intent(&ctx);
+}
+
+#[test]
 fn tss_workspace_preview_is_shared_only_by_explicit_draft_action() {
     let mut engine = crate::engine::synthetic_tss_engine(false);
     let request = crate::engine::synthetic_tss_approval(&engine).inventory;
@@ -18042,4 +18065,24 @@ fn tss_workspace_preview_is_shared_only_by_explicit_draft_action() {
     assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_some());
     app.stage_tss_preview_followup(&result.output).unwrap();
     assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_none());
+}
+
+#[test]
+fn native_sequence_viewport_starts_large_enough_for_wrapped_toolbar_controls() {
+    let builder = GENtleApp::sequence_viewport_builder("sequence");
+    assert_eq!(builder.title.as_deref(), Some("sequence"));
+    assert_eq!(
+        builder.inner_size,
+        Some(egui::vec2(
+            SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+            SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX
+        ))
+    );
+    assert_eq!(
+        builder.min_inner_size,
+        Some(egui::vec2(
+            SEQUENCE_WINDOW_MIN_WIDTH_PX,
+            SEQUENCE_WINDOW_MIN_HEIGHT_PX
+        ))
+    );
 }

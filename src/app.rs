@@ -335,6 +335,10 @@ const WINDOW_OPEN_SLOW_THRESHOLD_MS: u128 = 400;
 // root window, while zero lets inner content fight the outer chrome.
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_X_PX: f32 = 32.0;
 const EMBEDDED_SEQUENCE_WINDOW_DRAG_MARGIN_Y_PX: f32 = 32.0;
+const SEQUENCE_WINDOW_DEFAULT_WIDTH_PX: f32 = 1200.0;
+const SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX: f32 = 860.0;
+const SEQUENCE_WINDOW_MIN_WIDTH_PX: f32 = 820.0;
+const SEQUENCE_WINDOW_MIN_HEIGHT_PX: f32 = 520.0;
 const HELP_MARKDOWN_REFLOW_DELTA_PX: f32 = 8.0;
 const HELP_BODY_MIN_WIDTH_PX: f32 = 120.0;
 const HELP_BODY_MIN_HEIGHT_PX: f32 = 180.0;
@@ -17430,6 +17434,16 @@ Error: `{err}`"
             .unwrap_or(false)
     }
 
+    fn sequence_viewport_builder(window_title: &str) -> egui::ViewportBuilder {
+        egui::ViewportBuilder::default()
+            .with_title(window_title)
+            .with_inner_size([
+                SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+                SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX,
+            ])
+            .with_min_inner_size([SEQUENCE_WINDOW_MIN_WIDTH_PX, SEQUENCE_WINDOW_MIN_HEIGHT_PX])
+    }
+
     fn show_window(
         &mut self,
         ctx: &egui::Context,
@@ -17443,7 +17457,7 @@ Error: `{err}`"
             .map(|w| w.name())
             .unwrap_or_else(|_| "GENtle".to_string());
         let render_hosted_sequence_in_foreground = self.viewport_foreground_requested(id);
-        let builder = egui::ViewportBuilder::default().with_title(window_title.clone());
+        let builder = Self::sequence_viewport_builder(&window_title);
         let initial_commands = Self::deferred_window_initial_commands(initial_position);
         if ctx.embed_viewports() {
             let update_result = catch_unwind(AssertUnwindSafe(|| {
@@ -17455,7 +17469,10 @@ Error: `{err}`"
                         // Versioned to drop stale persisted egui Resize state
                         // from pre-fix embedded sequence shells.
                         egui::Id::new(("hosted_sequence_window_v2", id)),
-                        Vec2::new(1200.0, 860.0),
+                        Vec2::new(
+                            SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+                            SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX,
+                        ),
                         min_size,
                     )
                     .initial_pos(initial_position)

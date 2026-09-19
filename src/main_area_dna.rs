@@ -4451,7 +4451,14 @@ impl MainAreaDna {
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ctx.content_rect().height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
-        let top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
+        let (top_panel_default, top_panel_min, top_panel_max) =
+            Self::top_panel_height_range(full_height);
+        let top_panel = egui::Panel::top(top_panel_id)
+            .frame(Frame::NONE)
+            .resizable(true)
+            .default_size(top_panel_default)
+            .min_size(top_panel_min)
+            .max_size(top_panel_max);
         crate::egui_compat::show_top_panel(ctx, top_panel_id, top_panel, |ui| {
             crate::gentle_gui_profile_scope!("MainAreaDna::render.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
@@ -4541,7 +4548,14 @@ impl MainAreaDna {
         let auto_hidden_sequence_panel = self.should_auto_hide_sequence_panel();
         let full_height = ui.available_height().max(240.0);
         let sequence_panel_visible = self.show_sequence && !auto_hidden_sequence_panel;
-        let top_panel = egui::Panel::top(top_panel_id).frame(Frame::NONE);
+        let (top_panel_default, top_panel_min, top_panel_max) =
+            Self::top_panel_height_range(full_height);
+        let top_panel = egui::Panel::top(top_panel_id)
+            .frame(Frame::NONE)
+            .resizable(true)
+            .default_size(top_panel_default)
+            .min_size(top_panel_min)
+            .max_size(top_panel_max);
         crate::egui_compat::show_top_panel_inside(ui, top_panel, |ui| {
             crate::gentle_gui_profile_scope!("MainAreaDna::render_inside.top_panel");
             paint_window_backdrop(ui, backdrop_kind, &backdrop_settings);
@@ -4768,6 +4782,13 @@ impl MainAreaDna {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 self.render_top_panel_contents(ui);
             });
+    }
+
+    fn top_panel_height_range(full_height: f32) -> (f32, f32, f32) {
+        let max_height = (full_height * 0.45).clamp(100.0, 420.0);
+        let min_height = 100.0_f32.min(max_height);
+        let default_height = (full_height * 0.30).max(180.0).min(max_height);
+        (default_height, min_height, max_height)
     }
 
     fn render_top_panel_contents(&mut self, ui: &mut egui::Ui) {

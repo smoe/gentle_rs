@@ -15,6 +15,16 @@
   pass locally. Removing only the input LF rule in a disposable negative control
   reproduces the exact Windows digest. Native Windows execution remains pending.
 
+## 2026-09-20 - GUI Usability Acceptance Follow-up
+
+- Reproduce the current upstream TSS tutorial failure at the unreachable TFBS
+  control, then re-verify the restored native-window, worker-stack and root
+  repaint fixes in two independent network-isolated 18-step GUI runs.
+- Record exact binaries, focused deterministic gates, the unresolved `.11`
+  package-version/tag mismatch and a bounded `.12` usability backlog in
+  `gui_usability_acceptance_20260920.md`. Passing the synthetic lifecycle is
+  explicitly not a general GUI responsiveness verdict.
+
 ## 2026-09-19 - Final Windows TSS And Path Portability Follow-up
 
 - Reject parent traversal even when Rust exposes `..` as a normal component in
@@ -131,6 +141,28 @@
   `cargo check`, format/whitespace and 29-chapter tutorial-check pass. The two
   existing stale human-review warnings remain; no renewed human sign-off is
   inferred. Public fixture provenance and live screenshot request are retained.
+
+## 2026-09-19 - TSS Tutorial Native-Window Acceptance Fix
+
+- Give native DNA sequence viewports the same `1200 x 860` initial working
+  size and `820 x 520` minimum used by hosted viewers. The 18-step synthetic
+  TSS tutorial otherwise opened its locus in an inherited `800 x 600` child
+  viewport. Also give the resizable toolbar panel a bounded 30%-height initial
+  allocation; its old content-sized first pass left later action rows outside
+  the visible scroll viewport. Together these changes keep the registered
+  `TFBS scan` target reachable by ordinary X11 input.
+- Add regressions for the native viewport builder and toolbar-panel height
+  bounds. These changes affect initial window presentation only; sequence
+  state, toolbar operations and scientific verification contracts are
+  unchanged.
+- Run TSS preview/materialization work on a named 16 MiB worker stack and show
+  a bounded GUI error if worker creation fails. The live binary previously
+  inherited Rust's 2 MiB thread default and could abort while cloning the
+  project snapshot even though Cargo-driven tests inherited the repository's
+  larger `RUST_MIN_STACK` setting.
+- Wake the root viewport when a collection-open request originates in a child
+  DNA viewer. Without that cross-viewport repaint, an idle root left the
+  validated request queued and no subject-bound member windows appeared.
 
 ## 2026-09-19 - Splicing Intent and Collection Smoke Regressions
 
