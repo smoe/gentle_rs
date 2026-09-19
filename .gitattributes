@@ -35,3 +35,6 @@ test_files/fixtures/tss_profiles/** text eol=lf
 
 # This retained adapter output is compared byte-for-byte with LF serialization.
 test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation/* text eol=lf
+
+# Its provenance binds the adapter input's exact bytes on every platform.
+test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv text eol=lf

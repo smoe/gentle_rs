@@ -73,7 +73,7 @@ fn fixture(
         "schema": gentle_protocol::GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA, "seq_id":"synthetic-locus", "gene_symbol":"SYNTH", "gene_strand":strand.as_str(),
         "locus_local_start_1based":1,"locus_local_end_1based":120,
         "sequence_binding":{"sequence_sha256":format!("sha256:{seq_hash}"), "sequence_length_bp":120,
-            "genome_anchor":{"genome_id":reference.genome_id,"chromosome":"Synthetic","start_1based":100,"end_1based":219,"strand":if loaded_reverse {"-"} else {"+"}}},
+            "genome_anchor":{"genome_id":reference.assembly,"chromosome":"Synthetic","start_1based":100,"end_1based":219,"strand":if loaded_reverse {"-"} else {"+"}}},
         "isoform_evidence":{"assembly":reference.assembly,"chromosome":"Synthetic","gene_symbol":"SYNTH","annotation_release":reference.annotation_release,
             "splicing":{"seq_id":"synthetic-locus","target_feature_id":0,"group_label":"SYNTH","strand":if local_reverse {"-"} else {"+"},
                 "region_start_1based":1,"region_end_1based":120,"transcript_count":1,"unique_exon_count":2,"instruction":"synthetic",

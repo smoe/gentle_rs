@@ -7,6 +7,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
     fs::{self, File, OpenOptions},
     io::{self, BufReader, BufWriter, Write},
     path::{Component, Path, PathBuf},
@@ -1123,6 +1124,11 @@ fn write_comparisons<'a>(
 
 /// Resolve only existing, ordinary directory components. In particular, do not
 /// canonicalize away a caller's symlink and then mistakenly call it safe.
+fn is_parent_component(component: &Component<'_>) -> bool {
+    matches!(component, Component::ParentDir)
+        || matches!(component, Component::Normal(value) if *value == OsStr::new(".."))
+}
+
 fn checked_directory(path: &Path) -> Result<PathBuf, EngineError> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
@@ -1134,7 +1140,7 @@ fn checked_directory(path: &Path) -> Result<PathBuf, EngineError> {
     let mut resolved = PathBuf::new();
     for component in absolute.components() {
         match component {
-            Component::ParentDir => {
+            component if is_parent_component(&component) => {
                 return Err(invalid("parent traversal is not allowed in output paths"));
             }
             Component::CurDir => continue,
@@ -1164,7 +1170,7 @@ fn destination(path: &str) -> Result<PathBuf, EngineError> {
         ));
     }
     let path = Path::new(path);
-    if path.components().any(|c| matches!(c, Component::ParentDir)) {
+    if path.components().any(|c| is_parent_component(&c)) {
         return Err(invalid("output_dir cannot contain parent traversal"));
     }
     let name = path
@@ -1735,7 +1741,10 @@ fn write_page(
         let (summary, used_fonts) =
             crate::svg_pdf::render_svg_file_to_pdf_audited(source.path(), &path, options)
                 .map_err(|e| invalid(format!("raster-backed PDF rendering failed: {e}")))?;
-        File::open(&path)
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
             .and_then(|file| file.sync_all())
             .map_err(|e| io_error("sync PDF", e))?;
         inventory.record(&name, &path)?;
@@ -3454,6 +3463,13 @@ pub(crate) mod tests {
         assert!(checked_directory(&child.join("..")).is_err());
         fs::write(root.join("file"), b"not a directory").unwrap();
         assert!(checked_directory(&root.join("file/child")).is_err());
+    }
+
+    #[test]
+    fn parent_guard_rejects_verbatim_windows_normal_parent_components() {
+        // Rust exposes `..` as `Normal` inside some Windows verbatim paths.
+        assert!(is_parent_component(&Component::Normal(OsStr::new(".."))));
+        assert!(!is_parent_component(&Component::Normal(OsStr::new("safe"))));
     }
 
     #[test]

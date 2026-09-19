@@ -25,7 +25,12 @@ pub fn split_shell_words(line: &str) -> Result<Vec<String>, String> {
                 '"' => mode = Mode::DoubleQuoted,
                 '\\' => {
                     if let Some(next) = chars.next() {
-                        current.push(next);
+                        if next.is_whitespace() || matches!(next, '\\' | '\'' | '"') {
+                            current.push(next);
+                        } else {
+                            current.push('\\');
+                            current.push(next);
+                        }
                     }
                 }
                 c if c.is_whitespace() => {
@@ -48,7 +53,12 @@ pub fn split_shell_words(line: &str) -> Result<Vec<String>, String> {
                     mode = Mode::Normal;
                 } else if ch == '\\' {
                     if let Some(next) = chars.next() {
-                        current.push(next);
+                        if matches!(next, '\\' | '"') {
+                            current.push(next);
+                        } else {
+                            current.push('\\');
+                            current.push(next);
+                        }
                     }
                 } else {
                     current.push(ch);
@@ -97,6 +107,16 @@ mod tests {
             words,
             vec!["ui", "focus", "pcr-design", "--filter", "TP73 \"alpha\""]
         );
+    }
+
+    #[test]
+    fn split_shell_words_preserves_windows_paths() {
+        let words = split_shell_words(
+            r#"gene-sets regulatory-partner-screen Toy --resolution C:\Users\runner\resolution.json --output "C:\Program Files\GENtle\screen.json""#,
+        )
+        .expect("split Windows paths");
+        assert_eq!(words[4], r"C:\Users\runner\resolution.json");
+        assert_eq!(words[6], r"C:\Program Files\GENtle\screen.json");
     }
 
     #[test]

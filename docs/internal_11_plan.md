@@ -73,6 +73,18 @@ to its root before filesystem inspection. Check exports to fresh native Windows
 destinations, including GenBank/EMBL/FASTA companions and receipts; local macOS
 tests do not certify native Windows behavior.
 
+The source-comparison work in `f7afe95d` was an explicit user-requested
+exception to this verification freeze. It does not authorize further feature
+scope before the exact-SHA gates. Windows run
+[35461010366](https://github.com/smoe/gentle_rs/actions/runs/35461010366) at
+`885fac49` reduced the native library result to ten failures. The bounded
+follow-up preserves hash and traversal checks while fixing the five primary
+platform causes: verbatim-path parent segments, PDF sync permissions, internal
+shell handling of Windows paths, a stale synthetic assembly binding and the
+LF policy for a hash-bound adapter input. The remaining failures were dependent
+mutex poisoning. Focused local tests pass; native Windows confirmation remains
+required and is not claimed here.
+
 Before adding N1 or another scientific extension:
 
 1. Freeze one full SHA and run `ci.yml` explicitly for `macos`, `linux` and

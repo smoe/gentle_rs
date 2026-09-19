@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-19 - Final Windows TSS And Path Portability Follow-up
+
+- Reject parent traversal even when Rust exposes `..` as a normal component in
+  a Windows verbatim path, without weakening the existing symlink and fresh
+  destination checks.
+- Open rendered PDFs with write permission before durable synchronization on
+  Windows, and preserve Windows drive/UNC separators in the shared internal
+  shell tokenizer. Keep quoted whitespace and escape behavior covered.
+- Bind the synthetic TSS context fixture to its declared assembly, compare
+  unsupported annotation errors with the canonical manifest path and force LF
+  checkout for the checksum-bound Glen adapter input. No biological outputs or
+  scores change.
+- Focused local checks cover all ten failures observed in Windows run
+  `35461010366`; native Windows confirmation remains pending.
+
 ## 2026-09-19 - Published Release Version Guard
 
 - Accept the Cargo version as either the current candidate or published

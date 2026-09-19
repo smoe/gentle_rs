@@ -15627,7 +15627,7 @@ mod tests {
             assert_eq!(serde_json::to_value(&error).unwrap()["code"], "Unsupported");
             assert!(error.message.contains(format));
             assert!(error.message.contains("ToyGenome"));
-            assert!(error.message.contains(&annotation.display().to_string()));
+            assert!(error.message.contains(&manifest.annotation_path));
             assert!(error.message.contains("not evidence of zero transcripts"));
             let interval_error = catalog
                 .list_gene_transcript_records("ToyGenome", "chr1", 1, 8, None, None, None)
