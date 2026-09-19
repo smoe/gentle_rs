@@ -1,6 +1,6 @@
 # Internal .11 Workflow Completion And Acceptance
 
-Reconciled: 2026-09-18. The published `.10`
+Reconciled: 2026-09-19. The published `.10`
 tag is `84f34a9e`; its [acceptance ledger](release_notes/release_notes_v0.1.0-internal.10.md#exact-candidate-gate-ledger)
 remains pending. `codex/internal.11` was merged at `8597a6ee`; it no longer
 needs a separate integration decision. The
@@ -8,8 +8,9 @@ needs a separate integration decision. The
 `gentle_rs_2_main` at `a1f5e61e`, remains the primary `.11` scientific workflow;
 package parity and exact-revision acceptance support that aim. The capture
 programme below remains separate and deferred. No version bump, tag change,
-upstream push or publication is part of this follow-up; use only the approved
-fork for verification branches and build-only runs.
+upstream push, workflow dispatch or publication is part of this follow-up without
+explicit approval. The starting `main` and `origin/main` are `36ba15a0` on
+`smoe/gentle_rs`; the fork's stale `main` is not the verification target.
 
 ## Review Reconciliation
 
@@ -29,7 +30,7 @@ those omissions; the earlier reconciliation did not establish their completion.
 | T1/T2: endpoints and exclusions | `085b98ec` shares `transcript_five_prime_endpoint` between extraction and inventory and adds locus-level `unassigned_transcripts`. Existing tests cover both reverse-join forms, 5'/3' clipping, fuzzy/mixed strands and legacy JSON. Do not reimplement. |
 | T3: canonical gene links | `085b98ec` covered label-to-ID only. The follow-up adds unambiguous ID-to-label lookup before symbol filtering and groups by resolved ID (case-insensitive label fallback), retaining source/strand separation, original annotations and ambiguity warnings. Regressions cover mixed/case-only labels, ID-only distinct starts on both strands, ambiguous links and historical collection/approval safety. Glen must still check real TP73/DeltaNp73 symbol-versus-ID memberships and saved collections at the final SHA. |
 | P1: desktop packages | Shared staging and extracted-package checks now cover all seven entrypoints and tracked resources on Windows/macOS/Linux. Offline tests cover layouts, archive round-trips, relocation and failures. Native CI must still run `gentle_cli capabilities`, MCP and tutorial-manifest validation from the actual packages; receipts and live GUI acceptance remain required. |
-| A1: exact-SHA acceptance | Glen: TP73/DeltaNp73 inventory, materialization, reload, validated scans and native inspection, plus branch/reverse-complement, digest and bounded Simple-PCR tutorial chapters. Bind binary, project, input and receipt hashes to one new candidate; retain the old `.10` ledger separately. |
+| A1: exact-SHA acceptance | Glen: TP73/DeltaNp73 inventory, materialization, reload, validated scans and native inspection, plus branch/reverse-complement, digest and bounded Simple-PCR tutorial chapters. Gene-identity grouping in `a3d74ca9` changed `tss_id`/`output_seq_id` for ID-bearing rows: preview afresh under a **new collection ID**; older previews, approvals and receipts are not comparable to the new grouping and cannot authorize it. Bind binary, project, input and receipt hashes to one new candidate; retain the old `.10` ledger separately. |
 
 T3 focused verification after rebase on `main` at `d9f75837`:
 `cargo test --lib --locked --offline -j 1` passed with
@@ -48,9 +49,29 @@ The second Claude review distinguishes implemented fixes from unverified builds.
 The semantic-ID lifetime fix is committed as `d9f75837`; earlier pre-rebase
 checks do not establish that the merged tree builds with `gui-test-support`.
 Windows run `35386839336` at `caf84061` failed two byte-exact tutorial-index
-checks and a path-separator assertion. Preserve strict drift checking: protect
-the generated catalog/manifest with targeted LF checkout rules and compare
-the planner's output path as a filesystem path, without regenerating evidence.
+checks and a path-separator assertion. The `8284c4ca` LF/path fix was verified
+on Windows at `c2dead07` in [run 35419061304](https://github.com/smoe/gentle_rs/actions/runs/35419061304):
+`workflow_examples` passed 71/71. That run's library suite exposed 210 further
+Windows failures (3,667 passed, eight ignored). `36ba15a0` addresses those path,
+fixture and export-root failures; all 210 affected cases passed locally across
+the batch and direct rerun, not on native Windows. Its push CI
+[35445426797](https://github.com/smoe/gentle_rs/actions/runs/35445426797) sampled
+Linux (still running at the 2026-09-19 check); Windows and macOS were skipped.
+Windows acceptance of the fix therefore remains pending. Preserve strict
+byte/receipt checks; no scientific evidence was regenerated.
+
+`fa137598` adds the missing label-to-multiple-IDs diagnostic without changing
+grouping or output IDs. Local `cargo test --locked -j 1 --lib tss_` passed
+167 tests with four explicit ignores; locked Cargo check, formatting and
+whitespace checks passed. Both strands and nonmatching-query suppression are
+covered. Warnings remain digest-bound, so affected previews require fresh
+approval; this is not native-platform or real-data acceptance.
+
+For Glen's annotated-export check, `36ba15a0` also fixes user-visible
+`tss_profile_export` directory validation: a Windows drive/UNC prefix is joined
+to its root before filesystem inspection. Check exports to fresh native Windows
+destinations, including GenBank/EMBL/FASTA companions and receipts; local macOS
+tests do not certify native Windows behavior.
 
 Before adding N1 or another scientific extension:
 
@@ -68,10 +89,43 @@ Before adding N1 or another scientific extension:
    digest-bound plans; neither synthetic tests nor a rendered paper substitute
    for those missing real-data inputs.
 
-Use a branch on `smoe-bot/gentle_rs`, not a push to `smoe/gentle_rs`. Fork Git
-push access and GitHub Actions dispatch access are separate credentials; report
-an unavailable dispatch as blocked, not as a passing check. No additional feature
-scope is authorized by completion of the local regression fixes alone.
+Use an explicitly approved pushed ref in `smoe/gentle_rs`, or a newly pushed
+compatible fork ref only if separately approved; see the
+[workflow-ref requirements](release.md#build-only-candidate-verification).
+Git push access and Actions dispatch access are separate credentials. Report an
+unavailable dispatch as blocked, not passed. No additional feature scope is
+authorized by completion of the local regression fixes alone.
+
+### Prepared Verification Gate (Not Dispatched)
+
+After the diagnostic and documentation commits, freeze their full final SHA and
+retain it in the handoff. Before any approved dispatch, ensure the named pushed
+ref resolves to that SHA; do not use a moving `main` or the published `.10` tag.
+The version label remains `v0.1.0-internal.10` because it must match Cargo.toml;
+build-only use neither retags `.10` nor certifies the old release. Run commands
+only after explicit approval, substituting that SHA and pushed ref:
+
+```bash
+CANDIDATE_SHA='REPLACE_WITH_FULL_FROZEN_SHA'
+WORKFLOW_REF='REPLACE_WITH_PUSHED_REF_AT_THAT_SHA'
+gh workflow run ci.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" -f platform=windows
+gh workflow run ci.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" -f platform=macos
+gh workflow run ci.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" -f platform=linux
+gh workflow run container.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
+  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+gh workflow run release.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
+  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+```
+
+| Gate | New candidate run ID | Acceptance evidence |
+| --- | --- | --- |
+| Windows / macOS / Linux CI | Not dispatched; blocked pending approval and pushed ref | Each run's `headSha` equals the frozen SHA and its conclusion is `success`; none of the three native jobs can be substituted by sampled CI. |
+| Headless container | Not dispatched; blocked pending approval and pushed ref | Candidate `revision` in log/receipt equals the frozen SHA, build/smoke succeeds, mode is `validate_only`, image is not pushed. Workflow revision alone is insufficient. |
+| Extracted desktop packages | Not dispatched; blocked pending approval and pushed ref | All three native extracted-package checks and aggregate validation succeed, receipts bind the frozen SHA; publication is skipped. |
+
+Replace those placeholders with actual run IDs/URLs and outcomes only after
+execution. Retain repository/run URLs alongside receipts (the current JSON has
+no repository field). Blocked, cancelled, skipped and unavailable are not passes.
 
 Optional follow-ups, not prerequisites silently added to this patch:
 

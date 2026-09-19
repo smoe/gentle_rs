@@ -1,6 +1,6 @@
 # Release Notes / Changelog: `v0.1.0-internal.10`
 
-Updated: 2026-09-18, after publication and a read-only GitHub status check.
+Updated: 2026-09-19, after publication and a read-only GitHub status check.
 
 Status: **published without recorded exact-candidate acceptance**. The
 [GitHub prerelease](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.10),
@@ -12,7 +12,9 @@ historical evidence; the Pending ledger below is not waived or restarted.
 
 At this check the release had no attached assets. The
 [installer run](https://github.com/smoe/gentle_rs/actions/runs/35375443963)
-was still running, while the
+completed with Windows packaging successful, macOS cancelled and Linux failed;
+the aggregate package-validation and publication jobs were skipped. A successful
+Windows build is not three-platform extracted-package acceptance. The
 [release-triggered container run](https://github.com/smoe/gentle_rs/actions/runs/35375444006)
 had failed. The headless-container change `85bd9fdb` and subsequent fixes are
 after the tag; rerunning the tag does not include them. Later `.11` development
@@ -20,7 +22,7 @@ and acceptance must name their own SHA, not silently redefine this release.
 
 | Release field | Value |
 | --- | --- |
-| Status | Published prerelease; exact-candidate acceptance unrecorded, artifacts pending at the status check |
+| Status | Published prerelease; exact-candidate acceptance unrecorded, installer run failed and no assets attached at the status check |
 | Publication date | 2026-09-18 17:37:26 UTC |
 | Previous tag | `v0.1.0-internal.9` (2026-06-05) |
 | Primary story | Genome-anchored evidence, transcript-aware assays and auditable promoter/TSS reporter design |

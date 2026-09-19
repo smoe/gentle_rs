@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-09-19 - Release Evidence and .11 Verification Handoff
+
+- Recheck the published `.10` outcome: Windows packaging succeeded, macOS was
+  cancelled, Linux failed, aggregate validation/publication were skipped and
+  no release assets were attached. Keep post-tag fixes separate from `.10`.
+- Correct workflow-ref/repository selection and retain the observed CI IDs:
+  Windows verified the earlier tutorial LF fix, but native acceptance of
+  `36ba15a0` remains pending. Document fresh collection IDs after the TSS
+  gene-identity change and native Windows annotated-export checks for Glen.
+- Prepare, but do not dispatch, one-SHA native CI/container/package commands.
+  Correct the supplied review's counts (59 directly Unix-gated tests, 26 in
+  engine tests) and receipt assumption (no repository field in current JSON;
+  retain repository/run URLs alongside it). Renumber the duplicate primer
+  similarity decision to DEC-049 without changing its policy.
+- Validation: documentation whitespace checks and session-close hygiene
+  (four OK, two warnings: intentional dirty worktree and manual plan-fidelity
+  review). No push, tag, workflow dispatch or scientific regeneration.
+
 ## 2026-09-19 - Ambiguous TSS Gene-Link Diagnostics
 
 - Warn when a matching label-only transcript has conflicting same-source/same-strand gene IDs, retaining label grouping, output identity and approval rules; deterministic regressions cover both strands, case-insensitive queries and unrelated ID-query suppression.

@@ -826,9 +826,9 @@ status is validated against those contents for the same reason: the label is
 only worth having if a reader can rely on it, which is why `resolved` without
 any assay handoff is an error rather than a silently empty section.
 
-## DEC-038: Primer Similarity Guides Search But Does Not Replace Specificity
+## DEC-049: Primer Similarity Guides Search But Does Not Replace Specificity
 
-Status: active
+Status: active (formerly duplicated as DEC-038)
 
 Background: Ye et al., *Primer-BLAST: A tool to design target-specific primers
 for polymerase chain reaction* (BMC Bioinformatics 2012),

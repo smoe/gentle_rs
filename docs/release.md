@@ -64,19 +64,29 @@ version bump or publication is authorized by this document.
 ## Build-Only Candidate Verification
 
 After the tutorial fix and candidate changes are merged, record one clean
-candidate commit and use it for both workflows. Run these commands only when
-that commit is available on GitHub and includes the candidate-verification
-and desktop-packaging helpers. The current installer workflow rejects older
-sources without its packaging helper before compilation. The `--ref main`
-selects the workflow definition, while `candidate_sha`
-selects the exact source to build; both revisions are retained in the receipts.
-Keep `main` frozen at the candidate while dispatching the acceptance runs.
+candidate commit and use it for both workflows. Run these commands only after
+explicit push/dispatch approval and when that commit is available on GitHub.
+The pushed `--ref` must contain workflow definitions with `candidate_sha` inputs
+and the desktop-packaging helper (`62c07b68` or a descendant retaining those
+files). The current installer workflow rejects candidate sources without its
+packaging helper before compilation. `--ref` selects the workflow definition;
+`candidate_sha` selects the exact source to build. Keep the selected ref frozen
+at the candidate while dispatching the acceptance runs.
+
+Use `-R smoe/gentle_rs` explicitly for upstream verification. Do not dispatch
+against the fork's stale `smoe-bot/gentle_rs:main`: checked 2026-09-19, it is
+`3b9fc25ea4b5165a3d3088f1846e9976687afe9a` from 2026-06-21 and lacks these helpers.
+An approved fork run instead needs a newly pushed compatible ref and an explicit
+repository choice. JSON receipts record source/workflow revisions but currently
+have no repository field; retain the repository and full Actions run URL beside
+every receipt, rather than treating a fork run as upstream evidence.
 
 ```bash
 CANDIDATE_SHA=$(git rev-parse HEAD)
-gh workflow run release.yml --ref main \
+WORKFLOW_REF=main # must already be pushed at CANDIDATE_SHA
+gh workflow run release.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
   -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
-gh workflow run container.yml --ref main \
+gh workflow run container.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
   -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 ```
 

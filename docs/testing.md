@@ -26,6 +26,28 @@ Execution:
 cargo test engine::tests::
 ```
 
+### Platform-Specific Coverage
+
+A green Windows job does not exercise Unix-only test fixtures. In the
+2026-09-19 source audit, `src/` has 59 tests with adjacent `#[cfg(unix)]` and
+`#[test]` attributes, including 26 in `src/engine/tests.rs`. That file's 44
+`#[cfg(unix)]` occurrences also include helpers/imports, not 44 tests.
+Recount the directly annotated tests per file rather than treating this dated
+inventory as a fixed test budget:
+
+```bash
+rg -U -c '#\[cfg\(unix\)\]\s*#\[test\]|#\[test\]\s*#\[cfg\(unix\)\]' src
+```
+
+This is an attribute inventory, not a complete analysis of conditional modules
+or runtime skips. Relevant omissions include Primer3 shell fixtures,
+primer-specificity collections, CUT&RUN shell-backed anchor projection,
+genome-preparation and read-acquisition tests in `src/engine/tests.rs`,
+`src/genomes.rs`, `src/engine_shell/tests.rs`, `src/genomic_motif_evidence.rs`
+and `src/engine/io/probe_regions/planning_backend.rs`. Keep Linux/macOS runs
+and native external-tool acceptance separate from Windows correctness; neither
+platform's green job alone proves those paths on the other platform.
+
 ## 3. CLI/protocol tests (required)
 
 Scope:
