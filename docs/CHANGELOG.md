@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-09-20 - GUI Usability Acceptance Follow-up
+
+- Reproduce the current upstream TSS tutorial failure at the unreachable TFBS
+  control, then re-verify the restored native-window, worker-stack and root
+  repaint fixes in two independent network-isolated 18-step GUI runs.
+- Record exact binaries, focused deterministic gates, the unresolved `.11`
+  package-version/tag mismatch and a bounded `.12` usability backlog in
+  `gui_usability_acceptance_20260920.md`. Passing the synthetic lifecycle is
+  explicitly not a general GUI responsiveness verdict.
+
 ## 2026-09-19 - Published Release Version Guard
 
 - Accept the Cargo version as either the current candidate or published

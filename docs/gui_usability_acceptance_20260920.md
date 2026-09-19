@@ -1,0 +1,139 @@
+# GUI usability acceptance after the `.11` source update
+
+Date: 2026-09-20  
+Upstream baseline: `885fac493a091313e7777a73de3736af4aae81c2`  
+Final tested code: `677c796ab0269b67b6eeece3d69e4112cd57e97b`
+
+## Scope and verdicts
+
+- **Updated source contracts:** accepted for the focused assembly-bound
+  annotation, source-comparison, PATZ1, tutorial and release-version checks.
+- **Synthetic TSS GUI lifecycle:** accepted after restoring the two previously
+  reviewed GUI fixes. Two independent, network-isolated runs completed all 18
+  checkpoints from the starter project.
+- **General GUI usability/performance:** not accepted. The fixed workflow is
+  operable, but this does not establish a responsive or generally usable GUI.
+- **`.11` release tag:** not ready at this source revision. The package version
+  remains `0.1.0-internal.10`; the release coordinator correctly rejects the
+  proposed tag `v0.1.0-internal.11` until an explicit version/metadata commit is
+  made.
+- **Release artifacts:** no tag was created and no release workflow was
+  dispatched. The artifact release therefore remains a separate exercise.
+
+## Frozen environment and binaries
+
+- `rustc 1.95.0 (59807616e 2026-04-14)`
+- `cargo 1.95.0`
+- Linux `7.1.3+deb14-amd64`, `x86_64`
+- `Cargo.lock` SHA-256:
+  `67a96b07e6e2d5beb5b0fd1eb2ba57e1c11b6d1a4a355dab5bce6ca830a25236`
+- final debug GUI SHA-256:
+  `d578f7120e5313cf6d311a1682a6320226087c6394494742a2b2cbad3a6f068f`
+- final debug CLI SHA-256:
+  `dbd97e1ed0cf280569a022685898fce5ba9614eb6ef883ecaec0021ae3a4653f`
+- final debug documentation helper SHA-256:
+  `5349545173b44796f7aad9758570f89cd431ec7bd1e9146ff3a2a7a90ea684c1`
+
+The GUI runs used fresh HOME/XDG/cache/runtime/temp directories, Xvfb at
+`1600x1000x24`, Openbox as an EWMH window manager, explicit X11 and screenshot
+tools, and a fresh Linux network namespace. No private data or inner-agent path
+was used.
+
+## Reproduced defect and narrow fixes
+
+At the upstream baseline, the isolated run failed at `open_tfbs_menu`: the
+registered TFBS control was present in semantic state but not reachable by
+ordinary X11 input. Baseline ledger SHA-256:
+`e4570531faa1f39f11b38c837f6be8d25c7606919ecbd875540f05887c865acb`.
+
+The final branch restores:
+
+1. a usable initial/minimum native DNA viewport and bounded, resizable toolbar
+   allocation;
+2. a named 16 MiB worker for TSS snapshot/preview work, with bounded failure
+   reporting;
+3. an explicit root repaint after native child windows enqueue TSS collection
+   open requests.
+
+These presentation/scheduling changes do not alter sequence content, project
+state, collection approval, stale-member detection or scientific verification.
+Their four fully qualified Rust regressions pass.
+
+## GUI acceptance evidence
+
+| Run | Result | Ledger SHA-256 | Sum of recorded step time |
+| --- | --- | --- | ---: |
+| baseline debug | failed at step 2 | `e4570531faa1f39f11b38c837f6be8d25c7606919ecbd875540f05887c865acb` | 32.2 s |
+| final debug A | 18/18 pass | `5656aa454da36bbbd1ed95263e99c39664e40b18796734c8d15377cf89585157` | 68.7 s |
+| final debug B | 18/18 pass | `36daffd8c66d84edd52e37fc289e48ffc4c2ef9ef40ca39ee0ec6ee397450f4d` | 69.2 s |
+
+Both final runs verified typed reports and oracle sequence content as well as
+visible claims. They cover three 701 bp windows, shared transcript membership,
+strand/local-TSS geometry, exactly four subject-bound viewers without
+duplicates, cancel/Forget semantics, current persisted metadata and Undo.
+
+The timings are acceptance-harness observations, not a formal performance
+benchmark: screenshot/snapshot capture and fixed waits are included. However,
+both final runs spent about 32 seconds in application startup plus opening the
+first locus. The remaining operations were usually about 1--3 seconds each.
+Passing the contract therefore does not answer the user's broader lag report.
+
+Raw public synthetic evidence is retained outside the repository under
+`/mnt/storage-box-1-gentle/Glen/gui-usability-885fac49/`.
+
+## Deterministic checks
+
+- assembly-bound local projection: 3/3
+- source-annotation presentation: 3/3
+- authentic PATZ1 focused case: 1/1
+- release-version consistency: 4/4
+- Python GUI/screenshot/checkout checks: 33/33
+- restored GUI regressions: 4/4
+- component-crate suite: 267 passed, 2 explicit visual writers ignored
+- release-candidate/package coordinator suite: 37/37
+- catalog: 58/58 entries
+- tutorial manifest/check: 29/29 chapters
+- locked Cargo check, formatting and whitespace: pass
+
+The tutorial checker retains two pre-existing human-review staleness warnings;
+this work does not renew those reviews.
+
+## Incomplete optimized-run investigation
+
+Two optimized local attempts were deliberately stopped and are not counted as
+passes or failures:
+
+- `bench-audit`/Thin-LTO built dependencies and the optimized library, but an
+  individual binary link was still active after about 30 minutes;
+- reusing debug dependencies while compiling only GENtle at `opt-level=2`
+  remained in the monolithic root crate after more than 35 minutes.
+
+Both processes were CPU-active and emitted no compiler error. This establishes
+a build-feedback problem, not a runtime verdict. A dedicated UX performance
+profile must be evaluated as its own small build-system change rather than
+being guessed into this acceptance fix.
+
+## `.12` priorities
+
+1. Add reproducible interaction budgets for startup, first DNA-view opening,
+   pan/zoom/selection, tab changes and multiwindow focus. Store semantic
+   timings separately from screenshot waits.
+2. Profile release-like binaries with the existing GUI profiler and attribute
+   frame cost among root window signatures/locks, DNA map/sequence rendering,
+   feature trees and native viewport synchronization.
+3. Cache/cull expensive DNA shapes and avoid rebuilding unchanged map,
+   sequence and feature-tree content every frame.
+4. Remove whole-window scans and cross-window repaint coupling from ordinary
+   interactions where profiling confirms them; standardize background workers
+   and explicit completion wake-ups.
+5. Reduce the number of native child windows or provide a coherent single-root
+   workspace mode. Preserve subject binding and typed operations while making
+   focus, navigation and window ownership predictable.
+6. Virtualize large tables/trees consistently and keep expensive scientific
+   computation off the UI thread with visible progress and cancellation.
+7. Create a fast, prebuilt GUI-acceptance runner/profile. Explore debug info,
+   codegen units, optimization and crate/feature boundaries separately; do not
+   use release LTO as the iterative usability gate.
+
+These are `.12` usability goals, not claims that the two narrow fixes resolve
+the reported general lag.
