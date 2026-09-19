@@ -4,6 +4,8 @@ use super::*;
 use crate::tutorial_gui_semantics::*;
 use gentle_protocol::tss_workspace::*;
 
+const TSS_WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
+
 fn tss_control(
     response: egui::Response,
     id: &'static str,
@@ -132,18 +134,26 @@ impl MainAreaDna {
         self.tss_inventory_ui.operation_failed = false;
         self.tss_inventory_ui.forget_confirmation = None;
         self.tss_inventory_ui.status = "TSS operation running in the background".into();
-        std::thread::spawn(move || {
-            let result = if mutating {
-                crate::background_engine::execute_on_engine_snapshot(&engine, |snapshot| {
-                    snapshot.apply(operation)
-                })
-            } else {
-                crate::background_engine::execute_read_only_operation_on_engine_snapshot(
-                    &engine, operation,
-                )
-            };
-            let _ = tx.send(result);
-        });
+        let spawn_result = std::thread::Builder::new()
+            .name("gentle-tss-workspace".into())
+            .stack_size(TSS_WORKER_STACK_SIZE)
+            .spawn(move || {
+                let result = if mutating {
+                    crate::background_engine::execute_on_engine_snapshot(&engine, |snapshot| {
+                        snapshot.apply(operation)
+                    })
+                } else {
+                    crate::background_engine::execute_read_only_operation_on_engine_snapshot(
+                        &engine, operation,
+                    )
+                };
+                let _ = tx.send(result);
+            });
+        if let Err(error) = spawn_result {
+            self.tss_inventory_ui.task = None;
+            self.tss_inventory_ui.operation_failed = true;
+            self.tss_inventory_ui.status = format!("Could not start TSS worker: {error}");
+        }
     }
 
     pub(super) fn poll_tss_task(&mut self, ctx: &egui::Context) {
@@ -545,6 +555,11 @@ impl MainAreaDna {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tss_workspace_worker_has_expanded_stack_for_engine_snapshots() {
+        assert_eq!(TSS_WORKER_STACK_SIZE, 16 * 1024 * 1024);
+    }
 
     fn finish_task(area: &mut MainAreaDna, ctx: &egui::Context) {
         let deadline = Instant::now() + Duration::from_secs(10);

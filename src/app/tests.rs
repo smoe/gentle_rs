@@ -30,9 +30,11 @@ use super::{
     ROUTINE_DECISION_TRACE_SCHEMA, ROUTINE_DECISION_TRACE_STORE_SCHEMA,
     ROUTINE_DECISION_TRACES_METADATA_KEY, RackDragState, RetryCleanupAuditActionFilter,
     RetrySnapshotKindFilter, RetrySnapshotPendingCleanupAction, RoutineAssistantStage,
-    SequenceIngressTask, SequenceIngressTaskKind, SequenceIngressTaskMessage,
-    TutorialProjectOpenOutcome, TutorialProjectTask, TutorialProjectTaskMessage,
-    TutorialProjectTaskProgress, gui_prominent_glossary_entries, load_agent_token_file_credentials,
+    SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX, SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+    SEQUENCE_WINDOW_MIN_HEIGHT_PX, SEQUENCE_WINDOW_MIN_WIDTH_PX, SequenceIngressTask,
+    SequenceIngressTaskKind, SequenceIngressTaskMessage, TutorialProjectOpenOutcome,
+    TutorialProjectTask, TutorialProjectTaskMessage, TutorialProjectTaskProgress,
+    gui_prominent_glossary_entries, load_agent_token_file_credentials,
     preferred_anthropic_agent_system_id, preferred_local_agent_system_id,
     preferred_mistral_agent_system_id, preferred_openai_agent_system_id,
     request_open_about_from_native_menu,
@@ -18042,4 +18044,24 @@ fn tss_workspace_preview_is_shared_only_by_explicit_draft_action() {
     assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_some());
     app.stage_tss_preview_followup(&result.output).unwrap();
     assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_none());
+}
+
+#[test]
+fn native_sequence_viewport_starts_large_enough_for_wrapped_toolbar_controls() {
+    let builder = GENtleApp::sequence_viewport_builder("sequence");
+    assert_eq!(builder.title.as_deref(), Some("sequence"));
+    assert_eq!(
+        builder.inner_size,
+        Some(egui::vec2(
+            SEQUENCE_WINDOW_DEFAULT_WIDTH_PX,
+            SEQUENCE_WINDOW_DEFAULT_HEIGHT_PX
+        ))
+    );
+    assert_eq!(
+        builder.min_inner_size,
+        Some(egui::vec2(
+            SEQUENCE_WINDOW_MIN_WIDTH_PX,
+            SEQUENCE_WINDOW_MIN_HEIGHT_PX
+        ))
+    );
 }

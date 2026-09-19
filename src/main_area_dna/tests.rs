@@ -28,6 +28,26 @@ use super::{
     auxiliary_workspaces::LocusEvidenceResourceReadiness,
     feature_location_editor_ui::{FeatureEditorMode, FeatureRecordQualifierUiRow},
 };
+
+#[test]
+fn dna_toolbar_panel_starts_tall_enough_for_action_rows_and_remains_resizable() {
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(240.0),
+        (108.0, 100.0, 108.0)
+    );
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(600.0),
+        (180.0, 100.0, 270.0)
+    );
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(860.0),
+        (258.0, 100.0, 387.0)
+    );
+    assert_eq!(
+        MainAreaDna::top_panel_height_range(1200.0),
+        (360.0, 100.0, 420.0)
+    );
+}
 use crate::{
     dna_display::{ConstructReasoningOverlay, ConstructReasoningOverlaySpan, Selection},
     dna_sequence::DNAsequence,

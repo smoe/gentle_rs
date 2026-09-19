@@ -102,6 +102,25 @@
   existing stale human-review warnings remain; no renewed human sign-off is
   inferred. Public fixture provenance and live screenshot request are retained.
 
+## 2026-09-19 - TSS Tutorial Native-Window Acceptance Fix
+
+- Give native DNA sequence viewports the same `1200 x 860` initial working
+  size and `820 x 520` minimum used by hosted viewers. The 18-step synthetic
+  TSS tutorial otherwise opened its locus in an inherited `800 x 600` child
+  viewport. Also give the resizable toolbar panel a bounded 30%-height initial
+  allocation; its old content-sized first pass left later action rows outside
+  the visible scroll viewport. Together these changes keep the registered
+  `TFBS scan` target reachable by ordinary X11 input.
+- Add regressions for the native viewport builder and toolbar-panel height
+  bounds. These changes affect initial window presentation only; sequence
+  state, toolbar operations and scientific verification contracts are
+  unchanged.
+- Run TSS preview/materialization work on a named 16 MiB worker stack and show
+  a bounded GUI error if worker creation fails. The live binary previously
+  inherited Rust's 2 MiB thread default and could abort while cloning the
+  project snapshot even though Cargo-driven tests inherited the repository's
+  larger `RUST_MIN_STACK` setting.
+
 ## 2026-09-19 - Splicing Intent and Collection Smoke Regressions
 
 - Separate the Splicing Expert intent tests from DNA-viewer reasoning-cache
