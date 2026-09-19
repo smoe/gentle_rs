@@ -2524,6 +2524,15 @@ Locus and detailed TSS SVGs use one shared projection. Payload omissions are
 typed unassessed coverage, not per-transcript absence warnings. See
 [source mappings and export contract](transcript_source_presentation.md).
 
+Native DNA-map and Splicing Expert comparison lanes consume one engine-owned
+local projection. Use the sequence anchor orientation exactly once, preserve
+uncropped chain identities and require a live sequence/anchor binding for
+navigation. Comparison rows never acquire project feature IDs and must not
+enter support matrices, transcript derivation or primer-design scope. Only
+complete-chain/strand matches may link a loaded transcript to comparison rows;
+CDS equivalence is a separate question. Filters and row highlights are display
+state, not scientific selection or materialization.
+
 ### RNA-seq evidence direction for cloning-candidate regions (planned)
 
 Primary near-term scope is small genomic region interpretation for cloning

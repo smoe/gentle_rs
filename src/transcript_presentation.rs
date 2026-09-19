@@ -10,6 +10,23 @@ fn bare_hash(raw: &str) -> &str {
     raw.strip_prefix("sha256:").unwrap_or(raw)
 }
 
+/// Shared display projection, validating the enclosing report before local mapping.
+pub fn project_locus(
+    locus: &gentle_protocol::isoform_evidence::GeneLocusEvidenceDisplayReport,
+) -> Result<gentle_engine::transcript_presentation::projection::LocalAnnotationComparison, String> {
+    validate_locus(locus)?;
+    gentle_engine::transcript_presentation::projection::project(
+        locus
+            .transcript_presentation
+            .as_ref()
+            .ok_or("No source annotation comparison loaded")?,
+        locus
+            .sequence_binding
+            .as_ref()
+            .ok_or("Missing locus binding")?,
+    )
+}
+
 /// Read a portable source-list array, resolving annotation paths beside the list.
 /// The annotation hashes and biological bindings are still checked by `load`.
 pub fn read_source_list(path: &str) -> Result<Vec<TranscriptAnnotationSource>, String> {

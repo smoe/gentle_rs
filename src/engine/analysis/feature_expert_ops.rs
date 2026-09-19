@@ -1201,7 +1201,8 @@ impl GentleEngine {
         kind.eq_ignore_ascii_case("ncRNA") || kind.eq_ignore_ascii_case("misc_RNA")
     }
 
-    pub(super) fn is_splicing_transcript_feature(feature: &gb_io::seq::Feature) -> bool {
+    /// Shared transcript eligibility for splicing actions and read-only annotation matching.
+    pub(crate) fn is_splicing_transcript_feature(feature: &gb_io::seq::Feature) -> bool {
         Self::is_mrna_feature(feature) || Self::is_splicing_noncoding_transcript_feature(feature)
     }
 

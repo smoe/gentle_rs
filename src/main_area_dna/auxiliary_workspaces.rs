@@ -8407,6 +8407,7 @@ impl MainAreaDna {
         self.splicing_locus_inspector_hidden_scores.clear();
         self.splicing_locus_inspector_hidden_ensembl.clear();
         self.splicing_locus_source_filter = locus_inspector::AnnotationFilter::All;
+        self.source_annotation_selected_structure = None;
         self.splicing_locus_binding_cache = None;
         self.splicing_locus_presentation =
             Arc::new(locus_inspector::LocusPresentation::from_report(
@@ -8417,7 +8418,7 @@ impl MainAreaDna {
             ));
     }
 
-    fn load_splicing_locus_report_json_dialog(&mut self) {
+    pub(super) fn load_splicing_locus_report_json_dialog(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter("GENtle locus report", &["json"])
             .pick_file()

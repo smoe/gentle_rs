@@ -30,6 +30,28 @@
 
 - Warn when a matching label-only transcript has conflicting same-source/same-strand gene IDs, retaining label grouping, output identity and approval rules; deterministic regressions cover both strands, case-insensitive queries and unrelated ID-query suppression.
 
+## 2026-09-19 - Source Comparison in DNA Map and Splicing Structure
+
+- Extract binding-checked genomic-to-local annotation projection into
+  `gentle-engine`; the locus inspector and new native panels reuse it. Preserve
+  full-chain identity, CDS/phase alternatives, annotated starts, source records
+  and provenance; reverse-complemented negative-strand loci are not reversed twice.
+- Add read-only source-comparison panels to the standard linear DNA map and
+  Splicing Expert Structure tab, sharing filters/highlights and DNA viewport.
+  Selection highlights complete-chain matches; double-click fits a chain
+  without assigning PCR selection. External annotations never become loaded
+  features or change the transcript/primer-design universe.
+- Extend authentic PATZ1 tutorial checkpoint G1 and Glen's screenshot request
+  to both native surfaces. Circular overlays and persisted display preferences
+  remain out of scope; live GUI acceptance is still pending. The existing
+  actionable Structure canvas retains its full-locus layout rather than being
+  silently re-scaled to the new comparison panel's DNA viewport.
+- Verification: 10 engine projection/identity tests, five annotation-adapter
+  tests (including real PATZ1), and five locus-inspector tests pass. Locked
+  offline `cargo check`, formatting, whitespace and tutorial catalog/manifest
+  checks pass. Two Python tutorial tests pass; the optional CLI replay is
+  skipped. Full-workspace and live GUI acceptance were not run.
+
 ## 2026-09-19 - Windows CI Path and Fixture Portability
 
 - Serialize native paths as JSON strings in reference/helper/CUT&RUN test

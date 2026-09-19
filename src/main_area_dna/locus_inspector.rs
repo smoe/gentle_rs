@@ -1,9 +1,7 @@
 //! Interactive projection of portable locus reports and validated DNA selections.
 
 use super::*;
-use gentle_protocol::transcript_presentation::{
-    TranscriptInterval, TranscriptSourceMembership as Membership,
-};
+use gentle_protocol::transcript_presentation::TranscriptSourceMembership as Membership;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum AnnotationFilter {
@@ -15,7 +13,7 @@ pub(super) enum AnnotationFilter {
 }
 
 impl AnnotationFilter {
-    fn accepts(self, membership: Option<Membership>) -> bool {
+    pub(super) fn accepts(self, membership: Option<Membership>) -> bool {
         let Some(m) = membership else {
             return true;
         };
@@ -35,7 +33,7 @@ impl AnnotationFilter {
     }
 }
 
-fn membership_label(m: Membership) -> &'static str {
+pub(super) fn membership_label(m: Membership) -> &'static str {
     match m {
         Membership::Both => "Both: same exon chain",
         Membership::EnsemblOnly => "Ensembl only",
@@ -45,7 +43,7 @@ fn membership_label(m: Membership) -> &'static str {
     }
 }
 
-fn membership_color(m: Membership) -> egui::Color32 {
+pub(super) fn membership_color(m: Membership) -> egui::Color32 {
     match m {
         Membership::Both => egui::Color32::from_rgb(0, 130, 110),
         Membership::EnsemblOnly | Membership::EnsemblOtherUnassessed => {
@@ -55,27 +53,6 @@ fn membership_color(m: Membership) -> egui::Color32 {
             egui::Color32::from_rgb(195, 115, 20)
         }
     }
-}
-
-fn annotation_local_interval(
-    i: TranscriptInterval,
-    anchor: &gentle_protocol::GeneLocusGenomeAnchorBinding,
-) -> Option<(usize, usize)> {
-    let start = usize::try_from(i.start_1based)
-        .ok()?
-        .max(anchor.start_1based);
-    let end = usize::try_from(i.end_1based).ok()?.min(anchor.end_1based);
-    if start > end {
-        return None;
-    }
-    Some(if anchor.strand == Some('-') {
-        (anchor.end_1based - end + 1, anchor.end_1based - start + 1)
-    } else {
-        (
-            start - anchor.start_1based + 1,
-            end - anchor.start_1based + 1,
-        )
-    })
 }
 
 const EXON: egui::Color32 = egui::Color32::from_rgb(120, 165, 220);
@@ -95,10 +72,9 @@ struct EvidenceInterval {
 mod tests {
     use super::*;
 
-    #[test]
-    fn source_annotation_lanes_keep_cds_alternatives_and_reject_stale_bindings() {
+    fn source_annotation_area() -> (MainAreaDna, GeneLocusEvidenceDisplayReport) {
         use gentle_protocol::transcript_presentation::*;
-        let (_, mut report) = anchored_area();
+        let (area, mut report) = anchored_area();
         report.isoform_evidence.assembly = "GRCh38".into();
         let hash = report
             .sequence_binding
@@ -155,6 +131,12 @@ mod tests {
             )
             .unwrap(),
         );
+        (area, report)
+    }
+
+    #[test]
+    fn source_annotation_lanes_keep_cds_alternatives_and_reject_stale_bindings() {
+        let (_, mut report) = source_annotation_area();
         let prepared = LocusPresentation::from_report(&report, None);
         assert!(prepared.annotation_error.is_none());
         assert_eq!(
@@ -184,7 +166,110 @@ mod tests {
     }
 
     #[test]
-    fn source_annotation_filter_and_axis_do_not_infer_missing_provider_or_reverse_twice() {
+    fn source_annotation_panels_share_projection_without_changing_design_scope() {
+        let (mut area, report) = source_annotation_area();
+        let feature = gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::simple_range(10, 21),
+            qualifiers: vec![],
+        };
+        area.dna
+            .write()
+            .unwrap()
+            .features_mut()
+            .push(feature.clone());
+        area.engine
+            .as_ref()
+            .unwrap()
+            .write()
+            .unwrap()
+            .state_mut()
+            .sequences
+            .get_mut("roi_locus")
+            .unwrap()
+            .features_mut()
+            .push(feature);
+        area.reset_splicing_locus_inspector(&report);
+        area.splicing_locus_report = Some(Arc::new(report.clone()));
+        area.set_linear_viewport(0, 100);
+        let before =
+            serde_json::to_value(area.engine.as_ref().unwrap().read().unwrap().state()).unwrap();
+        let prepared = area.splicing_locus_presentation.clone();
+        let row = &prepared.annotation.as_ref().unwrap().rows[0];
+        let (selected_exons, selected_strand) = area.selected_annotation_chain(Some(0)).unwrap();
+        assert!(row.matches_local_chain(&selected_exons, selected_strand));
+        assert!(row.matches_local_chain(
+            &[
+                gentle_protocol::transcript_presentation::TranscriptInterval {
+                    start_1based: 11,
+                    end_1based: 21
+                }
+            ],
+            1
+        ));
+        area.source_annotation_selected_structure = Some(row.structure_id.clone());
+        let ctx = egui::Context::default();
+        for surface in ["dna_map", "structure"] {
+            for filter in [
+                AnnotationFilter::All,
+                AnnotationFilter::Shared,
+                AnnotationFilter::SourceOnly,
+            ] {
+                area.splicing_locus_source_filter = filter;
+                ctx.begin_pass(egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1000.0, 700.0),
+                    )),
+                    ..Default::default()
+                });
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::begin_frame(&ctx);
+                crate::egui_compat::show_central_panel_for_test_context(
+                    &ctx,
+                    egui::CentralPanel::default(),
+                    |ui| area.render_source_annotation_comparison(ui, surface, Some(0)),
+                );
+                crate::egui_compat::discard_test_pass_output(&ctx);
+                assert!(
+                    Arc::ptr_eq(&prepared, &area.splicing_locus_presentation),
+                    "filtering does not rebuild or mutate scientific geometry"
+                );
+                assert_eq!(
+                    area.source_annotation_selected_structure.as_ref(),
+                    Some(&row.structure_id)
+                );
+            }
+        }
+        assert_eq!(area.dna.read().unwrap().features().len(), 1);
+        let after =
+            serde_json::to_value(area.engine.as_ref().unwrap().read().unwrap().state()).unwrap();
+        assert_eq!(
+            before.as_object().unwrap().keys().collect::<Vec<_>>(),
+            after.as_object().unwrap().keys().collect::<Vec<_>>()
+        );
+        for (key, value) in before.as_object().unwrap() {
+            assert!(
+                &after[key] == value,
+                "Read-only comparison changed project field {key}"
+            );
+        }
+        assert!(area.current_selection_range_0based().is_none());
+        area.focus_source_annotation_row(&report, row).unwrap();
+        let (start, span, _) = area.current_linear_viewport();
+        assert!(start <= 10 && start + span >= 21);
+        assert!(
+            area.current_selection_range_0based().is_none(),
+            "navigation must not assign a PCR selection"
+        );
+        let unchanged_viewport = area.current_linear_viewport();
+        *area.dna.write().unwrap() = DNAsequence::from_sequence(&"TGCA".repeat(25)).unwrap();
+        assert!(area.focus_source_annotation_row(&report, row).is_err());
+        assert_eq!(area.current_linear_viewport(), unchanged_viewport);
+    }
+
+    #[test]
+    fn source_annotation_filters_do_not_infer_missing_provider() {
         assert!(!AnnotationFilter::Shared.accepts(Some(Membership::EnsemblOtherUnassessed)));
         assert!(!AnnotationFilter::SourceOnly.accepts(Some(Membership::EnsemblOtherUnassessed)));
         assert!(AnnotationFilter::Shared.accepts(Some(Membership::Both)));
@@ -193,25 +278,6 @@ mod tests {
         assert!(
             AnnotationFilter::Shared.accepts(None),
             "other evidence lanes remain visible"
-        );
-        let (_, report) = anchored_area();
-        let mut anchor = report.sequence_binding.unwrap().genome_anchor.unwrap();
-        let interval = TranscriptInterval {
-            start_1based: 1080,
-            end_1based: 1090,
-        };
-        assert_eq!(annotation_local_interval(interval, &anchor), Some((11, 21)));
-        anchor.strand = Some('+');
-        assert_eq!(annotation_local_interval(interval, &anchor), Some((80, 90)));
-        assert_eq!(
-            annotation_local_interval(
-                TranscriptInterval {
-                    start_1based: 2000,
-                    end_1based: 2010
-                },
-                &anchor
-            ),
-            None
         );
     }
 
@@ -536,7 +602,9 @@ pub(super) struct LocusPresentation {
     score_bounds: Vec<(f64, f64)>,
     legend: Vec<(String, egui::Color32)>,
     annotation_summary: Vec<String>,
-    annotation_error: Option<String>,
+    pub(super) annotation_error: Option<String>,
+    pub(super) annotation:
+        Option<gentle_engine::transcript_presentation::projection::LocalAnnotationComparison>,
 }
 
 impl LocusPresentation {
@@ -813,78 +881,49 @@ impl LocusPresentation {
         &mut self,
         report: &GeneLocusEvidenceDisplayReport,
     ) -> Result<(), String> {
-        let p = report
-            .transcript_presentation
-            .as_ref()
-            .ok_or("No annotation presentation")?;
-        crate::transcript_presentation::validate_locus(report)?;
-        let anchor = report
-            .sequence_binding
-            .as_ref()
-            .and_then(|b| b.genome_anchor.as_ref())
-            .ok_or("Source comparison requires the report's genomic anchor")?;
-        let rows = gentle_engine::transcript_presentation::compare_sources(p)?;
-        for s in &p.sources {
+        let projected = crate::transcript_presentation::project_locus(report)?;
+        for s in &projected.sources {
             self.annotation_summary.push(format!(
                 "{:?}: {} | {} | annotation SHA-256 {}",
                 s.provider, s.release, s.accession, s.annotation_sha256
             ));
         }
-        for row in rows {
+        for local in &projected.rows {
+            let row = &local.comparison;
             let color = membership_color(row.membership);
-            for id in &row.structure_ids {
-                let group = p
-                    .structure_groups
-                    .iter()
-                    .find(|g| &g.structure_id == id)
-                    .ok_or("Missing structure")?;
-                let members: Vec<_> = p
-                    .records
-                    .iter()
-                    .filter(|r| group.member_record_ids.contains(&r.record_id))
-                    .collect();
-                let record = members.first().ok_or("Empty structure")?;
-                let mut intervals = record
-                    .structure
-                    .exons
-                    .iter()
-                    .filter_map(|e| {
-                        annotation_local_interval(e.interval, anchor).map(|(start, end)| {
-                            EvidenceInterval {
-                                start,
-                                end,
-                                height: 0.55,
-                                color,
-                            }
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                if let Some(cds) = &group.cds {
-                    intervals.extend(cds.iter().filter_map(|c| {
-                        annotation_local_interval(c.interval, anchor).map(|(start, end)| {
-                            EvidenceInterval {
-                                start,
-                                end,
-                                height: 1.0,
-                                color,
-                            }
-                        })
-                    }));
-                }
-                let ids = members
-                    .iter()
-                    .map(|r| r.structure.transcript_id.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" / ");
-                self.lanes.push(EvidenceLane {
-                    annotation_membership: Some(row.membership),
-                    id: format!("annotation:{id}"), label: ids,
-                    detail: format!("{} | Ensembl: {} | RefSeq: {} | {} CDS/phase structure(s) for this full chain; this row keeps its own CDS geometry. Genomic strand {}. Thin: exon, thick: annotated CDS. Agreement is not cDNA identity, primer specificity or expression evidence.",
-                        membership_label(row.membership), row.ensembl_transcript_ids.join(", "), row.refseq_transcript_ids.join(", "), row.structure_ids.len(), record.structure.strand),
-                    intervals, markers: vec![], signal_scale: None,
-                });
+            let mut intervals = local
+                .exons
+                .iter()
+                .map(|i| EvidenceInterval {
+                    start: i.start_1based as usize,
+                    end: i.end_1based as usize,
+                    height: 0.55,
+                    color,
+                })
+                .collect::<Vec<_>>();
+            if let Some(cds) = &local.cds {
+                intervals.extend(cds.iter().map(|c| EvidenceInterval {
+                    start: c.interval.start_1based as usize,
+                    end: c.interval.end_1based as usize,
+                    height: 1.0,
+                    color,
+                }));
             }
+            let ids = local
+                .records
+                .iter()
+                .map(|r| r.structure.transcript_id.as_str())
+                .collect::<Vec<_>>()
+                .join(" / ");
+            self.lanes.push(EvidenceLane {
+                    annotation_membership: Some(row.membership),
+                    id: format!("annotation:{}", local.structure_id), label: ids,
+                    detail: format!("{} | Ensembl: {} | RefSeq: {} | {} CDS/phase structure(s) for this full chain; this row keeps its own CDS geometry. Genomic strand {}. Thin: exon, thick: annotated CDS. Agreement is not cDNA identity, primer specificity or expression evidence.",
+                        membership_label(row.membership), row.ensembl_transcript_ids.join(", "), row.refseq_transcript_ids.join(", "), row.structure_ids.len(), local.genomic_strand),
+                    intervals, markers: local.annotated_start_1based.map(|p| (p as usize, "Annotated transcript start".into())).into_iter().collect(), signal_scale: None,
+                });
         }
+        self.annotation = Some(projected);
         for m in [
             Membership::EnsemblOnly,
             Membership::RefSeqOnly,
@@ -975,7 +1014,7 @@ impl MainAreaDna {
         Ok(())
     }
 
-    fn cached_locus_binding(
+    pub(super) fn cached_locus_binding(
         &mut self,
         report: &GeneLocusEvidenceDisplayReport,
     ) -> Result<(), String> {
@@ -1051,17 +1090,7 @@ impl MainAreaDna {
         }
         if !presentation.annotation_summary.is_empty() {
             ui.strong("Ensembl / NCBI RefSeq annotation comparison");
-            ui.horizontal_wrapped(|ui| {
-                for (mode, label) in [
-                    (AnnotationFilter::All, "All sources"),
-                    (AnnotationFilter::Ensembl, "Ensembl chains"),
-                    (AnnotationFilter::RefSeq, "RefSeq chains"),
-                    (AnnotationFilter::Shared, "Shared exon chains"),
-                    (AnnotationFilter::SourceOnly, "Source-only chains"),
-                ] {
-                    ui.selectable_value(&mut self.splicing_locus_source_filter, mode, label);
-                }
-            });
+            self.render_annotation_filters(ui);
             ui.small("Shared means the complete exon chain matches, not merely overlapping exons. CDS/phase differences retain separate rows. Source-only means absent from the supplied other annotation, not biological absence. GenBank is a file/archive designation, not a third annotation vote.");
             egui::CollapsingHeader::new("Annotation versions and hashes").show(ui, |ui| {
                 for source in &presentation.annotation_summary {

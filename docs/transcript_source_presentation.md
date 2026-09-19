@@ -49,8 +49,8 @@ have been refreshed.
 
 These fields travel through existing shared operations in CLI/shell, workflows
 and MCP/JS/Lua consumers. No new command or inner-agent behavior is introduced.
-Original per-transcript GenBank/EMBL annotations and the native flat-file viewer
-are not rewritten by this SVG presentation layer.
+Original per-transcript GenBank/EMBL features are not rewritten. Native viewers
+can display separate read-only comparison lanes from this same report.
 
 ## Native Splicing Expert
 
@@ -74,6 +74,39 @@ These are display filters: they do not alter the primer-design transcript set,
 other evidence lanes or exported report. Export preserves the full shared
 presentation. The [real PATZ1 primer tutorial](tutorial/04-08_gene_assay_study_gui.md)
 provides pinned public data and an offline preparation helper.
+
+## DNA Map And Structure Tab
+
+The standard **linear DNA map** and **Splicing Expert > Structure** expose
+**Source annotation comparison (read-only)**. Load the enriched report there
+with **Load source comparison report...**, or reuse the report prepared/loaded
+in **Locus figure**. Expand the section if it was previously collapsed.
+
+Both panels share the source filter and comparison-row highlight. Their local
+axis follows the DNA map viewport; zoom/pan the map to inspect the same span.
+Click a comparison row to highlight it, or double-click to fit its exon span.
+**Fit comparison locus** restores the report span. A selected loaded transcript
+also highlights complete-chain matches, using geometry and strand, never its
+name. Partial chains clipped at the locus boundary cannot claim such a match.
+These actions do not change DNA/PCR selection or the loaded transcript selector.
+The comparison has its own labelled DNA-viewport axis. The existing actionable
+Structure diagram keeps its full-locus layout; pixel-aligning that older diagram
+with the new panel is a separate display follow-up, not implied by viewport sync.
+
+Thin boxes denote exons, thick boxes CDS, and ticks annotated transcript starts.
+Hover retains versioned accessions, original exon IDs, CDS phases, designations,
+release/accession and annotation/sequence hashes. Shared green rows mean exact
+full-chain agreement even when only part of the chain is currently visible.
+External records are not inserted into the feature tree, support matrices,
+primer targets, derivation, exon-skip or TSS-selection actions. The loaded project
+transcripts remain the actionable design universe.
+
+The engine prepares and validates the local projection once per report. It uses
+the sequence anchor's orientation, not the gene strand a second time. Live
+panels require an explicit oriented linear anchor and matching sequence hash,
+length and anchor; stale reports are withheld here, while historical inspection
+remains available in Locus figure. Circular overlays and persisted comparison
+preferences are not implemented in this slice.
 
 ## Identity And Display
 

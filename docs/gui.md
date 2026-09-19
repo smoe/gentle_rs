@@ -1230,6 +1230,16 @@ Feature tree grouping:
     `candidate association`, `design constraint`, `not evaluated`, and
     `unresolved evidence`. These labels interpret the existing stable wire
     values; they do not promote candidates or overlaps into validation
+- The standard linear DNA map and `Structure` tab also offer `Source annotation
+  comparison (read-only)`. Load an enriched locus JSON there or reuse the report
+  from `Locus figure`. These bounded, scrollable lanes use one engine projection,
+  the same source filter, and the DNA-map viewport. Click highlights a comparison
+  row; double-click fits its span without assigning PCR selection. Selecting a
+  loaded transcript highlights full-chain/strand matches, not merely shared
+  exons or matching labels. Thin/thick boxes show exon/CDS geometry; ticks show
+  annotated starts. Hover exposes exact source provenance. Stale bindings and
+  circular sequences do not receive live overlays. Comparison records never
+  enter the actionable project transcript list or change primer-design scope.
 - `Locus figure` is the graphical composition surface for the same shared
   `FeatureExpertTarget::GeneLocusEvidence` operation:
   - reuses the panel, expression, RNA/cDNA, probe, occupancy, and qPCR inputs

@@ -74,6 +74,7 @@ mod conservation_request_ui;
 #[path = "main_area_dna/genomic_regions_ui.rs"]
 mod genomic_regions_ui;
 mod locus_inspector;
+mod source_annotation;
 mod tss_view;
 
 mod gene_assay_study_ui;
@@ -1786,6 +1787,7 @@ pub struct MainAreaDna {
     splicing_locus_regulatory_tracks_path: String,
     splicing_locus_annotation_sources_path: String,
     splicing_locus_source_filter: locus_inspector::AnnotationFilter,
+    source_annotation_selected_structure: Option<String>,
     splicing_locus_region_set_ids: String,
     splicing_locus_homology_report_paths: String,
     splicing_locus_scale_bar_mode: String,
@@ -2676,6 +2678,7 @@ impl MainAreaDna {
             splicing_locus_regulatory_tracks_path: String::new(),
             splicing_locus_annotation_sources_path: String::new(),
             splicing_locus_source_filter: locus_inspector::AnnotationFilter::All,
+            source_annotation_selected_structure: None,
             splicing_locus_region_set_ids: String::new(),
             splicing_locus_homology_report_paths: String::new(),
             splicing_locus_scale_bar_mode: "hidden".to_string(),
@@ -19688,6 +19691,12 @@ impl MainAreaDna {
             self.log_splicing_expert_status(view, "first frame queued repaint", false);
             return;
         }
+        self.render_source_annotation_comparison(
+            ui,
+            "structure",
+            self.splicing_expert_selected_transcript_feature_id,
+        );
+        ui.strong("Loaded project transcripts (derivation and design targets)");
         self.log_splicing_expert_status(view, "rendering ATtRACT evidence", false);
         self.render_splicing_attract_evidence_section(ui, view);
         self.log_splicing_expert_status(view, "rendering RNA-read evidence", false);
@@ -27522,6 +27531,11 @@ impl MainAreaDna {
                 let response = theme::canvas_frame(dark_mode)
                     .show(ui, |ui| {
                         crate::gentle_gui_profile_scope!("MainAreaDna::dna_map_canvas");
+                        ui.vertical(|ui| {
+                        if !self.is_circular() {
+                            self.render_source_annotation_comparison(ui, "dna_map", self.get_selected_feature_id());
+                        }
+                        ui.horizontal(|ui| {
                         if !self.is_circular() {
                             let slider_column_width =
                                 if ENABLE_LINEAR_VERTICAL_PAN { 30.0 } else { 0.0 };
@@ -27588,6 +27602,8 @@ impl MainAreaDna {
                         } else {
                             ui.add(self.map_dna.to_owned())
                         }
+                        }).inner
+                        }).inner
                     })
                     .inner;
                 if response.rect.width().is_finite() && response.rect.width() > 0.0 {

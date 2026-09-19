@@ -39,7 +39,7 @@ Please annotate the tutorial with screenshots at these checkpoints:
 
 | ID | Capture | Scientific/UI check |
 | --- | --- | --- |
-| G1 | Splicing Expert, Locus figure and source filters | 13 Ensembl and four RefSeq records; exact shared full chain ENST00000266269.10 / NM_014323.3; versions, hashes and distinct CDS rows retained; minus-strand coordinates not reversed twice |
+| G1 | Locus figure, DNA-map and Structure source-comparison panels | 13 Ensembl and four RefSeq records; exact shared full chain ENST00000266269.10 / NM_014323.3; versions, hashes and distinct CDS rows retained; minus-strand coordinates not reversed twice; shared filter/highlight, DNA viewport synchronization, stale-binding rejection; comparison navigation leaves 13 actionable design targets and does not assign PCR selection |
 | G2 | Transcript-panel request and scope | All 13 loaded Ensembl transcripts, minimal-discrimination objective, explicit best-effort policy; RefSeq comparison is not silently added to the design universe |
 | G3 | Both primers, product matrix and unresolved distinctions | Both primers 5' to 3', mature-cDNA coordinates, coverage versus discrimination, shared/no-product/missing distinctions; a partial panel is not labelled a complete solution |
 | G4 | Separate effective study request and new plan | No synthetic expression evidence; new plan ID/output directory, first and second review; exploratory panel not attributed to an unexecuted study |

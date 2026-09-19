@@ -52,9 +52,21 @@ source-specific absence. For another gene, use **Composition inputs > Ensembl /
 RefSeq source list**, supplying the same [hash-bound contract](../transcript_source_presentation.md).
 Assembly/reference agreement is required; no coordinate liftover is guessed.
 
+Now return to the ordinary DNA map and expand **Source annotation comparison
+(read-only)**. The **Structure** tab has the same section. Both reuse the loaded
+report, so there is no second annotation import. Change to **Shared exon chains**
+in either panel and confirm the other uses that filter too. Click a row to
+highlight it; double-click to fit its span. Pan/zoom the DNA map and observe the
+comparison lanes following its local coordinates. **Fit comparison locus**
+restores the full span. Select a loaded transcript to highlight exact full-chain
+matches; one common exon alone must not match. Hover for source versions and
+hashes. None of these actions adds the RefSeq records to the design targets.
+
 **Checkpoint G1:** retain 13 Ensembl and four RefSeq records. Inspect the exact
 shared chain of `ENST00000266269.10` / `NM_014323.3`, then inspect the differing
-starts and chains. Display filtering must not silently change design scope.
+starts and chains in Locus figure, the DNA map and Structure. Display filtering
+must not silently change design scope: the project still has 13 actionable
+Ensembl transcripts, not 17 merged design targets.
 
 ## 2. Define the Primer-Design Question
 

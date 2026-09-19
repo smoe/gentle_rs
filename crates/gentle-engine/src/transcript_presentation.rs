@@ -3,6 +3,9 @@
 use gentle_protocol::transcript_presentation::*;
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Read-only local geometry for all annotation-comparison frontends.
+pub mod projection;
+
 fn hash(value: &impl serde::Serialize) -> Result<String, String> {
     let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
     Ok(ring::digest::digest(&ring::digest::SHA256, &bytes)
@@ -396,6 +399,123 @@ mod tests {
             records,
         )
         .unwrap()
+    }
+
+    fn projection_binding(strand: char) -> gentle_protocol::GeneLocusSequenceBinding {
+        gentle_protocol::GeneLocusSequenceBinding {
+            sequence_sha256: "b".repeat(64),
+            sequence_length_bp: 500,
+            genome_anchor: Some(gentle_protocol::GeneLocusGenomeAnchorBinding {
+                genome_id: "synthetic-1".into(),
+                chromosome: "test".into(),
+                start_1based: 1,
+                end_1based: 500,
+                strand: Some(strand),
+            }),
+        }
+    }
+
+    #[test]
+    fn local_projection_uses_anchor_orientation_once_and_retains_phase_provenance() {
+        for gene_strand in [1, -1] {
+            for anchor_strand in ['+', '-'] {
+                let e = record("e", "E.1", gene_strand);
+                let mut r = record("r", "R.4", gene_strand);
+                r.cds.as_mut().unwrap()[0].phase = Some(1);
+                let p = report(vec![e, r]);
+                let local = projection::project(&p, &projection_binding(anchor_strand)).unwrap();
+                assert_eq!(local.sources, p.sources);
+                assert_eq!(local.rows.len(), 2);
+                for row in &local.rows {
+                    assert_eq!(row.comparison.membership, TranscriptSourceMembership::Both);
+                    assert_eq!(
+                        row.local_strand,
+                        gene_strand * if anchor_strand == '-' { -1 } else { 1 }
+                    );
+                    let expected_start = match (gene_strand, anchor_strand) {
+                        (1, '+') => 100,
+                        (1, '-') => 401,
+                        (-1, '+') => 400,
+                        _ => 101,
+                    };
+                    assert_eq!(row.annotated_start_1based, Some(expected_start));
+                    let cds = &row.cds.as_ref().unwrap()[0];
+                    assert_eq!(
+                        cds.interval,
+                        if anchor_strand == '-' {
+                            TranscriptInterval {
+                                start_1based: 131,
+                                end_1based: 181,
+                            }
+                        } else {
+                            TranscriptInterval {
+                                start_1based: 320,
+                                end_1based: 370,
+                            }
+                        }
+                    );
+                    assert!(row.matches_local_chain(&row.exons, row.local_strand));
+                    assert!(!row.matches_local_chain(&row.exons, -row.local_strand));
+                    assert!(!row.matches_local_chain(&row.exons[..1], row.local_strand));
+                    assert_eq!(
+                        row.records[0].structure.cds.as_ref().unwrap()[0].phase,
+                        cds.phase
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn local_projection_clipping_never_creates_shared_or_loaded_chain_identity() {
+        let e = record("e", "E", 1);
+        let mut r = record("r", "R", 1);
+        r.exons[0].interval.start_1based = 110;
+        let p = report(vec![e, r]);
+        let mut binding = projection_binding('+');
+        binding.genome_anchor.as_mut().unwrap().start_1based = 150;
+        binding.sequence_length_bp = 351;
+        let local = projection::project(&p, &binding).unwrap();
+        assert_eq!(local.rows[0].exons, local.rows[1].exons);
+        assert_ne!(
+            local.rows[0].comparison.exon_chain_id,
+            local.rows[1].comparison.exon_chain_id
+        );
+        for row in &local.rows {
+            assert_ne!(row.comparison.membership, TranscriptSourceMembership::Both);
+            assert_eq!(row.annotated_start_1based, None);
+            assert!(!row.matches_local_chain(&row.exons, row.local_strand));
+        }
+    }
+
+    #[test]
+    fn local_projection_rejects_stale_or_ambiguous_binding_and_keeps_unassessed() {
+        let p = build(
+            "synthetic-1",
+            "test",
+            &"b".repeat(64),
+            vec![source("e", TranscriptProvider::Ensembl)],
+            vec![record("e", "E", 1)],
+        )
+        .unwrap();
+        let good = projection_binding('+');
+        assert_eq!(
+            projection::project(&p, &good).unwrap().rows[0]
+                .comparison
+                .membership,
+            TranscriptSourceMembership::EnsemblOtherUnassessed
+        );
+        for which in 0..5 {
+            let mut bad = good.clone();
+            match which {
+                0 => bad.sequence_sha256 = "a".repeat(64),
+                1 => bad.sequence_length_bp += 1,
+                2 => bad.genome_anchor.as_mut().unwrap().strand = None,
+                3 => bad.genome_anchor.as_mut().unwrap().chromosome = "other".into(),
+                _ => bad.genome_anchor.as_mut().unwrap().start_1based = 501,
+            }
+            assert!(projection::project(&p, &bad).is_err());
+        }
     }
 
     #[test]
