@@ -76,6 +76,21 @@ pub struct WindowDna {
 }
 
 impl WindowDna {
+    /// Load a portable locus report into the real DNA-window presentation for
+    /// headless GUI benchmarks.
+    ///
+    /// This deliberately uses the same binding checks and presentation cache
+    /// as the interactive file-dialog path. It is only exposed to the separate
+    /// benchmark crate and does not create a second report-loading contract.
+    #[cfg(feature = "benchmark-support")]
+    pub fn load_locus_report_for_benchmark(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<(), String> {
+        let document = crate::locus_report::read_document(path)?;
+        self.main_area.load_splicing_locus_document(document)
+    }
+
     pub(crate) fn apply_splicing_expert_intent(
         &mut self,
         action: crate::engine_shell::UiIntentAction,
