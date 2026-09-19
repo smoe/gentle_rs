@@ -5,8 +5,11 @@
 > Synthetic teaching data only: no orderable human PATZ1 primers, BLAST search,
 > vendor submission, or experimentally validated result is produced here.
 
+For authentic PATZ1 isoforms and primer pairs, use [04.08](04-08_gene_assay_study_gui.md).
+The legacy PATZ1-like identifiers here label synthetic regression data only.
+
 After [04.03, qPCR across exon junctions](04-03_qpcr_exon_junctions_gui.md)
-and [04.06, PATZ1 transcript panels](generated/chapters/04-06_patz1_transcript_assay_panels_cli.md),
+and [04.06, synthetic transcript panels](generated/chapters/04-06_patz1_transcript_assay_panels_cli.md),
 the next question is not simply "which primer scored highest?" It is "what
 does this design establish, what remains unknown, and what must I approve next?"
 

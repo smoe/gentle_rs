@@ -84,7 +84,7 @@ pub fn height(report: &TranscriptStructurePresentation, frame: Frame) -> f64 {
     (lanes(report, frame).1
         + report.structure_groups.len()
         + cds_groups(report).len()
-        + 5
+        + 6
         + delta_lines(report, frame).len()) as f64
         * PITCH
 }
@@ -183,14 +183,17 @@ pub fn render(report: &TranscriptStructurePresentation, frame: Frame, top: f64) 
     let mut group = Group::new()
         .set("data-role", "source-coherent-transcripts")
         .set("data-content-sha256", report.content_sha256.as_str());
-    if let Err(error) = gentle_engine::transcript_presentation::validate(report) {
-        group.append(label(
-            format!("Invalid transcript source binding: {error}"),
-            frame.label_left,
-            top,
-        ));
-        return group;
-    }
+    let comparisons = match gentle_engine::transcript_presentation::compare_sources(report) {
+        Ok(rows) => rows,
+        Err(error) => {
+            group.append(label(
+                format!("Invalid transcript source binding: {error}"),
+                frame.label_left,
+                top,
+            ));
+            return group;
+        }
+    };
     let mut y = top;
     for (provider, name, color) in [
         (TranscriptProvider::Ensembl, "Ensembl TSSs", "#176b9a"),
@@ -349,9 +352,22 @@ pub fn render(report: &TranscriptStructurePresentation, frame: Frame, top: f64) 
         y += PITCH;
     }
     for (i, g) in report.structure_groups.iter().enumerate() {
+        // Membership uses the full chain, even if CDS/phase needs separate rows.
+        let comparison = comparisons
+            .iter()
+            .find(|r| r.exon_chain_id == g.exon_chain_id)
+            .expect("validated comparison covers every structure");
+        let (membership, color) = match comparison.membership {
+            TranscriptSourceMembership::Both => ("Both", "#00826e"),
+            TranscriptSourceMembership::EnsemblOnly => ("Ensembl only", "#236eb9"),
+            TranscriptSourceMembership::RefSeqOnly => ("RefSeq only", "#c37314"),
+            TranscriptSourceMembership::EnsemblOtherUnassessed => ("Ensembl (?)", "#236eb9"),
+            TranscriptSourceMembership::RefSeqOtherUnassessed => ("RefSeq (?)", "#c37314"),
+        };
         let mut row = Group::new()
             .set("data-role", "transcript-structure")
-            .set("data-structure-id", g.structure_id.as_str());
+            .set("data-structure-id", g.structure_id.as_str())
+            .set("data-source-membership", membership);
         let exon_indices: Vec<_> = g
             .exon_ids
             .iter()
@@ -374,19 +390,24 @@ pub fn render(report: &TranscriptStructurePresentation, frame: Frame, top: f64) 
                 }
             });
         row.append(Title::new(format!(
-            "{chain}; {cds_label}\n{}",
+            "{membership}: full exon chain; CDS alternatives stay separate. Ensembl: {}; RefSeq: {}\n{chain}; {cds_label}\n{}",
+            comparison.ensembl_transcript_ids.join(", "),
+            comparison.refseq_transcript_ids.join(", "),
             details(report, &g.member_record_ids)
         )));
-        row.append(label(
-            format!(
-                "S{}: {} records / {}",
-                i + 1,
-                g.member_record_ids.len(),
-                cds_label
-            ),
-            frame.label_left,
-            y,
-        ));
+        row.append(
+            label(
+                format!(
+                    "S{} {membership}: {} / {}",
+                    i + 1,
+                    g.member_record_ids.len(),
+                    cds_label
+                ),
+                frame.label_left,
+                y,
+            )
+            .set("fill", color),
+        );
         let positions: Vec<_> = exon_indices
             .iter()
             .filter_map(|i| {
@@ -402,7 +423,7 @@ pub fn render(report: &TranscriptStructurePresentation, frame: Frame, top: f64) 
                     .set("x2", b.1)
                     .set("y1", y)
                     .set("y2", y)
-                    .set("stroke", "#87948e"),
+                    .set("stroke", color),
             );
         }
         for (idx, x) in positions {
@@ -411,7 +432,7 @@ pub fn render(report: &TranscriptStructurePresentation, frame: Frame, top: f64) 
                     .set("cx", x)
                     .set("cy", y)
                     .set("r", 3)
-                    .set("fill", "#28724c"),
+                    .set("fill", color),
             );
             row.append(
                 Text::new(format!("E{}", idx + 1))
@@ -424,6 +445,8 @@ pub fn render(report: &TranscriptStructurePresentation, frame: Frame, top: f64) 
         y += PITCH;
     }
     group.append(label("Exon boxes and CDS geometries drawn once; structure rows reference full chains, including off-window exons (hover).",frame.label_left,y));
+    y += PITCH;
+    group.append(label("Chain colours: blue Ensembl only; orange RefSeq only; green both. 'Only' is relative to supplied sources; (?) = other source unassessed.",frame.label_left,y));
     group
 }
 
@@ -533,12 +556,51 @@ mod tests {
                 "source designation",
                 "exact agreement",
                 "<title>",
+                "Both: 2 / C1",
+                "data-source-membership=\"Both\"",
+                "#00826e",
             ] {
                 assert!(svg.contains(text), "{text}");
             }
             assert!(svg.contains(&p.sources[0].annotation_sha256));
             assert!(svg.contains(&p.content_sha256));
         }
+    }
+    #[test]
+    fn source_membership_labels_distinguish_unique_from_unassessed() {
+        let p = fixture(1);
+        let frame = Frame {
+            start: 100,
+            end: 800,
+            strand: 1,
+            left: 255.0,
+            right: 1050.0,
+            label_left: 34.0,
+        };
+        let mut records: Vec<_> = p.records.iter().map(|r| r.structure.clone()).collect();
+        records[1].exons[0].interval.start_1based += 1;
+        let different = gentle_engine::transcript_presentation::build(
+            "test",
+            "1",
+            &"b".repeat(64),
+            p.sources.clone(),
+            records.clone(),
+        )
+        .unwrap();
+        let svg = render(&different, frame, 10.0).to_string();
+        assert!(svg.contains("data-source-membership=\"Ensembl only\""));
+        assert!(svg.contains("data-source-membership=\"RefSeq only\""));
+        let one = gentle_engine::transcript_presentation::build(
+            "test",
+            "1",
+            &"b".repeat(64),
+            vec![p.sources[0].clone()],
+            vec![records[0].clone()],
+        )
+        .unwrap();
+        let svg = render(&one, frame, 10.0).to_string();
+        assert!(svg.contains("data-source-membership=\"Ensembl (?)\""));
+        assert!(!svg.contains("data-source-membership=\"Ensembl only\""));
     }
     #[test]
     fn shared_renderer_uses_existing_tss_base_center_axis_including_minus() {

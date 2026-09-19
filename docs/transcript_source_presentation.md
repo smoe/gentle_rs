@@ -52,6 +52,29 @@ and MCP/JS/Lua consumers. No new command or inner-agent behavior is introduced.
 Original per-transcript GenBank/EMBL annotations and the native flat-file viewer
 are not rewritten by this SVG presentation layer.
 
+## Native Splicing Expert
+
+From the DNA viewer open **Splicing Expert > Locus figure** and load the enriched
+locus report with **Load report JSON...**. Alternatively, in **Composition
+inputs > Ensembl / RefSeq source list**, select a JSON array of the source
+objects above, then prepare the locus figure. Relative annotation paths in that
+list resolve beside the list file. The GUI uses the same engine loader and
+rejects changed hashes, mismatched assemblies and unresolved source bindings.
+
+The inspector offers **All sources**, **Ensembl chains**, **RefSeq chains**,
+**Shared exon chains** and **Source-only chains**. Blue denotes Ensembl-only,
+orange RefSeq-only and green exact full-chain agreement in the supplied sources.
+When the other provider is missing, its membership is explicitly unassessed,
+not source-only. CDS/phase alternatives remain separate structure rows, including
+when their exon chain is shared. Hover retains both sets of versioned IDs;
+**Annotation versions and hashes** exposes provenance. GenBank is an archive or
+file format, not a third independent annotation vote.
+
+These are display filters: they do not alter the primer-design transcript set,
+other evidence lanes or exported report. Export preserves the full shared
+presentation. The [real PATZ1 primer tutorial](tutorial/04-08_gene_assay_study_gui.md)
+provides pinned public data and an offline preparation helper.
+
 ## Identity And Display
 
 - Physical exon IDs bind assembly, chromosome, strand and exact inclusive
@@ -70,6 +93,11 @@ chain via figure-local `E1`, `E2`, etc.; these are not biological exon numbers
 or stable IDs. SVG hover exposes all attached source transcript/exon IDs,
 designations, release/accession, geometry and hashes. Off-window differences
 still keep distinct structure rows.
+
+Structure-row labels also print Ensembl-only, RefSeq-only or Both membership
+without needing hover, with the same blue/orange/green chain colours as the
+native inspector. An unavailable other provider is marked `(?)`. These labels
+compare full exon chains; a shared chain can retain different CDS/phase rows.
 
 Separate colour-labelled Ensembl/RefSeq annotated-start lanes use `=` for exact
 agreement, `s` for a source-only coordinate in supplied annotations, and `?` when
@@ -126,8 +154,10 @@ staged SVG bytes in the same order. The outer receipt hashes the files/order
 and ZIP; it is not recursively included in its own archive. Existing outputs
 are not overwritten; failed publication leaves no success receipt.
 
-Real-data regeneration and scientific acceptance remain Glen's task. Tests use
-hand-crafted plus/minus records and temporary annotation files, not private data.
+Public PATZ1 source parsing and strand/sequence equality are tested against pinned
+Ensembl/RefSeq files, alongside hand-crafted plus/minus and corruption tests.
+Live GUI screenshots and scientific acceptance remain Glen's task; no private
+sample data is included.
 
 ## Standalone Comparison Review
 

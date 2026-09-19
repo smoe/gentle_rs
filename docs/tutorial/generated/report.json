@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "5b6a6eb63cec7084c3749023a640f34544a71b0f3be242672606a25abd05382f",
+    "README.md": "e54ba416385639b6060a5e736796bccef375af3885fafc33ab3d50a99bff3697",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "04aff7ecdcebb8481c9e1766bc24651a5d0a909b5b6d3fc6acb2b8063dcbfa89",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -113,7 +113,7 @@
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "aa91ec372866cdf301eef5d6342d007a5816a441253102c10e60c14345538cba",
     "chapters/04-04_guides_filter_and_generate_oligos.md": "5b27b430a868f7b206229060726b806641e7e76d453f6d88f39f7fa3f4b76687",
     "chapters/04-05_guides_export_csv_and_protocol.md": "12ac1eb859aa9663912d0a790f374af91f34e47d4be7c7a19c25766879c9671a",
-    "chapters/04-06_patz1_transcript_assay_panels_cli.md": "2111fbfd6cf43d5de7cbbb1997bc85e7108bc11e6e45899f8a961e8dc4926e4e",
+    "chapters/04-06_patz1_transcript_assay_panels_cli.md": "328b6d7e3e9c561e83abdbf40126bae21aa59545491e45445bd7e89d035eac10",
     "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "477686e6fb5d5922d038ac2832c6e221369f86b31ba0cf1820f43a27cfe7757d",
     "chapters/05-02_prepare_reference_genome_online.md": "ca5df4ec244bfb1dfc68781a6f3cf0431257580a9c162ae98205607692eab75c",
     "chapters/05-03_tp63_anchor_extension_online.md": "986f32007d7417d9f3ec01701f80220f3b594f67e1170ab1668fe5ac44fdc2e3",
@@ -815,7 +815,7 @@
     {
       "id": "patz1_transcript_assay_panels_cli",
       "order": 28,
-      "title": "Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
+      "title": "Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
       "group_order": 4,

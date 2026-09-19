@@ -27,7 +27,9 @@ git diff --check
 python3 -m unittest discover -s scripts -p 'test_*tutorial*.py'
 ```
 
-Use the tutorial helper with your exact built CLI for the real replay. Also run
+Use `scripts/prepare_real_patz1_tutorial.py` with your exact built CLI for the
+authentic-reference replay. The pinned public Ensembl 116/RefSeq files replace
+the synthetic example for this acceptance. Also run
 the usual tutorial catalog/manifest and generated-document checks; a manual
 guide's catalogue entry alone is not execution or screenshot acceptance.
 In particular rerun `gentle_examples_docs tutorial-check` after the review-entry
@@ -37,24 +39,30 @@ Please annotate the tutorial with screenshots at these checkpoints:
 
 | ID | Capture | Scientific/UI check |
 | --- | --- | --- |
-| G1 | Splicing Expert launch and saved study header | Gene, source feature, transcript scope, recommendation/override, missing evidence; no implied execution approval |
-| G2 | One selected pair and its transcript outcomes | Both primers 5' to 3', mature-cDNA coordinates on minus locus, shared/no-product/missing distinctions |
-| G3 | Experimental readiness card | Specificity absent means blocked; candidate oligos are not an approved order |
-| G4 | Effective request and new plan | Changed maximum, new plan ID/output directory, first review; old files preserved |
-| G5 | Second review and execution/cancellation | Exact workflow digest; no design before approval; tamper/stale/cancelled outcomes cannot become success |
+| G1 | Splicing Expert, Locus figure and source filters | 13 Ensembl and four RefSeq records; exact shared full chain ENST00000266269.10 / NM_014323.3; versions, hashes and distinct CDS rows retained; minus-strand coordinates not reversed twice |
+| G2 | Transcript-panel request and scope | All 13 loaded Ensembl transcripts, minimal-discrimination objective, explicit best-effort policy; RefSeq comparison is not silently added to the design universe |
+| G3 | Both primers, product matrix and unresolved distinctions | Both primers 5' to 3', mature-cDNA coordinates, coverage versus discrimination, shared/no-product/missing distinctions; a partial panel is not labelled a complete solution |
+| G4 | Separate effective study request and new plan | No synthetic expression evidence; new plan ID/output directory, first and second review; exploratory panel not attributed to an unexecuted study |
+| G5 | Experimental readiness card | Missing authentic genomic and whole-transcriptome specificity blocks readiness; no design before approval; tamper/stale/cancelled outcomes cannot become success |
 | G6 | Canonical pending dossier | Same scientific content as CLI; no comparison panel falsely attributed to the plan |
+
+The development replay (Primer3 2.6.1) yielded seven pairs covering 13 exact-cDNA
+classes but nine unresolved class-pair distinctions, correctly `partial`. This
+is an observation, not a prescribed pass count or order approval. Please rerun
+at the exact candidate and retain actual output, including any unresolved cases.
 
 At G2/G3 also review the coverage-scope explanation, distinguishing transcript
 records from exact-cDNA groups, uncovered from unassessed, and coverage from
 isoform discrimination. For a real panel exceeding 40 transcripts, 24 assays
 or 80 band rows, verify the independent page controls reach the final entries
-without changing the report or export. The public three-transcript fixture
-does not establish large-locus live performance.
+without changing the report or export. This 13-transcript authentic fixture
+does not establish performance at those larger sizes.
 
 Retain untouched raw captures separately from cropped/annotated versions. Record
 source SHA, binary hashes, OS/profile, input/preparation receipt hashes, action,
 effective parameters, expected and observed result, and image hashes. Public
-screenshots must use the synthetic fixture only. Capture only passed checkpoints
+screenshots must use the pinned public reference fixture, not private samples.
+Capture only passed checkpoints
 for tutorial illustrations; failed checkpoints need separate diagnostic evidence,
 not edited-to-look-passing illustrations. Add concise captions for wet-lab readers,
 and keep previous image revisions recoverable.

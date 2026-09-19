@@ -1,7 +1,7 @@
 {
   "schema": "gentle.tutorial_source.v4",
   "id": "patz1_transcript_assay_panels_cli",
-  "title": "Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
+  "title": "Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)",
   "catalog": {
     "order": 49,
     "path": "docs/tutorial/generated/chapters/04-06_patz1_transcript_assay_panels_cli.md",
@@ -14,7 +14,7 @@
       "transcript_analysis",
       "contributors"
     ],
-    "notes": "Machine-checked CLI chapter for practical endpoint RT-PCR, isoform-discriminating SYBR, and routine common-region transcript-panel design through the shared operation contract.",
+    "notes": "Historical synthetic regression walkthrough, not human PATZ1 biology. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
     "group": "04",
     "group_position": 6
   },
@@ -22,7 +22,7 @@
     "order": 28,
     "example_id": "patz1_endpoint_sybr_transcript_assay_panel_offline",
     "tier": "core",
-    "summary": "Use one synthetic minus-strand PATZ1 locus to generate an endpoint first-end x terminal-end band matrix, a Clariom-JUC-directed primer-only SYBR panel, and an annotation-confirmed routine common-region screen, then compose the persisted reports with a digest-bound isoform-evidence ledger entirely from the command line.",
+    "summary": "This is a historical synthetic regression example, not PATZ1 sequence or annotation. For real human PATZ1 isoform-discriminating primer pairs, follow tutorial 04.08 (`docs/tutorial/04-08_gene_assay_study_gui.md`). Legacy PATZ1-like file and report identifiers below remain only for replay compatibility. The synthetic workflow exercises an endpoint band matrix, junction-directed SYBR and common-region screens; its invented array evidence must not be transferred to a real gene.",
     "narrative": "A multi-transcript PCR experiment has three distinct jobs. Long endpoint RT-PCR can expose transcript families as differently sized first-end x terminal-end products on a gel, although band intensity is only rough or semi-quantitative. Short SYBR assays can test selected exon-exon junctions without requiring an internal hydrolysis probe. A routine common-region assay can provide a practical screen across the intended transcript set. GENtle keeps these jobs in one `gentle.transcript_assay_panel.v2` contract while recording their experimental tier independently from the selection objective.\n\nThis chapter uses a deliberately sequence-diverse, synthetic PATZ1-like locus on the minus strand. It demonstrates exact mature-cDNA equivalence classes, a 10 kb allowed endpoint ceiling, caller-supplied preferred product ranges, oligo-dT reverse-transcription warnings, and distinct synthetic Clariom JUC and PSR evidence. Transcript annotation alone establishes whether a selected amplicon is common; PSR signal remains independent support and cannot manufacture that claim. The fixture does not produce orderable primers for the human PATZ1 locus and does not claim that a missing long product proves isoform absence. The canonical workflow is the deterministic reference; the direct CLI steps extract the same three operation objects and submit them unchanged through `primers design-transcript-assay-panel`.\n\nThe final step composes, rather than redesigns, the three persisted panels with a checked `gentle.gene_isoform_evidence.v2` ledger. The resulting `gentle.gene_transcript_assay_routine.v1` report retains panel and evidence digests, assay roles, uncovered transcript classes, candidate order rows, and a conservative experimental sequence. It cannot turn missing specificity into a pass: the synthetic panels remain visibly unaccepted until the declared external checks are completed.\n\nEach selected assay also records a `primers specificity-plan` follow-up template. Planning creates structured BLAST jobs but does not execute them. For a real complete panel, prepare or import catalogued genomic-DNA and whole-cDNA BLAST resources, then use `primers transcript-assay-specificity-plan` and always call `primers transcript-assay-specificity-finalize` with the scheduler's execution manifest. GENtle distinguishes a completed biological `specificity_fail`, a completed but geometrically `not_assessed` result, and incomplete or failed execution evidence; only `pass` is accepted. Until a handoff is actually executed and finalized, this offline tutorial honestly retains `genomic_confirmation_status: not_run`.",
     "use_cases": [
       "You want a command-line-only route for endpoint RT-PCR, SYBR qPCR, or TaqMan-compatible transcript-panel design.",

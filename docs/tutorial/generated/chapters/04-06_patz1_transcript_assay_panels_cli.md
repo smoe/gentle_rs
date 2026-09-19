@@ -1,6 +1,6 @@
 ---
 chapter_id: "patz1_transcript_assay_panels_cli"
-title: "Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI"
+title: "Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)"
 tier: "core"
 example_id: "patz1_endpoint_sybr_transcript_assay_panel_offline"
 source_example: "docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json"
@@ -18,9 +18,9 @@ review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli"
 ---
 
-# Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI
+# Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)
 
-Use one synthetic minus-strand PATZ1 locus to generate an endpoint first-end x terminal-end band matrix, a Clariom-JUC-directed primer-only SYBR panel, and an annotation-confirmed routine common-region screen, then compose the persisted reports with a digest-bound isoform-evidence ledger entirely from the command line.
+This is a historical synthetic regression example, not PATZ1 sequence or annotation. For real human PATZ1 isoform-discriminating primer pairs, follow tutorial 04.08 (`docs/tutorial/04-08_gene_assay_study_gui.md`). Legacy PATZ1-like file and report identifiers below remain only for replay compatibility. The synthetic workflow exercises an endpoint band matrix, junction-directed SYBR and common-region screens; its invented array evidence must not be transferred to a real gene.
 
 A multi-transcript PCR experiment has three distinct jobs. Long endpoint RT-PCR can expose transcript families as differently sized first-end x terminal-end products on a gel, although band intensity is only rough or semi-quantitative. Short SYBR assays can test selected exon-exon junctions without requiring an internal hydrolysis probe. A routine common-region assay can provide a practical screen across the intended transcript set. GENtle keeps these jobs in one `gentle.transcript_assay_panel.v2` contract while recording their experimental tier independently from the selection objective.
 
@@ -393,7 +393,7 @@ cargo run --bin gentle_examples_docs -- tutorial-check
 
 If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
 
-- Tutorial title: `Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI`
+- Tutorial title: `Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)`
 - Tutorial/chapter id: `patz1_transcript_assay_panels_cli`
 - Step reached:
 - Expected vs. actual:

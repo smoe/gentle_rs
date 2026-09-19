@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+## 2026-09-19 - Authentic PATZ1 Tutorial and Source-Aware Transcript Display
+
+- Replace the 04.08 toy walkthrough with pinned public human PATZ1 data:
+  13 Ensembl 116 transcripts and four versioned RefSeq mRNAs on GRCh38.
+  Retain exact source bytes/hashes, retrieval instructions and an independent
+  RefSeq genomic-sequence check of the negative-strand Ensembl import.
+  Offline preparation plans but does not execute primer design or BLAST.
+- Add Ensembl, RefSeq, shared full-exon-chain and source-only views to the
+  Splicing Expert locus inspector, using the existing portable source join.
+  Preserve distinct CDS/phase rows, exact accessions and missing-provider
+  uncertainty. Display filters do not change the design universe or exports.
+  SVG exports use the same full-chain membership with visible labels/colours,
+  while retaining complete source/version details in hover text.
+- The authentic Primer3 2.6.1 development replay selected seven primer pairs:
+  all 13 mature-cDNA classes covered, nine class pairs unresolved, correctly
+  a partial discrimination panel. RefSeq records remain comparison context,
+  not silently assessed targets. Whole-reference specificity, live GUI/Glen
+  screenshots and laboratory acceptance remain pending. Relabel the older
+  synthetic CLI chapter explicitly as a regression example, not PATZ1 biology.
+- Verification: source-join, adapter/strand and GUI-presentation regressions,
+  SVG semantics, supplied-binary offline preparation, real Primer3 replay,
+  `cargo check`, format/whitespace and 29-chapter tutorial-check pass. The two
+  existing stale human-review warnings remain; no renewed human sign-off is
+  inferred. Public fixture provenance and live screenshot request are retained.
+
 ## 2026-09-19 - Splicing Intent and Collection Smoke Regressions
 
 - Separate the Splicing Expert intent tests from DNA-viewer reasoning-cache

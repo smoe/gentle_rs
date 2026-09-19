@@ -13,6 +13,9 @@ Cargo.lock text eol=lf
 # Generated tutorial indexes are checked byte-for-byte against LF serialization.
 docs/tutorial/catalog.json text eol=lf
 docs/tutorial/manifest.json text eol=lf
+test_files/fixtures/transcript_assay_panel/patz1_reference/* text eol=lf
+# Preserve the exact hash-bound NCBI response, including its final blank line.
+test_files/fixtures/transcript_assay_panel/patz1_reference/refseq_genome.fasta whitespace=-blank-at-eof
 
 # Keep the hashed TP73 BLAST fixture byte-identical on Windows checkouts.
 test_files/fixtures/blast_tp73_isoforms/*.fasta text eol=lf

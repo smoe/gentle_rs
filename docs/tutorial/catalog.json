@@ -1144,7 +1144,7 @@
     },
     {
       "id": "patz1_transcript_assay_panels_cli",
-      "title": "Design Practical PATZ1 Endpoint and SYBR Transcript Panels from the CLI",
+      "title": "Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)",
       "path": "docs/tutorial/generated/chapters/04-06_patz1_transcript_assay_panels_cli.md",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
@@ -1160,7 +1160,7 @@
         "transcript_analysis",
         "contributors"
       ],
-      "notes": "Machine-checked CLI chapter for practical endpoint RT-PCR, isoform-discriminating SYBR, and routine common-region transcript-panel design through the shared operation contract.",
+      "notes": "Historical synthetic regression walkthrough, not human PATZ1 biology. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-07-21"
     },
@@ -1456,7 +1456,7 @@
     },
     {
       "id": "gene_assay_study_gui",
-      "title": "Review an Alternative-Splicing Primer-Pair Study from Gene Evidence to Dossier",
+      "title": "Design Primer Pairs to Distinguish Real Human PATZ1 Transcripts",
       "path": "docs/tutorial/04-08_gene_assay_study_gui.md",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
@@ -1472,10 +1472,9 @@
         "transcript_analysis",
         "wet_lab_biologists"
       ],
-      "notes": "Synthetic PATZ1 alternative-splicing primer-pair study in PCR Designer, anchored in Splicing Expert. Inspect saved gene-study evidence, primer footprints and transcript products; normalize and separately review planning/execution; keep missing specificity and pending canonical dossiers explicit. Not a Nanopore single-primer capture pool. Glen's live screenshots and scientific acceptance are pending.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Authentic human PATZ1: pinned Ensembl 116 and RefSeq genomic annotations, source/shared exon-chain inspection and primer-pair discrimination across all 13 Ensembl transcript records. Reference-wide specificity, Glen's live screenshots and human scientific acceptance remain pending. No synthetic expression or array evidence.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-19"
     },
     {
       "id": "tss_collection_gui",

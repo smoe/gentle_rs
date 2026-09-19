@@ -8,9 +8,9 @@ You do not need to understand the tutorial machinery before beginning.
 
 - **Design primers from one required region:** start with
   [Simple PCR From a Selected Core Region](./04-01_simple_pcr_selection_gui.md).
-- **Review primer pairs across alternative transcripts:** use the
-  [gene-informed study workspace](./04-08_gene_assay_study_gui.md), starting
-  in Splicing Expert and retaining missing checks in a canonical dossier.
+- **Distinguish real PATZ1 transcripts with primer pairs:** use the
+  [authentic-reference study walkthrough](./04-08_gene_assay_study_gui.md),
+  starting in Splicing Expert with Ensembl/RefSeq annotation comparison.
 - **Inspect or edit a sequence:** use
   [Stateless Sequence Inspection](./02-02_stateless_sequence_inspection_gui_cli.md)
   or [Annotation Curation](./02-05_feature_editor_gui_cli.md).

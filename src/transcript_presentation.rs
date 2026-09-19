@@ -10,6 +10,43 @@ fn bare_hash(raw: &str) -> &str {
     raw.strip_prefix("sha256:").unwrap_or(raw)
 }
 
+/// Read a portable source-list array, resolving annotation paths beside the list.
+/// The annotation hashes and biological bindings are still checked by `load`.
+pub fn read_source_list(path: &str) -> Result<Vec<TranscriptAnnotationSource>, String> {
+    if path.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    let path = Path::new(path.trim());
+    let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err("Annotation source list must be a regular file".into());
+    }
+    let mut bytes = Vec::new();
+    file.take(1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Annotation source list exceeds 1 MiB".into());
+    }
+    let mut sources: Vec<TranscriptAnnotationSource> = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Invalid annotation source list: {e}"))?;
+    if sources.is_empty() || sources.len() > 16 {
+        return Err("Annotation source list must contain 1..16 sources".into());
+    }
+    for source in &mut sources {
+        let source_path = Path::new(&source.path);
+        if source_path.is_relative() {
+            source.path = path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join(source_path)
+                .to_string_lossy()
+                .into_owned();
+        }
+    }
+    Ok(sources)
+}
+
 /// Check source-coherent content at report ingestion, including its enclosing locus.
 pub fn validate_locus(
     locus: &gentle_protocol::isoform_evidence::GeneLocusEvidenceDisplayReport,
@@ -380,6 +417,109 @@ fn ensembl(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn real_patz1_sources_preserve_versions_and_verified_negative_strand_bases() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test_files/fixtures/transcript_assay_panel/patz1_reference");
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("manifest.json")).unwrap()).unwrap();
+        for (name, hash) in manifest["files"].as_object().unwrap() {
+            assert_eq!(
+                crate::digest_utils::sha256_hex_bytes(&std::fs::read(root.join(name)).unwrap()),
+                hash.as_str().unwrap()
+            );
+        }
+        let entry: crate::ensembl_gene::EnsemblGeneEntry =
+            serde_json::from_slice(&std::fs::read(root.join("ensembl_entry.json")).unwrap())
+                .unwrap();
+        let refseq = std::fs::read_to_string(root.join("refseq_genome.fasta"))
+            .unwrap()
+            .lines()
+            .filter(|s| !s.starts_with('>'))
+            .collect::<String>();
+        let rc = bio::alphabets::dna::revcomp(refseq.as_bytes());
+        assert_eq!(
+            entry.sequence.to_ascii_uppercase().as_bytes(),
+            rc.as_slice(),
+            "Ensembl gene-oriented sequence must be exactly the RefSeq genomic reverse complement"
+        );
+        let hash =
+            crate::digest_utils::sha256_hex_bytes(entry.sequence.to_ascii_uppercase().as_bytes());
+        let sources = [
+            (
+                TranscriptProvider::Ensembl,
+                "ensembl.gff3",
+                "22",
+                "gene:ENSG00000100105",
+            ),
+            (
+                TranscriptProvider::RefSeq,
+                "refseq.gff3",
+                "NC_000022.11",
+                "gene-PATZ1",
+            ),
+        ]
+        .into_iter()
+        .map(
+            |(provider, file, chromosome, gene)| TranscriptAnnotationSource {
+                provider,
+                format: TranscriptAnnotationFormat::Gff3,
+                path: file.into(),
+                sha256: manifest["files"][file].as_str().unwrap().into(),
+                assembly: "GRCh38".into(),
+                release: if provider == TranscriptProvider::Ensembl {
+                    "Ensembl 116".into()
+                } else {
+                    manifest["refseq_snapshot"].as_str().unwrap().into()
+                },
+                accession: chromosome.into(),
+                chromosome: chromosome.into(),
+                gene_ids: vec![gene.into()],
+                locus_sequence_sha256: hash.clone(),
+            },
+        )
+        .collect::<Vec<_>>();
+        let p = load(&sources, &root, "GRCh38", "22", &hash)
+            .unwrap()
+            .unwrap();
+        assert_eq!(p.records.len(), 17);
+        assert!(p.records.iter().all(|r| r.structure.strand == -1));
+        let rows = gentle_engine::transcript_presentation::compare_sources(&p).unwrap();
+        let shared = rows
+            .iter()
+            .find(|r| r.refseq_transcript_ids.contains(&"NM_014323.3".into()))
+            .unwrap();
+        assert_eq!(shared.membership, TranscriptSourceMembership::Both);
+        assert!(
+            shared
+                .ensembl_transcript_ids
+                .contains(&"ENST00000266269.10".into())
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|r| r.ensembl_transcript_ids.len())
+                .sum::<usize>(),
+            13
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|r| r.refseq_transcript_ids.len())
+                .sum::<usize>(),
+            4
+        );
+        let list_dir = tempfile::tempdir().unwrap();
+        let list = list_dir.path().join("sources.json");
+        std::fs::write(&list, serde_json::to_vec(&sources).unwrap()).unwrap();
+        let resolved = read_source_list(list.to_str().unwrap()).unwrap();
+        assert_eq!(
+            Path::new(&resolved[0].path),
+            list_dir.path().join("ensembl.gff3")
+        );
+        assert_eq!(resolved[0].sha256, sources[0].sha256);
+        std::fs::write(&list, b"[]").unwrap();
+        assert!(read_source_list(list.to_str().unwrap()).is_err());
+    }
     // Entirely synthetic GFF3, regenerated in a temporary directory by each test.
     // Exercises the real parser and bound source loader, never private gene data.
     fn gff(strand: &str) -> String {

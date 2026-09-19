@@ -23,6 +23,72 @@ fn valid_interval(i: TranscriptInterval) -> bool {
     i.start_1based > 0 && i.start_1based <= i.end_1based && i.end_1based <= i64::MAX as u64
 }
 
+/// Compare full exon chains, independently of CDS/phase availability. Callers must
+/// not use this structural projection as a cDNA identity or primer-specificity test.
+pub fn compare_sources(
+    report: &TranscriptStructurePresentation,
+) -> Result<Vec<TranscriptSourceComparisonRow>, String> {
+    validate(report)?;
+    let supplied: BTreeSet<_> = report.sources.iter().map(|s| s.provider).collect();
+    let mut chains = BTreeMap::<String, Vec<&TranscriptStructureGroup>>::new();
+    for group in &report.structure_groups {
+        chains
+            .entry(group.exon_chain_id.clone())
+            .or_default()
+            .push(group);
+    }
+    chains
+        .into_iter()
+        .map(|(exon_chain_id, groups)| {
+            let members: BTreeSet<_> = groups
+                .iter()
+                .flat_map(|g| g.member_record_ids.iter().cloned())
+                .collect();
+            let mut ensembl = BTreeSet::new();
+            let mut refseq = BTreeSet::new();
+            for record in report
+                .records
+                .iter()
+                .filter(|r| members.contains(&r.record_id))
+            {
+                let source = report
+                    .sources
+                    .iter()
+                    .find(|s| s.source_id == record.structure.source_id)
+                    .ok_or("Unresolved comparison source")?;
+                match source.provider {
+                    TranscriptProvider::Ensembl => {
+                        ensembl.insert(record.structure.transcript_id.clone());
+                    }
+                    TranscriptProvider::RefSeq => {
+                        refseq.insert(record.structure.transcript_id.clone());
+                    }
+                }
+            }
+            let membership = match (ensembl.is_empty(), refseq.is_empty()) {
+                (false, false) => TranscriptSourceMembership::Both,
+                (false, true) if supplied.contains(&TranscriptProvider::RefSeq) => {
+                    TranscriptSourceMembership::EnsemblOnly
+                }
+                (true, false) if supplied.contains(&TranscriptProvider::Ensembl) => {
+                    TranscriptSourceMembership::RefSeqOnly
+                }
+                (false, true) => TranscriptSourceMembership::EnsemblOtherUnassessed,
+                (true, false) => TranscriptSourceMembership::RefSeqOtherUnassessed,
+                _ => return Err("Empty exon-chain comparison".into()),
+            };
+            Ok(TranscriptSourceComparisonRow {
+                exon_chain_id,
+                membership,
+                ensembl_transcript_ids: ensembl.into_iter().collect(),
+                refseq_transcript_ids: refseq.into_iter().collect(),
+                member_record_ids: members.into_iter().collect(),
+                structure_ids: groups.iter().map(|g| g.structure_id.clone()).collect(),
+            })
+        })
+        .collect()
+}
+
 /// Build identities from full, uncropped geometry. Clipping is presentation only.
 pub fn build(
     assembly: &str,
@@ -359,6 +425,53 @@ mod tests {
                 serde_json::to_vec(&report(vec![r, e])).unwrap()
             );
             validate(&p).unwrap();
+        }
+    }
+
+    #[test]
+    fn source_comparison_separates_full_chains_from_cds_and_missing_sources() {
+        for strand in [1, -1] {
+            let e = record("e", "E.1", strand);
+            let mut r = record("r", "R.4", strand);
+            r.cds.as_mut().unwrap()[0].phase = None;
+            let p = report(vec![e.clone(), r.clone()]);
+            let rows = compare_sources(&p).unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].membership, TranscriptSourceMembership::Both);
+            assert_eq!(
+                rows[0].structure_ids.len(),
+                2,
+                "unknown CDS phase is not identical CDS"
+            );
+            assert_eq!(rows[0].refseq_transcript_ids, vec!["R.4"]);
+            r.exons[0].interval.start_1based += 1;
+            let p = report(vec![e.clone(), r]);
+            let rows = compare_sources(&p).unwrap();
+            assert_eq!(
+                rows.len(),
+                2,
+                "a shared exon or cropped overlap cannot establish chain identity"
+            );
+            assert!(
+                rows.iter()
+                    .any(|r| r.membership == TranscriptSourceMembership::EnsemblOnly)
+            );
+            assert!(
+                rows.iter()
+                    .any(|r| r.membership == TranscriptSourceMembership::RefSeqOnly)
+            );
+            let single = build(
+                "synthetic-1",
+                "test",
+                &"b".repeat(64),
+                vec![source("e", TranscriptProvider::Ensembl)],
+                vec![e],
+            )
+            .unwrap();
+            assert_eq!(
+                compare_sources(&single).unwrap()[0].membership,
+                TranscriptSourceMembership::EnsemblOtherUnassessed
+            );
         }
     }
 

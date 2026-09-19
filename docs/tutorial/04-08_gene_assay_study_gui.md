@@ -1,198 +1,170 @@
-# Review a Primer-Pair Study Across Alternative Transcripts
+# Design Primer Pairs to Distinguish Real Human PATZ1 Transcripts
 
-**Question:** Which primer pairs distinguish transcript structures, what
-evidence informed that choice, and what must be checked before using them?
+**Question:** Which PATZ1 transcript structures can primer pairs distinguish,
+and what agrees or differs between Ensembl and NCBI RefSeq?
 
-**You will learn:** open a study from Splicing Expert, inspect both primers and
-their predicted products, review one changed design requirement, and export a
-canonical dossier without mistaking a planned experiment for a validated assay.
+**Status:** authentic public reference data; live GUI screenshots and human
+scientific sign-off pending. This replaces the old synthetic PATZ1-like teaching
+example. That tiny fixture remains a regression test, not PATZ1 biology.
 
-**Status:** manual/hybrid; live GUI screenshots and human review pending.
-This is primer-pair study design, not the separate single-primer Nanopore
-capture-pool programme. Everything below is public synthetic teaching data.
-These are not orderable human PATZ1 primers.
+The pinned Ensembl 116 snapshot has **13 transcript records**, including
+noncoding and retained-intron models. RefSeq supplies **four versioned mRNAs**.
+These are different annotation universes, not necessarily 17 distinct expressed
+isoforms. Read the [source provenance](../../test_files/fixtures/transcript_assay_panel/patz1_reference/README.md).
 
-## Prepare Once
+## Prepare Once, Offline
 
-Use GUI and CLI binaries from the **same source revision**. Run the following
-from the repository root, substituting the actual binary and a new output
-directory whose parent exists. The helper does not build GENtle or use a model,
-network service, Primer3, BLAST or vendor.
+Use GUI and CLI binaries from the same revision. From the repository root:
 
 ```bash
-python3 scripts/prepare_gene_assay_study_tutorial.py \
+python3 scripts/prepare_real_patz1_tutorial.py \
   --gentle-cli /absolute/path/to/gentle_cli \
   --output-dir /absolute/path/to/new-patz1-study
 ```
 
-The helper calls GENtle, rather than calculating biology in Python. It replays
-the three existing [04.06 panel operations](generated/chapters/04-06_patz1_transcript_assay_panels_cli.md),
-changing only their output paths, then plans the separate
-[04.07 study request](inputs/transcript_assay_followup_study.json). Its receipt
-records the CLI binary hash, input hashes, exact calls and artifact hashes.
-It does **not** execute that study's emitted workflow.
+Choose a new directory whose parent exists. The helper checks pinned input
+hashes, calls GENtle to prepare the locus/comparison and plans a study. It does
+not download, run an agent, design primers, run BLAST or order anything.
+It creates `patz1.gentle.json`, `locus.report.json`, a source-comparison SVG,
+an annotation source list, a primer-design operation and an unexecuted study.
+**No synthetic array or expression evidence is attached.**
 
-The [fixture provenance](../../test_files/fixtures/transcript_assay_panel/patz1/README.md)
-describes an invented 240 bp minus-strand locus with three annotated mature
-cDNAs of 120, 80 and 100 nt. These lengths are not expression measurements.
-The GRCh38-like coordinate anchor is synthetic, not a verified human reference.
+The authentic locus is GRCh38 `NC_000022.11:31325804..31346605`, minus-strand.
+GENtle imports it gene-oriented: local coordinates increase while genomic
+coordinates decrease. Do not reverse this sequence a second time.
 
-## 1. Start at the Gene, Not an Oligo List
+## 1. Inspect Ensembl, RefSeq and Shared Structures
 
-Open `patz1-study.gentle.json` with **File > Open Project**. Open its PATZ1
-sequence, select the PATZ1 gene feature (`n-2`, engine feature `1`), and use
-**Open Splicing Window**. In **Structure**, choose **Gene assay study...**.
-PCR Designer should open in **Gene assay study** mode. Its other modes remain
-available; do not choose **RT primer pool** for this exercise.
+Open `patz1.gentle.json` with **File > Open Project**. Open the PATZ1 DNA,
+select its gene feature, and choose **Open Splicing Window**. In **Locus figure**,
+use **Load report JSON...** for `locus.report.json`.
 
-Choose **Open study plan...** and select `study.plan.json` in your output
-directory. Read the question, three transcripts/three exact-cDNA groups,
-annotation release, automatic recommendation and explicit profile override.
-Open **Declared evidence inventory and input digests**. In particular, find
-the missing differential-threshold provenance. A geometric junction constraint
-and a measured effect do not by themselves establish significance.
+The interactive inspector offers **All sources**, **Ensembl chains**,
+**RefSeq chains**, **Shared exon chains** and **Source-only chains**. Blue means
+Ensembl, orange RefSeq, green an exact full exon chain supplied by both.
+Hover for every exact versioned transcript accession. A shared exon or TSS
+alone does not make two transcripts the same. CDS/phase alternatives retain
+separate rows: thin boxes are exons, thick boxes annotated CDS.
 
-**Checkpoint G1:** the study is inspectable but has not authorized execution.
-A saved plan is a historical record, not evidence that the currently loaded
-DNA or all external inputs have been revalidated. Its source feature is `n-3`
-here because the supplied ledger names that transcript-linked group; the
-separate 04.06 comparison panels use `n-2`. GENtle must not silently equate
-their provenance. **Inspect transcript architecture in Splicing Expert** opens
-the plan's declared source feature.
+Expand **Annotation versions and hashes**. GenBank format is not an independent
+third annotation vote. A missing provider is **unassessed**, not evidence of
+source-specific absence. For another gene, use **Composition inputs > Ensembl /
+RefSeq source list**, supplying the same [hash-bound contract](../transcript_source_presentation.md).
+Assembly/reference agreement is required; no coordinate liftover is guessed.
 
-## 2. Inspect Both Primers and Every Transcript Outcome
+**Checkpoint G1:** retain 13 Ensembl and four RefSeq records. Inspect the exact
+shared chain of `ENST00000266269.10` / `NM_014323.3`, then inspect the differing
+starts and chains. Display filtering must not silently change design scope.
 
-Under **Persisted panels on this source sequence**, inspect
-`patz1_sybr_juc_panel`. This is explicitly comparison context, not a claim that
-the panel was produced by the displayed study plan. Select different entries
-in **Selected primer pair**.
+## 2. Define the Primer-Design Question
 
-First read **Coverage scope: what this panel establishes**. Transcript records
-and distinct mature cDNA sequences are different denominators. Check the
-requested universe: records excluded from it are **unassessed**, not failed
-targets, and covering a protein target need not cover all its linked cDNAs.
-Legacy reports can lack the broader annotation denominator; GENtle must then
-say so rather than claiming every annotated transcript was assessed.
+In **Structure**, choose **Design all-transcript panel**, or select **Transcript
+panels** in PCR Designer. Here the design universe is **all 13 loaded Ensembl
+transcripts**. RefSeq comparison records are not silently included or claimed
+as assessed targets. Whole-reference screening comes later.
 
-Read the forward and reverse sequences, each written 5' to 3', and their
-binding footprints. The small blue/orange schematic uses a mature-cDNA axis:
-the minus-strand genomic locus does not reverse it again. Coordinates are
-zero-based half-open intervals. Tm is melting temperature, not a recommended
-PCR annealing temperature.
+Choose **Minimal discrimination panel**, rather than merely **One per class**:
+detecting every class does not necessarily separate every pair of classes.
+The supplied exploratory request uses explicit **best-effort** coverage, so
+unresolved distinctions remain visible. Choose strict `require_all` when an
+incomplete result must stop the workflow.
 
-Below the selected pair, read all three transcript outcomes. A predicted
-single product, multiple products, explicit no-product result and a missing
-matrix cell have different meanings. Inspect the stored selection reasons
-and JUC evidence rather than assuming that the highest score explains the
-selection. Shared products do not establish transcript-specific abundance.
-For a larger gene, use **Selected-pair transcripts** page controls to reach
-every stored transcript; this three-transcript example fits on one page.
+Review `primer-discrimination.operation.json`: SYBR, 80-250 bp products,
+20-26 nt primers, 58-64 C Tm bounds, 30-70% GC and at most 3 C Tm difference.
+These are visible starting constraints, not experimentally validated conditions.
+The request explicitly leaves cDNA synthesis **unspecified** for review; choose
+the method used in your experiment before adopting a design. Do not silently omit difficult or noncoding
+transcripts to obtain a green result.
 
-**Checkpoint G2:** both primer footprints and the per-transcript products are
-visible for one selected pair. The JUC example names PATZ1-202's exon 1-2
-junction at transcript position 40. The synthetic effect is -1.2, but the
-missing threshold remains visible and is not promoted to qualified evidence.
+**Checkpoint G2:** scope, objective and partial-result policy are explicit.
+Identical mature cDNAs cannot be separated by sequence-based primers. Annotation
+records and exact-cDNA classes have different denominators.
 
-## 3. Review the Checks, Not Just the Sequences
+## 3. Design and Inspect Both Primers
 
-Choose **Open panel design, matrix and readiness checks**. Review the
-**Transcript x assay product matrix** and **Requested junctions**. The old
-sequence table is now labelled **Candidate primer sequences (not order approval)**.
-For larger panels, **Transcripts** and **Assays** page independently; the
-endpoint band table has its own **Band rows** pages. Changing pages is only
-navigation, not a subset design or a changed coverage requirement. Read the
-**Panel interpretation** column: identical mature cDNAs cannot be separated
-by sequence-based primers. A **Not assessed** cell is missing evidence, not
-an explicit no-product prediction.
-Choose **Build experimental handoff** to run the shared readiness operation.
+After reviewing the saved operation, the equivalent terminal route is:
 
-**Checkpoint G3:** missing genomic/transcriptome specificity is a blocker, not
-a green badge. The panel's design-only result has not launched BLAST or
-submitted an order. A complete transcript matrix is not whole-reference
-specificity. See [04.07's specificity continuation](04-07_transcript_assay_followup_gui_cli.md#5-optional-external-specificity-plan-is-not-pass)
-for real data with prepared, authentic reference resources.
+```bash
+gentle_cli --state /absolute/path/to/new-patz1-study/patz1.gentle.json primers preflight --backend primer3
+gentle_cli --state /absolute/path/to/new-patz1-study/patz1.gentle.json \
+  primers design-transcript-assay-panel \
+  @/absolute/path/to/new-patz1-study/primer-discrimination.operation.json \
+  --backend primer3
+```
 
-## 4. Change One Requirement and Review Again
+This explicit backend requires Primer3. Separate CLI processes do not inherit
+unsaved GUI state: save/close the GUI project before a CLI write and reopen it
+afterwards. Do not concurrently overwrite the same project. A failed/partial
+design is evidence to inspect, not permission to silently relax constraints.
 
-Return to **Gene assay study**, then **Open planning request...** and choose
-`study.request.json`. Expand **Design and review a new iteration**.
-Change `plan_id` in the JSON to a new, explicit identifier such as
-`patz1_gui_review_2`. Change **Short-product maximum** from 120 to 110 bp.
-This is a hard limit, not a ranking preference; the tiny fixture's limits are
-not recommendations for a laboratory assay.
+Review `patz1_real_discrimination` in **Transcript panels**, or from **Gene assay
+study > Persisted panels on this source sequence**. For every selected pair,
+read both sequences 5' to 3' and the transcript-by-assay product matrix.
+Footprints use **zero-based half-open** mature-cDNA coordinates, not genomic
+minus-strand coordinates. Tm is not the recommended reaction annealing temperature.
 
-Choose **Normalize request** and expand **Effective normalized request**.
-Inspect all defaults, input digests, coverage policy, override and missing
-evidence. Only after reviewing it, tick the planning-review checkbox, supply
-a **new absolute output directory**, and choose **Plan reviewed study**.
+**Checkpoint G3:** inspect coverage and every unresolved class-pair distinction.
+Shared products, explicit no-product predictions and **Not assessed** cells are
+different. Retained-intron products can resemble genomic DNA; annotations do
+not establish absence of contamination or expression in your sample.
 
-**Checkpoint G4:** GENtle writes `request.json`, `plan.json` and the exact
-`workflow.json` to the new directory. The original study is untouched. Changing
-the request again or changing project structure invalidates review. Automatic
-recommendation and user override remain separate.
+The development replay with Primer3 2.6.1 and the pinned inputs returned **seven
+primer pairs**, covering all **13 exact mature-cDNA classes**, but leaving
+**nine class pairs unresolved**. The report correctly says `partial`: detecting
+every class is not the same as distinguishing every class. Retain your own
+revision, backend version and report, rather than treating these counts as a
+future pass threshold. No reference-wide BLAST confirmation was run for that
+replay, and the four RefSeq records were comparison context, not design targets.
 
-Inspect **Exact ordered operations** and both operation/workflow digests.
-Planning success is not primer-design success. The planner uses stricter
-default primer constraints than the permissive 04.06 comparison recipe;
-neither that recipe's successful design nor its reports prove this plan feasible.
+## 4. Review the Gene-Informed Study Separately
 
-If you deliberately want to test execution, separately tick the execution-review
-checkbox and choose **Execute reviewed workflow**. Observe progress and use
-**Cancel study task** when needed. Record a typed design failure as a failure;
-do not loosen constraints, patch the workflow or manufacture a pass for this
-teaching exercise. Existing panel identities are refused rather than overwritten.
-Cancellation/staleness discards engine changes, but does not erase files already
-written. New approval is required after a changed request or failed iteration.
+From Splicing Expert choose **Gene assay study...**, then **Open study plan...**
+and `study.plan.json`. Missing expression and specificity remain explicit.
+The separately executed discrimination request above is comparison context,
+not falsely attributed to this unexecuted study workflow.
 
-**Checkpoint G5:** no second approval means no execution. Editing workflow
-bytes must fail digest verification before design. A cancelled or stale result
-must not become the current project result. This checkpoint is about safe
-execution, not a promised successful study with arbitrary constraints.
+To change a requirement, open `study.request.json`, give it a new plan ID,
+normalize/review it and plan into a new directory. Inspect the exact ordered
+operations before separately approving execution. This is **not a promised
+successful study** for arbitrary requirements.
 
-## 5. Export an Honest Dossier
+**Checkpoint G4:** planning and execution have independent approvals. Changed
+requests invalidate review. Never invent expression effects or thresholds.
 
-Expand **Canonical dossier export**. Enter the absolute path to the helper's
-`publication.request.json` and a new absolute output directory, for example
-`.../gui-dossier`. Leave optional PDF off for the bounded offline exercise,
-then choose **Export declared dossier**.
+## 5. Confirm Specificity Before Using Candidates
 
-Open its `index.html` and gene page. Compare `canonical-report.json` with
-the helper's `cli-dossier/canonical-report.json`; the scientific records should
-agree. The request binds the **original** unexecuted study, not your new plan.
-Changing which study is published requires an explicitly updated, correctly
-hash-bound publication request; the GUI must not silently replace it.
+Choose **Build experimental handoff**. Missing genomic and whole-transcriptome
+checks must block readiness. Use authentic prepared GRCh38 and transcriptome
+resources; displaying four RefSeq records is not a reference-wide off-target
+search. Follow the [specificity continuation](04-07_transcript_assay_followup_gui_cli.md#5-optional-external-specificity-plan-is-not-pass).
 
-**Checkpoint G6:** the page says **Pending** and explains that the study's
-assays have not been executed. The separate comparison panels are not inserted
-as falsely plan-bound handoffs. Real completed handoffs and reviewed order forms
-can be supplied using the existing canonical contract, but this tutorial does
-not fabricate them. There is no order-submission action.
+**Checkpoint G5:** inspect intended/unintended products, genomic contamination
+risks and the exact assessed universe. Candidates are **not order approval**.
+Efficiency, melt curves and biological interpretation still require laboratory review.
 
-## Shell and Agent Parity
+## 6. Export an Honest Dossier
 
-The GUI Shell can open the existing designer with
-`ui open pcr-design patz1_transcript_assay_demo`; choose **Gene assay study**.
-The shared routes remain `primers plan-gene-isoform-study`,
-`primers execute-gene-isoform-study-workflow`, and
-`primers publish-gene-isoform-study`. Use the exact saved request/workflow files;
-GUI Shell is not Bash. CLI processes do not inherit unsaved GUI state.
+In **Gene assay study > Canonical dossier export**, load
+`publication.request.json` and choose a new output directory. It binds the
+original **Pending** study; it does not claim that the exploratory panel executed
+that study. Completed publications need their real digest-bound handoffs.
 
-An optional inner-agent prompt is: "Help me review the declared evidence and
-primer pairs in the synthetic PATZ1 gene assay study. Open PCR Designer, do not
-execute design or order anything until I separately review the exact inputs."
-This is a static example, not a tested provider conversation or delegated
-scientific approval. Help can discover this guide with
-`ui open tutorial-guide gene_assay_study_gui`.
+**Checkpoint G6:** distinguish authentic reference data, annotation agreement,
+candidate design and pending validation. No automatic ordering is offered.
 
-## Troubleshooting and Review
+## Help and Review
 
-No panels: make sure you opened the helper's project, not just its sequence or
-plan JSON. Wrong-locus error: open the plan's exact source sequence rather than
-renaming another sequence to match. Directory exists: choose a new run location.
-Input/hash mismatch: retain the failure and review original inputs, never edit
-hashes merely to make execution proceed. Missing PDF: optional printing needs a
-browser; HTML export is a separate, inspectable artifact.
+GUI Shell: `ui open tutorial-guide gene_assay_study_gui`.
+Optional agent prompt: "Open the real PATZ1 tutorial, compare Ensembl/RefSeq,
+and propose a panel discriminating the declared Ensembl transcript set. Retain
+unresolved cases and specificity gaps. Do not execute without review."
+This is **not a tested provider** conversation or delegated scientific approval.
 
-Glen's [screenshot and real-data acceptance request](../gene_assay_study_glen_acceptance.md)
-specifies raw captures, annotations and exact-revision receipts. Automated tests
-do not replace his live GUI review or the user's biological sign-off.
+No comparison: load the enriched report, not just DNA. Hash/assembly mismatch:
+check original inputs, do not edit hashes to force acceptance. No shared rows:
+inspect complete chains and source availability; shared exons may still exist.
+No panel: preparation intentionally does not execute primer design.
+
+[Glen's screenshot request](../gene_assay_study_glen_acceptance.md) covers G1-G6
+on these public references. Retain raw captures and exact-revision receipts;
+human biological sign-off remains separate.

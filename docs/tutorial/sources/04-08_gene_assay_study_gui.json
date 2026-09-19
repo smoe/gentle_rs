@@ -1,7 +1,7 @@
 {
   "schema": "gentle.tutorial_source.v4",
   "id": "gene_assay_study_gui",
-  "title": "Review an Alternative-Splicing Primer-Pair Study from Gene Evidence to Dossier",
+  "title": "Design Primer Pairs to Distinguish Real Human PATZ1 Transcripts",
   "catalog": {
     "order": 63,
     "path": "docs/tutorial/04-08_gene_assay_study_gui.md",
@@ -9,7 +9,7 @@
     "status": "manual/hybrid",
     "source": "hand_written_markdown",
     "audiences": ["gui_first", "primer_design", "transcript_analysis", "wet_lab_biologists"],
-    "notes": "Synthetic PATZ1 alternative-splicing primer-pair study in PCR Designer, anchored in Splicing Expert. Inspect saved gene-study evidence, primer footprints and transcript products; normalize and separately review planning/execution; keep missing specificity and pending canonical dossiers explicit. Not a Nanopore single-primer capture pool. Glen's live screenshots and scientific acceptance are pending.",
+    "notes": "Authentic human PATZ1: pinned Ensembl 116 and RefSeq genomic annotations, source/shared exon-chain inspection and primer-pair discrimination across all 13 Ensembl transcript records. Reference-wide specificity, Glen's live screenshots and human scientific acceptance remain pending. No synthetic expression or array evidence.",
     "group": "04",
     "group_position": 8
   }

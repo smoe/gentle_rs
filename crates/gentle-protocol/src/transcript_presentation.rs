@@ -12,6 +12,28 @@ pub enum TranscriptProvider {
     RefSeq,
 }
 
+/// Exact full-chain membership in the supplied annotations, never biological absence.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptSourceMembership {
+    EnsemblOnly,
+    RefSeqOnly,
+    Both,
+    EnsemblOtherUnassessed,
+    RefSeqOtherUnassessed,
+}
+
+/// An exon-chain comparison keeps CDS alternatives and exact source records separate.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TranscriptSourceComparisonRow {
+    pub exon_chain_id: String,
+    pub membership: TranscriptSourceMembership,
+    pub ensembl_transcript_ids: Vec<String>,
+    pub refseq_transcript_ids: Vec<String>,
+    pub member_record_ids: Vec<String>,
+    pub structure_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptAnnotationFormat {

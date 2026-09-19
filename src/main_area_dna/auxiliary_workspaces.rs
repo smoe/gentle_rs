@@ -8126,7 +8126,9 @@ impl MainAreaDna {
             },
         };
         Ok(GeneLocusEvidenceDisplayRequest {
-            transcript_annotation_sources: vec![],
+            transcript_annotation_sources: crate::transcript_presentation::read_source_list(
+                &self.splicing_locus_annotation_sources_path,
+            )?,
             isoform_evidence,
             upstream_bp: Self::parse_locus_usize(
                 &self.splicing_locus_upstream_bp,
@@ -8404,6 +8406,7 @@ impl MainAreaDna {
         self.splicing_locus_inspector_drag_anchor = None;
         self.splicing_locus_inspector_hidden_scores.clear();
         self.splicing_locus_inspector_hidden_ensembl.clear();
+        self.splicing_locus_source_filter = locus_inspector::AnnotationFilter::All;
         self.splicing_locus_binding_cache = None;
         self.splicing_locus_presentation =
             Arc::new(locus_inspector::LocusPresentation::from_report(
@@ -9534,6 +9537,16 @@ impl MainAreaDna {
                             &mut self.splicing_isoform_evidence_annotation_release,
                         );
                         ui.label("");
+                        ui.end_row();
+                        ui.label("Ensembl / RefSeq source list").on_hover_text(
+                            "Optional JSON array of hash-bound TranscriptAnnotationSource records. Use the same assembly and locus sequence hash. Relative annotation paths resolve beside the list. No download or consensus is inferred.",
+                        );
+                        ui.text_edit_singleline(&mut self.splicing_locus_annotation_sources_path);
+                        if ui.button("Annotation sources...").clicked()
+                            && let Some(path) = Self::pick_locus_resource_file("Annotation source list", &["json"])
+                        {
+                            self.splicing_locus_annotation_sources_path = path.to_string_lossy().to_string();
+                        }
                         ui.end_row();
                         ui.label("Probe interpretation JSON");
                         ui.text_edit_singleline(&mut self.splicing_isoform_evidence_probe_paths);

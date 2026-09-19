@@ -7,7 +7,7 @@ import re
 import tempfile
 import unittest
 
-from prepare_gene_assay_study_tutorial import ROOT, prepare
+from prepare_real_patz1_tutorial import ROOT, FIXTURE, prepare, sha
 
 
 class StudyTutorialTests(unittest.TestCase):
@@ -31,7 +31,17 @@ class StudyTutorialTests(unittest.TestCase):
                 self.assertTrue((guide.parent / target.split("#")[0]).exists(), target)
         for term in ("minus-strand", "not order", "Pending", "zero-based half-open",
                      "not a promised successful study", "not a tested provider"):
-            self.assertIn(term, text)
+            self.assertIn(term, " ".join(text.split()).replace("**", ""))
+
+    def test_authentic_patz1_inputs_are_pinned_not_synthetic(self):
+        manifest = json.loads((FIXTURE / "manifest.json").read_text())
+        for name, expected in manifest["files"].items():
+            self.assertEqual(sha(FIXTURE / name), expected)
+        entry = json.loads((FIXTURE / "ensembl_entry.json").read_text())
+        self.assertEqual(entry["gene_id"], "ENSG00000100105")
+        self.assertEqual(len(entry["transcripts"]), 13)
+        self.assertEqual(entry["strand"], -1)
+        self.assertEqual(entry["sequence_length"], 20802)
 
     @unittest.skipUnless(os.environ.get("GENTLE_TUTORIAL_BIN_DIR"), "supply built CLI for real replay")
     def test_real_cli_preparation_preserves_pending_study_and_candidate_provenance(self):
@@ -42,15 +52,17 @@ class StudyTutorialTests(unittest.TestCase):
             self.assertFalse(receipt["study_executed"])
             self.assertFalse(receipt["gui_accepted"])
             self.assertTrue(all(call["exit_code"] == 0 for call in receipt["calls"]))
-            panel = json.loads((output / "patz1_sybr_juc_panel.json").read_text())
-            self.assertEqual(panel["transcript_count"], 3)
-            self.assertEqual(panel["strand"], "-")
-            self.assertEqual(panel["selected_assay_count"], 3)
-            self.assertTrue(all(row["genomic_confirmation_status"] == "not_run" for row in panel["specificity_followups"]))
-            canonical = json.loads((output / "cli-dossier/canonical-report.json").read_text())
-            self.assertFalse(canonical["complete"])
-            self.assertEqual(canonical["pending_gene_count"], 1)
-            self.assertEqual(canonical["genes"][0]["handoffs"], [])
+            self.assertFalse(receipt["synthetic"])
+            self.assertFalse(receipt["primer_design_executed"])
+            locus = json.loads((output / "locus.report.json").read_text())
+            self.assertEqual(locus["isoform_evidence"]["splicing"]["transcript_count"], 13)
+            self.assertEqual(len(locus["transcript_presentation"]["records"]), 17)
+            operation = json.loads((output / "primer-discrimination.operation.json").read_text())["DesignTranscriptAssayPanel"]
+            self.assertEqual(operation["objective"], "minimal_discrimination_panel")
+            self.assertNotIn("junction_evidence_paths", operation)
+            publication = json.loads((output / "publication.request.json").read_text())
+            self.assertEqual(publication["genes"][0]["status"], "pending")
+            self.assertFalse((output / "primer-panel.json").exists())
             with self.assertRaises(FileExistsError):
                 prepare(binary, output)
 

@@ -1,6 +1,82 @@
 //! Interactive projection of portable locus reports and validated DNA selections.
 
 use super::*;
+use gentle_protocol::transcript_presentation::{
+    TranscriptInterval, TranscriptSourceMembership as Membership,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AnnotationFilter {
+    All,
+    Ensembl,
+    RefSeq,
+    Shared,
+    SourceOnly,
+}
+
+impl AnnotationFilter {
+    fn accepts(self, membership: Option<Membership>) -> bool {
+        let Some(m) = membership else {
+            return true;
+        };
+        match self {
+            Self::All => true,
+            Self::Ensembl => matches!(
+                m,
+                Membership::EnsemblOnly | Membership::EnsemblOtherUnassessed | Membership::Both
+            ),
+            Self::RefSeq => matches!(
+                m,
+                Membership::RefSeqOnly | Membership::RefSeqOtherUnassessed | Membership::Both
+            ),
+            Self::Shared => m == Membership::Both,
+            Self::SourceOnly => matches!(m, Membership::EnsemblOnly | Membership::RefSeqOnly),
+        }
+    }
+}
+
+fn membership_label(m: Membership) -> &'static str {
+    match m {
+        Membership::Both => "Both: same exon chain",
+        Membership::EnsemblOnly => "Ensembl only",
+        Membership::RefSeqOnly => "RefSeq only",
+        Membership::EnsemblOtherUnassessed => "Ensembl; RefSeq unassessed",
+        Membership::RefSeqOtherUnassessed => "RefSeq; Ensembl unassessed",
+    }
+}
+
+fn membership_color(m: Membership) -> egui::Color32 {
+    match m {
+        Membership::Both => egui::Color32::from_rgb(0, 130, 110),
+        Membership::EnsemblOnly | Membership::EnsemblOtherUnassessed => {
+            egui::Color32::from_rgb(35, 110, 185)
+        }
+        Membership::RefSeqOnly | Membership::RefSeqOtherUnassessed => {
+            egui::Color32::from_rgb(195, 115, 20)
+        }
+    }
+}
+
+fn annotation_local_interval(
+    i: TranscriptInterval,
+    anchor: &gentle_protocol::GeneLocusGenomeAnchorBinding,
+) -> Option<(usize, usize)> {
+    let start = usize::try_from(i.start_1based)
+        .ok()?
+        .max(anchor.start_1based);
+    let end = usize::try_from(i.end_1based).ok()?.min(anchor.end_1based);
+    if start > end {
+        return None;
+    }
+    Some(if anchor.strand == Some('-') {
+        (anchor.end_1based - end + 1, anchor.end_1based - start + 1)
+    } else {
+        (
+            start - anchor.start_1based + 1,
+            end - anchor.start_1based + 1,
+        )
+    })
+}
 
 const EXON: egui::Color32 = egui::Color32::from_rgb(120, 165, 220);
 const CDS: egui::Color32 = egui::Color32::from_rgb(37, 99, 175);
@@ -18,6 +94,126 @@ struct EvidenceInterval {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_annotation_lanes_keep_cds_alternatives_and_reject_stale_bindings() {
+        use gentle_protocol::transcript_presentation::*;
+        let (_, mut report) = anchored_area();
+        report.isoform_evidence.assembly = "GRCh38".into();
+        let hash = report
+            .sequence_binding
+            .as_ref()
+            .unwrap()
+            .sequence_sha256
+            .trim_start_matches("sha256:")
+            .to_string();
+        let sources = [
+            ("e", TranscriptProvider::Ensembl),
+            ("r", TranscriptProvider::RefSeq),
+        ]
+        .map(|(id, provider)| TranscriptSourceBinding {
+            source_id: id.into(),
+            provider,
+            assembly: "GRCh38".into(),
+            release: "synthetic test".into(),
+            accession: id.into(),
+            chromosome: "chr7".into(),
+            annotation_sha256: "a".repeat(64),
+            locus_sequence_sha256: hash.clone(),
+        });
+        let records = [("e", "TEST_E.2", 0), ("r", "TEST_R.3", 1)].map(|(source_id, id, phase)| {
+            SourceTranscriptStructure {
+                source_id: source_id.into(),
+                transcript_id: id.into(),
+                label: id.into(),
+                strand: -1,
+                exons: vec![TranscriptExon {
+                    interval: TranscriptInterval {
+                        start_1based: 1080,
+                        end_1based: 1090,
+                    },
+                    source_exon_id: None,
+                }],
+                cds: Some(vec![TranscriptCds {
+                    interval: TranscriptInterval {
+                        start_1based: 1080,
+                        end_1based: 1088,
+                    },
+                    phase: Some(phase),
+                }]),
+                designations: vec![],
+                notes: vec![],
+            }
+        });
+        report.transcript_presentation = Some(
+            gentle_engine::transcript_presentation::build(
+                "GRCh38",
+                "chr7",
+                &hash,
+                sources.into(),
+                records.into(),
+            )
+            .unwrap(),
+        );
+        let prepared = LocusPresentation::from_report(&report, None);
+        assert!(prepared.annotation_error.is_none());
+        assert_eq!(
+            prepared.lanes.len(),
+            2,
+            "CDS phase alternatives are not collapsed"
+        );
+        for lane in &prepared.lanes {
+            assert_eq!(lane.annotation_membership, Some(Membership::Both));
+            assert_eq!((lane.intervals[0].start, lane.intervals[0].end), (11, 21));
+            assert_eq!((lane.intervals[1].start, lane.intervals[1].end), (13, 21));
+            assert!(lane.detail.contains("TEST_E.2") && lane.detail.contains("TEST_R.3"));
+            assert!(
+                lane.intervals
+                    .iter()
+                    .all(|i| i.color == membership_color(Membership::Both))
+            );
+        }
+        assert_eq!(prepared.annotation_summary.len(), 2);
+        report.sequence_binding.as_mut().unwrap().sequence_sha256 = "b".repeat(64);
+        let invalid = LocusPresentation::from_report(&report, None);
+        assert!(invalid.annotation_error.is_some());
+        assert!(
+            invalid.lanes.is_empty(),
+            "no fallback model may mask a rejected annotation"
+        );
+    }
+
+    #[test]
+    fn source_annotation_filter_and_axis_do_not_infer_missing_provider_or_reverse_twice() {
+        assert!(!AnnotationFilter::Shared.accepts(Some(Membership::EnsemblOtherUnassessed)));
+        assert!(!AnnotationFilter::SourceOnly.accepts(Some(Membership::EnsemblOtherUnassessed)));
+        assert!(AnnotationFilter::Shared.accepts(Some(Membership::Both)));
+        assert!(AnnotationFilter::RefSeq.accepts(Some(Membership::RefSeqOnly)));
+        assert!(!AnnotationFilter::Ensembl.accepts(Some(Membership::RefSeqOnly)));
+        assert!(
+            AnnotationFilter::Shared.accepts(None),
+            "other evidence lanes remain visible"
+        );
+        let (_, report) = anchored_area();
+        let mut anchor = report.sequence_binding.unwrap().genome_anchor.unwrap();
+        let interval = TranscriptInterval {
+            start_1based: 1080,
+            end_1based: 1090,
+        };
+        assert_eq!(annotation_local_interval(interval, &anchor), Some((11, 21)));
+        anchor.strand = Some('+');
+        assert_eq!(annotation_local_interval(interval, &anchor), Some((80, 90)));
+        assert_eq!(
+            annotation_local_interval(
+                TranscriptInterval {
+                    start_1based: 2000,
+                    end_1based: 2010
+                },
+                &anchor
+            ),
+            None
+        );
+    }
 
     fn anchored_area() -> (MainAreaDna, GeneLocusEvidenceDisplayReport) {
         let dna = DNAsequence::from_sequence(&"ACGT".repeat(25)).unwrap();
@@ -324,6 +520,7 @@ mod tests {
 
 #[derive(Debug)]
 struct EvidenceLane {
+    annotation_membership: Option<Membership>,
     id: String,
     label: String,
     detail: String,
@@ -338,6 +535,8 @@ pub(super) struct LocusPresentation {
     lanes: Vec<EvidenceLane>,
     score_bounds: Vec<(f64, f64)>,
     legend: Vec<(String, egui::Color32)>,
+    annotation_summary: Vec<String>,
+    annotation_error: Option<String>,
 }
 
 impl LocusPresentation {
@@ -353,7 +552,11 @@ impl LocusPresentation {
                 .collect(),
             ..Default::default()
         };
-        if let Some(splicing) = &report.isoform_evidence.splicing {
+        if report.transcript_presentation.is_some() {
+            if let Err(error) = result.add_annotation_lanes(report) {
+                result.annotation_error = Some(error);
+            }
+        } else if let Some(splicing) = &report.isoform_evidence.splicing {
             for lane in &splicing.transcripts {
                 let mut intervals = lane
                     .exons
@@ -380,6 +583,7 @@ impl LocusPresentation {
                     ));
                 }
                 result.lanes.push(EvidenceLane {
+                    annotation_membership: None,
                     id: format!("transcript:{}", lane.transcript_feature_id),
                     label: lane.transcript_id.clone(),
                     detail: format!(
@@ -402,17 +606,20 @@ impl LocusPresentation {
                 });
             }
         }
-        if result.lanes.is_empty() {
+        if result.lanes.is_empty() && report.transcript_presentation.is_none() {
             result.lanes.push(EvidenceLane {
+                annotation_membership: None,
                 id: "merged_exons".into(), label: "Merged exons".into(),
                 detail: "No per-transcript model was supplied; these are merged exon intervals, not CDS assignments".into(),
                 intervals: report.isoform_evidence.exon_families.iter().map(|exon| EvidenceInterval { start: exon.local_start_1based, end: exon.local_end_1based, height: 0.55, color: EXON }).collect(),
                 markers: vec![], signal_scale: None,
             });
         }
-        result
-            .legend
-            .extend([("Exon".into(), EXON), ("CDS".into(), CDS)]);
+        if report.transcript_presentation.is_none() {
+            result
+                .legend
+                .extend([("Exon".into(), EXON), ("CDS".into(), CDS)]);
+        }
         for group in &report.occupancy_groups {
             for (index, lane) in group.lanes.iter().enumerate() {
                 let color = match lane.role {
@@ -425,6 +632,7 @@ impl LocusPresentation {
                 let available =
                     lane.state == gentle_protocol::GeneLocusOccupancyLaneState::Available;
                 result.lanes.push(EvidenceLane {
+                    annotation_membership: None,
                     id: format!("occupancy:{}:{index}", group.group_id),
                     label: format!(
                         "{} [{}]",
@@ -491,6 +699,7 @@ impl LocusPresentation {
         for track in &report.regulatory_score_tracks {
             if !track.sites.is_empty() {
                 result.lanes.push(EvidenceLane {
+                    annotation_membership: None,
                     id: format!("sites:{}", track.track_id),
                     label: format!("{} sites", track.label),
                     detail: format!(
@@ -526,6 +735,7 @@ impl LocusPresentation {
                 .any(|score| score.source_ids.contains(&track.motif_id))
             {
                 result.lanes.push(EvidenceLane {
+                    annotation_membership: None,
                     id: format!("motif:{}", track.motif_id),
                     label: format!("{} hits", track.motif_id),
                     detail: format!(
@@ -577,6 +787,7 @@ impl LocusPresentation {
                     ));
                 }
                 result.lanes.push(EvidenceLane {
+                    annotation_membership: None,
                     id: format!("reporter:{}", row.row_id),
                     label: row.label,
                     detail,
@@ -596,6 +807,101 @@ impl LocusPresentation {
             }
         }
         result
+    }
+
+    fn add_annotation_lanes(
+        &mut self,
+        report: &GeneLocusEvidenceDisplayReport,
+    ) -> Result<(), String> {
+        let p = report
+            .transcript_presentation
+            .as_ref()
+            .ok_or("No annotation presentation")?;
+        crate::transcript_presentation::validate_locus(report)?;
+        let anchor = report
+            .sequence_binding
+            .as_ref()
+            .and_then(|b| b.genome_anchor.as_ref())
+            .ok_or("Source comparison requires the report's genomic anchor")?;
+        let rows = gentle_engine::transcript_presentation::compare_sources(p)?;
+        for s in &p.sources {
+            self.annotation_summary.push(format!(
+                "{:?}: {} | {} | annotation SHA-256 {}",
+                s.provider, s.release, s.accession, s.annotation_sha256
+            ));
+        }
+        for row in rows {
+            let color = membership_color(row.membership);
+            for id in &row.structure_ids {
+                let group = p
+                    .structure_groups
+                    .iter()
+                    .find(|g| &g.structure_id == id)
+                    .ok_or("Missing structure")?;
+                let members: Vec<_> = p
+                    .records
+                    .iter()
+                    .filter(|r| group.member_record_ids.contains(&r.record_id))
+                    .collect();
+                let record = members.first().ok_or("Empty structure")?;
+                let mut intervals = record
+                    .structure
+                    .exons
+                    .iter()
+                    .filter_map(|e| {
+                        annotation_local_interval(e.interval, anchor).map(|(start, end)| {
+                            EvidenceInterval {
+                                start,
+                                end,
+                                height: 0.55,
+                                color,
+                            }
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                if let Some(cds) = &group.cds {
+                    intervals.extend(cds.iter().filter_map(|c| {
+                        annotation_local_interval(c.interval, anchor).map(|(start, end)| {
+                            EvidenceInterval {
+                                start,
+                                end,
+                                height: 1.0,
+                                color,
+                            }
+                        })
+                    }));
+                }
+                let ids = members
+                    .iter()
+                    .map(|r| r.structure.transcript_id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" / ");
+                self.lanes.push(EvidenceLane {
+                    annotation_membership: Some(row.membership),
+                    id: format!("annotation:{id}"), label: ids,
+                    detail: format!("{} | Ensembl: {} | RefSeq: {} | {} CDS/phase structure(s) for this full chain; this row keeps its own CDS geometry. Genomic strand {}. Thin: exon, thick: annotated CDS. Agreement is not cDNA identity, primer specificity or expression evidence.",
+                        membership_label(row.membership), row.ensembl_transcript_ids.join(", "), row.refseq_transcript_ids.join(", "), row.structure_ids.len(), record.structure.strand),
+                    intervals, markers: vec![], signal_scale: None,
+                });
+            }
+        }
+        for m in [
+            Membership::EnsemblOnly,
+            Membership::RefSeqOnly,
+            Membership::Both,
+            Membership::EnsemblOtherUnassessed,
+            Membership::RefSeqOtherUnassessed,
+        ] {
+            if self
+                .lanes
+                .iter()
+                .any(|l| l.annotation_membership == Some(m))
+            {
+                self.legend
+                    .push((membership_label(m).into(), membership_color(m)));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -737,6 +1043,43 @@ impl MainAreaDna {
             ui.small("Historical evidence remains inspectable/exportable. Live bases and DNA selection are disabled.");
         }
         let presentation = self.splicing_locus_presentation.clone();
+        if let Some(error) = &presentation.annotation_error {
+            ui.colored_label(
+                egui::Color32::DARK_RED,
+                format!("Annotation comparison unavailable: {error}"),
+            );
+        }
+        if !presentation.annotation_summary.is_empty() {
+            ui.strong("Ensembl / NCBI RefSeq annotation comparison");
+            ui.horizontal_wrapped(|ui| {
+                for (mode, label) in [
+                    (AnnotationFilter::All, "All sources"),
+                    (AnnotationFilter::Ensembl, "Ensembl chains"),
+                    (AnnotationFilter::RefSeq, "RefSeq chains"),
+                    (AnnotationFilter::Shared, "Shared exon chains"),
+                    (AnnotationFilter::SourceOnly, "Source-only chains"),
+                ] {
+                    ui.selectable_value(&mut self.splicing_locus_source_filter, mode, label);
+                }
+            });
+            ui.small("Shared means the complete exon chain matches, not merely overlapping exons. CDS/phase differences retain separate rows. Source-only means absent from the supplied other annotation, not biological absence. GenBank is a file/archive designation, not a third annotation vote.");
+            egui::CollapsingHeader::new("Annotation versions and hashes").show(ui, |ui| {
+                for source in &presentation.annotation_summary {
+                    ui.monospace(source);
+                }
+            });
+            let visible = presentation
+                .lanes
+                .iter()
+                .filter(|lane| {
+                    lane.annotation_membership.is_some()
+                        && self
+                            .splicing_locus_source_filter
+                            .accepts(lane.annotation_membership)
+                })
+                .count();
+            ui.small(format!("{visible} source structure row(s) match this view; other evidence lanes are unaffected. Export retains the complete source comparison."));
+        }
         let locus_start = report.locus_local_start_1based.max(1);
         let locus_end = report.locus_local_end_1based.max(locus_start);
         self.splicing_locus_inspector_start_1based = self
@@ -846,6 +1189,7 @@ impl MainAreaDna {
             .show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for lane in &presentation.lanes {
+                        if !self.splicing_locus_source_filter.accepts(lane.annotation_membership) { continue; }
                         let mut visible = !self.splicing_locus_inspector_hidden_scores.contains(&lane.id);
                         if ui.checkbox(&mut visible, &lane.label).on_hover_text(&lane.detail).changed() {
                             if visible { self.splicing_locus_inspector_hidden_scores.remove(&lane.id); }
@@ -907,9 +1251,11 @@ impl MainAreaDna {
             .lanes
             .iter()
             .filter(|lane| {
-                !self
-                    .splicing_locus_inspector_hidden_scores
-                    .contains(&lane.id)
+                self.splicing_locus_source_filter
+                    .accepts(lane.annotation_membership)
+                    && !self
+                        .splicing_locus_inspector_hidden_scores
+                        .contains(&lane.id)
             })
             .collect::<Vec<_>>();
         ui.horizontal_wrapped(|ui| {
