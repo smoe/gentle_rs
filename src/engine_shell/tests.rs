@@ -1686,12 +1686,21 @@ fn glossary_cli_usage_flags_parse_one_by_one() {
                 continue;
             }
             // This alternative subject replaces --seq-ids; combining them must remain invalid.
-            let flag_base =
-                if command.path == "collections run tfbs-scan" && flag == "--tss-collection" {
+            let flag_base = match (command.path.as_str(), flag.as_str()) {
+                ("collections run tfbs-scan", "--tss-collection") => {
                     "collections run tfbs-scan --motif AAA"
-                } else {
-                    &base
-                };
+                }
+                ("collections run primer-specificity", "--tss-collection") => {
+                    "collections run primer-specificity --pair-rank 1 --target-genome demo"
+                }
+                ("collections run restriction-scan", "--tss-collection") => {
+                    "collections run restriction-scan --enzyme EcoRI"
+                }
+                ("collections run digest", "--tss-collection") => {
+                    "collections run digest --enzyme EcoRI"
+                }
+                _ => &base,
+            };
             let Some(mut line) = shell_command_line_with_option(flag_base, &flag, value.as_deref())
             else {
                 continue;

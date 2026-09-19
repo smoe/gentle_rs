@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-19 - Splicing Intent and Collection Smoke Regressions
+
+- Separate the Splicing Expert intent tests from DNA-viewer reasoning-cache
+  initialization: disable the unrelated overlay in the pending-window routing
+  fixture and snapshot the initialized viewer in the controller fixture. Keep
+  full project-state equality checks, plus/minus coverage, retained inspection
+  state and subject-bound cancellation assertions.
+- Exercise `--tss-collection` as an alternative to `--seq-ids` in glossary flag
+  smoke tests for primer specificity, restriction scanning and digestion. Keep
+  the parser's mixed-subject rejection and approval requirements unchanged.
+- No runtime, biological, persisted-format or generated-artifact changes.
+
 ## 2026-09-19 - Complete Transcript-Panel Inspection
 
 - Replace the GUI's first-40-transcripts/first-24-assays matrix and first-80

@@ -16666,8 +16666,9 @@ fn splicing_expert_intent_reuses_inspection_and_closes_only_bound_feature() {
         let mut state = ProjectState::default();
         state.sequences.insert("locus".into(), dna.clone());
         let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
-        let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
         let mut area = MainAreaDna::new(dna, Some("locus".into()), Some(engine.clone()));
+        // Viewer initialization populates the reasoning cache; expert intents must not change it.
+        let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
         area.apply_splicing_expert_intent(UiIntentAction::Open, 0)
             .unwrap();
         let view = area.splicing_expert_window_view.clone().unwrap();

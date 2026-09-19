@@ -11247,6 +11247,8 @@ fn splicing_expert_agent_route_binds_subject_and_cancels_pending_open() {
         qualifiers: vec![("gene".into(), Some("SYNTHETIC".into()))],
     });
     let mut state = ProjectState::default();
+    // Isolate routing from the DNA viewer's automatic reasoning-cache initialization.
+    state.display.show_construct_reasoning_overlay = false;
     state.sequences.insert("locus".into(), dna);
     app.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
     let before = serde_json::to_value(app.engine.read().unwrap().state()).unwrap();
