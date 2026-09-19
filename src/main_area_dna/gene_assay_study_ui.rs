@@ -1119,6 +1119,7 @@ impl MainAreaDna {
             if report.source_feature_id != plan.source_feature_id {
                 ui.label("Different source feature: this is comparison context, not proof that this panel belongs to the study. Canonical publication revalidates the exact plan/handoff binding.");
             }
+            super::transcript_assay_report_ui::coverage(ui, &report);
             Self::render_selected_transcript_pair(
                 ui,
                 &report,
@@ -1314,7 +1315,14 @@ impl MainAreaDna {
         for reason in &summary.selection_reasons {
             ui.label(&reason.message);
         }
-        for transcript in &report.transcript_rows {
+        let rows = super::transcript_assay_report_ui::page(
+            ui,
+            &report.report_id,
+            "Selected-pair transcripts",
+            report.transcript_rows.len(),
+            40,
+        );
+        for transcript in &report.transcript_rows[rows] {
             let cell = report.detection_matrix.iter().find(|c| {
                 c.assay_id == assay.assay_id
                     && c.transcript_feature_id == transcript.transcript_feature_id

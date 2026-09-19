@@ -67,6 +67,13 @@ Under **Persisted panels on this source sequence**, inspect
 the panel was produced by the displayed study plan. Select different entries
 in **Selected primer pair**.
 
+First read **Coverage scope: what this panel establishes**. Transcript records
+and distinct mature cDNA sequences are different denominators. Check the
+requested universe: records excluded from it are **unassessed**, not failed
+targets, and covering a protein target need not cover all its linked cDNAs.
+Legacy reports can lack the broader annotation denominator; GENtle must then
+say so rather than claiming every annotated transcript was assessed.
+
 Read the forward and reverse sequences, each written 5' to 3', and their
 binding footprints. The small blue/orange schematic uses a mature-cDNA axis:
 the minus-strand genomic locus does not reverse it again. Coordinates are
@@ -78,6 +85,8 @@ single product, multiple products, explicit no-product result and a missing
 matrix cell have different meanings. Inspect the stored selection reasons
 and JUC evidence rather than assuming that the highest score explains the
 selection. Shared products do not establish transcript-specific abundance.
+For a larger gene, use **Selected-pair transcripts** page controls to reach
+every stored transcript; this three-transcript example fits on one page.
 
 **Checkpoint G2:** both primer footprints and the per-transcript products are
 visible for one selected pair. The JUC example names PATZ1-202's exon 1-2
@@ -89,6 +98,12 @@ missing threshold remains visible and is not promoted to qualified evidence.
 Choose **Open panel design, matrix and readiness checks**. Review the
 **Transcript x assay product matrix** and **Requested junctions**. The old
 sequence table is now labelled **Candidate primer sequences (not order approval)**.
+For larger panels, **Transcripts** and **Assays** page independently; the
+endpoint band table has its own **Band rows** pages. Changing pages is only
+navigation, not a subset design or a changed coverage requirement. Read the
+**Panel interpretation** column: identical mature cDNAs cannot be separated
+by sequence-based primers. A **Not assessed** cell is missing evidence, not
+an explicit no-product prediction.
 Choose **Build experimental handoff** to run the shared readiness operation.
 
 **Checkpoint G3:** missing genomic/transcriptome specificity is a blocker, not

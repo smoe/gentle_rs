@@ -1,5 +1,31 @@
 # GENtle Changelog
 
+## 2026-09-19 - Complete Transcript-Panel Inspection
+
+- Replace the GUI's first-40-transcripts/first-24-assays matrix and first-80
+  band-row truncation with independent page controls. Selected-pair transcript
+  outcomes are paged too, retaining every stored row without expanding the
+  number drawn at once. Paging leaves report data and exports unchanged.
+- Show the shared experimental-handoff coverage explanation in both the gene
+  study and transcript-panel views. Keep annotation records, exact mature-cDNA
+  classes, UniProt-linked records, uncovered and unassessed targets distinct.
+  Expose stored panel interpretation beside transcript IDs and label missing
+  matrix cells as not assessed. No primer selection, scoring or specificity
+  rule changes; no complete-annotation, isoform-discrimination or order claim
+  is inferred from a completed design objective.
+- Extend tutorial 04.08 and Glen's G2/G3 acceptance request for coverage scope
+  and large-panel navigation. Live GUI performance, authentic-reference
+  specificity and the original paper-facing study bundle remain pending.
+- The previously interrupted ten gene-study and eleven managed-command tests
+  passed locally at the clean baseline `8284c4ca`; this closes that old local
+  verification gap without substituting for independent acceptance.
+- On the updated working tree, all 60 `transcript_assay_` regressions (including
+  four new presentation tests), ten study tests and eleven managed-command
+  tests passed. The Python tutorial suite ran 88 tests with 12 declared optional
+  skips. Offline locked Cargo checks (default and `gui-test-support --lib`),
+  formatting and whitespace checks passed. No full-workspace, native GUI,
+  real-data or procurement acceptance is implied by these checks.
+
 ## 2026-09-18 - TSS Tutorial Rebase Integration
 
 - Retain main's saved-collection browser and offline GUI tutorial when rebasing

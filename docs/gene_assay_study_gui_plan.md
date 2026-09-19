@@ -54,6 +54,42 @@ acceptance; published images cannot substitute for the missing inputs.
 
 ## Verification Handoff
 
+Follow-up, 2026-09-19: the previously interrupted ten study tests and eleven
+`command_execution::tests` all passed locally at `8284c4ca` using
+`cargo test --locked --offline -j 1 --lib FILTER`. This closes the old
+unverified receipt/stale-result fix, not Glen's live or real-data acceptance.
+The earlier generated tutorial mismatch was also closed by the recorded TSS
+rebase verification in the changelog; it is not a waived failure.
+
+The current user-requested continuation is a presentation-only completion:
+replace matrix/band truncation with independent, bounded pages; page the
+selected-pair outcomes too; expose the engine handoff's existing coverage
+accounting in both panel and study modes. Do not alter scientific selection,
+the coverage universe, report schemas or exported rows. The new headless
+navigation regression uses explicitly synthetic display records (95 transcripts,
+25 assays, 81 band rows), not evidence that those are feasible assays. This
+scope was offered for optional Claude consultation but was not Claude-reviewed.
+
+Verification of this working-tree continuation: 60 `transcript_assay_` tests
+(including four new coverage/navigation tests), ten `gene_assay_study_ui` tests
+and eleven `command_execution::tests` passed. The large-panel test clicks the
+live headless egui page controls and verifies the last transcript, assay and
+band row, missing-cell wording and unchanged report JSON. Python tutorial
+discovery ran 88 tests with 12 declared optional skips. Default offline locked
+Cargo check, the `gui-test-support --lib` check, formatting and whitespace
+checks also passed. Session-close hygiene reported only the intentional dirty
+tree and manual plan-fidelity reminder. These results do not replace native
+GUI or real-reference acceptance at a frozen candidate SHA. The full workspace
+and generated tutorial replay were not rerun for this presentation-only slice.
+
+Implementation files: `src/main_area_dna/transcript_assay_report_ui.rs`, its
+module declaration in `src/main_area_dna.rs`, and the existing
+`gene_assay_study_ui.rs` / `primer_design_ui.rs` views. Documentation changes
+are limited to this plan, the GUI guide, tutorial 04.08, Glen's acceptance
+request and the roadmap/changelog status.
+
+### Original Handoff Record
+
 The implementation was prepared on the baseline above and is now committed at
 the user's request. Acceptance must name the exact commit containing this work,
 not the baseline SHA alone.
@@ -65,8 +101,8 @@ Only this task's rebuild and queued semantic-feature check were terminated.
   planning advanced the project revision and its own result was rejected as
   stale. Receipts now capture the committed structural revision, and result
   attachment reads it against the project under one read lock. The final ten
-  tests, including post-commit edits, reused IDs and canonical export, still
-  require a completed rebuild/run. No passing final Rust result is claimed.
+  tests, including post-commit edits, reused IDs and canonical export, required
+  the later completed run recorded above.
 - An intermediate default `cargo check -q --locked --offline -j1` passed before
   the final receipt/cache changes. Final default and semantic-feature checks
   remain required. Formatting and whitespace checks passed.
@@ -77,8 +113,8 @@ Only this task's rebuild and queued semantic-feature check were terminated.
 - Catalog and manifest checks passed (57 entries, 28 generated chapters).
   The full generated tutorial check reported `report.json` drift after the new
   tutorial was added without a review-manifest entry. An explicitly unreviewed
-  entry was added and the catalog regenerated; the costly full check needs a
-  rerun, not a presumed pass or unrelated artifact refresh.
+  entry was added and the catalog regenerated; the later TSS rebase verification
+  ran the full check successfully without waiving the earlier failure.
 - No live GUI screenshot, inner-agent run, real-data study, order approval or
   publication was performed. Pre-commit session-close hygiene reported only
   the intentional dirty/generated-catalog and manual plan-fidelity warnings.

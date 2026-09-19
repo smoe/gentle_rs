@@ -8,7 +8,7 @@ use super::*;
 use crate::engine::{
     PrimerDesignNearMissCapture, PrimerDesignScoreTerm, PrimerPairCharacterizationStatus,
     TranscriptAssayFallbackSubmissionMode, TranscriptAssayFallbackSubmissionPolicy,
-    TranscriptAssayInformativeSelectionPolicy,
+    TranscriptAssayInformativeSelectionPolicy, TranscriptAssayMemberStatus,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -4518,6 +4518,7 @@ impl MainAreaDna {
     ) {
         ui.separator();
         ui.heading("Transcript assay-panel result");
+        super::transcript_assay_report_ui::coverage(ui, report);
         egui::Grid::new("transcript_assay_panel_summary")
             .num_columns(4)
             .spacing([12.0, 4.0])
@@ -4683,8 +4684,14 @@ impl MainAreaDna {
         egui::CollapsingHeader::new("Transcript x assay product matrix")
             .default_open(true)
             .show(ui, |ui| {
-                let assays = report.selected_assays.iter().take(24).collect::<Vec<_>>();
-                let transcripts = report.transcript_rows.iter().take(40).collect::<Vec<_>>();
+                let transcript_page = super::transcript_assay_report_ui::page(
+                    ui, &report.report_id, "Transcripts", report.transcript_rows.len(), 40,
+                );
+                let assay_page = super::transcript_assay_report_ui::page(
+                    ui, &report.report_id, "Assays", report.selected_assays.len(), 24,
+                );
+                let assays = &report.selected_assays[assay_page];
+                let transcripts = &report.transcript_rows[transcript_page];
                 let cells_by_key = report
                     .detection_matrix
                     .iter()
@@ -4697,19 +4704,27 @@ impl MainAreaDna {
                             .striped(true)
                             .show(ui, |ui| {
                                 ui.strong("Transcript");
-                                for assay in &assays {
+                                ui.strong("Panel interpretation");
+                                for assay in assays {
                                     ui.strong(format!("A{}", assay.rank))
                                         .on_hover_text(&assay.assay_id);
                                 }
                                 ui.end_row();
-                                for transcript in &transcripts {
+                                for transcript in transcripts {
                                     ui.monospace(&transcript.transcript_id).on_hover_text(format!(
                                         "{} | class={} | status={:?}",
                                         transcript.transcript_label,
                                         transcript.equivalence_group_id,
                                         transcript.status
                                     ));
-                                    for assay in &assays {
+                                    let status = match transcript.status {
+                                        TranscriptAssayMemberStatus::Specific => "Specific within assessed panel",
+                                        TranscriptAssayMemberStatus::SharedFamily => "Shared products",
+                                        TranscriptAssayMemberStatus::NoProduct => "No covering assay",
+                                        TranscriptAssayMemberStatus::NotDistinguishableBetweenMembers => "Identical cDNA: not separable",
+                                    };
+                                    ui.label(status).on_hover_text(transcript.notes.join("\n"));
+                                    for assay in assays {
                                         let cell = cells_by_key.get(&(
                                             transcript.transcript_feature_id,
                                             assay.assay_id.as_str(),
@@ -4748,30 +4763,27 @@ impl MainAreaDna {
                                                     .unwrap_or_else(|| "n/a".to_string())
                                             ));
                                         } else {
-                                            ui.label("n/a");
+                                            ui.label("Not assessed").on_hover_text("Matrix cell missing; not a no-product result.");
                                         }
                                     }
                                     ui.end_row();
                                 }
                             });
                     });
-                if report.selected_assays.len() > assays.len()
-                    || report.transcript_rows.len() > transcripts.len()
-                {
-                    ui.small(format!(
-                        "Showing {} of {} assays and {} of {} transcript rows; JSON export retains the complete matrix.",
-                        assays.len(),
-                        report.selected_assays.len(),
-                        transcripts.len(),
-                        report.transcript_rows.len()
-                    ));
-                }
+                ui.small("Page controls expose every stored transcript and assay without changing coverage or selection. Product sizes are in bp; no product and not assessed are different outcomes.");
             });
 
         if !report.band_size_matrix.is_empty() {
             egui::CollapsingHeader::new("Endpoint band-size matrix")
                 .default_open(report.assay_kind == TranscriptAssayKind::EndpointRtPcr)
                 .show(ui, |ui| {
+                    let rows = super::transcript_assay_report_ui::page(
+                        ui,
+                        &report.report_id,
+                        "Band rows",
+                        report.band_size_matrix.len(),
+                        80,
+                    );
                     egui::Grid::new("transcript_assay_band_matrix")
                         .striped(true)
                         .show(ui, |ui| {
@@ -4780,7 +4792,7 @@ impl MainAreaDna {
                             ui.strong("Transcript");
                             ui.strong("Predicted bands (bp)");
                             ui.end_row();
-                            for row in report.band_size_matrix.iter().take(80) {
+                            for row in &report.band_size_matrix[rows] {
                                 ui.monospace(&row.reaction_id);
                                 ui.monospace(&row.assay_id);
                                 ui.monospace(&row.transcript_id);

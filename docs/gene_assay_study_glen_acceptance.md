@@ -9,15 +9,16 @@ The implementation was committed at the user's request on `gentle_rs_2_main`,
 based on `8597a6ee35cd484e0452dde358742347a4b0cb0b`; that base SHA alone does
 **not** contain this GUI. Use the exact implementation commit, or a later
 explicitly selected merged candidate, for acceptance. A local commit is not
-evidence that it has been pushed or merged. The user delegated final Rust verification
-to you after a memory-constrained local rebuild. See the
-[verification handoff](gene_assay_study_gui_plan.md#verification-handoff),
-including the initially failing stale-plan tests and the not-yet-rerun fix.
+evidence that it has been pushed or merged. The previously interrupted ten
+study tests and eleven managed-command tests now pass locally at `8284c4ca`.
+This does not replace your exact-candidate rerun, live capture or real-data
+acceptance. See the [verification handoff](gene_assay_study_gui_plan.md#verification-handoff).
 
 Before live capture, run the focused implementation checks from that checkout:
 
 ```bash
 cargo test --locked --lib gene_assay_study_ui
+cargo test --locked --lib transcript_assay_report_ui
 cargo test --locked --lib command_execution::tests
 cargo check -q --locked
 cargo check --locked --features gui-test-support --lib
@@ -42,6 +43,13 @@ Please annotate the tutorial with screenshots at these checkpoints:
 | G4 | Effective request and new plan | Changed maximum, new plan ID/output directory, first review; old files preserved |
 | G5 | Second review and execution/cancellation | Exact workflow digest; no design before approval; tamper/stale/cancelled outcomes cannot become success |
 | G6 | Canonical pending dossier | Same scientific content as CLI; no comparison panel falsely attributed to the plan |
+
+At G2/G3 also review the coverage-scope explanation, distinguishing transcript
+records from exact-cDNA groups, uncovered from unassessed, and coverage from
+isoform discrimination. For a real panel exceeding 40 transcripts, 24 assays
+or 80 band rows, verify the independent page controls reach the final entries
+without changing the report or export. The public three-transcript fixture
+does not establish large-locus live performance.
 
 Retain untouched raw captures separately from cropped/annotated versions. Record
 source SHA, binary hashes, OS/profile, input/preparation receipt hashes, action,

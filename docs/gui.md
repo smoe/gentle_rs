@@ -4985,6 +4985,16 @@ qPCR form:
   - inspect persisted panels on that sequence, explicitly distinguishing
     comparison panels from plan-bound results; selected-pair views show both
     primer footprints on mature cDNA and each transcript's stored products
+  - the coverage-scope box uses the experimental handoff's engine-owned
+    accounting: annotated records, distinct mature cDNAs, uncovered records
+    and records outside the assessed universe remain separate. Identical
+    mature cDNAs cannot be distinguished by sequence-based primers; a completed
+    design objective is not a specificity pass
+  - selected-pair outcomes, the transcript-by-assay matrix and endpoint band
+    table have independent page controls. All stored rows/assays are accessible,
+    rather than truncating at 40 transcripts, 24 assays or 80 band rows. Paging
+    does not change coverage, selections or exports; missing matrix cells say
+    `Not assessed`, not no product
   - load a planning request, edit its short-product hard ceiling or full JSON,
     normalize through the engine, review it before planning, then separately
     review the exact workflow before execution; edits/project changes invalidate

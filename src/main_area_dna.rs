@@ -79,6 +79,7 @@ mod tss_view;
 mod gene_assay_study_ui;
 #[path = "main_area_dna/primer_design_ui.rs"]
 mod primer_design_ui;
+mod transcript_assay_report_ui;
 
 #[path = "main_area_dna/sequencing_confirmation_ui.rs"]
 mod sequencing_confirmation_ui;
