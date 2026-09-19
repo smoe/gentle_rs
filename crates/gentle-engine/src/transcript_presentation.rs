@@ -505,13 +505,14 @@ mod tests {
                 .membership,
             TranscriptSourceMembership::EnsemblOtherUnassessed
         );
-        for which in 0..5 {
+        for which in 0..6 {
             let mut bad = good.clone();
             match which {
                 0 => bad.sequence_sha256 = "a".repeat(64),
                 1 => bad.sequence_length_bp += 1,
                 2 => bad.genome_anchor.as_mut().unwrap().strand = None,
-                3 => bad.genome_anchor.as_mut().unwrap().chromosome = "other".into(),
+                3 => bad.genome_anchor.as_mut().unwrap().genome_id = "other".into(),
+                4 => bad.genome_anchor.as_mut().unwrap().chromosome = "other".into(),
                 _ => bad.genome_anchor.as_mut().unwrap().start_1based = 501,
             }
             assert!(projection::project(&p, &bad).is_err());

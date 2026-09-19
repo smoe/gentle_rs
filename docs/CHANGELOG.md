@@ -46,6 +46,9 @@
   remain out of scope; live GUI acceptance is still pending. The existing
   actionable Structure canvas retains its full-locus layout rather than being
   silently re-scaled to the new comparison panel's DNA viewport.
+- Require the source presentation assembly to match the genomic anchor identity
+  before projecting annotation coordinates; matching sequence hashes cannot
+  accidentally authorize coordinates from a different assembly.
 - Verification: 10 engine projection/identity tests, five annotation-adapter
   tests (including real PATZ1), and five locus-inspector tests pass. Locked
   offline `cargo check`, formatting, whitespace and tutorial catalog/manifest

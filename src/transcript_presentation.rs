@@ -79,6 +79,7 @@ pub fn validate_locus(
             .as_ref()
             .ok_or("Transcript presentation requires a genomic anchor")?;
         if p.assembly != locus.isoform_evidence.assembly
+            || p.assembly != anchor.genome_id
             || canonical_chr(&p.chromosome) != canonical_chr(&anchor.chromosome)
             || p.locus_sequence_sha256 != bare_hash(&binding.sequence_sha256)
             || p.records.iter().any(|r| match locus.gene_strand.as_str() {

@@ -84,6 +84,7 @@ pub fn project(
         || a.end_1based < a.start_1based
         || a.end_1based - a.start_1based + 1 != binding.sequence_length_bp
         || !matches!(a.strand, Some('+' | '-'))
+        || p.assembly != a.genome_id
         || p.chromosome.strip_prefix("chr").unwrap_or(&p.chromosome)
             != a.chromosome.strip_prefix("chr").unwrap_or(&a.chromosome)
         || p.locus_sequence_sha256 != binding.sequence_sha256.trim_start_matches("sha256:")

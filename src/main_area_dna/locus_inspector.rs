@@ -156,6 +156,22 @@ mod tests {
             );
         }
         assert_eq!(prepared.annotation_summary.len(), 2);
+        let mut wrong_assembly = report.clone();
+        wrong_assembly
+            .sequence_binding
+            .as_mut()
+            .unwrap()
+            .genome_anchor
+            .as_mut()
+            .unwrap()
+            .genome_id = "T2T-CHM13v2.0".into();
+        assert!(crate::transcript_presentation::validate_locus(&wrong_assembly).is_err());
+        assert!(
+            LocusPresentation::from_report(&wrong_assembly, None)
+                .annotation_error
+                .is_some()
+        );
+
         report.sequence_binding.as_mut().unwrap().sequence_sha256 = "b".repeat(64);
         let invalid = LocusPresentation::from_report(&report, None);
         assert!(invalid.annotation_error.is_some());
