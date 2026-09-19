@@ -48,6 +48,98 @@ and `src/engine/io/probe_regions/planning_backend.rs`. Keep Linux/macOS runs
 and native external-tool acceptance separate from Windows correctness; neither
 platform's green job alone proves those paths on the other platform.
 
+### Cross-Platform Regression Rules
+
+Apply these rules to production code and its tests. A local pass does not make
+an OS-dependent assumption portable.
+
+- **Byte-bound inputs:** trace every retained digest to the exact input bytes,
+  not just the output fixture. Check `git check-attr text eol -- PATH` and add a
+  scoped `text eol=lf` rule for LF-authored text whose raw bytes are contractual;
+  preserve genuinely binary/verbatim resources with an appropriate binary rule.
+  Extend `scripts.test_tutorial_checkouts` with the input and its recorded
+  digest. Its disposable Git checkouts simulate LF/CRLF conversion on any host.
+  Never normalize raw hash inputs, edit expected digests, or regenerate scientific
+  outputs to conceal checkout drift. Semantic text comparisons may normalize
+  line endings only when their contract explicitly permits it.
+- **File handles:** choose access rights for every operation on a handle, not
+  just the initial open. Windows `FlushFileBuffers` needs write access, so reopen
+  a rendered PDF with `OpenOptions::new().write(true).open(...)` before
+  `sync_all`, without `create` or `truncate`. Retain sync errors and receipt
+  verification; test unchanged bytes/length across synchronization. Close
+  handles before rename/removal when their sharing policy requires it.
+- **Shell boundaries:** use `quote_shell_arg` when constructing GENtle shared
+  shell lines; use `Command::arg` for native subprocess arguments and a JSON
+  serializer for JSON. These are different grammars. Round-trip spaces,
+  apostrophes, drive/UNC/verbatim paths and backslashes through the real parser.
+  Repair an unquoted caller rather than changing all adapters' escape semantics.
+- **Path validation:** inspect the original path's native components before
+  `join`, `push`, or canonicalization can erase traversal. Keep symlink checks
+  and drive/UNC-root handling. Construct deliberately invalid test paths as raw
+  strings/`OsString`, then assert `ParentDir` actually reaches the validator;
+  `canonical_root.join("..")` is not such a test on Windows. Exercise direct
+  receipt readers as well as export destinations. Windows syntax tests require
+  native Windows; backslashes are ordinary filename characters on Unix.
+- **Path identity:** canonical paths can change prefix, case and short-name
+  spelling. Assert diagnostics against the path actually stored in the manifest,
+  and prove equivalence with `paths_refer_to_same_location` where appropriate.
+  Do not use substring matching against a pre-canonical spelling as an identity
+  check. Keep missing-data versus valid-zero assertions intact.
+- **Identifier namespaces:** catalog keys, assembly names and versioned assembly
+  accessions are not interchangeable. Make them deliberately different in
+  synthetic integration fixtures. Verify the actual producer and cross-layer
+  consumer before adding equality checks; an invariant written in the same
+  patch is not independent evidence that the check is correct. Test both gene
+  strands and loaded sequence orientations, and reject mismatched identities at
+  the layer that owns the necessary evidence. Missing assembly authority must
+  remain an explicit limitation, not an alias inferred from a catalog label.
+- **Failure triage:** retain the full failing log and exact revision. Group
+  repeated errors by cause; fix the first panic before considering poisoned
+  locks. Do not add unconditional poison recovery or timeouts to hide the
+  original failure. Run targeted integration tests before the full suite.
+
+Native behavior is documented by [Rust's Windows path normalization rules](https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push),
+the [component parser](https://doc.rust-lang.org/src/std/path.rs.html), and
+[Microsoft's flush access-right requirement](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers).
+Source inspection establishes the mechanism; it does not replace executing the
+regression on Windows. Before release, use the existing `ci.yml` manual platform
+selector for Windows, macOS and Linux at one frozen SHA, with explicit dispatch
+approval. The default sampled push job does not cover all three.
+
+#### September 2026 Failure Analysis
+
+[Windows job 105944766146](https://github.com/smoe/gentle_rs/actions/runs/35461010366/job/105944766146)
+tested `885fac493a091313e7777a73de3736af4aae81c2`: 3,874 passed, ten failed,
+eight ignored. There were six causes, eight primary failures and two cascades:
+
+| Cause | Evidence and affected boundary |
+| --- | --- |
+| Unpinned adapter input (one failure) | The Glen CSV's LF hash starts `88c443a1`; CRLF conversion gives `af754a1a`, exactly the failing provenance digest. Earlier checkout coverage copied adapter outputs but omitted their input. |
+| Assembly/catalog conflation (one failure, not Windows-specific) | `validate_locus` and `projection::project` compare presentation assembly with anchor `genome_id`. The TSS integration deliberately used `synthetic-assembly` and `synthetic-genome`; projection-only fixtures used the same string for both. |
+| Read-only PDF flush (three failures) | The rendered PDF was reopened with `File::open`, then synchronized. Windows returned access denied. A test holding the motif registry lock panicked here, causing two further `PoisonError` failures. |
+| Unquoted resolution path (one failure) | `parse_gene_sets_resolve_and_promoter_cohort_commands` interpolated a native path into a shell line. Backslashes were consumed as escapes, and the resulting nonexistent path fell through to inline JSON parsing. |
+| Path-spelling assertion (one failure) | The unsupported-annotation test saved a canonical manifest path but expected the original spelling in diagnostics. Short-name expansion is a plausible runner-specific explanation, not established by that log. |
+| Normalized traversal fixture (one failure) | Joining `..` onto a canonical Windows verbatim root removed it before `checked_directory`. Rust's component parser still recognizes raw `..` as `ParentDir`; constructing `Component::Normal("..")` does not reproduce this failure. |
+
+The deeper issue is incomplete boundary coverage, not one `.gitattributes`
+setting. In particular, broadening the shell grammar or making the TSS fixture's
+catalog key equal its assembly can make local tests green without repairing the
+contract. Assembly conventions also need producer inspection:
+`build_gene_isoform_evidence_report` currently derives its `assembly` label
+from `anchor.genome_id`, whereas TSS context carries separate reference fields.
+Thus neither convention may be inferred from the field name alone. Native
+Windows acceptance and independent assembly authority remain separate from
+local regression results.
+
+The input audit is not complete. A direct sibling path/digest scan verified
+three further unpinned inputs under `test_files/fixtures/`:
+`isoform_evidence/patz1/patz1_expression.tsv`,
+`isoform_evidence/patz1/patz1_isoform_panel.json`, and
+`transcript_assay_panel/patz1/patz1_assay_probe_evidence.json`. Their recorded
+digests in `patz1_assay_isoform_evidence.json` match the current bytes. Audit
+nested bindings and their consumers before broadening checkout rules; passing
+this Windows run does not establish that every retained input is protected.
+
 ## 3. CLI/protocol tests (required)
 
 Scope:

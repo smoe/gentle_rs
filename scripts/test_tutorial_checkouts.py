@@ -117,6 +117,18 @@ class TutorialCheckoutTests(unittest.TestCase):
                 destination = self.root / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_bytes(expected[relative])
+        provenance_path = Path(fixture_dirs[1]) / "provenance.json"
+        provenance = json.loads(expected[provenance_path])
+        inputs = provenance["input_fingerprints"]
+        self.assertTrue(inputs, "expected retained adapter input provenance")
+        for binding in inputs:
+            relative = Path(binding["path"])
+            self.assertFalse(relative.is_absolute())
+            self.assertNotIn("..", relative.parts)
+            expected[relative] = (checker.ROOT / relative).read_bytes()
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(expected[relative])
         self.assertTrue(expected)
         checker.git(self.root, "add", "--all")
         checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "bound fixtures")
@@ -126,6 +138,14 @@ class TutorialCheckoutTests(unittest.TestCase):
             for relative, payload in expected.items():
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), payload)
+            for binding in inputs:
+                with self.subTest(mode=mode[0], bound_input=binding["path"]):
+                    self.assertEqual(
+                        "sha256:" + hashlib.sha256(
+                            (target / binding["path"]).read_bytes()).hexdigest(),
+                        binding["sha256"],
+                        "Preserve the exact input bytes with a scoped .gitattributes LF rule; "
+                        "do not change provenance hashes or normalize input bytes")
             bundle = target / fixture_dirs[0]
             for line in (bundle / "SHA256SUMS").read_text().splitlines():
                 digest, relative = line.split(maxsplit=1)

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-20 - Windows Root-Cause Guidance And Input Coverage
+
+- Trace Windows run `35461010366` to six causes: one LF-bound input, a
+  cross-platform assembly/catalog regression, PDF flush rights, shell quoting,
+  canonical path spelling and a normalized-away traversal test. Three PDF
+  failures also caused two poisoned-lock failures, not ten independent defects.
+- Require the portability checklist in `docs/testing.md` through `AGENTS.md`,
+  including raw-path tests, distinct identity namespaces and native acceptance.
+- Extend the existing LF/CRLF checkout test to follow retained adapter input
+  fingerprints and verify their exact digests, not only output bytes. Preserve
+  scientific fixtures and recorded hashes; other unpinned inputs remain tracked.
+- All nine checkout tests, locked Cargo check, formatting and whitespace checks
+  pass locally. Removing only the input LF rule in a disposable negative control
+  reproduces the exact Windows digest. Native Windows execution remains pending.
+
 ## 2026-09-19 - Final Windows TSS And Path Portability Follow-up
 
 - Reject parent traversal even when Rust exposes `..` as a normal component in

@@ -27,6 +27,9 @@ Before non-trivial edits, read:
    decision-expiry chores.
 8. [`docs/quickstart_claude.md`](docs/quickstart_claude.md) when setting up or
    explaining Claude-driven internal Agent Assistant or external checkout loops.
+9. [Cross-platform regression rules in `docs/testing.md`](docs/testing.md#cross-platform-regression-rules)
+   before changing filesystem I/O, shell commands, byte-bound fixtures,
+   provenance validation, or tests for those paths.
 
 ## Core Principles
 
@@ -78,6 +81,15 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
   `docs/roadmap.md`.
 - Do not claim behavior is complete without at least one deterministic test path
   (unit or integration) that exercises it.
+- For portability repairs, reproduce the failed boundary, not only a helper:
+  include hash-bound inputs in LF/CRLF checkout tests, quote paths through the
+  shared shell helper, and validate raw paths before normalization. Do not
+  weaken hashes, change shell grammar, or homogenize fixture identifiers merely
+  to make a failing test pass.
+- Separate primary failures from cascades (for example, mutex poisoning after
+  an export panic). Record the tested SHA/platform and explicitly identify
+  unrun native-Windows checks; a sampled CI pass or macOS run is not proof of
+  Windows file-handle, path, or packaging behavior.
 
 ## Test Data Provenance (Mandatory)
 
