@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-09-20 - Inner-Agent Transcript Assay Result Handoffs
+
+- Add an explicit, bounded **Use reviewed result in next prompt** action for
+  local structured command results. The inner agent can now receive reviewed
+  feature-query, feasibility and transcript-panel rows instead of guessing from
+  execution-receipt hashes; oversized results fail without truncation, nothing
+  is sent until the next request and the handoff is never execution approval.
+- Teach the bridge and authentic PATZ1 tutorial to use this iterative handoff
+  across feature discovery, feasibility, design and panel review while retaining
+  the 13-Ensembl design universe, unresolved distinctions, specificity gaps and
+  separate approvals. Checkout preparation and the locus-report file picker
+  remain explicit user actions, not fictional agent capabilities.
+
 ## 2026-09-20 - Windows Root-Cause Guidance And Input Coverage
 
 - Trace Windows run `35461010366` to six causes: one LF-bound input, a

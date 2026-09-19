@@ -443,7 +443,11 @@ ui open splicing-expert SEQ_ID FEATURE_ID
 
 `FEATURE_ID` is the returned zero-based feature index, not a transcript accession
 or exon number. Re-query after annotation edits/imports; these are not stable
-identifiers across changes. Page through feature-query results if necessary. The inspector
+identifiers across changes. Page through feature-query results if necessary. In
+Agent Assistant, an execution receipt proves only that the query completed; use
+**Use reviewed result in next prompt** to disclose the bounded feature rows to
+the inner agent after checking them for sensitive project data. The handoff is
+data, not approval for the next command. The inspector
 returns structured data; only the `ui` command opens the Splicing Expert in a
 GUI host. `ui focus` with the same operands reuses the window; `ui close` closes
 only that feature's expert and retains sequences/reports. Headless CLI/MCP
@@ -476,7 +480,10 @@ same operation payload before the design is run.
 
 After design, review every pair against the intended transcript universe:
 predicted products, missed classes, non-target products, oligo-dT reach and
-coverage limitations. `require-all` failure is not permission to switch to
+coverage limitations. The same explicit reviewed-result handoff lets the inner
+agent inspect the actual panel instead of inventing details from an execution
+hash; oversized results must be narrowed with a read-only show/query command,
+never silently truncated. `require-all` failure is not permission to switch to
 `best-effort`; request approval for that tradeoff. Identical assayed sequence
 cannot establish which otherwise distinct isoform produced the signal.
 

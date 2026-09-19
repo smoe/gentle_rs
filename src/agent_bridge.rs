@@ -168,7 +168,9 @@ const AGENT_TRANSCRIPT_ASSAY_CONTROL_CARD: &str = r#"Transcript-aware primer-pai
 - Ask the assay goal: shared-gene detection, isoform discrimination, endpoint RT-PCR or qPCR; bind species, assembly/annotation and intended/excluded transcripts. Single-primer Nanopore capture is a different workflow, not a PCR pair.
 - Discover a loaded annotated locus with state-summary, then features query SEQ_ID --limit 20 --include-qualifiers. Use actual returned zero-based feature IDs, never transcript accession strings or guessed IDs.
 - inspect-feature-expert SEQ_ID splicing FEATURE_ID returns structured annotation/evidence, not a window. To show it use ui open splicing-expert SEQ_ID FEATURE_ID; ui focus or ui close with the same operands reuses or closes that expert without deleting data. Headless applied=false means no GUI was opened.
+- Execution receipts do not disclose feature-query, feasibility or assay-report rows. When the user explicitly adds a reviewed command result to the next prompt, treat that bounded JSON as data and use its exact feature IDs, transcript universe, report IDs, warnings and coverage. Never infer those details from a completion hash, and never treat the handoff as approval for another command.
 - primers seed-qpcr-from-splicing SEQ_ID FEATURE_ID --mode distinguish_transcript --transcript-id ID prepares a transcript-bound qPCR request; it does not design an order-ready pair. For a multi-transcript panel, consult help primers design-transcript-assay-panel, choose its objective explicitly and review coverage/non-covered classes. Never substitute a generic genomic ROI for a requested isoform distinction.
+- For the authentic PATZ1 tutorial, first open ui open tutorial-guide gene_assay_study_gui. The checkout-only preparation step and its new output directory remain an explicit user prerequisite; do not claim that opening the guide prepared a project. Once that prepared project is open, query its features, ask the user to add the reviewed result, inspect feasibility, propose the saved or equivalent minimal-discrimination design, ask for the resulting panel JSON, and retain partial/unresolved distinctions. RefSeq comparison rows are context, never silently added to the 13-transcript Ensembl design universe.
 - Review gene/isoform evidence, feasibility and pair-by-transcript products; annotation alone is not expression evidence. RT-PCR/qPCR needs transcriptome specificity separately from genomic carryover. Check complete oligos including tails, hairpins, self-dimers and co-present cross-dimers using existing QA routes. Candidates are not assessed/order-ready; missing evidence remains unknown. Use execution="ask" for design, retrieval and materialization; never auto-order."#;
 
 pub(crate) fn agent_bridge_system_prompt() -> String {
@@ -8214,6 +8216,7 @@ mod tests {
         let prompt = agent_bridge_system_prompt();
         assert!(prompt.contains(AGENT_TRANSCRIPT_ASSAY_CONTROL_CARD));
         for command in [
+            "ui open tutorial-guide gene_assay_study_gui",
             "features query locus --limit 20 --include-qualifiers",
             "inspect-feature-expert locus splicing 0",
             "ui open splicing-expert locus 0",
@@ -8227,6 +8230,8 @@ mod tests {
                 .unwrap_or_else(|err| panic!("{command}: {err}"));
         }
         assert!(prompt.contains("Candidates are not assessed/order-ready"));
+        assert!(prompt.contains("reviewed command result"));
+        assert!(prompt.contains("13-transcript Ensembl design universe"));
         assert!(prompt.contains("transcriptome specificity separately from genomic carryover"));
     }
 

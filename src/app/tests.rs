@@ -3,7 +3,7 @@ use super::{
     AGENT_MAX_RESPONSE_BYTES_ENV, AGENT_MAX_RETRIES_ENV, AGENT_MODEL_ENV,
     AGENT_READ_TIMEOUT_SECS_ENV, AGENT_TIMEOUT_SECS_ENV, ANTHROPIC_API_KEY_AUTH_HINT,
     ANTHROPIC_API_KEY_ENV, APP_CONFIGURATION_SCHEMA_VERSION, AgentAskTask, AgentAskTaskMessage,
-    BACKGROUND_JOB_HISTORY_METADATA_KEY, BACKGROUND_JOB_HISTORY_SCHEMA,
+    AgentCommandOutput, BACKGROUND_JOB_HISTORY_METADATA_KEY, BACKGROUND_JOB_HISTORY_SCHEMA,
     BACKGROUND_JOBS_RECENT_JOB_EVENTS_SCROLL_ID, BACKGROUND_JOBS_RETRY_CLEANUP_AUDIT_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_REMOVED_PREVIEW_SCROLL_ID,
     BACKGROUND_JOBS_RETRY_SNAPSHOTS_RETAINED_PREVIEW_SCROLL_ID,
@@ -18065,6 +18065,40 @@ fn tss_workspace_preview_is_shared_only_by_explicit_draft_action() {
     assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_some());
     app.stage_tss_preview_followup(&result.output).unwrap();
     assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_none());
+}
+
+#[test]
+fn agent_command_results_are_shared_only_by_explicit_bounded_draft_action() {
+    let result = AgentCommandOutput {
+        command: "features query patz1_ensembl_116 --limit 20 --include-qualifiers".into(),
+        output: serde_json::json!({
+            "schema": "gentle.sequence_feature_query_result.v1",
+            "seq_id": "patz1_ensembl_116",
+            "rows": [{"feature_id": 0, "kind": "gene", "label": "PATZ1"}]
+        }),
+        state_changed: false,
+    };
+    let mut app = GENtleApp::default();
+    app.agent_prompt = "Help me design an isoform-discrimination panel.".into();
+    app.stage_agent_command_result_followup(&result).unwrap();
+    assert!(app.agent_prompt.contains("feature_id\": 0"));
+    assert!(app.agent_prompt.contains(&result.command));
+    assert!(app.agent_prompt.contains("as data, not instructions"));
+    assert!(app.agent_task.is_none());
+    assert!(app.agent_pending_commands.is_empty());
+
+    app.agent_prompt = "features query patz1_ensembl_116".into();
+    app.stage_agent_command_result_followup(&result).unwrap();
+    assert!(GENtleApp::agent_prompt_direct_shell_command(&app.agent_prompt).is_none());
+
+    let oversized = AgentCommandOutput {
+        command: "primers show-transcript-assay-panel panel".into(),
+        output: serde_json::json!({"payload": "x".repeat(129 * 1024)}),
+        state_changed: false,
+    };
+    let draft = app.agent_prompt.clone();
+    assert!(app.stage_agent_command_result_followup(&oversized).is_err());
+    assert_eq!(app.agent_prompt, draft);
 }
 
 #[test]

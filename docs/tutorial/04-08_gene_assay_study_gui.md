@@ -167,10 +167,50 @@ candidate design and pending validation. No automatic ordering is offered.
 ## Help and Review
 
 GUI Shell: `ui open tutorial-guide gene_assay_study_gui`.
-Optional agent prompt: "Open the real PATZ1 tutorial, compare Ensembl/RefSeq,
-and propose a panel discriminating the declared Ensembl transcript set. Retain
-unresolved cases and specificity gaps. Do not execute without review."
-This is **not a tested provider** conversation or delegated scientific approval.
+
+### Complete the prepared-project workflow with the inner agent
+
+The one-time checkout preparation above remains explicit: the inner agent has no
+operating-system shell and must not invent an output directory or claim that
+opening this guide created the project. After opening the prepared
+`patz1.gentle.json`, open **File > Agent Assistant...** and ask:
+
+> Open the real PATZ1 tutorial, compare Ensembl/RefSeq, and help me complete
+> G1-G6 for the prepared project. Design against the declared 13 Ensembl
+> transcripts, retain unresolved cases and specificity gaps, and do not execute
+> a next step without review.
+
+The agent should proceed iteratively rather than propose guessed identifiers:
+
+1. Open this guide and inspect `state-summary`; query the prepared sequence with
+   `features query ... --include-qualifiers`.
+2. Run the reviewed query, inspect its local result, and choose **Use reviewed
+   result in next prompt**. Review the draft before sending it. The agent can
+   then use the actual zero-based PATZ1 feature ID.
+3. Let it propose `inspect-feature-expert` and `ui open splicing-expert` using
+   that ID. Loading `locus.report.json` into **Locus figure** is currently the
+   one explicitly described file-picker action; the agent must ask what is
+   visible afterward and must not claim it observed G1. The DNA-map and
+   Structure comparison sections reuse that report.
+4. Before design, run the proposed read-only
+   `primers inspect-transcript-assay-feasibility
+   @.../primer-discrimination.operation.json`, then disclose that reviewed
+   result the same way. Approve the exact saved operation only after confirming
+   the 13-transcript universe, minimal-discrimination objective, best-effort
+   policy, unspecified cDNA synthesis and constraints.
+5. After Primer3 design, run
+   `primers show-transcript-assay-panel patz1_real_discrimination` and use the
+   reviewed-result handoff. Require the agent to account for every covered class
+   and unresolved class pair from the supplied JSON, not the historical counts
+   in this tutorial. Continue through the plan, specificity handoff and dossier
+   as separate review/approval stages; missing authentic reference resources or
+   validations remain blockers, not inferred passes.
+
+A receipt hash alone does not reveal feature rows, primer pairs or coverage.
+The reviewed-result action is an explicit disclosure to the selected provider;
+it sends nothing until **Ask Agent** is clicked, rejects oversized JSON rather
+than truncating it, and does not approve the next command. This workflow is not
+a tested provider conversation or delegated scientific approval.
 
 No comparison: load the enriched report, not just DNA. Hash/assembly mismatch:
 check original inputs, do not edit hashes to force acceptance. No shared rows:

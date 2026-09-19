@@ -3738,9 +3738,18 @@ providers, including exact local genome-extraction/anchor-extension and Ensembl
 assembly/flank syntax, so Pi does not need to guess parser routes. It can return
 reviewable `ui ...` or `display ...` suggestions for exposed
 GUI intents. Where no intent exists, it must describe one manual step and ask
-what the user sees rather than claiming to have clicked or observed it. A
-source-editing inner coding agent would be a separate future mode with a
-different approval boundary.
+what the user sees rather than claiming to have clicked or observed it.
+Execution receipts intentionally contain status and hashes, not scientific
+result rows. Each local structured command result therefore offers **Use
+reviewed result in next prompt**: after checking the JSON for sequences, local
+paths or other sensitive data, the user can add the complete bounded result to
+the retained draft. Nothing is sent until **Ask Agent** is clicked, oversized
+results are rejected rather than truncated, and the handoff grants no approval
+for a subsequent command. This supports iterative feature discovery,
+transcript-panel feasibility/design and result review without letting the model
+infer identifiers or coverage from receipt hashes. TSS previews retain their
+narrower typed handoff. A source-editing inner coding agent would be a separate
+future mode with a different approval boundary.
 
 Claude setup (explicit):
 
