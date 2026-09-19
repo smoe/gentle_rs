@@ -1504,6 +1504,30 @@ fn glossary_flag_smoke_preserves_quoted_file_paths() {
 }
 
 #[test]
+fn shell_path_tokens_preserve_windows_and_posix_spelling() {
+    for path in [
+        r"C:\Users\O'Brien\GENtle data\report.json",
+        r"\\?\C:\GENtle\report.json",
+        r"\\server\share\report.json",
+        "/tmp/GENtle data/report.json",
+    ] {
+        let line = format!(
+            "collections run export-pool physical-pool --path {}",
+            quote_shell_arg(path)
+        );
+        assert_eq!(split_shell_words(&line).unwrap().last().unwrap(), path);
+        parse_shell_line(&line).expect("quoted output path parses on every host");
+        // @FILE is one token, including when only its path part is quoted.
+        for quote in [quote_shell_arg(path), shell_quote(path)] {
+            assert_eq!(
+                split_shell_words(&format!("@{quote}")).unwrap(),
+                vec![format!("@{path}")]
+            );
+        }
+    }
+}
+
+#[test]
 fn glossary_fragment_candidates_smoke_retains_typed_request_and_output_path() {
     let base = smoke_command_override("promoters fragment-candidates").expect("typed fixture");
     for expected_output in [None, Some("report with spaces.json")] {
@@ -2130,14 +2154,14 @@ fn write_cutrun_shell_reference_catalog_with_sequence(
             r#"{{
   "{genome_id}": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            shell_file_url(&fasta_gz),
-            shell_file_url(&ann_gz),
-            cache_dir.display()
+            serde_json::json!(shell_file_url(&fasta_gz)),
+            serde_json::json!(shell_file_url(&ann_gz)),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write reference catalog");
@@ -7434,7 +7458,7 @@ fn parse_helpers_blast_with_options_file_override() {
     .expect("write options file");
     let cmd = parse_shell_line(&format!(
         "helpers blast pUC19 ACGTAG --options-file {}",
-        options_path.to_string_lossy()
+        quote_shell_arg(&options_path.to_string_lossy().to_string())
     ))
     .expect("parse command");
     match cmd {
@@ -8304,7 +8328,7 @@ fn parse_and_execute_collection_pool_export_uses_the_container_combine_contract(
     let path = temp.path().join("shell.pool.gentle.json");
     let command = parse_shell_line(&format!(
         "collections run export-pool physical-pool --path {}",
-        path.display()
+        quote_shell_arg(&path.display().to_string())
     ))
     .expect("parse executable collection pool export");
     let mut engine = GentleEngine::from_state(state);
@@ -9130,8 +9154,8 @@ fn approved_gene_isoform_study_workflow_requires_exact_emitted_bytes() {
 
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow @{} @{}",
-        plan_path.display(),
-        workflow_path.display()
+        quote_shell_arg(&plan_path.display().to_string()),
+        quote_shell_arg(&workflow_path.display().to_string())
     ))
     .expect("parse approved workflow execution");
     let mut engine = GentleEngine::new();
@@ -9195,7 +9219,7 @@ fn gene_isoform_study_normalize_only_returns_request_without_envelope() {
 
     let command = parse_shell_line(&format!(
         "primers plan-gene-isoform-study @{} --normalize-only",
-        request_path.display()
+        quote_shell_arg(&request_path.display().to_string())
     ))
     .expect("parse normalization command");
     let mut engine = GentleEngine::new();
@@ -9277,7 +9301,7 @@ fn approved_gene_isoform_study_workflow_batch_prevalidates_all_entries() {
     .expect("write batch request");
     let compose = parse_shell_line(&format!(
         "primers compose-gene-isoform-study-workflow-batch @{}",
-        request_path.display()
+        quote_shell_arg(&request_path.display().to_string())
     ))
     .expect("parse batch composition");
     let mut engine = GentleEngine::new();
@@ -9296,7 +9320,7 @@ fn approved_gene_isoform_study_workflow_batch_prevalidates_all_entries() {
     .expect("write approved batch");
     let execute = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{}",
-        batch_path.display()
+        quote_shell_arg(&batch_path.display().to_string())
     ))
     .expect("parse batch execution");
 
@@ -9381,7 +9405,7 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
         fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
         let command = parse_shell_line(&format!(
             "primers compose-gene-isoform-study-workflow-batch @{}",
-            request_path.display()
+            quote_shell_arg(&request_path.display().to_string())
         ))
         .expect("parse composition");
         let result = execute_shell_command(engine, &command).expect("compose batch");
@@ -9430,8 +9454,8 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
     );
     let failed_command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {}",
-        failed_batch.display(),
-        checkpoint_dir.display()
+        quote_shell_arg(&failed_batch.display().to_string()),
+        quote_shell_arg(&checkpoint_dir.display().to_string())
     ))
     .expect("parse checkpointed execution");
     let error = execute_shell_command(&mut failed_engine, &failed_command)
@@ -9469,9 +9493,9 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
     let proposal_path = temp.path().join("reuse-proposal.json");
     let inspect = parse_shell_line(&format!(
         "primers inspect-gene-isoform-study-reuse @{} --checkpoint-dir {} --path {}",
-        resumed_batch.display(),
-        checkpoint_dir.display(),
-        proposal_path.display()
+        quote_shell_arg(&resumed_batch.display().to_string()),
+        quote_shell_arg(&checkpoint_dir.display().to_string()),
+        quote_shell_arg(&proposal_path.display().to_string())
     ))
     .expect("parse reuse inspection");
     let proposal_result = execute_shell_command(&mut resumed_engine, &inspect)
@@ -9486,8 +9510,8 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
 
     let wrong_approval = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --reuse-proposal @{} --approve-reuse-sha256 sha256:wrong",
-        resumed_batch.display(),
-        proposal_path.display()
+        quote_shell_arg(&resumed_batch.display().to_string()),
+        quote_shell_arg(&proposal_path.display().to_string())
     ))
     .expect("parse rejected reuse");
     let error = execute_shell_command(&mut resumed_engine, &wrong_approval)
@@ -9497,9 +9521,9 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
 
     let approved = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {} --reuse-proposal @{} --approve-reuse-sha256 {}",
-        resumed_batch.display(),
-        checkpoint_dir.display(),
-        proposal_path.display(),
+        quote_shell_arg(&resumed_batch.display().to_string()),
+        quote_shell_arg(&checkpoint_dir.display().to_string()),
+        quote_shell_arg(&proposal_path.display().to_string()),
         proposal_sha256
     ))
     .expect("parse approved reuse");
@@ -9561,8 +9585,8 @@ fn approved_gene_isoform_study_checkpoints_require_explicit_reuse_approval() {
     );
     let inspect_diverged = parse_shell_line(&format!(
         "primers inspect-gene-isoform-study-reuse @{} --checkpoint-dir {}",
-        diverged_batch.display(),
-        checkpoint_dir.display()
+        quote_shell_arg(&diverged_batch.display().to_string()),
+        quote_shell_arg(&checkpoint_dir.display().to_string())
     ))
     .expect("parse diverged-prefix inspection");
     let diverged_result = execute_shell_command(&mut diverged_engine, &inspect_diverged)
@@ -9631,7 +9655,7 @@ fn compose_approved_study_batch(
     fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
     let command = parse_shell_line(&format!(
         "primers compose-gene-isoform-study-workflow-batch @{}",
-        request_path.display()
+        quote_shell_arg(&request_path.display().to_string())
     ))
     .expect("parse composition");
     let composed = execute_shell_command(engine, &command).expect("compose batch");
@@ -9719,7 +9743,7 @@ fn approved_gene_isoform_study_batch_continues_with_remaining_genes_after_failur
     );
     let abort_command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{}",
-        aborting_batch.display()
+        quote_shell_arg(&aborting_batch.display().to_string())
     ))
     .expect("parse default execution");
     let error = execute_shell_command(&mut aborting_engine, &abort_command)
@@ -9735,7 +9759,7 @@ fn approved_gene_isoform_study_batch_continues_with_remaining_genes_after_failur
         compose_approved_study_batch(&mut engine, temp.path(), "continue_policy_batch", &genes);
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
-        batch_path.display()
+        quote_shell_arg(&batch_path.display().to_string())
     ))
     .expect("parse continuing execution");
     let executed =
@@ -9809,7 +9833,7 @@ fn approved_gene_isoform_study_batch_rolls_a_failing_gene_back_to_its_boundary()
         compose_approved_study_batch(&mut engine, temp.path(), "boundary_batch", &genes);
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
-        batch_path.display()
+        quote_shell_arg(&batch_path.display().to_string())
     ))
     .expect("parse continuing execution");
     let executed =
@@ -9867,7 +9891,7 @@ fn approved_gene_isoform_study_continue_refuses_external_output_paths_before_exe
     );
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
-        batch_path.display()
+        quote_shell_arg(&batch_path.display().to_string())
     ))
     .expect("parse continuing execution");
     let error = execute_shell_command(&mut engine, &command)
@@ -9912,8 +9936,8 @@ fn approved_gene_isoform_study_rollback_reports_last_whole_gene_checkpoint() {
     );
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {} --on-gene-failure continue",
-        batch_path.display(),
-        checkpoint_dir.display()
+        quote_shell_arg(&batch_path.display().to_string()),
+        quote_shell_arg(&checkpoint_dir.display().to_string())
     ))
     .expect("parse checkpointed continuing execution");
     let executed = execute_shell_command(&mut engine, &command).expect("execute partial batch");
@@ -9969,8 +9993,8 @@ fn approved_gene_isoform_study_abort_retains_per_operation_checkpoints() {
     );
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {}",
-        batch_path.display(),
-        checkpoint_dir.display()
+        quote_shell_arg(&batch_path.display().to_string()),
+        quote_shell_arg(&checkpoint_dir.display().to_string())
     ))
     .expect("parse checkpointed abort execution");
     execute_shell_command(&mut engine, &command)
@@ -10008,7 +10032,7 @@ fn approved_gene_isoform_study_batch_refuses_when_every_gene_fails() {
         compose_approved_study_batch(&mut engine, temp.path(), "all_failing_batch", &genes);
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
-        batch_path.display()
+        quote_shell_arg(&batch_path.display().to_string())
     ))
     .expect("parse continuing execution");
     let error = execute_shell_command(&mut engine, &command)
@@ -10042,8 +10066,8 @@ fn approved_gene_isoform_study_batch_freezes_reuse_checkpoint_after_a_gene_failu
     let batch_path = compose_approved_study_batch(&mut engine, temp.path(), "freeze_batch", &genes);
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --checkpoint-dir {} --on-gene-failure continue",
-        batch_path.display(),
-        checkpoint_dir.display()
+        quote_shell_arg(&batch_path.display().to_string()),
+        quote_shell_arg(&checkpoint_dir.display().to_string())
     ))
     .expect("parse checkpointed continuing execution");
     let executed = execute_shell_command(&mut engine, &command).expect("continue with checkpoints");
@@ -10097,7 +10121,7 @@ fn approved_gene_isoform_study_batch_verification_still_refuses_under_continue()
     fs::write(&batch_path, serde_json::to_vec_pretty(&batch).unwrap()).unwrap();
     let command = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{} --on-gene-failure continue",
-        batch_path.display()
+        quote_shell_arg(&batch_path.display().to_string())
     ))
     .expect("parse continuing execution");
     let error = execute_shell_command(&mut engine, &command)
@@ -10267,7 +10291,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
     .expect("write endpoint operation");
     let inspect = parse_shell_line(&format!(
         "primers inspect-transcript-assay-feasibility @{}",
-        operation_path.display()
+        quote_shell_arg(&operation_path.display().to_string())
     ))
     .expect("parse feasibility command");
     let inspected = execute_shell_command(&mut engine, &inspect).expect("inspect feasibility");
@@ -10312,7 +10336,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
     .expect("write request");
     let compose = parse_shell_line(&format!(
         "primers compose-gene-isoform-study-workflow-batch @{}",
-        request_path.display()
+        quote_shell_arg(&request_path.display().to_string())
     ))
     .expect("parse compose command");
     let composed = execute_shell_command(&mut engine, &compose).expect("compose batch");
@@ -10324,7 +10348,7 @@ fn approved_gene_isoform_study_batch_rejects_structural_endpoint_before_mutation
     .expect("write batch");
     let execute = parse_shell_line(&format!(
         "primers execute-gene-isoform-study-workflow-batch @{}",
-        batch_path.display()
+        quote_shell_arg(&batch_path.display().to_string())
     ))
     .expect("parse execute command");
     let error = execute_shell_command(&mut engine, &execute)
@@ -12375,7 +12399,12 @@ fn execute_arrays_probe_regions_rma_suggests_oligo_helper_command() {
     assert!(command.contains("--normalization rma"));
     assert!(command.contains("--platform-package pd.clariom.d.human"));
     assert!(command.contains("--gene PATZ1"));
-    assert!(command.contains(&format!("--r-library-path {}", canonical_r_library_dir)));
+    let tokens = split_shell_words(command).expect("quoted R command");
+    assert!(
+        tokens
+            .windows(2)
+            .any(|pair| { pair[0] == "--r-library-path" && pair[1] == canonical_r_library_dir })
+    );
 
     let plan_path = run.output["plan_path"]
         .as_str()
@@ -12514,20 +12543,28 @@ fn execute_arrays_probe_regions_reports_clariom_vendor_support_paths() {
         .as_str()
         .expect("probeset support path");
     assert!(
-        probeset_path
-            == "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human-na36-hg38-probeset-csv.zip"
-            || probeset_path
-                == "data/resources/affymetrix/clariom_d_human_na36_hg38/TFS-Assets_LSG_Support-Files_Clariom_D_Human-na36-hg38-probeset-csv.zip",
+        Path::new(probeset_path)
+            == Path::new(
+                "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human-na36-hg38-probeset-csv.zip"
+            )
+            || Path::new(probeset_path)
+                == Path::new(
+                    "data/resources/affymetrix/clariom_d_human_na36_hg38/TFS-Assets_LSG_Support-Files_Clariom_D_Human-na36-hg38-probeset-csv.zip"
+                ),
         "unexpected probeset support path: {probeset_path}"
     );
     let transcript_path = support_files[1]["path"]
         .as_str()
         .expect("transcript support path");
     assert!(
-        transcript_path
-            == "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"
-            || transcript_path
-                == "data/resources/affymetrix/clariom_d_human_na36_hg38/TFS-Assets_LSG_Support-Files_Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip",
+        Path::new(transcript_path)
+            == Path::new(
+                "data/resources/affymetrix/clariom_d_human_na36_hg38/Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"
+            )
+            || Path::new(transcript_path)
+                == Path::new(
+                    "data/resources/affymetrix/clariom_d_human_na36_hg38/TFS-Assets_LSG_Support-Files_Clariom_D_Human.r1.na36.hg38.a1.transcript.csv.zip"
+                ),
         "unexpected transcript support path: {transcript_path}"
     );
     assert_eq!(
@@ -12584,7 +12621,7 @@ fn execute_arrays_probe_regions_discovers_publication_dataset_files() {
     assert_eq!(cel_paths.len(), 9);
     assert!(cel_paths.iter().any(|path| {
         path.as_str().is_some_and(|path| {
-            path.contains("rostock_p73_clariomd_e_mtab_14704/P_SKMel29_AdGFP_1.CEL")
+            Path::new(path).ends_with("rostock_p73_clariomd_e_mtab_14704/P_SKMel29_AdGFP_1.CEL")
         })
     }));
 
@@ -20492,8 +20529,8 @@ fn execute_resources_import_gene_set_caches_and_direct_list_output_is_consumable
     let mut engine = GentleEngine::new();
     let direct_command = parse_shell_line(&format!(
         "resources import-gene-list-cache --input {} --output {} --provider local_curator --version 2026-06 --cache-id direct-cache --organism 'Homo sapiens' --taxon-id 9606 --namespace HGNC",
-        direct_tsv.to_string_lossy(),
-        direct_json.to_string_lossy()
+        quote_shell_arg(&direct_tsv.to_string_lossy().to_string()),
+        quote_shell_arg(&direct_json.to_string_lossy().to_string())
     ))
     .expect("parse direct import");
     let direct_run =
@@ -20515,7 +20552,7 @@ fn execute_resources_import_gene_set_caches_and_direct_list_output_is_consumable
 
     let produce_command = parse_shell_line(&format!(
         "gene-sets produce direct-list --cache {} --query splicing",
-        direct_json.to_string_lossy()
+        quote_shell_arg(&direct_json.to_string_lossy().to_string())
     ))
     .expect("parse direct-list producer over imported cache");
     let produced = execute_shell_command(&mut engine, &produce_command)
@@ -20535,8 +20572,8 @@ fn execute_resources_import_gene_set_caches_and_direct_list_output_is_consumable
     .expect("write ontology CSV");
     let ontology_command = parse_shell_line(&format!(
         "resources import-ontology-assignment-cache {} {} --provider goa --version 2026-06 --ontology-namespace GO --organism 'Homo sapiens' --symbol-namespace HGNC",
-        ontology_csv.to_string_lossy(),
-        ontology_json.to_string_lossy()
+        quote_shell_arg(&ontology_csv.to_string_lossy().to_string()),
+        quote_shell_arg(&ontology_json.to_string_lossy().to_string())
     ))
     .expect("parse ontology import");
     let ontology_run =
@@ -20556,8 +20593,8 @@ fn execute_resources_import_gene_set_caches_and_direct_list_output_is_consumable
     .expect("write co-regulated TSV");
     let co_command = parse_shell_line(&format!(
         "resources import-co-regulated-cache {} {} --provider local_expr --version 2026-06 --dataset expr1 --contrast case_vs_control --score logfc --organism 'Homo sapiens' --namespace HGNC",
-        co_tsv.to_string_lossy(),
-        co_json.to_string_lossy()
+        quote_shell_arg(&co_tsv.to_string_lossy().to_string()),
+        quote_shell_arg(&co_json.to_string_lossy().to_string())
     ))
     .expect("parse co-regulated import");
     let co_run =
@@ -21433,7 +21470,7 @@ fn execute_genomic_motif_evidence_keeps_missing_provider_optional_and_read_only(
         &mut engine,
         &parse_shell_line(&format!(
             "features genomic-motif-evidence --region-set motif_targets --motif MA0525.2 --package {}",
-            missing_package.display()
+            quote_shell_arg(&missing_package.display().to_string())
         ))
         .expect("parse stored-region query"),
     )
@@ -22912,9 +22949,9 @@ fn execute_primers_screen_variants_emits_handoff_ready_evidence() {
     let evidence_dir = td.path().join("evidence");
     let command = parse_shell_line(&format!(
         "primers screen-variants @{} --path {} --evidence-dir {}",
-        request_path.display(),
-        output_path.display(),
-        evidence_dir.display()
+        quote_shell_arg(&request_path.display().to_string()),
+        quote_shell_arg(&output_path.display().to_string()),
+        quote_shell_arg(&evidence_dir.display().to_string())
     ))
     .expect("parse screen command");
     let mut engine = GentleEngine::default();
@@ -24573,7 +24610,7 @@ fn execute_agents_preflight_is_config_only_by_default() {
     .expect("write catalog");
     let cmd = parse_shell_line(&format!(
         "agents preflight builtin_echo --catalog {}",
-        catalog_path.display()
+        quote_shell_arg(&catalog_path.display().to_string())
     ))
     .expect("parse agents preflight");
     let mut engine = GentleEngine::from_state(ProjectState::default());
@@ -24602,7 +24639,7 @@ fn execute_agents_preflight_live_includes_live_probe() {
     .expect("write catalog");
     let cmd = parse_shell_line(&format!(
         "agents preflight builtin_echo --live --catalog {}",
-        catalog_path.display()
+        quote_shell_arg(&catalog_path.display().to_string())
     ))
     .expect("parse agents preflight live");
     let mut engine = GentleEngine::from_state(ProjectState::default());
@@ -25048,7 +25085,7 @@ fn execute_macros_run_blocks_nested_agents_ask_when_agent_commands_are_disabled(
         &ShellCommand::MacrosRun {
             script: format!(
                 "agents ask builtin_echo --catalog {} --prompt \"ask: capabilities\"",
-                catalog_path.display()
+                quote_shell_arg(&catalog_path.display().to_string())
             ),
             transactional: false,
         },
@@ -25273,7 +25310,7 @@ fn execute_facts_eval_accepts_restriction_scan_evidence_file() {
 
     let scan_cmd = parse_shell_line(&format!(
         "features restriction-scan clean_seq --enzyme EcoRI --path {}",
-        scan_path.display()
+        quote_shell_arg(&scan_path.display().to_string())
     ))
     .expect("parse scan");
     execute_shell_command(&mut engine, &scan_cmd).expect("execute scan");
@@ -25292,8 +25329,8 @@ fn execute_facts_eval_accepts_restriction_scan_evidence_file() {
     .expect("write expression");
     let eval_cmd = parse_shell_line(&format!(
         "facts eval @{} --evidence {}",
-        expr_path.display(),
-        scan_path.display()
+        quote_shell_arg(&expr_path.display().to_string()),
+        quote_shell_arg(&scan_path.display().to_string())
     ))
     .expect("parse eval");
     let out = execute_shell_command(&mut engine, &eval_cmd).expect("execute facts eval");
@@ -25347,7 +25384,7 @@ fn execute_introspect_verify_effects_accepts_restriction_scan_report() {
 
     let scan_cmd = parse_shell_line(&format!(
         "features restriction-scan clean_seq --enzyme EcoRI --path {}",
-        scan_path.display()
+        quote_shell_arg(&scan_path.display().to_string())
     ))
     .expect("parse scan");
     execute_shell_command(&mut engine, &scan_cmd).expect("execute scan");
@@ -25355,7 +25392,7 @@ fn execute_introspect_verify_effects_accepts_restriction_scan_report() {
 
     let verify_cmd = parse_shell_line(&format!(
         "introspect verify-effects features restriction-scan --seq-id clean_seq --evidence {}",
-        scan_path.display()
+        quote_shell_arg(&scan_path.display().to_string())
     ))
     .expect("parse verify effects");
     let out = execute_shell_command(&mut engine, &verify_cmd).expect("execute verify effects");
@@ -37645,14 +37682,14 @@ fn assert_genomes_extend_anchor_creates_sequence() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let catalog_path = catalog.to_string_lossy().to_string();
@@ -37750,14 +37787,14 @@ fn execute_genomes_extract_region_default_scope_core_with_telemetry() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let catalog_path = catalog.to_string_lossy().to_string();
@@ -37777,7 +37814,7 @@ fn execute_genomes_extract_region_default_scope_core_with_telemetry() {
 
     let command = parse_shell_line(&format!(
         "genomes extract-region ToyGenome chr1 1 16 --output-id shell_slice_default --catalog {}",
-        catalog_path
+        quote_shell_arg(&catalog_path.to_string())
     ))
     .expect("parse extract-region");
     let out = execute_shell_command(&mut engine, &command).expect("execute extract-region");
@@ -37861,14 +37898,14 @@ fn assert_execute_genomes_extract_promoter_uses_transcript_tss_on_reverse_strand
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -37996,14 +38033,14 @@ fn execute_genomes_promoter_cohort_comparison_returns_payload() {
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -38028,8 +38065,8 @@ fn execute_genomes_promoter_cohort_comparison_returns_payload() {
 
     let cohort_cmd = parse_shell_line(&format!(
         "genomes promoter-cohort-comparison ToyGenome --cohort-label toy_cohort --cohort-kind manual --source-seq-id toy_context --gene POS1@TX_POS --gene NEG1@TX_NEG#NEG1_panel --gene MISSING --motif SP1 --motif TP73 --upstream-bp 100 --downstream-bp 20 --score-kind llr_background_tail_log10 --expression-json '{{\"gene_label\":\"POS1\",\"value\":1.5,\"unit\":\"TPM\"}}' --source-label rna_demo --catalog {} --path {}",
-        catalog_path,
-        cohort_path.to_string_lossy(),
+        quote_shell_arg(&catalog_path.to_string()),
+        quote_shell_arg(&cohort_path.to_string_lossy().to_string()),
     ))
     .expect("parse promoter-cohort-comparison");
     let cohort = execute_shell_command(&mut engine, &cohort_cmd).expect("run promoter cohort");
@@ -38089,14 +38126,14 @@ fn assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloa
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -38121,8 +38158,8 @@ fn assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloa
 
     let summary_cmd = parse_shell_line(&format!(
         "genomes promoter-tfbs-summary ToyGenome --gene POS1@TX_POS --gene NEG1@TX_NEG#NEG1_panel --motif SP1 --motif \"Yamanaka factors\" --upstream-bp 100 --downstream-bp 20 --score-kind llr_background_tail_log10 --catalog {} --path {}",
-        catalog_path,
-        summary_path.to_string_lossy(),
+        quote_shell_arg(&catalog_path.to_string()),
+        quote_shell_arg(&summary_path.to_string_lossy().to_string()),
     ))
     .expect("parse promoter-tfbs-summary");
     let summary = execute_shell_command(&mut engine, &summary_cmd).expect("run promoter summary");
@@ -38145,8 +38182,8 @@ fn assert_execute_genomes_promoter_tfbs_summary_and_svg_return_multi_gene_payloa
 
     let svg_cmd = parse_shell_line(&format!(
         "genomes promoter-tfbs-svg ToyGenome --gene POS1@TX_POS --gene NEG1@TX_NEG#NEG1_panel --motif SP1 --motif stemness --upstream-bp 100 --downstream-bp 20 --score-kind llr_background_tail_log10 --catalog {} {}",
-        catalog_path,
-        svg_path.to_string_lossy(),
+        quote_shell_arg(&catalog_path.to_string()),
+        quote_shell_arg(&svg_path.to_string_lossy().to_string()),
     ))
     .expect("parse promoter-tfbs-svg");
     let svg = execute_shell_command(&mut engine, &svg_cmd).expect("run promoter svg");
@@ -38193,14 +38230,14 @@ fn assert_execute_genomes_verify_anchor_updates_verification_status() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let catalog_path = catalog.to_string_lossy().to_string();
@@ -38513,14 +38550,14 @@ fn execute_genomes_validate_catalog_reports_valid() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let mut engine = GentleEngine::new();
@@ -38553,9 +38590,9 @@ fn execute_helpers_validate_catalog_skips_metadata_only_candidates() {
     let catalog_json = format!(
         r#"{{
   "Source-backed helper": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Metadata-only helper candidate": {{
     "sequence_availability": "source sequence not yet bundled",
@@ -38565,9 +38602,9 @@ fn execute_helpers_validate_catalog_skips_metadata_only_candidates() {
     "host_system": "Escherichia coli"
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let mut engine = GentleEngine::new();
@@ -38615,12 +38652,12 @@ fn execute_helpers_doctor_catalog_reports_deterministic_vector_issues() {
     "redistribution_status": "synthetic test fixture",
     "biological_safety_note": "synthetic non-biological test data",
     "usable_as_empty_backbone": true,
-    "sequence_local": "{}",
-    "annotations_local": "{}"
+    "sequence_local": {},
+    "annotations_local": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let mut engine = GentleEngine::new();
@@ -38753,12 +38790,12 @@ fn execute_cutrun_prepare_and_project_return_shared_payloads() {
   "toy_ctcf": {{
     "summary": "Toy CUT&RUN",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "peaks_local": "{}",
-    "signal_local": "{}"
+    "peaks_local": {},
+    "signal_local": {}
   }}
 }}"#,
-            peaks_path.display(),
-            signal_path.display()
+            serde_json::json!(peaks_path),
+            serde_json::json!(signal_path)
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -38843,10 +38880,10 @@ fn execute_cutrun_status_reports_running_lifecycle_from_active_prepare_marker() 
   "toy_ctcf": {{
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display()
+            serde_json::json!(peaks_path)
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -39142,13 +39179,13 @@ fn execute_cutrun_interpret_from_prepared_dataset_reads() {
   "toy_ctcf_reads": {{
     "summary": "Toy CUT&RUN raw reads",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
-    "reads_r2_local": "{}",
+    "reads_r1_local": {},
+    "reads_r2_local": {},
     "read_layout": "paired_end"
   }}
 }}"#,
-            reads_r1_path.display(),
-            reads_r2_path.display()
+            serde_json::json!(reads_r1_path),
+            serde_json::json!(reads_r2_path)
         ),
     )
     .expect("write shell CUT&RUN raw-read catalog");
@@ -39337,14 +39374,14 @@ fn execute_genomes_update_ensembl_specs_with_no_templates_reports_no_updates() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
 
@@ -39386,14 +39423,14 @@ fn execute_genomes_preview_ensembl_specs_with_no_templates_reports_no_updates() 
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
 
@@ -39846,14 +39883,14 @@ fn execute_genomes_remove_prepared_reports_removed_and_status_clears() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let catalog_path = catalog.to_string_lossy().to_string();
@@ -39913,14 +39950,14 @@ fn execute_genomes_remove_catalog_entry_updates_catalog_file() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let catalog_path = catalog.to_string_lossy().to_string();
@@ -39960,15 +39997,15 @@ fn execute_genomes_status_reports_length_and_mass_metadata() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {},
     "nucleotide_length_bp": 4
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache)
     );
     fs::write(&catalog, catalog_json).expect("write catalog");
     let mut engine = GentleEngine::new();
@@ -40014,13 +40051,13 @@ fn execute_genomes_status_reports_effective_cache_dir_and_prepare_hint_when_unpr
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "cache_dir": "data/genomes"
   }}
 }}"#,
-            fasta.display(),
-            gtf.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf)
         ),
     )
     .expect("write catalog");
@@ -40084,14 +40121,14 @@ fn execute_genomes_status_uses_component_validation_when_prepare_activity_is_sta
             r#"{{
   "ToyGenome": {{
     "description": "component-readiness fixture",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            install_dir.join("sequence.fa").display(),
-            install_dir.join("annotation.gtf").display(),
-            cache.display()
+            serde_json::json!(install_dir.join("sequence.fa")),
+            serde_json::json!(install_dir.join("annotation.gtf")),
+            serde_json::json!(cache)
         ),
     )
     .expect("write catalog");
@@ -40190,14 +40227,14 @@ fn assert_execute_genomes_status_reports_running_lifecycle_and_suppresses_prepar
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache)
         ),
     )
     .expect("write catalog");
@@ -40284,13 +40321,13 @@ fn execute_genomes_prepare_running_message_reports_effective_activity_path() {
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "cache_dir": "data/genomes"
   }}
 }}"#,
-            fasta.display(),
-            gtf.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf)
         ),
     )
     .expect("write catalog");
@@ -40933,22 +40970,22 @@ fn execute_ui_prepared_and_latest_prepared_queries() {
     let catalog_json = format!(
         r#"{{
   "Human GRCh38 Ensembl 113": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 Ensembl 116": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta_113.display(),
-        ann_113.display(),
-        cache_dir.display(),
-        fasta_116.display(),
-        ann_116.display(),
-        cache_dir.display()
+        serde_json::json!(fasta_113),
+        serde_json::json!(ann_113),
+        serde_json::json!(cache_dir),
+        serde_json::json!(fasta_116),
+        serde_json::json!(ann_116),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).expect("write catalog");
 
@@ -41548,7 +41585,7 @@ fn parse_uniprot_commands() {
     .expect("write inventory request");
     let inventory = parse_shell_line(&format!(
         "uniprot build-linked-transcript-inventory @{}",
-        inventory_request_file.path().display()
+        quote_shell_arg(&inventory_request_file.path().display().to_string())
     ))
     .expect("parse linked-transcript inventory");
     match inventory {
@@ -44389,12 +44426,12 @@ fn execute_rna_reads_allele_hash_screen_applies_salmon_source_selectors() {
     let out_dir = tempdir().expect("temp output");
     let command = parse_shell_line(&format!(
         "rna-reads allele-hash-screen --gene FUS --transcript-fasta {} --variant-table {} --read-file {} --salmon-unmapped-names {} --salmon-mappings-sam {} --kmer-len 9 --out {}",
-        fixture_dir.join("fus_transcripts.fa").display(),
-        fixture_dir.join("fus_variants.tsv").display(),
-        fixture_dir.join("fus_reads.fastq").display(),
-        fixture_dir.join("salmon_unmapped_names.txt").display(),
-        fixture_dir.join("salmon_mappings.sam").display(),
-        out_dir.path().display(),
+        quote_shell_arg(&fixture_dir.join("fus_transcripts.fa").display().to_string()),
+        quote_shell_arg(&fixture_dir.join("fus_variants.tsv").display().to_string()),
+        quote_shell_arg(&fixture_dir.join("fus_reads.fastq").display().to_string()),
+        quote_shell_arg(&fixture_dir.join("salmon_unmapped_names.txt").display().to_string()),
+        quote_shell_arg(&fixture_dir.join("salmon_mappings.sam").display().to_string()),
+        quote_shell_arg(&out_dir.path().display().to_string()),
     ))
     .expect("parse Salmon-backed allele screen");
     let mut engine = GentleEngine::default();
@@ -47312,7 +47349,7 @@ fn splicing_cryptic_screen_and_render_share_the_typed_report() {
 
     let screen = parse_shell_line(&format!(
         "splicing cryptic-screen @{}",
-        request_path.display()
+        quote_shell_arg(&request_path.display().to_string())
     ))
     .expect("parse cryptic screen");
     let screened = execute_shell_command(&mut engine, &screen).expect("execute cryptic screen");
@@ -47331,8 +47368,8 @@ fn splicing_cryptic_screen_and_render_share_the_typed_report() {
 
     let export = parse_shell_line(&format!(
         "splicing cryptic-export @{} {}",
-        request_path.display(),
-        json_path.display()
+        quote_shell_arg(&request_path.display().to_string()),
+        quote_shell_arg(&json_path.display().to_string())
     ))
     .expect("parse cryptic export");
     let exported = execute_shell_command(&mut engine, &export).expect("export cryptic JSON");
@@ -47348,8 +47385,8 @@ fn splicing_cryptic_screen_and_render_share_the_typed_report() {
 
     let render = parse_shell_line(&format!(
         "splicing cryptic-render @{} {}",
-        request_path.display(),
-        svg_path.display()
+        quote_shell_arg(&request_path.display().to_string()),
+        quote_shell_arg(&svg_path.display().to_string())
     ))
     .expect("parse cryptic render");
     let rendered = execute_shell_command(&mut engine, &render).expect("render cryptic SVG");

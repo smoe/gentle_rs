@@ -4137,14 +4137,14 @@ fn write_cutrun_test_reference_catalog_with_sequence(
         r#"{{
   "{genome_id}": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).expect("write CUT&RUN reference catalog");
     catalog_path.to_string_lossy().to_string()
@@ -4228,14 +4228,14 @@ fn write_gene_set_test_reference_catalog(root: &Path, genome_id: &str) -> String
         r#"{{
   "{genome_id}": {{
     "description": "gene-set toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).expect("write gene-set reference catalog");
     catalog_path.to_string_lossy().to_string()
@@ -4501,14 +4501,14 @@ fn write_regulatory_partner_test_reference_catalog(root: &Path) -> String {
             r#"{{
   "RegulatoryPartnerToy": {{
     "description": "synthetic regulatory-partner test genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&fasta_gz),
-            file_url(&ann_gz),
-            cache_dir.display()
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(file_url(&ann_gz)),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write regulatory-partner reference catalog");
@@ -4570,23 +4570,23 @@ fn write_ortholog_test_reference_catalog(root: &Path) -> String {
             r#"{{
   "HumanToy": {{
     "description": "ortholog human toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }},
   "MouseToy": {{
     "description": "ortholog mouse toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&human_fasta),
-            file_url(&human_gtf),
-            human_cache.display(),
-            file_url(&mouse_fasta),
-            file_url(&mouse_gtf),
-            mouse_cache.display()
+            serde_json::json!(file_url(&human_fasta)),
+            serde_json::json!(file_url(&human_gtf)),
+            serde_json::json!(human_cache),
+            serde_json::json!(file_url(&mouse_fasta)),
+            serde_json::json!(file_url(&mouse_gtf)),
+            serde_json::json!(mouse_cache)
         ),
     )
     .expect("write ortholog reference catalog");
@@ -6776,10 +6776,10 @@ fn summarize_ortholog_promoter_comparison_separates_sequence_tfbs_expression_and
     "species": "Homo sapiens",
     "target_factor": "SP1",
     "supported_reference_genome_ids": ["HumanToy"],
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display()
+            serde_json::json!(peaks_path)
         ),
     )
     .expect("write ortholog CUT&RUN catalog");
@@ -7014,12 +7014,12 @@ fn inspect_cutrun_gene_set_regulatory_support_keeps_evaluated_denominators_hones
     "summary": "Toy gene-set CUT&RUN",
     "target_factor": "CTCF",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "peaks_local": "{}",
-    "signal_local": "{}"
+    "peaks_local": {},
+    "signal_local": {}
   }}
 }}"#,
-            peaks_path.display(),
-            signal_path.display()
+            serde_json::json!(peaks_path),
+            serde_json::json!(signal_path)
         ),
     )
     .expect("write project CUT&RUN catalog");
@@ -10912,14 +10912,14 @@ fn collection_primer_specificity_matches_direct_per_member_assessment() {
             r#"{{
   "ToyGenome": {{
     "description": "synthetic collection primer-specificity fixture",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            annotation.display(),
-            cache.display()
+            serde_json::json!(fasta),
+            serde_json::json!(annotation),
+            serde_json::json!(cache)
         ),
     )
     .expect("write collection specificity catalog");
@@ -12572,14 +12572,14 @@ fn primer_specificity_handoff_plans_without_running_and_imports_completed_output
             r#"{{
   "ToyGenome": {{
     "description": "primer specificity handoff fixture",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            annotation.display(),
-            cache.display()
+            serde_json::json!(fasta),
+            serde_json::json!(annotation),
+            serde_json::json!(cache)
         ),
     )
     .expect("write toy catalog");
@@ -15750,14 +15750,14 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             r#"{{
   "ToyGenome": {{
     "description": "synthetic aggregate panel specificity fixture",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            annotation.display(),
-            cache.display()
+            serde_json::json!(fasta),
+            serde_json::json!(annotation),
+            serde_json::json!(cache)
         ),
     )
     .expect("write panel specificity catalog");
@@ -18544,16 +18544,16 @@ fn transcript_assay_cdna_similarity_map_producer_binds_resource_and_classificati
             r#"{{
   "Synthetic cDNA": {{
     "description": "synthetic transcript-assay similarity fixture",
-    "sequence_local": "{}",
-    "cache_dir": "{}",
+    "sequence_local": {},
+    "cache_dir": {},
     "blast_index_kind": "transcriptome_cdna",
     "reference_name": "synthetic.cdna",
     "reference_release": "synthetic-v1",
     "blast_masking": "unmasked"
   }}
 }}"#,
-            source_fasta.display(),
-            cache_dir.display()
+            serde_json::json!(source_fasta),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write synthetic cDNA catalog");
@@ -23397,29 +23397,58 @@ fn test_fetch_genbank_accession_operation_loads_sequence_and_anchor() {
 
 #[test]
 fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
+
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let td = tempdir().unwrap();
-    let region_dir = td
-        .path()
-        .join("mock_ensembl")
-        .join("sequence")
-        .join("region")
-        .join("homo_sapiens");
-    fs::create_dir_all(&region_dir).unwrap();
-    fs::write(
-        region_dir.join("17:7668402..7668409:-1"),
-        r#"{
+    // Region URLs contain colons, which are not portable fixture filenames.
+    // Serve one synthetic response locally and exercise the real HTTP path.
+    let listener = TcpListener::bind("127.0.0.1:0").expect("local Ensembl fixture");
+    listener.set_nonblocking(true).unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "Ensembl fixture timed out"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                Err(error) => panic!("Ensembl fixture accept: {error}"),
+            }
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let mut reader = BufReader::new(&stream);
+        let mut request_line = String::new();
+        reader.read_line(&mut request_line).unwrap();
+        loop {
+            let mut header = String::new();
+            assert!(reader.read_line(&mut header).unwrap() > 0);
+            if header == "\r\n" {
+                break;
+            }
+        }
+        let body = r#"{
   "id": "chromosome:GRCh38:17:7668402:7668409:-1",
   "desc": "chromosome:GRCh38:17:7668402:7668409:-1",
   "seq": "ACGTACGT",
   "molecule": "dna"
 }
-"#,
-    )
-    .unwrap();
-    let base_url = format!("file://{}", td.path().join("mock_ensembl").display());
+"#;
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+        request_line
+    });
     let _ensembl_env = EnvVarGuard::set("GENTLE_ENSEMBL_REST_BASE_URL", &base_url);
 
     let mut engine = GentleEngine::new();
@@ -23434,6 +23463,10 @@ fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
             coord_system_version: None,
         })
         .expect("fetch Ensembl region");
+    assert_eq!(
+        server.join().expect("Ensembl fixture server"),
+        "GET /sequence/region/homo_sapiens/17:7668402..7668409:-1?content-type=application/json HTTP/1.1\r\n"
+    );
 
     assert_eq!(result.created_seq_ids, vec!["tp53_roi".to_string()]);
     let sequence = engine
@@ -23525,14 +23558,14 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
             r#"{{
   "ToyGenome": {{
     "description": "toy dbsnp genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(fasta_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -23834,17 +23867,15 @@ fn test_fetch_dbsnp_region_operation_emits_staged_progress_updates() {
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
     fs::write(
         &catalog_path,
-        format!(
-            r#"{{
-  "ToyGenome": {{
-    "description": "toy dbsnp genome",
-    "sequence_local": "{root}/toy.fa",
-    "annotations_local": "{root}/toy.gtf",
-    "cache_dir": "{root}/cache"
-  }}
-}}"#,
-            root = td.path().display()
-        ),
+        serde_json::json!({
+            "ToyGenome": {
+                "description": "toy dbsnp genome",
+                "sequence_local": td.path().join("toy.fa"),
+                "annotations_local": td.path().join("toy.gtf"),
+                "cache_dir": cache_dir,
+            }
+        })
+        .to_string(),
     )
     .expect("catalog");
     fs::write(
@@ -36072,14 +36103,14 @@ fn test_prepare_genome_and_extract_region_operations() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -36216,14 +36247,14 @@ fn test_extract_genome_gene_reports_alias_guidance_for_contig_mismatch() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -36290,14 +36321,14 @@ fn test_extract_genome_gene_attaches_transcript_features_from_annotation() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -36445,14 +36476,14 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -36551,14 +36582,14 @@ fn test_extract_genome_gene_coding_with_promoter_extends_plus_strand_from_first_
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -36649,14 +36680,14 @@ fn test_extract_genome_gene_coding_with_promoter_extends_minus_strand_on_five_pr
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -36729,14 +36760,14 @@ fn test_reverse_strand_gene_extraction_can_seed_full_promoter_slice_via_region_e
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -36881,14 +36912,14 @@ fn test_extract_genome_promoter_slice_derives_reverse_strand_interval_and_proven
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -37096,14 +37127,14 @@ fn test_extract_genome_gene_include_annotation_false_disables_projection() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -37179,14 +37210,14 @@ fn test_extract_genome_gene_annotation_cap_falls_back_to_core() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -37288,14 +37319,14 @@ fn test_extract_genome_region_include_annotation_attaches_features_and_sets_name
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -37439,14 +37470,14 @@ fn test_extract_genome_region_full_scope_feature_cap_falls_back_to_core() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -37536,14 +37567,14 @@ fn test_prepare_genome_operation_supports_timeout_seconds() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -37576,14 +37607,14 @@ fn test_extend_genome_anchor_plus_strand_adds_lineage_and_provenance() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -37697,14 +37728,14 @@ fn test_extend_genome_anchor_reverse_strand_respects_5prime_and_3prime_physical_
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -37873,25 +37904,25 @@ fn test_extend_genome_anchor_uses_compatible_prepared_assembly_fallback() {
         r#"{{
   "Human GRCh38 Ensembl 116": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
     "ncbi_taxonomy_id": 9606,
     "ncbi_assembly_accession": "GCF_000001405.40",
     "ncbi_assembly_name": "GRCh38.p14",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        ann.display(),
-        cache_dir.display(),
-        fasta.display(),
-        ann.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir),
+        serde_json::json!(fasta),
+        serde_json::json!(ann),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -38066,14 +38097,14 @@ fn test_extend_genome_anchor_strict_verification_accepts_verified_anchor() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -38139,14 +38170,14 @@ fn test_extend_genome_anchor_warns_when_clipped_at_chromosome_start() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -38230,14 +38261,14 @@ fn test_verify_genome_anchor_records_unverified_status_in_provenance() {
     let catalog_json = format!(
         r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-        fasta.display(),
-        gtf.display(),
-        cache_dir.display()
+        serde_json::json!(fasta),
+        serde_json::json!(gtf),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -38348,14 +38379,14 @@ fn test_import_genome_bed_track_supports_plain_and_gzip() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -38474,14 +38505,14 @@ fn test_import_genome_bed_track_supports_concatenated_gzip_members() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -38573,14 +38604,14 @@ fn test_import_genome_bigwig_track_uses_converter_and_filters_scores() {
         r#"{{
   "ToyGenome": {{
     "description": "toy genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-        file_url(&fasta_gz),
-        file_url(&ann_gz),
-        cache_dir.display()
+        serde_json::json!(file_url(&fasta_gz)),
+        serde_json::json!(file_url(&ann_gz)),
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -38811,17 +38842,17 @@ fn test_prepare_cutrun_dataset_respects_cache_env_and_reports_status() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
-    "peaks_local": "{}",
-    "signal_local": "{}",
-    "reads_r1_local": "{}",
-    "reads_r2_local": "{}",
+    "peaks_local": {},
+    "signal_local": {},
+    "reads_r1_local": {},
+    "reads_r2_local": {},
     "read_layout": "paired_end"
   }}
 }}"#,
-            peaks_path.display(),
-            signal_path.display(),
-            reads_r1_path.display(),
-            reads_r2_path.display()
+            serde_json::json!(peaks_path),
+            serde_json::json!(signal_path),
+            serde_json::json!(reads_r1_path),
+            serde_json::json!(reads_r2_path)
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -38900,10 +38931,10 @@ fn test_prepare_cutrun_dataset_reuses_existing_running_activity() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display(),
+            serde_json::json!(peaks_path),
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -38958,10 +38989,10 @@ fn test_stale_cutrun_prepare_activity_can_be_superseded_by_new_prepare() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display(),
+            serde_json::json!(peaks_path),
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -39051,13 +39082,13 @@ fn test_interpret_cutrun_reads_resolves_prepared_dataset_raw_reads() {
   "toy_cutrun_reads": {{
     "summary": "Toy CUT&RUN raw reads",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
-    "reads_r2_local": "{}",
+    "reads_r1_local": {},
+    "reads_r2_local": {},
     "read_layout": "paired_end"
   }}
 }}"#,
-            reads_r1_path.display(),
-            reads_r2_path.display()
+            serde_json::json!(reads_r1_path),
+            serde_json::json!(reads_r2_path)
         ),
     )
     .expect("write CUT&RUN raw-read catalog");
@@ -39158,12 +39189,12 @@ fn test_project_cutrun_dataset_imports_peaks_and_signal_on_anchored_sequence() {
     "summary": "Toy CUT&RUN",
     "target_factor": "CTCF",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "peaks_local": "{}",
-    "signal_local": "{}"
+    "peaks_local": {},
+    "signal_local": {}
   }}
 }}"#,
-            peaks_path.display(),
-            signal_path.display()
+            serde_json::json!(peaks_path),
+            serde_json::json!(signal_path)
         ),
     )
     .expect("write CUT&RUN catalog");
@@ -39245,10 +39276,10 @@ fn test_project_cutrun_dataset_rejects_incompatible_reference_genome() {
   "toy_cutrun": {{
     "summary": "Toy CUT&RUN",
     "supported_reference_genome_ids": ["OtherGenome"],
-    "peaks_local": "{}"
+    "peaks_local": {}
   }}
 }}"#,
-            peaks_path.display()
+            serde_json::json!(peaks_path)
         ),
     )
     .expect("write incompatible CUT&RUN catalog");
@@ -39968,11 +39999,11 @@ fn test_inspect_cutrun_regulatory_support_reports_context_supported_windows_and_
     "target_factor": "CTCF",
     "species": "Synthetic species",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
+    "reads_r1_local": {},
     "read_layout": "single_end"
   }}
 }}"#,
-            reads_path.display()
+            serde_json::json!(reads_path)
         ),
     )
     .expect("write CUT&RUN dataset catalog");
@@ -40118,11 +40149,11 @@ fn test_inspect_cutrun_regulatory_support_reports_context_when_target_motif_unre
     "target_factor": "NON_DNA_BINDING_COFACTOR",
     "species": "Synthetic species",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
+    "reads_r1_local": {},
     "read_layout": "single_end"
   }}
 }}"#,
-            reads_path.display()
+            serde_json::json!(reads_path)
         ),
     )
     .expect("write cofactor CUT&RUN dataset catalog");
@@ -40259,11 +40290,11 @@ fn test_inspect_cutrun_regulatory_support_reports_motif_poor_supported_windows()
     "target_factor": "CTCF",
     "species": "Synthetic species",
     "supported_reference_genome_ids": ["ToyGenome"],
-    "reads_r1_local": "{}",
+    "reads_r1_local": {},
     "read_layout": "single_end"
   }}
 }}"#,
-            reads_path.display()
+            serde_json::json!(reads_path)
         ),
     )
     .expect("write motif-poor CUT&RUN dataset catalog");
@@ -40699,10 +40730,10 @@ fn test_prepare_helper_genome_via_genbank_accession_and_extract() {
   "Helper pUC19": {{
     "description": "helper vector from GenBank accession",
     "genbank_accession": "L09137",
-    "cache_dir": "{}"
+    "cache_dir": {}
   }}
 }}"#,
-        cache_dir.display()
+        serde_json::json!(cache_dir)
     );
     fs::write(&catalog_path, catalog_json).unwrap();
     let catalog_path_str = catalog_path.to_string_lossy().to_string();
@@ -40828,14 +40859,14 @@ fn test_extract_helper_region_auto_annotates_puc_mcs() {
                 r#"{{
   "{genome_id}": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-                seq_path.display(),
-                ann_path.display(),
-                cache_dir.display()
+                serde_json::json!(seq_path),
+                serde_json::json!(ann_path),
+                serde_json::json!(cache_dir)
             ),
         )
         .unwrap();
@@ -40920,14 +40951,14 @@ fn test_extract_helper_region_skips_mcs_annotation_when_motif_not_unique() {
             r#"{{
   "Helper pUC19": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            seq_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(seq_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -40998,14 +41029,14 @@ fn test_extract_helper_region_prefers_existing_mcs_annotation() {
             r#"{{
   "Helper pUC19": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            seq_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(seq_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -41086,14 +41117,14 @@ fn test_extract_helper_region_does_not_apply_mcs_fallback_for_non_puc_ids() {
             r#"{{
   "Helper pGEX-like": {{
     "description": "synthetic helper",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            seq_path.display(),
-            ann_path.display(),
-            cache_dir.display()
+            serde_json::json!(seq_path),
+            serde_json::json!(ann_path),
+            serde_json::json!(cache_dir)
         ),
     )
     .unwrap();
@@ -54951,14 +54982,14 @@ fn apply_summarize_multi_gene_promoter_tfbs_returns_transcription_aligned_report
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -55096,14 +55127,14 @@ fn apply_summarize_promoter_cohort_comparison_returns_pairwise_payload_and_unres
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -55288,14 +55319,14 @@ fn promoter_cohort_comparison_flags_declared_relationship_expectations() {
         format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            gtf.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(gtf),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");

@@ -1138,6 +1138,12 @@ fn checked_directory(path: &Path) -> Result<PathBuf, EngineError> {
                 return Err(invalid("parent traversal is not allowed in output paths"));
             }
             Component::CurDir => continue,
+            Component::Prefix(_) => {
+                // A Windows drive/UNC prefix is not a directory until its root
+                // component is appended (notably canonical \\?\ paths).
+                resolved.push(component.as_os_str());
+                continue;
+            }
             _ => resolved.push(component.as_os_str()),
         }
         let metadata =
@@ -3431,6 +3437,23 @@ pub(crate) mod tests {
             );
         }
         validate_tss_profile_report(&report).unwrap();
+    }
+
+    #[test]
+    fn checked_directory_accepts_native_roots_and_rejects_unsafe_ancestors() {
+        let (temp, root) = temporary_root();
+        // Exercise both normal Windows paths and canonical verbatim prefixes.
+        // On macOS only the canonical path avoids the system /var symlink.
+        assert_eq!(checked_directory(&root).unwrap(), root);
+        #[cfg(windows)]
+        assert_eq!(checked_directory(temp.path()).unwrap(), temp.path());
+        let _ = temp;
+        let child = root.join("nested");
+        fs::create_dir(&child).unwrap();
+        assert_eq!(checked_directory(&child).unwrap(), child);
+        assert!(checked_directory(&child.join("..")).is_err());
+        fs::write(root.join("file"), b"not a directory").unwrap();
+        assert!(checked_directory(&root.join("file/child")).is_err());
     }
 
     #[test]

@@ -9266,15 +9266,17 @@ fn splicing_locus_multiple_imported_panels_require_and_persist_explicit_selectio
         Some("patz1_panel_b")
     );
 
-    let project = tempfile::NamedTempFile::new().expect("saved project");
+    let project = tempfile::NamedTempFile::new()
+        .expect("saved project")
+        .into_temp_path();
     shared_engine
         .read()
         .expect("engine")
         .state()
-        .save_to_path(&project.path().to_string_lossy())
+        .save_to_path(&project.to_string_lossy())
         .expect("save project with explicit panel selection");
-    let reopened_state = ProjectState::load_from_path(&project.path().to_string_lossy())
-        .expect("reopen saved project");
+    let reopened_state =
+        ProjectState::load_from_path(&project.to_string_lossy()).expect("reopen saved project");
     let reopened_engine = GentleEngine::from_state(reopened_state);
     let reopened = MainAreaDna::new(
         dna,

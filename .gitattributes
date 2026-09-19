@@ -29,3 +29,9 @@ docs/tutorial/generated/**/*.bed text eol=lf
 
 # The retained SERPINE1 figure binds the occupancy source's exact bytes.
 test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.bed text eol=lf
+
+# TSS manifests and context receipts bind these exact fixture bytes.
+test_files/fixtures/tss_profiles/** text eol=lf
+
+# This retained adapter output is compared byte-for-byte with LF serialization.
+test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation/* text eol=lf

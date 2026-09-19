@@ -3177,8 +3177,8 @@ mod tests {
         .expect("write request JSON");
         let plan_command = crate::engine_shell::parse_shell_line(&format!(
             "promoters regulatory-panel-plan @{} --path {}",
-            request_path.display(),
-            plan_path.display()
+            crate::engine_shell::shell_quote(&request_path.display().to_string()),
+            crate::engine_shell::shell_quote(&plan_path.display().to_string())
         ))
         .expect("parse regulatory panel shell plan");
         let out = crate::engine_shell::execute_shell_command(&mut fixture.engine, &plan_command)
@@ -3197,8 +3197,8 @@ mod tests {
 
         let render_command = crate::engine_shell::parse_shell_line(&format!(
             "promoters regulatory-panel-render @{} --path {}",
-            plan_path.display(),
-            svg_path.display()
+            crate::engine_shell::shell_quote(&plan_path.display().to_string()),
+            crate::engine_shell::shell_quote(&svg_path.display().to_string())
         ))
         .expect("parse regulatory panel shell render");
         let out = crate::engine_shell::execute_shell_command(&mut fixture.engine, &render_command)

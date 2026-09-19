@@ -14448,12 +14448,12 @@ mod tests {
             r#"{{
   "{genome_id}": {{
     "description": "{genome_id}",
-    "sequence_local": "{}",
-    "annotations_local": "{}"
+    "sequence_local": {},
+    "annotations_local": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann)
         );
         fs::write(path, catalog).unwrap();
     }
@@ -14530,17 +14530,31 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            sequence_source.display(),
-            annotation_source.display(),
-            cache_dir.display()
+            serde_json::json!(sequence_source),
+            serde_json::json!(annotation_source),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).expect("write catalog");
         GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).expect("load catalog")
+    }
+
+    #[test]
+    fn catalog_fixture_preserves_windows_paths_as_json_strings() {
+        let temp = tempdir().unwrap();
+        // These are JSON values, not files to access on the current host.
+        let sequence = Path::new(r#"C:\Users\O'Brien\sequence "quoted".fa"#);
+        let annotation = Path::new(r"\\server\share\gene models.gtf");
+        let cache = Path::new(r"\\?\C:\GENtle cache");
+        let catalog = write_toy_prepare_catalog(temp.path(), sequence, annotation, cache);
+        let entry = &catalog.entries["ToyGenome"];
+        assert_eq!(entry.sequence_local.as_deref(), sequence.to_str());
+        assert_eq!(entry.annotations_local.as_deref(), annotation.to_str());
+        assert_eq!(entry.cache_dir.as_deref(), cache.to_str());
     }
 
     #[cfg(unix)]
@@ -14661,14 +14675,14 @@ mod tests {
                 r#"{{
   "ToyGenome": {{
     "description": "synthetic exhaustive BLAST fixture",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-                install_dir.join("sequence.fa").display(),
-                install_dir.join("annotation.gtf").display(),
-                root.display()
+                serde_json::json!(install_dir.join("sequence.fa")),
+                serde_json::json!(install_dir.join("annotation.gtf")),
+                serde_json::json!(root)
             ),
         )
         .expect("write catalog");
@@ -14768,16 +14782,16 @@ mod tests {
                 r#"{{
   "Human GRCh38 Ensembl 116 cDNA": {{
     "description": "synthetic whole-cDNA fixture",
-    "sequence_local": "{}",
-    "cache_dir": "{}",
+    "sequence_local": {},
+    "cache_dir": {},
     "blast_index_kind": "transcriptome_cdna",
     "reference_name": "Homo_sapiens.GRCh38.cdna.all",
     "reference_release": "Ensembl 116",
     "blast_masking": "unmasked"
   }}
 }}"#,
-                source_fasta.display(),
-                cache_dir.display()
+                serde_json::json!(source_fasta),
+                serde_json::json!(cache_dir)
             ),
         )
         .expect("write catalog");
@@ -14941,16 +14955,16 @@ mod tests {
                 r#"{{
   "Human GRCh38 Ensembl 116 cDNA": {{
     "description": "synthetic adoption fixture",
-    "sequence_local": "{}",
-    "cache_dir": "{}",
+    "sequence_local": {},
+    "cache_dir": {},
     "blast_index_kind": "transcriptome_cdna",
     "reference_name": "Homo_sapiens.GRCh38.cdna.all",
     "reference_release": "Ensembl 116",
     "blast_masking": "unmasked"
   }}
 }}"#,
-                source_fasta.display(),
-                cache_dir.display()
+                serde_json::json!(source_fasta),
+                serde_json::json!(cache_dir)
             ),
         )
         .expect("write catalog");
@@ -15131,16 +15145,16 @@ mod tests {
             format!(
                 r#"{{
   "Human GRCh38 Ensembl 116 cDNA": {{
-    "sequence_local": "{}",
-    "cache_dir": "{}",
+    "sequence_local": {},
+    "cache_dir": {},
     "blast_index_kind": "transcriptome_cdna",
     "reference_name": "Homo_sapiens.GRCh38.cdna.all",
     "reference_release": "Ensembl 116",
     "blast_masking": "unmasked"
   }}
 }}"#,
-                replacement_fasta.display(),
-                cache_dir.display()
+                serde_json::json!(replacement_fasta),
+                serde_json::json!(cache_dir)
             ),
         )
         .expect("write changed-source catalog");
@@ -15288,14 +15302,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&fasta_gz),
-            file_url(&ann_gz),
-            cache_dir.display()
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(file_url(&ann_gz)),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -15411,14 +15425,14 @@ mod tests {
             r#"{{
   "{genome_id}": {{
     "description": "worm test genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&fasta_gz),
-            file_url(&ann_gz),
-            cache_dir.display()
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(file_url(&ann_gz)),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -15485,14 +15499,14 @@ mod tests {
             r#"{{
   "{genome_id}": {{
     "description": "worm concatenated gzip test genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&fasta_gz),
-            file_url(&ann_gz),
-            cache_dir.display()
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(file_url(&ann_gz)),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -15536,14 +15550,14 @@ mod tests {
             r#"{{
   "{genome_id}": {{
     "description": "synthetic mismatch genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -15794,14 +15808,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16016,14 +16030,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16081,14 +16095,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16131,14 +16145,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16191,14 +16205,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16234,14 +16248,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16278,14 +16292,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16317,12 +16331,12 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&fasta_gz),
-            root.join("cache").display()
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(root.join("cache"))
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16345,14 +16359,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_remote": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&fasta_gz),
-            missing_annotation.display(),
-            cache_dir.display()
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(missing_annotation),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
 
@@ -16412,14 +16426,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -16715,14 +16729,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta_a.display(),
-            ann_a.display(),
-            cache_dir.display()
+            serde_json::json!(fasta_a),
+            serde_json::json!(ann_a),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_a_json).unwrap();
         let catalog_a = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -16737,14 +16751,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta_b.display(),
-            ann_b.display(),
-            cache_dir.display()
+            serde_json::json!(fasta_b),
+            serde_json::json!(ann_b),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_b_json).unwrap();
         let catalog_b = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -16805,14 +16819,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            source_fasta.display(),
-            source_ann.display(),
-            cache_dir.display()
+            serde_json::json!(source_fasta),
+            serde_json::json!(source_ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -16880,14 +16894,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            source_fasta.display(),
-            source_ann.display(),
-            cache_dir.display()
+            serde_json::json!(source_fasta),
+            serde_json::json!(source_ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -16946,14 +16960,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            source_fasta.display(),
-            source_ann.display(),
-            cache_dir.display()
+            serde_json::json!(source_fasta),
+            serde_json::json!(source_ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -17037,14 +17051,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            source_fasta_v1.display(),
-            source_ann_v1.display(),
-            cache_dir.display()
+            serde_json::json!(source_fasta_v1),
+            serde_json::json!(source_ann_v1),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path_v1, catalog_json_v1).unwrap();
         let catalog_v1 = GenomeCatalog::from_json_file(&catalog_path_v1.to_string_lossy()).unwrap();
@@ -17079,14 +17093,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            source_fasta_v2.display(),
-            source_ann_v2.display(),
-            cache_dir.display()
+            serde_json::json!(source_fasta_v2),
+            serde_json::json!(source_ann_v2),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path_v2, catalog_json_v2).unwrap();
         let catalog_v2 = GenomeCatalog::from_json_file(&catalog_path_v2.to_string_lossy()).unwrap();
@@ -17163,14 +17177,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -17201,14 +17215,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -17270,14 +17284,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -17319,14 +17333,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -17426,14 +17440,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -17510,10 +17524,10 @@ mod tests {
     "description": "toy test genome",
     "sequence_local": "toy.fa",
     "annotations_local": "toy.gtf",
-    "cache_dir": "{}"
+    "cache_dir": {}
   }}
 }}"#,
-                cache_dir.display()
+                serde_json::json!(cache_dir)
             ),
         )
         .unwrap();
@@ -17556,14 +17570,14 @@ mod tests {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_remote": "{}",
-    "annotations_remote": "{}",
-    "cache_dir": "{}"
+    "sequence_remote": {},
+    "annotations_remote": {},
+    "cache_dir": {}
   }}
 }}"#,
-            file_url(&fasta_gz),
-            file_url(&ann_gz),
-            cache_dir.display()
+            serde_json::json!(file_url(&fasta_gz)),
+            serde_json::json!(file_url(&ann_gz)),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(&catalog_path.to_string_lossy()).unwrap();
@@ -17946,12 +17960,12 @@ mod tests {
   "Local Helper": {{
     "genbank_accession": "LOCAL_UNPUBLISHED",
     "local_variant_unpublished": true,
-    "sequence_local": "{}",
-    "annotations_local": "{}"
+    "sequence_local": {},
+    "annotations_local": {}
   }}
 }}"#,
-            seq.display(),
-            ann.display()
+            serde_json::json!(seq),
+            serde_json::json!(ann)
         );
         fs::write(&catalog_path, catalog).unwrap();
         GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -18662,25 +18676,25 @@ mod tests {
             r#"{{
   "Human GRCh38 Ensembl 116": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
     "ncbi_taxonomy_id": 9606,
     "ncbi_assembly_accession": "GCF_000001405.40",
     "ncbi_assembly_name": "GRCh38.p14",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -18735,34 +18749,34 @@ mod tests {
             r#"{{
   "Human GRCh38 Ensembl 113": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 Ensembl 116": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
     "ncbi_taxonomy_id": 9606,
     "ncbi_assembly_accession": "GCF_000001405.40",
     "ncbi_assembly_name": "GRCh38.p14",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -18804,25 +18818,25 @@ mod tests {
             r#"{{
   "Human GRCh38 Ensembl 116": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
     "ncbi_taxonomy_id": 9606,
     "ncbi_assembly_accession": "GCF_000001405.40",
     "ncbi_assembly_name": "GRCh38.p14",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -18865,25 +18879,25 @@ mod tests {
             r#"{{
   "Human GRCh38 Ensembl 116": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
     "ncbi_taxonomy_id": 9606,
     "ncbi_assembly_accession": "GCF_000001405.40",
     "ncbi_assembly_name": "GRCh38.p14",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -18925,25 +18939,25 @@ mod tests {
             r#"{{
   "Human GRCh38 Ensembl 116": {{
     "ncbi_taxonomy_id": 9606,
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 NCBI RefSeq GCF_000001405.40": {{
     "ncbi_taxonomy_id": 9606,
     "ncbi_assembly_accession": "GCF_000001405.40",
     "ncbi_assembly_name": "GRCh38.p14",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -19159,8 +19173,8 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "LocalGenome": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}"
+    "sequence_local": {},
+    "annotations_local": {}
   }},
   "AssemblyGenome": {{
     "ncbi_assembly_accession": "GCF_000005845.2",
@@ -19170,8 +19184,8 @@ mod tests {
     "genbank_accession": "L09137"
   }}
 }}"#,
-            local_seq.display(),
-            local_ann.display()
+            serde_json::json!(local_seq),
+            serde_json::json!(local_ann)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog =
@@ -19199,14 +19213,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "HelperMassKnown": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "nucleotide_length_bp": 5000,
     "molecular_mass_da": 3089836.04
   }}
 }}"#,
-            local_seq.display(),
-            local_ann.display()
+            serde_json::json!(local_seq),
+            serde_json::json!(local_ann)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog =
@@ -19229,13 +19243,13 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "HelperMassEstimated": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "nucleotide_length_bp": 2686
   }}
 }}"#,
-            local_seq.display(),
-            local_ann.display()
+            serde_json::json!(local_seq),
+            serde_json::json!(local_ann)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog =
@@ -19268,14 +19282,14 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "PreparedHelper": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            local_seq.display(),
-            local_ann.display(),
-            cache_dir.display()
+            serde_json::json!(local_seq),
+            serde_json::json!(local_ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog =
@@ -19310,20 +19324,20 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "BadLength": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "nucleotide_length_bp": 0
   }},
   "BadMass": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "molecular_mass_da": -3.0
   }}
 }}"#,
-            local_seq.display(),
-            local_ann.display(),
-            local_seq.display(),
-            local_ann.display()
+            serde_json::json!(local_seq),
+            serde_json::json!(local_ann),
+            serde_json::json!(local_seq),
+            serde_json::json!(local_ann)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let err = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
@@ -19706,12 +19720,10 @@ mod tests {
 }"#,
         )
         .unwrap();
-        #[cfg(unix)]
-        {
-            let mut perms = fs::metadata(&catalog_path).unwrap().permissions();
-            perms.set_mode(0o444);
-            fs::set_permissions(&catalog_path, perms).unwrap();
-        }
+        let original_permissions = fs::metadata(&catalog_path).unwrap().permissions();
+        let mut readonly_permissions = original_permissions.clone();
+        readonly_permissions.set_readonly(true);
+        fs::set_permissions(&catalog_path, readonly_permissions).unwrap();
         let catalog =
             GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref()).unwrap();
         let fetch = |url: &str| -> Result<String, String> {
@@ -19731,18 +19743,21 @@ mod tests {
             }
         };
 
-        let err = catalog
-            .apply_ensembl_catalog_updates_with_fetcher(None, &fetch)
-            .unwrap_err();
-        assert!(err.contains("save an updated catalog copy first"));
-
+        let result = catalog.apply_ensembl_catalog_updates_with_fetcher(None, &fetch);
         let output_catalog_path = root.join("catalog.updated.json");
-        let report = catalog
-            .apply_ensembl_catalog_updates_with_fetcher(
-                Some(output_catalog_path.to_string_lossy().as_ref()),
-                &fetch,
-            )
-            .unwrap();
+        let copy_result = catalog.apply_ensembl_catalog_updates_with_fetcher(
+            Some(output_catalog_path.to_string_lossy().as_ref()),
+            &fetch,
+        );
+        // Restore before asserting so Windows can clean up the fixture even
+        // when the write guard regresses.
+        fs::set_permissions(&catalog_path, original_permissions).unwrap();
+        assert!(
+            result
+                .unwrap_err()
+                .contains("save an updated catalog copy first")
+        );
+        let report = copy_result.unwrap();
         assert_eq!(
             report.output_catalog_path,
             output_catalog_path.display().to_string()
@@ -19997,22 +20012,22 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyA": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "ToyB": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog =
@@ -20050,22 +20065,22 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "ToyA": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "ToyB": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display(),
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).unwrap();
         let catalog =
@@ -20151,14 +20166,14 @@ mod tests {
     "description": "synthetic BLAST inspection fixture",
     "ncbi_assembly_accession": "GCF_TEST.1",
     "ncbi_assembly_name": "ToyAssembly1",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-                install_dir.join("sequence.fa").display(),
-                install_dir.join("annotation.gtf").display(),
-                root.display()
+                serde_json::json!(install_dir.join("sequence.fa")),
+                serde_json::json!(install_dir.join("annotation.gtf")),
+                serde_json::json!(root)
             ),
         )
         .unwrap();

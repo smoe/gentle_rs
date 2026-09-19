@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-09-19 - Windows CI Path and Fixture Portability
+
+- Serialize native paths as JSON strings in reference/helper/CUT&RUN test
+  catalogs and quote shared-shell path arguments. Add host-independent
+  regressions for Windows drive, UNC, verbatim, whitespace and apostrophe
+  spellings instead of relying on POSIX temporary-directory names.
+- Fix TSS export directory validation on Windows: append the root to a drive
+  or UNC prefix before inspecting it. Preserve ancestor/symlink, traversal,
+  fresh-destination and receipt checks; no scientific outputs are rewritten.
+- Preserve LF bytes for checksum-bound TSS/context fixtures and exact
+  probe-adapter snapshots, with actual LF/CRLF checkout regression coverage.
+  Correct platform-specific test assertions, close the saved-project fixture
+  handle before atomic replacement, apply the read-only catalog fixture on
+  Windows too, and serve the synthetic Ensembl region response over loopback
+  rather than using a filename containing Windows-invalid colons.
+- Validation on macOS: 209 affected cases pass in the batch; the remaining
+  Ensembl case passes directly through Cargo (the Python launcher's sandbox
+  denies its loopback socket). Three new Rust regressions, the existing export
+  symlink guard, nine checkout tests, `cargo check --locked`, formatting and
+  whitespace checks pass. Native Windows CI and the full workspace suite still
+  require a fresh run; these checks do not claim Windows acceptance.
+
 ## 2026-09-19 - Authentic PATZ1 Tutorial and Source-Aware Transcript Display
 
 - Replace the 04.08 toy walkthrough with pinned public human PATZ1 data:

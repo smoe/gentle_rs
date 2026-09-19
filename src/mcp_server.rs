@@ -4024,22 +4024,22 @@ mod tests {
             format!(
                 r#"{{
   "Human GRCh38 Demo": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "species": "Homo sapiens",
     "summary": "Human demonstration genome"
   }},
   "Yeast R64 Demo": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
+    "sequence_local": {},
+    "annotations_local": {},
     "species": "Saccharomyces cerevisiae",
     "summary": "Yeast demonstration genome"
   }}
 }}"#,
-                human_fasta.display(),
-                human_gtf.display(),
-                yeast_fasta.display(),
-                yeast_gtf.display()
+                serde_json::json!(human_fasta),
+                serde_json::json!(human_gtf),
+                serde_json::json!(yeast_fasta),
+                serde_json::json!(yeast_gtf)
             ),
         )
         .expect("write reference catalog");
@@ -5500,22 +5500,22 @@ mod tests {
         let catalog_json = format!(
             r#"{{
   "Human GRCh38 Ensembl 113": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "Human GRCh38 Ensembl 116": {{
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta_113.display(),
-            ann_113.display(),
-            cache_dir.display(),
-            fasta_116.display(),
-            ann_116.display(),
-            cache_dir.display()
+            serde_json::json!(fasta_113),
+            serde_json::json!(ann_113),
+            serde_json::json!(cache_dir),
+            serde_json::json!(fasta_116),
+            serde_json::json!(ann_116),
+            serde_json::json!(cache_dir)
         );
         fs::write(&catalog_path, catalog_json).expect("write catalog");
         let catalog = GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())

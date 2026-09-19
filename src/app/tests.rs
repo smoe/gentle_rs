@@ -488,14 +488,14 @@ fn write_toy_prepare_catalog(root: &std::path::Path) -> (String, String) {
             r#"{{
   "ToyGenome": {{
     "description": "toy test genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            fasta.display(),
-            ann.display(),
-            cache_dir.display()
+            serde_json::json!(fasta),
+            serde_json::json!(ann),
+            serde_json::json!(cache_dir)
         ),
     )
     .expect("write catalog");
@@ -590,9 +590,9 @@ fn write_app_test_helper_catalog(root: &std::path::Path) -> String {
         }}
       ]
     }},
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }},
   "NeutralBackbone": {{
     "description": "Generic cloning backbone",
@@ -614,17 +614,17 @@ fn write_app_test_helper_catalog(root: &std::path::Path) -> String {
         }}
       ]
     }},
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
+    "sequence_local": {},
+    "annotations_local": {},
+    "cache_dir": {}
   }}
 }}"#,
-            pgex_fasta.display(),
-            pgex_ann.display(),
-            helper_cache_dir.display(),
-            neutral_fasta.display(),
-            neutral_ann.display(),
-            helper_cache_dir.display()
+            serde_json::json!(pgex_fasta),
+            serde_json::json!(pgex_ann),
+            serde_json::json!(helper_cache_dir),
+            serde_json::json!(neutral_fasta),
+            serde_json::json!(neutral_ann),
+            serde_json::json!(helper_cache_dir)
         ),
     )
     .expect("write helper catalog");
@@ -1535,8 +1535,9 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
         GENtleApp::agent_prompt_direct_shell_command("Please explain /list"),
         None
     );
+    let document_path = std::env::temp_dir().join("roadmap.md");
     assert_eq!(
-        GENtleApp::agent_prompt_direct_shell_command("/Users/example/docs/roadmap.md"),
+        GENtleApp::agent_prompt_direct_shell_command(&document_path.to_string_lossy()),
         None,
         "supported text-document paths should be sent as agent context rather than parsed as slash commands"
     );
@@ -2063,7 +2064,8 @@ fn agent_prompt_invalid_slash_command_reports_local_parse_error() {
 fn agent_prompt_bare_absolute_path_reports_gentle_import_hint() {
     let mut app = GENtleApp::default();
 
-    app.execute_agent_prompt_command("/Users/example/demo.gb");
+    let sequence_path = std::env::temp_dir().join("demo.gb");
+    app.execute_agent_prompt_command(&sequence_path.to_string_lossy());
 
     assert!(
         app.agent_status
@@ -2073,7 +2075,7 @@ fn agent_prompt_bare_absolute_path_reports_gentle_import_hint() {
     );
     assert!(
         app.agent_status
-            .contains("/open file /Users/example/demo.gb"),
+            .contains(&format!("/open file {}", sequence_path.display())),
         "unexpected status: {}",
         app.agent_status
     );
@@ -2083,7 +2085,7 @@ fn agent_prompt_bare_absolute_path_reports_gentle_import_hint() {
         .expect("bare path hint should be logged");
     assert_eq!(entry.index_1based, 0);
     assert_eq!(entry.trigger, "prompt");
-    assert_eq!(entry.command, "/Users/example/demo.gb");
+    assert_eq!(entry.command, sequence_path.to_string_lossy());
     assert!(!entry.ok);
     assert!(entry.summary.contains("Ollama-style"));
 }

@@ -1,8 +1,9 @@
 """Synthetic temporary Git fixtures for the cross-host tutorial checkout gate.
 
 Fixtures are created below from literal bytes, committed only inside temporary
-repositories, and consumed by the checkout/replay tests. No biological data,
-network, build, real checkout changes, or platform-specific tools are used.
+repositories, and consumed by the checkout/replay tests. The byte-preservation
+regression also copies existing provenance-documented TSS and probe fixtures.
+No network, build, real checkout changes, or platform-specific tools are used.
 """
 
 import hashlib
@@ -98,6 +99,37 @@ class TutorialCheckoutTests(unittest.TestCase):
             self.assertEqual(call.kwargs["cwd"], self.root)
             self.assertTrue(call.kwargs["check"])
             self.assertEqual(call.kwargs["timeout"], 12)
+
+    def test_bound_tss_and_probe_fixtures_survive_crlf_checkout(self):
+        (self.root / ".gitattributes").write_bytes(
+            (checker.ROOT / ".gitattributes").read_bytes())
+        fixture_dirs = (
+            "test_files/fixtures/tss_profiles",
+            "test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation",
+        )
+        expected = {}
+        for directory in fixture_dirs:
+            for source in (checker.ROOT / directory).rglob("*"):
+                if not source.is_file():
+                    continue
+                relative = source.relative_to(checker.ROOT)
+                expected[relative] = source.read_bytes()
+                destination = self.root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(expected[relative])
+        self.assertTrue(expected)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "bound fixtures")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"bound-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+            bundle = target / fixture_dirs[0]
+            for line in (bundle / "SHA256SUMS").read_text().splitlines():
+                digest, relative = line.split(maxsplit=1)
+                self.assertEqual(hashlib.sha256((bundle / relative).read_bytes()).hexdigest(), digest)
 
     def test_failed_check_or_timeout_cannot_be_reported_as_success(self):
         for error in (subprocess.CalledProcessError(1, "validator"),

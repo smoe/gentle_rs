@@ -417,7 +417,9 @@ mod tests {
         assert_eq!(clawbio_artifact_label(&artifact), "fig");
         assert_eq!(
             clawbio_artifact_path(&artifact, "/tmp/run").unwrap(),
-            "/tmp/run/fig.svg"
+            std::path::Path::new("/tmp/run")
+                .join("fig.svg")
+                .to_string_lossy()
         );
         let action = serde_json::json!({
             "label": "Continue",
