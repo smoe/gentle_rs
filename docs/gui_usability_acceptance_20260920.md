@@ -79,7 +79,9 @@ first locus. The remaining operations were usually about 1--3 seconds each.
 Passing the contract therefore does not answer the user's broader lag report.
 
 Raw public synthetic evidence is retained outside the repository under
-`/mnt/storage-box-1-gentle/Glen/gui-usability-885fac49/`.
+`/mnt/storage-box-1-gentle/Glen/gui-usability-885fac49/`. Its 652-file
+`SHA256SUMS` manifest verifies and has SHA-256
+`ad9389224e7b85146700551b759f67e3bb80a0b6a4ba81e6823233f3905e331e`.
 
 ## Deterministic checks
 
