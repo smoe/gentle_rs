@@ -1,5 +1,9 @@
 # GENtle Changelog
 
+## 2026-09-19 - Ambiguous TSS Gene-Link Diagnostics
+
+- Warn when a matching label-only transcript has conflicting same-source/same-strand gene IDs, retaining label grouping, output identity and approval rules; deterministic regressions cover both strands, case-insensitive queries and unrelated ID-query suppression.
+
 ## 2026-09-19 - Windows CI Path and Fixture Portability
 
 - Serialize native paths as JSON strings in reference/helper/CUT&RUN test

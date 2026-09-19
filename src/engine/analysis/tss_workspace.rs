@@ -1108,12 +1108,15 @@ pub(super) mod tests {
 
     #[test]
     fn tss_mixed_gene_links_merge_only_unambiguous_same_source_and_strand() {
-        for scenario in ["unique", "ambiguous", "other_source", "other_strand"] {
+        for (scenario, reverse) in ["unique", "ambiguous", "other_source", "other_strand"]
+            .into_iter()
+            .flat_map(|scenario| [false, true].map(|reverse| (scenario, reverse)))
+        {
             let mut e = engine(false);
             let dna = e.state.sequences.get_mut("locus").unwrap();
             dna.features_mut().clear();
-            let known = transcript("known", "TOY", 300, 700, false);
-            let mut unknown = transcript("no_id", "TOY", 300, 700, false);
+            let known = transcript("known", "TOY", 300, 700, reverse);
+            let mut unknown = transcript("no_id", "TOY", 300, 700, reverse);
             unknown.qualifiers.retain(|(k, _)| k.as_ref() != "gene_id");
             if scenario == "other_source" {
                 unknown.qualifiers.retain(|(k, _)| k.as_ref() != "source");
@@ -1122,11 +1125,15 @@ pub(super) mod tests {
                     .push(("source".into(), Some("other".into())));
             }
             if scenario == "other_strand" {
-                unknown.location = Location::Complement(Box::new(Location::simple_range(100, 301)));
+                unknown.location = if reverse {
+                    Location::simple_range(699, 900)
+                } else {
+                    Location::Complement(Box::new(Location::simple_range(100, 301)))
+                };
             }
             dna.features_mut().extend([known, unknown]);
             if scenario == "ambiguous" {
-                let mut conflict = transcript("conflict", "TOY", 300, 700, false);
+                let mut conflict = transcript("conflict", "TOY", 300, 700, reverse);
                 conflict.qualifiers.retain(|(k, _)| k.as_ref() != "gene_id");
                 conflict
                     .qualifiers
@@ -1134,6 +1141,43 @@ pub(super) mod tests {
                 dna.features_mut().push(conflict);
             }
             let report = e.inspect_tss_inventory(&request()).unwrap();
+            let ambiguity_notes = report
+                .warnings
+                .iter()
+                .filter(|note| note.contains("conflicting gene IDs"))
+                .map(String::as_str)
+                .collect::<Vec<_>>();
+            if scenario == "ambiguous" {
+                assert_eq!(
+                    ambiguity_notes,
+                    [
+                        "no_id (feature 1): gene label TOY has conflicting gene IDs (different_gene, gene_TOY) in source synthetic on the same strand; no gene_id was inferred and the row stays label-grouped. Original annotations retained."
+                    ]
+                );
+                let mut lowercase = request();
+                lowercase.gene_query = "toy".into();
+                assert_eq!(
+                    e.inspect_tss_inventory(&lowercase).unwrap().warnings,
+                    report.warnings
+                );
+                let mut by_id = request();
+                by_id.gene_query = "gene_TOY".into();
+                let by_id_report = e.inspect_tss_inventory(&by_id).unwrap();
+                assert_eq!(by_id_report.rows.len(), 1);
+                assert_eq!(by_id_report.rows[0].transcript_ids, ["known"]);
+                assert!(
+                    !by_id_report
+                        .warnings
+                        .iter()
+                        .any(|note| note.contains("conflicting gene IDs"))
+                );
+                assert_eq!(
+                    e.inspect_tss_inventory(&request()).unwrap().approval_sha256,
+                    report.approval_sha256
+                );
+            } else {
+                assert!(ambiguity_notes.is_empty(), "{scenario}, reverse={reverse}");
+            }
             assert_eq!(
                 report.rows.len(),
                 match scenario {
@@ -1462,6 +1506,7 @@ impl GentleEngine {
             let endpoint = crate::feature_location::transcript_five_prime_endpoint(f);
             let annotation_source = annotation_source(f);
             let mut inferred_link = false;
+            let mut ambiguous_gene_ids = None;
             if gene_id.is_none()
                 && let (Some(label), Some(endpoint)) = (&gene_label, &endpoint)
                 && let Some(ids) = gene_ids_by_label.get(&(
@@ -1469,10 +1514,13 @@ impl GentleEngine {
                     endpoint.reverse,
                     label.to_ascii_lowercase(),
                 ))
-                && ids.len() == 1
             {
-                gene_id = ids.first().cloned();
-                inferred_link = true;
+                if ids.len() == 1 {
+                    gene_id = ids.first().cloned();
+                    inferred_link = true;
+                } else if ids.len() > 1 {
+                    ambiguous_gene_ids = Some(ids);
+                }
             }
             let labels_for_id = gene_id
                 .as_ref()
@@ -1510,6 +1558,12 @@ impl GentleEngine {
                 )
             {
                 continue;
+            }
+            if let Some(ids) = ambiguous_gene_ids {
+                linkage_notes.push(format!(
+                    "{transcript_id} (feature {feature_id}): gene label {} has conflicting gene IDs ({}) in source {annotation_source} on the same strand; no gene_id was inferred and the row stays label-grouped. Original annotations retained.",
+                    gene_label.as_deref().unwrap(), ids.iter().cloned().collect::<Vec<_>>().join(", ")
+                ));
             }
             transcript_count += 1;
             if transcript_count > 10_000 {

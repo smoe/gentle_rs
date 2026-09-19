@@ -180,6 +180,7 @@ the host still reports a queued request.
   left unavailable and original annotations retained. Conflicting IDs and
   differing sources/strands remain separate; no gene assignment is inferred
   merely from overlap. Every inferred association is explained in the report.
+  A matching label-only transcript with conflicting IDs is warned by transcript, feature, label and sorted IDs; no ID is inferred and it stays label-grouped. Warnings are digest-bound, so affected previews need fresh approval without renaming their TSS rows.
 - Local and genomic strands are independent. Each output reads transcript
   5-prime to 3-prime, with TSS at local base `upstream_bp + 1`; negative-strand
   genomic labels therefore decrease along that output.
