@@ -1,10 +1,16 @@
 //! Native TSS lanes over the shared annotated-window presentation model.
 
 use super::*;
-use crate::tss_sequence_view::{TssLaneKind, TssSequenceView, TssViewLane};
+use crate::tss_sequence_view::{TssLaneKind, TssSequenceView, TssViewFeature, TssViewLane};
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 type LoadedView = Result<Arc<TssSequenceView>, String>;
+
+#[derive(Clone, Debug)]
+struct ProfileLoad {
+    source: Arc<TssSequenceView>,
+    receiver: Arc<std::sync::Mutex<Receiver<LoadedView>>>,
+}
 
 #[derive(Clone, Debug)]
 pub(super) struct TssUiState {
@@ -12,12 +18,17 @@ pub(super) struct TssUiState {
     detected: bool,
     pending: Option<Arc<std::sync::Mutex<Receiver<LoadedView>>>>,
     document: Option<LoadedView>,
+    annotations: Option<Arc<TssSequenceView>>,
+    profile_load: Option<ProfileLoad>,
+    profile_error: Option<String>,
     structures: bool,
     signals: bool,
     motifs: bool,
+    traces: bool,
+    imported: bool,
     other: bool,
     filter: String,
-    selected: Option<(usize, usize)>,
+    selected: Option<TssViewFeature>,
 }
 
 impl Default for TssUiState {
@@ -27,9 +38,14 @@ impl Default for TssUiState {
             detected: false,
             pending: None,
             document: None,
+            annotations: None,
+            profile_load: None,
+            profile_error: None,
             structures: true,
             signals: true,
             motifs: true,
+            traces: true,
+            imported: true,
             other: true,
             filter: String::new(),
             selected: None,
@@ -42,6 +58,8 @@ fn color(kind: TssLaneKind) -> egui::Color32 {
         TssLaneKind::Structure => egui::Color32::from_rgb(55, 130, 170),
         TssLaneKind::Signal => egui::Color32::from_rgb(165, 65, 100),
         TssLaneKind::Motif => egui::Color32::from_rgb(0, 140, 115),
+        TssLaneKind::ScoreTrace => egui::Color32::from_rgb(30, 105, 185),
+        TssLaneKind::ImportedMotif => egui::Color32::from_rgb(180, 100, 25),
         TssLaneKind::Other => egui::Color32::from_rgb(180, 125, 30),
     }
 }
@@ -115,6 +133,7 @@ impl MainAreaDna {
                 .and_then(|r| r.try_recv());
             match result {
                 Ok(document) => {
+                    self.tss_ui.annotations = document.as_ref().ok().cloned();
                     self.tss_ui.document = Some(document);
                     self.tss_ui.pending = None;
                 }
@@ -129,8 +148,64 @@ impl MainAreaDna {
         }
     }
 
+    fn load_tss_profile(&mut self, path: std::path::PathBuf, ctx: &egui::Context) {
+        let Some(Ok(source)) = self.tss_ui.document.clone() else {
+            return;
+        };
+        let annotations = self
+            .tss_ui
+            .annotations
+            .get_or_insert_with(|| source.clone())
+            .clone();
+        let (send, receiver) = std::sync::mpsc::channel();
+        self.tss_ui.profile_error = None;
+        self.tss_ui.profile_load = Some(ProfileLoad {
+            source,
+            receiver: Arc::new(std::sync::Mutex::new(receiver)),
+        });
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = send.send(annotations.load_profile(&path).map(Arc::new));
+            ctx.request_repaint();
+        });
+    }
+
+    fn poll_tss_profile(&mut self, ctx: &egui::Context) {
+        let Some(load) = self.tss_ui.profile_load.clone() else {
+            return;
+        };
+        let result = load
+            .receiver
+            .lock()
+            .map_err(|_| TryRecvError::Disconnected)
+            .and_then(|r| r.try_recv());
+        if matches!(result, Err(TryRecvError::Empty)) {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            return;
+        }
+        self.tss_ui.profile_load = None;
+        if !self
+            .tss_ui
+            .document
+            .as_ref()
+            .and_then(|d| d.as_ref().ok())
+            .is_some_and(|current| Arc::ptr_eq(current, &load.source))
+        {
+            return; // A replaced/edited document cannot receive an old attachment.
+        }
+        match result {
+            Ok(Ok(view)) => {
+                self.tss_ui.document = Some(Ok(view));
+                self.tss_ui.selected = None;
+            }
+            Ok(Err(error)) => self.tss_ui.profile_error = Some(error),
+            Err(_) => self.tss_ui.profile_error = Some("TSS report worker stopped".into()),
+        }
+    }
+
     pub(super) fn render_primary_tss_map_ui(&mut self, ui: &mut egui::Ui) {
         self.poll_tss_view(ui.ctx());
+        self.poll_tss_profile(ui.ctx());
         let Some(document) = self.tss_ui.document.clone() else {
             ui.spinner();
             ui.label("Checking TSS sequence binding and grouping evidence...");
@@ -147,19 +222,59 @@ impl MainAreaDna {
         ui.heading(&view.title);
         ui.small("Annotation-derived TSS | transcript-oriented genomic DNA, not a spliced transcript or reporter construct");
         ui.horizontal_wrapped(|ui| {
+            if ui.add_enabled(self.tss_ui.profile_load.is_none(), egui::Button::new("Load TSS profile report...")).on_hover_text("Select report.json from the same TSS SVG/PDF bundle. Validates the report, exact reference, TSS geometry and sequence hash; does not rescore or query DuckDB.").clicked()
+                && let Some(path) = rfd::FileDialog::new().add_filter("TSS profile JSON", &["json"]).pick_file()
+            {
+                self.load_tss_profile(path, ui.ctx());
+            }
+            if self.tss_ui.profile_load.is_some() {
+                ui.spinner();
+                ui.label("Validating report and preparing evidence...");
+                if ui.button("Cancel attachment").on_hover_text("Ignore this worker's result; its bounded file read may still finish in the background.").clicked() {
+                    self.tss_ui.profile_load = None;
+                }
+            } else if view.profile.is_some() && ui.button("Detach report").clicked() {
+                if let Some(base) = &self.tss_ui.annotations {
+                    self.tss_ui.document = Some(Ok(base.clone()));
+                }
+                self.tss_ui.selected = None;
+                self.tss_ui.profile_error = None;
+            }
+        });
+        if let Some(error) = &self.tss_ui.profile_error {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+        }
+        if let Some(profile) = &view.profile {
+            ui.small(format!(
+                "Report panel: {} | producer {} | no new scoring or database query",
+                profile.panel_id, profile.producer_revision
+            ));
+        } else {
+            ui.small("Annotated file only: load report.json for complete TFBS curves and attached DuckDB hits. These cannot be reconstructed from stored peaks.");
+        }
+        ui.horizontal_wrapped(|ui| {
             ui.checkbox(&mut self.tss_ui.structures, "Exons / CDS");
             ui.checkbox(&mut self.tss_ui.signals, "CUT&RUN / chromatin");
             ui.checkbox(&mut self.tss_ui.motifs, "Stored motif peaks");
+            ui.checkbox(&mut self.tss_ui.traces, "Report TFBS curves");
+            ui.checkbox(&mut self.tss_ui.imported, "DuckDB peaks");
             ui.checkbox(&mut self.tss_ui.other, "Other annotations");
             ui.label("Filter lanes");
             ui.add(egui::TextEdit::singleline(&mut self.tss_ui.filter).desired_width(150.0));
         });
-        ui.small("Blue: structure; rose: supplied signal; green triangles: predicted motif (+ above / - below). No new scoring. Motif values below 0 are hidden, not deleted. Click a feature to select its exact DNA span.");
+        ui.small("Rose: supplied signal; green: stored peaks (negative values hidden); blue curves: report scores (+ solid / - dashed); amber triangles: imported raw scores (+ up / - down). Local and imported scores use separate scales. Click evidence to select its DNA span.");
         ui.collapsing("Provenance, limitations and missing data", |ui| {
             for warning in &view.warnings {
                 ui.label(warning);
             }
             ui.label(&view.provenance);
+            if let Some(profile) = &view.profile {
+                ui.label(format!("Report file SHA-256: {}", profile.file_sha256));
+                ui.label("Validated report contents and sequence binding, not a full receipt audit or independent reference authentication. Original annotated features remain unchanged; reporter constructs and native-view export are not supplied by this attachment.");
+                for warning in &profile.warnings {
+                    ui.label(warning);
+                }
+            }
         });
 
         let filter = self.tss_ui.filter.to_lowercase();
@@ -172,6 +287,8 @@ impl MainAreaDna {
                     TssLaneKind::Structure => self.tss_ui.structures,
                     TssLaneKind::Signal => self.tss_ui.signals,
                     TssLaneKind::Motif => self.tss_ui.motifs,
+                    TssLaneKind::ScoreTrace => self.tss_ui.traces,
+                    TssLaneKind::ImportedMotif => self.tss_ui.imported,
                     TssLaneKind::Other => self.tss_ui.other,
                 };
                 enabled
@@ -246,7 +363,7 @@ impl MainAreaDna {
         egui::ScrollArea::vertical()
             .id_salt(("tss_lanes", self.panel_scope_key()))
             .max_height((ui.available_height() - 115.0).max(120.0))
-            .show_rows(ui, 90.0, lanes.len(), |ui, rows| {
+            .show_rows(ui, 148.0, lanes.len(), |ui, rows| {
                 for row in rows {
                     let index = lanes[row];
                     if let Some(feature) = paint_lane(
@@ -259,19 +376,17 @@ impl MainAreaDna {
                         start,
                         end,
                     ) {
-                        selected = Some((index, feature));
+                        selected = Some(feature);
                     }
                 }
             });
-        if let Some((lane, feature)) = selected {
-            self.tss_ui.selected = Some((lane, feature));
-            let f = &view.lanes[lane].features[feature];
+        if let Some(f) = selected {
             if let Err(error) = self.set_selection_range_0based(f.start, f.end) {
                 self.op_status = error;
             }
+            self.tss_ui.selected = Some(f);
         }
-        if let Some((lane, feature)) = self.tss_ui.selected {
-            let f = &view.lanes[lane].features[feature];
+        if let Some(f) = self.tss_ui.selected.clone() {
             ui.separator();
             ui.label(format!(
                 "{} | {} to {}{}",
@@ -284,7 +399,7 @@ impl MainAreaDna {
                 if ui.button("Inspect in standard DNA map").clicked() {
                     self.primary_map_mode = PrimaryMapMode::Standard;
                     self.show_sequence = true;
-                    self.map_dna.select_feature(Some(f.feature_id));
+                    self.map_dna.select_feature(f.feature_id);
                     self.save_engine_ops_state();
                 }
                 ui.label("Full annotation").on_hover_text(&f.details);
@@ -302,8 +417,8 @@ fn paint_lane(
     right: f32,
     start: usize,
     end: usize,
-) -> Option<usize> {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 86.0), egui::Sense::click());
+) -> Option<TssViewFeature> {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 144.0), egui::Sense::click());
     let plot = egui::Rect::from_min_max(
         egui::pos2(rect.left() + left, rect.top() + 9.0),
         egui::pos2(
@@ -311,7 +426,7 @@ fn paint_lane(
             rect.bottom() - 12.0,
         ),
     );
-    let painter = ui.painter();
+    let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     let foreground = ui.visuals().text_color();
     let font = egui::FontId::proportional(11.0);
     let label = painter.layout(
@@ -322,7 +437,12 @@ fn paint_lane(
     );
     painter.galley(rect.left_top(), label, foreground);
     painter.rect_filled(plot, 2.0, ui.visuals().faint_bg_color);
+    if lane.trace.is_some() {
+        return paint_trace(ui, view, lane, plot, rect, response, start, end);
+    }
+    let imported = lane.kind == TssLaneKind::ImportedMotif;
     let middle = lane.kind == TssLaneKind::Motif
+        || imported
         || lane
             .features
             .iter()
@@ -347,7 +467,7 @@ fn paint_lane(
         ],
         egui::Stroke::new(0.5, foreground),
     );
-    if lane.kind == TssLaneKind::Signal || lane.kind == TssLaneKind::Motif {
+    if lane.kind == TssLaneKind::Signal || lane.kind == TssLaneKind::Motif || imported {
         painter.text(
             plot.left_top() - egui::vec2(3.0, 0.0),
             egui::Align2::RIGHT_TOP,
@@ -358,12 +478,12 @@ fn paint_lane(
         painter.text(
             egui::pos2(plot.left() - 3.0, baseline),
             egui::Align2::RIGHT_BOTTOM,
-            "0",
+            format!("{:.2}", if imported { lane.scale_min } else { 0.0 }),
             egui::FontId::monospace(9.0),
             foreground,
         );
         if middle {
-            let bottom_max = if lane.kind == TssLaneKind::Motif {
+            let bottom_max = if lane.kind == TssLaneKind::Motif || imported {
                 lane.scale_max
             } else {
                 -lane.scale_max
@@ -408,25 +528,54 @@ fn paint_lane(
         bounds.0 = bounds.0.min(f.start.max(start));
         bounds.1 = bounds.1.max(f.end.min(end) - 1);
         let mut feature_rect;
-        if lane.kind == TssLaneKind::Motif {
-            let height = (f.score.unwrap_or(0.0) / lane.scale_max) as f32 * amplitude;
+        if lane.kind == TssLaneKind::Motif || imported {
+            let height = if imported {
+                ((f.score.unwrap_or(lane.scale_min) - lane.scale_min)
+                    / (lane.scale_max - lane.scale_min)) as f32
+                    * amplitude
+            } else {
+                (f.score.unwrap_or(0.0) / lane.scale_max) as f32 * amplitude
+            }
+            .max(2.0);
             let y = baseline + if f.reverse { height } else { -height };
-            let pos = egui::pos2(x(f.start), y);
+            let pos = egui::pos2(
+                if imported {
+                    (x(f.start) + x(f.end)) / 2.0
+                } else {
+                    x(f.start)
+                },
+                y,
+            );
             let offset = if f.reverse { -4.0 } else { 4.0 };
             p.line_segment(
                 [egui::pos2(pos.x, baseline), pos],
                 egui::Stroke::new(0.6, color(lane.kind).gamma_multiply(0.5)),
             );
+            let (a, b) = if imported {
+                (x(f.start), x(f.end))
+            } else {
+                (pos.x - 3.0, pos.x + 3.0)
+            };
             p.add(egui::Shape::convex_polygon(
                 vec![
                     pos,
-                    pos + egui::vec2(-3.0, offset),
-                    pos + egui::vec2(3.0, offset),
+                    egui::pos2(a, if imported { baseline } else { pos.y + offset }),
+                    egui::pos2(
+                        b.max(a + 2.0),
+                        if imported { baseline } else { pos.y + offset },
+                    ),
                 ],
                 color(lane.kind),
                 egui::Stroke::NONE,
             ));
-            feature_rect = egui::Rect::from_center_size(pos, egui::vec2(8.0, 10.0));
+            feature_rect = if imported {
+                egui::Rect::from_min_max(
+                    egui::pos2(a, y.min(baseline)),
+                    egui::pos2(b.max(a + 2.0), y.max(baseline)),
+                )
+            } else {
+                egui::Rect::from_center_size(pos, egui::vec2(8.0, 10.0))
+            };
         } else if lane.kind == TssLaneKind::Signal {
             let y = baseline - (f.score.unwrap_or(0.0) / lane.scale_max) as f32 * amplitude;
             feature_rect = egui::Rect::from_min_max(
@@ -481,11 +630,12 @@ fn paint_lane(
             _ => &lane.units,
         };
         format!(
-            "{count}\n{units}\ngenomic {}..{}\nlocal {}..{}",
+            "{count}\n{units}\ngenomic {}..{}\nlocal {}..{}\n{}",
             view.geometry.genomic_at(first).unwrap(),
             view.geometry.genomic_at(last).unwrap(),
             first + 1,
-            last + 1
+            last + 1,
+            lane.state
         )
     };
     let text = painter.layout(
@@ -507,7 +657,7 @@ fn paint_lane(
             lane.details
         ));
         if clicked {
-            return Some(index);
+            return Some(f.clone());
         }
     } else {
         response.on_hover_text(format!("{}\n{}\n{}", lane.id, lane.units, lane.details));
@@ -515,9 +665,360 @@ fn paint_lane(
     None
 }
 
+/// Curves use window starts on the existing local axis, never strand-flipped x values.
+fn paint_trace(
+    ui: &mut egui::Ui,
+    view: &TssSequenceView,
+    lane: &TssViewLane,
+    plot: egui::Rect,
+    row: egui::Rect,
+    response: egui::Response,
+    start: usize,
+    end: usize,
+) -> Option<TssViewFeature> {
+    let trace = lane.trace.as_ref()?;
+    let painter = ui.painter().with_clip_rect(row.intersect(ui.clip_rect()));
+    let p = painter.with_clip_rect(plot.intersect(ui.clip_rect()));
+    let foreground = ui.visuals().text_color();
+    let x = |pos: usize| {
+        plot.left() + (pos as f64 - start as f64) as f32 / (end - start) as f32 * plot.width()
+    };
+    let y = |value: f64| {
+        plot.bottom()
+            - ((value - lane.scale_min) / (lane.scale_max - lane.scale_min)) as f32 * plot.height()
+    };
+    for value in [
+        lane.scale_min,
+        (lane.scale_min + lane.scale_max) / 2.0,
+        lane.scale_max,
+    ] {
+        painter.text(
+            egui::pos2(plot.left() - 3.0, y(value)),
+            egui::Align2::RIGHT_CENTER,
+            format!("{value:.2}"),
+            egui::FontId::monospace(9.0),
+            foreground,
+        );
+        p.line_segment(
+            [
+                egui::pos2(plot.left(), y(value)),
+                egui::pos2(plot.right(), y(value)),
+            ],
+            egui::Stroke::new(0.4, foreground.gamma_multiply(0.3)),
+        );
+    }
+    let visible_end = end.min(trace.forward.len());
+    let bounded = visible_end.saturating_sub(start) <= 10_000;
+    if visible_end < end {
+        p.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(x(visible_end.max(start)), plot.top()),
+                plot.right_bottom(),
+            ),
+            0.0,
+            egui::Color32::GRAY.gamma_multiply(0.22),
+        );
+    }
+    let mut valid = 0;
+    if bounded {
+        for (reverse, scores) in [(false, &trace.forward), (true, &trace.reverse)] {
+            let stroke = egui::Stroke::new(
+                1.2,
+                if reverse {
+                    egui::Color32::from_rgb(170, 70, 105)
+                } else {
+                    color(TssLaneKind::ScoreTrace)
+                },
+            );
+            let mut path = Vec::new();
+            let flush = |path: &mut Vec<egui::Pos2>| {
+                if path.len() == 1 {
+                    p.circle_filled(path[0], 1.5, stroke.color);
+                } else if reverse {
+                    p.extend(egui::Shape::dashed_line(path, stroke, 5.0, 3.0));
+                } else if !path.is_empty() {
+                    p.add(egui::Shape::line(path.clone(), stroke));
+                }
+                path.clear();
+            };
+            for pos in start..visible_end {
+                match scores[pos] {
+                    Some(raw) => {
+                        valid += 1;
+                        let display = if trace.clip_negative {
+                            raw.max(0.0)
+                        } else {
+                            raw
+                        };
+                        path.push(egui::pos2(x(pos), y(display)));
+                    }
+                    None => {
+                        flush(&mut path);
+                        let (top, bottom) = if reverse {
+                            (plot.center().y, plot.bottom())
+                        } else {
+                            (plot.top(), plot.center().y)
+                        };
+                        p.rect_filled(
+                            egui::Rect::from_min_max(
+                                egui::pos2(x(pos), top),
+                                egui::pos2(x(pos + 1), bottom),
+                            ),
+                            0.0,
+                            egui::Color32::from_rgb(215, 163, 55).gamma_multiply(0.3),
+                        );
+                    }
+                }
+            }
+            flush(&mut path);
+        }
+    }
+    if (start..end).contains(&view.geometry.upstream_bp) {
+        p.line_segment(
+            [
+                egui::pos2(x(view.geometry.upstream_bp), plot.top()),
+                egui::pos2(x(view.geometry.upstream_bp), plot.bottom()),
+            ],
+            egui::Stroke::new(1.0, foreground),
+        );
+    }
+    let status = if !bounded {
+        "More than 10,000 window starts visible; zoom in to draw curves".to_string()
+    } else if valid == 0 {
+        "No evaluable windows here; NOT zero signal".to_string()
+    } else if trace.range_is_fallback {
+        format!("{valid} valid strand-windows; displayed values are zero")
+    } else {
+        format!("{valid} valid strand-windows here")
+    };
+    let summary = format!(
+        "{}\n{status}{}\n+ solid / - dashed\nAmber: unavailable; grey: no full motif window\n{}",
+        lane.units,
+        if trace.range_is_fallback {
+            "; axis 0..1 is a display fallback"
+        } else {
+            ""
+        },
+        lane.state
+    );
+    let galley = painter.layout(
+        summary,
+        egui::FontId::proportional(10.0),
+        foreground,
+        (row.right() - plot.right() - 8.0).max(50.0),
+    );
+    painter.galley(
+        egui::pos2(plot.right() + 5.0, row.top()),
+        galley,
+        foreground,
+    );
+    if let Some(pointer) = response.hover_pos().filter(|p| plot.contains(*p)) {
+        let pos = (start
+            + (((pointer.x - plot.left()) / plot.width()) * (end - start) as f32).floor() as usize)
+            .min(end - 1);
+        let selection = trace_selection(view, lane, pos);
+        let clicked = response.clicked();
+        let details = selection
+            .as_ref()
+            .map(|s| s.details.clone())
+            .unwrap_or_else(|| {
+                format!(
+                    "{}\nUnavailable window or no complete {}-bp motif footprint; NOT a zero score",
+                    view.coordinate_label(pos),
+                    trace.motif_length_bp
+                )
+            });
+        response.on_hover_text(format!("{details}\n{}", lane.details));
+        if clicked {
+            return selection;
+        }
+    } else {
+        response.on_hover_text(format!("{}\n{}\n{}", lane.units, lane.state, lane.details));
+    }
+    None
+}
+
+fn trace_selection(
+    view: &TssSequenceView,
+    lane: &TssViewLane,
+    pos: usize,
+) -> Option<TssViewFeature> {
+    let trace = lane.trace.as_ref()?;
+    let forward = trace.forward.get(pos).copied().flatten();
+    let reverse = trace.reverse.get(pos).copied().flatten();
+    if forward.is_none() && reverse.is_none() {
+        return None;
+    }
+    let value = |score: Option<f64>| {
+        score
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "unavailable".into())
+    };
+    Some(TssViewFeature {
+        feature_id: None,
+        start: pos,
+        end: pos + trace.motif_length_bp,
+        reverse: false,
+        clipped: false,
+        label: format!("{} | motif-window footprint", lane.label),
+        details: format!(
+            "{}\n{}\nRaw + {} / - {} [{}]\nGenomic strand of local +: {}; of local -: {}. {}",
+            view.coordinate_label(pos),
+            view.coordinate_label(pos + trace.motif_length_bp - 1),
+            value(forward),
+            value(reverse),
+            lane.units,
+            view.geometry.strand.as_str(),
+            view.geometry.strand.opposite().as_str(),
+            lane.state
+        ),
+        score: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tss_profile_native_frame_preserves_raw_scores_and_window_start_selection() {
+        for minus in [false, true] {
+            let (dna, report) = crate::tss_sequence_view::profile_fixture(minus);
+            let base = Arc::new(TssSequenceView::from_dna(&dna).unwrap());
+            let document = Arc::new(base.with_profile(&report).unwrap());
+            let mut area = MainAreaDna::new(dna, None, None);
+            area.tss_view_available();
+            area.tss_ui.annotations = Some(base);
+            area.tss_ui.document = Some(Ok(document.clone()));
+            let curve = document
+                .lanes
+                .iter()
+                .find(|l| l.kind == TssLaneKind::ScoreTrace)
+                .unwrap();
+            assert!(
+                trace_selection(&document, curve, 1).is_none(),
+                "unavailable is not zero"
+            );
+            assert!(
+                trace_selection(&document, curve, 4).is_none(),
+                "no full motif at the end"
+            );
+            let selection = trace_selection(&document, curve, 0).unwrap();
+            assert_eq!(
+                (selection.start, selection.end, selection.feature_id),
+                (0, 3, None)
+            );
+            assert!(selection.details.contains("Raw + -2 / - 4 [llr_bits]"));
+            let zero_curve = document
+                .lanes
+                .iter()
+                .filter(|l| l.kind == TssLaneKind::ScoreTrace)
+                .nth(2)
+                .unwrap();
+            assert!(
+                trace_selection(&document, zero_curve, 4).is_some(),
+                "real zero remains selectable"
+            );
+            let ctx = egui::Context::default();
+            for _ in 0..2 {
+                ctx.begin_pass(egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1100.0, 1400.0),
+                    )),
+                    ..Default::default()
+                });
+                crate::egui_compat::show_central_panel_for_test_context(
+                    &ctx,
+                    egui::CentralPanel::default(),
+                    |ui| area.render_primary_tss_map_ui(ui),
+                );
+                assert!(!crate::egui_compat::end_test_pass(&ctx).shapes.is_empty());
+                assert!(Arc::ptr_eq(
+                    area.tss_ui.document.as_ref().unwrap().as_ref().unwrap(),
+                    &document
+                ));
+                assert!(area.tss_ui.profile_load.is_none());
+                assert!(
+                    area.tfbs_task.is_none(),
+                    "painting must not start scoring or DuckDB"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tss_profile_background_loading_does_not_use_panel_cache() {
+        let (dna, report) = crate::tss_sequence_view::profile_fixture(false);
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("report.json");
+        std::fs::write(&path, serde_json::to_vec(&report).unwrap()).unwrap();
+        let mut area = MainAreaDna::new(dna.clone(), None, None);
+        area.tss_view_available();
+        area.tss_ui.document = Some(Ok(Arc::new(TssSequenceView::from_dna(&dna).unwrap())));
+        let ctx = egui::Context::default();
+        area.load_tss_profile(path, &ctx);
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while area.tss_ui.profile_load.is_some() && Instant::now() < deadline {
+            area.poll_tss_profile(&ctx);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(area.tss_ui.profile_load.is_none());
+        assert!(
+            area.tss_ui.profile_error.is_none(),
+            "{:?}",
+            area.tss_ui.profile_error
+        );
+        assert!(
+            area.tss_ui
+                .document
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .profile
+                .is_some()
+        );
+        assert!(area.cached_tfbs_score_tracks.is_none());
+        assert!(area.cached_genomic_motif_evidence.is_none());
+        assert_eq!(
+            area.dna.read().unwrap().get_forward_string(),
+            dna.get_forward_string()
+        );
+    }
+
+    #[test]
+    fn tss_profile_worker_failure_or_stale_result_keeps_current_document() {
+        let (dna, report) = crate::tss_sequence_view::profile_fixture(false);
+        let base = Arc::new(TssSequenceView::from_dna(&dna).unwrap());
+        let prepared = Arc::new(base.with_profile(&report).unwrap());
+        let mut area = MainAreaDna::new(dna, None, None);
+        let ctx = egui::Context::default();
+        for fail in [false, true] {
+            let (send, receiver) = std::sync::mpsc::channel();
+            area.tss_ui.document = Some(Ok(prepared.clone()));
+            area.tss_ui.profile_load = Some(ProfileLoad {
+                source: if fail { prepared.clone() } else { base.clone() },
+                receiver: Arc::new(Mutex::new(receiver)),
+            });
+            send.send(if fail {
+                Err("bad report".into())
+            } else {
+                Ok(base.clone())
+            })
+            .unwrap();
+            area.poll_tss_profile(&ctx);
+            assert!(Arc::ptr_eq(
+                area.tss_ui.document.as_ref().unwrap().as_ref().unwrap(),
+                &prepared
+            ));
+        }
+        assert_eq!(area.tss_ui.profile_error.as_deref(), Some("bad report"));
+        area.replace_loaded_sequence(crate::tss_sequence_view::tests::fixture(true));
+        assert!(area.tss_ui.document.is_none());
+        assert!(area.tss_ui.profile_load.is_none());
+        assert!(area.tss_ui.annotations.is_none());
+    }
 
     #[test]
     fn tss_view_switches_without_mutating_sequence_and_invalidates_on_replacement() {

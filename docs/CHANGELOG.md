@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-20 - Report-Backed Native TSS Evidence
+
+- Add background attachment of the existing TSS `report.json` to an annotated
+  DNA window. Reuse export validation and sparse-hit projection; require exact
+  reference, promoter, sequence and strand-aware window identity, not DNA alone.
+- Show full forward/reverse TFBS arrays with gaps, numeric axes, source units,
+  hover and motif-footprint selection, alongside separately scaled imported
+  DuckDB hits with coverage/truncation and provenance. Original annotations
+  remain unchanged. Report lanes have no invented DNA feature identifiers.
+- Keep attachment/cache state independent of the TFBS panel and reject stale
+  worker results. Bound file/array admission and visible drawing; no new scoring,
+  database query, automatic data discovery or native export is introduced.
+- Add synthetic projection, file-loading, identity, missing-data, strand and
+  native-frame/worker regressions. Live CD44/TGFB1 acceptance and explicit
+  dynamic-scoring contracts remain follow-ups, not a new release gate.
+
 ## `v0.1.0-internal.11` - Alpha Candidate
 
 - Synchronize the owner-requested `.11` workspace version, all seven local

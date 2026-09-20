@@ -6762,7 +6762,7 @@ Signal intervals preserve gaps and supplied source scale; no-interval and
 not-prepared sources are not measured zeros. Motif triangles above/below the
 baseline distinguish local plus/minus strands, not positive/negative values.
 Their height uses the original score kind, never relabels tail probabilities
-as LLR bits, and hides values below zero without deleting data. These are stored
+as LLR bits, and hides values below zero without deleting data. These annotation lanes are stored
 peaks, **not full continuous score traces or experimentally measured binding**.
 Display clipping, filtering and selection never rescore motifs.
 
@@ -6773,13 +6773,51 @@ not truncated. Editing/replacing the sequence invalidates the presentation.
 Mismatched bases, TSS markers, or motif-strand metadata fail closed. Sequence
 hash validation is not external reference authentication or a receipt audit.
 
-The first native consumer supports GENtle's annotated TSS export grammar,
-including existing hashed record names. FASTA alone, arbitrary locus features,
-and generic prose labels cannot establish its TSS geometry. Full report-backed
-dense traces, imported DuckDB hits, reporter rows,
-and native-view SVG export remain follow-ups. **Export View SVG** explains this
-limitation instead of silently exporting a different map; existing receipt-bound
-TSS report exports remain the quantitative publication path.
+### Attach the Quantitative Report
+
+Choose **Load TSS profile report...** and select `report.json` from the TSS
+SVG/PDF export bundle belonging to this window. Loading and validation run in
+the background, independently of the TFBS panel and its caches. No database
+query or scoring is performed. The file is bounded to 256 MiB and passes the
+same report validation as export (including matrix and imported-report hashes,
+array geometry and the ten-million-score-cell limit). Genome ID, assembly,
+annotation release, promoter ID, exact window/TSS geometry and sequence digest
+must match. Equal bases at another locus are not sufficient. Failed attachment
+leaves the previous view intact; replacing/editing the sequence discards the
+attachment. **Detach report** restores the original annotation-only view.
+
+- **Report TFBS curves** shows complete stored forward/reverse arrays at motif
+  window starts. Local `+` is solid blue; local `-` is dashed rose. Both use the
+  same increasing local axis, also on negative genomic strands. Hover reports
+  raw scores and both coordinate/strand conventions. Clicking an evaluable
+  start selects its full motif footprint without creating a DNA annotation.
+- Each curve has numeric Y ticks and its own explicit score kind. Scaling and
+  negative-score clipping follow the saved panel policy, not current TFBS-panel
+  settings or an export-only scale override. A background-tail score is not
+  relabelled LLR bits. Amber areas and line gaps mean unavailable windows;
+  grey terminal areas cannot hold a full motif window. A genuine zero remains
+  an evaluable value. An empty/all-zero range uses a labelled display fallback.
+- **DuckDB peaks** shows the report's attached sparse-query results, not a live
+  query. Amber triangles encode footprint and local strand; height uses the
+  original source/report/matrix score range, including signed raw values, never
+  the local-curve scale. Side summaries retain coverage and truncation states;
+  hover includes original genomic spans, retention/density policy and hashes.
+  Missing or partially queried evidence does not establish absence of binding.
+
+The original annotated structure, CUT&RUN/chromatin and stored-peak lanes stay
+separate. Report annotations are not silently substituted for edited flat-file
+features. Attachment is session-local and not a receipt audit or independent
+reference authentication. Display preparation is cached; visible curve drawing
+is limited to 10,000 window starts per row. Above that budget the view asks for
+zooming rather than silently downsampling away narrow peaks or gaps.
+
+GENtle's annotated TSS export grammar is still required, including existing
+hashed record names. FASTA alone, arbitrary locus features and generic prose
+labels cannot establish its TSS geometry. Explicit dynamic rescoring, new DuckDB
+queries from imported windows, reporter rows, and native-view SVG export remain
+follow-ups. **Export View SVG** explains the export limitation instead of
+silently exporting a different map; existing receipt-bound TSS report exports
+remain the quantitative publication path.
 The existing single-sequence file loader selects the last EMBL/GenBank record;
 multi-record import/selection is a separate follow-up, not provided by this view.
 

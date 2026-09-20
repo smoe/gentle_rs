@@ -4917,7 +4917,7 @@ impl MainAreaDna {
                 let mut next_mode = self.primary_map_mode;
                 if self.tss_view_available() && ui.selectable_label(
                     matches!(self.primary_map_mode, PrimaryMapMode::Tss), "TSS / Regulatory",
-                ).on_hover_text("Inspect the annotated TSS, transcript structure, CUT&RUN/chromatin intervals and retained motif peaks on a shared coordinate axis. No rescoring.").clicked() {
+                ).on_hover_text("Inspect TSS, transcript structure, CUT&RUN/chromatin intervals and stored peaks. Load the matching TSS report.json for full TFBS curves and imported DuckDB hits on the same axis. No rescoring.").clicked() {
                     next_mode = PrimaryMapMode::Tss;
                 }
                 if ui
@@ -23111,7 +23111,7 @@ impl MainAreaDna {
 
     fn export_active_view_svg(&mut self, profile: ViewSvgExportProfile) {
         if matches!(self.primary_map_mode, PrimaryMapMode::Tss) {
-            self.op_status = "Native TSS view export is not yet available. Use the original receipt-bound TSS report export for quantitative SVG/PDF; switch to Standard map to export flat annotations.".into();
+            self.op_status = "Native TSS view export (including attached report lanes) is not yet available. Use the original receipt-bound TSS report export for quantitative SVG/PDF; switch to Standard map to export flat annotations.".into();
             return;
         }
         let Some(seq_id) = self.seq_id.clone() else {

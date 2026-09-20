@@ -11,19 +11,27 @@ use serde::Serialize;
 
 use crate::{digest_utils::sha256_hex_bytes, dna_sequence::DNAsequence};
 
+mod profile;
+#[cfg(test)]
+pub(crate) use profile::tests::fixture as profile_fixture;
+pub use profile::{TssProfileAttachment, TssViewTrace};
+
 /// Evidence classes remain separate even when their genomic intervals overlap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub enum TssLaneKind {
     Structure,
     Signal,
     Motif,
+    ScoreTrace,
+    ImportedMotif,
     Other,
 }
 
 /// One original feature, in local zero-based, end-exclusive coordinates.
 #[derive(Clone, Debug, Serialize)]
 pub struct TssViewFeature {
-    pub feature_id: usize,
+    /// None for report-only evidence; never invent an editable DNA feature ID.
+    pub feature_id: Option<usize>,
     pub start: usize,
     pub end: usize,
     pub reverse: bool,
@@ -43,6 +51,8 @@ pub struct TssViewLane {
     pub units: String,
     pub state: String,
     pub features: Vec<TssViewFeature>,
+    pub trace: Option<TssViewTrace>,
+    pub scale_min: f64,
     /// Retains source-locus scaling for signal, never normalizes across matrices.
     pub scale_max: f64,
 }
@@ -53,11 +63,14 @@ pub struct TssSequenceView {
     pub title: String,
     pub promoter_id: String,
     pub assembly: String,
+    pub genome_id: Option<String>,
+    pub annotation_release: Option<String>,
     pub geometry: TssGeometry,
     pub sequence_sha256: String,
     pub lanes: Vec<TssViewLane>,
     pub provenance: String,
     pub warnings: Vec<String>,
+    pub profile: Option<TssProfileAttachment>,
 }
 
 // Each exported field has an explicit key; never classify by arbitrary filenames.
@@ -261,6 +274,8 @@ impl TssSequenceView {
                     details: rest.to_string(),
                     units: "source signal (not read endpoints)".into(),
                     features: vec![],
+                    trace: None,
+                    scale_min: 0.0,
                     scale_max,
                     state: field(rest, "state").unwrap_or_else(|| "state not supplied".into()),
                 },
@@ -365,6 +380,8 @@ impl TssSequenceView {
                     details: String::new(),
                     units,
                     features: vec![],
+                    trace: None,
+                    scale_min: 0.0,
                     scale_max: 1.0,
                     state: "supplied annotations".into(),
                 });
@@ -372,7 +389,7 @@ impl TssSequenceView {
                 lane.scale_max = lane.scale_max.max(score.abs());
             }
             lane.features.push(TssViewFeature {
-                feature_id,
+                feature_id: Some(feature_id),
                 start: s,
                 end: e,
                 reverse,
@@ -400,11 +417,15 @@ impl TssSequenceView {
             ),
             promoter_id,
             assembly,
+            genome_id: field(&metadata, "Reference"),
+            annotation_release: field(&metadata, "annotation_release")
+                .filter(|release| release != "not supplied"),
             geometry,
             sequence_sha256,
             lanes: lanes.into_values().collect(),
             provenance,
             warnings,
+            profile: None,
         })
     }
 
