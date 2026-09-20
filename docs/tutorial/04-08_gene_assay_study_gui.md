@@ -68,6 +68,12 @@ starts and chains in Locus figure, the DNA map and Structure. Display filtering
 must not silently change design scope: the project still has 13 actionable
 Ensembl transcripts, not 17 merged design targets.
 
+![G1: the public PATZ1 locus report keeps the versioned Ensembl and RefSeq transcript rows separate while showing the shared full chain in green.](../screenshots/gene_assay_study_gui/G1-locus-and-source-comparison.context.svg)
+
+*G1 — Public Ensembl 116/RefSeq source comparison on the minus-strand PATZ1
+locus. This display context does not add RefSeq records to the 13-transcript
+design universe.*
+
 ## 2. Define the Primer-Design Question
 
 In **Structure**, choose **Design all-transcript panel**, or select **Transcript
@@ -91,6 +97,12 @@ transcripts to obtain a green result.
 **Checkpoint G2:** scope, objective and partial-result policy are explicit.
 Identical mature cDNAs cannot be separated by sequence-based primers. Annotation
 records and exact-cDNA classes have different denominators.
+
+![G2: the reviewed PATZ1 request names all annotated cDNA classes, the minimal-discrimination objective and an explicit best-effort policy.](../screenshots/gene_assay_study_gui/G2-request-and-scope.context.svg)
+
+*G2 — The saved request keeps the 13 Ensembl records/classes, constraints and
+best-effort policy visible. RefSeq remains comparison evidence, not an inferred
+design target.*
 
 ## 3. Design and Inspect Both Primers
 
@@ -120,6 +132,12 @@ Shared products, explicit no-product predictions and **Not assessed** cells are
 different. Retained-intron products can resemble genomic DNA; annotations do
 not establish absence of contamination or expression in your sample.
 
+![G3: the transcript-by-assay matrix, forward and reverse primer sequences, and the partial-result warning are visible together.](../screenshots/gene_assay_study_gui/G3-primer-matrix-and-sequences.context.svg)
+
+*G3 — The exact replay selected seven assays for 13 mature-cDNA classes. Both
+5'-to-3' primer sequences and the product matrix are retained; the warning
+keeps nine unresolved class-pair distinctions from looking complete.*
+
 The development replay with Primer3 2.6.1 and the pinned inputs returned **seven
 primer pairs**, covering all **13 exact mature-cDNA classes**, but leaving
 **nine class pairs unresolved**. The report correctly says `partial`: detecting
@@ -143,6 +161,12 @@ successful study** for arbitrary requirements.
 **Checkpoint G4:** planning and execution have independent approvals. Changed
 requests invalidate review. Never invent expression effects or thresholds.
 
+![G4: the separate effective study plan shows the annotation-led scope, missing declared evidence and the exploratory persisted panel.](../screenshots/gene_assay_study_gui/G4-study-plan.context.svg)
+
+*G4 — This is a separately loaded, read-only study plan. It records absent
+expression/assayability evidence and does not attribute the exploratory panel
+to an unexecuted study.*
+
 ## 5. Confirm Specificity Before Using Candidates
 
 Choose **Build experimental handoff**. Missing genomic and whole-transcriptome
@@ -154,6 +178,12 @@ search. Follow the [specificity continuation](04-07_transcript_assay_followup_gu
 risks and the exact assessed universe. Candidates are **not order approval**.
 Efficiency, melt curves and biological interpretation still require laboratory review.
 
+![G5: the selected pair remains explicitly not assessed for whole-reference specificity despite its local cDNA product prediction.](../screenshots/gene_assay_study_gui/G5-specificity-gap.context.svg)
+
+*G5 — Local mature-cDNA predictions are not genomic or whole-transcriptome
+specificity. The GUI says “Specificity not assessed”; no readiness or ordering
+claim follows from the displayed candidate.*
+
 ## 6. Export an Honest Dossier
 
 In **Gene assay study > Canonical dossier export**, load
@@ -163,6 +193,12 @@ that study. Completed publications need their real digest-bound handoffs.
 
 **Checkpoint G6:** distinguish authentic reference data, annotation agreement,
 candidate design and pending validation. No automatic ordering is offered.
+
+![G6: the canonical dossier export remains review-gated, with empty publication request and output fields until the pending study is deliberately bound.](../screenshots/gene_assay_study_gui/G6-pending-dossier.context.svg)
+
+*G6 — The canonical dossier route remains pending and requires an explicit
+publication request and new output directory. Opening the GUI does not turn the
+exploratory panel into a completed study.*
 
 ## Help and Review
 

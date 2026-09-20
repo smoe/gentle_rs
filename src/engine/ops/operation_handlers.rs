@@ -23553,6 +23553,7 @@ impl GentleEngine {
             })?;
         // Feasibility is a property of the design request, not its export destination.
         payload.insert("path".to_string(), serde_json::Value::Null);
+        let operation_value = crate::digest_utils::sort_json_value(operation_value);
         let operation_bytes =
             serde_json::to_vec(&operation_value).map_err(|error| EngineError {
                 code: ErrorCode::Internal,

@@ -11,7 +11,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Schema for one operation applied to a collection subject.
 pub const COLLECTION_OPERATION_REPORT_SCHEMA: &str = "gentle.collection_operation.v1";
@@ -351,30 +351,33 @@ pub fn canonical_collection_membership_json(
                 .then(left.0.cmp(&right.0))
                 .then(left.1.cmp(&right.1))
         });
-        return json!({
-            "subject_kind": subject_kind,
-            "order_semantics": "ordered",
-            "members": ordered
-                .into_iter()
-                .map(|(ordering_index, stable_member_id)| json!({
-                    "ordering_index": ordering_index,
-                    "stable_member_id": stable_member_id,
-                }))
-                .collect::<Vec<_>>(),
-        })
-        .to_string();
+        let members = ordered
+            .into_iter()
+            .map(|(ordering_index, stable_member_id)| {
+                BTreeMap::from([
+                    ("ordering_index", json!(ordering_index)),
+                    ("stable_member_id", json!(stable_member_id)),
+                ])
+            })
+            .collect::<Vec<_>>();
+        return serde_json::to_string(&BTreeMap::from([
+            ("members", json!(members)),
+            ("order_semantics", json!("ordered")),
+            ("subject_kind", json!(subject_kind)),
+        ]))
+        .expect("collection membership uses JSON-safe protocol values");
     }
 
     let member_ids = members
         .iter()
         .map(|member| member.stable_member_id.clone())
         .collect::<BTreeSet<_>>();
-    json!({
-        "subject_kind": subject_kind,
-        "order_semantics": "set",
-        "members": member_ids,
-    })
-    .to_string()
+    serde_json::to_string(&BTreeMap::from([
+        ("members", json!(member_ids)),
+        ("order_semantics", json!("set")),
+        ("subject_kind", json!(subject_kind)),
+    ]))
+    .expect("collection membership uses JSON-safe protocol values")
 }
 
 /// Require every member to resolve to one semantically identical context.

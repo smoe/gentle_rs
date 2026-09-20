@@ -1,5 +1,11 @@
 # Request to Glen: Gene Assay Study GUI and Tutorial Screenshots
 
+**Result:** the six public-reference checkpoints were completed manually at the
+exact `.11` code candidate `3c1c32bc`; see the
+[2026-09-20 acceptance report](gene_assay_study_glen_acceptance_20260920.md)
+and its [hash-bound screenshot evidence](screenshots/gene_assay_study_gui/README.md).
+This records GUI presentation, not biological validation or order approval.
+
 Please test the [04.08 tutorial](tutorial/04-08_gene_assay_study_gui.md) at the
 exact merged candidate SHA, using matching GUI and CLI binaries. This is .11
 primer-PAIR study work, not transcript capture and not an additional .10 gate.
