@@ -10,6 +10,44 @@ pub const GUI_PROFILER_ENV: &str = "GENTLE_GUI_PROFILE";
 pub const GUI_PROFILER_ADDR_ENV: &str = "GENTLE_GUI_PROFILE_ADDR";
 pub const DEFAULT_GUI_PROFILER_ADDR: &str = "127.0.0.1:8585";
 
+/// Opt-in, local cache counters; independent of Puffin and semantic screenshots.
+pub const DNA_CACHE_DIAGNOSTICS_ENV: &str = "GENTLE_DNA_CACHE_DIAGNOSTICS";
+
+pub(crate) fn dna_cache_diagnostics_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED
+        .get_or_init(|| env_flag_value_enabled(env::var(DNA_CACHE_DIAGNOSTICS_ENV).ok().as_deref()))
+}
+
+/// Cumulative per-renderer work, not timings or a scientific result.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct LinearCacheDiagnostics {
+    pub layouts: u64,
+    pub interval_index_builds: u64,
+    pub restriction_hits: u64,
+    pub restriction_builds: u64,
+    pub overlay_hits: u64,
+    pub overlay_builds: u64,
+    pub gc_hits: u64,
+    pub gc_builds: u64,
+}
+
+/// Read-only, name-free observation of one DNA viewer's presentation caches.
+///
+/// `linear` is absent for circular renderers or a busy renderer, not zero work.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct DnaCacheDiagnostics {
+    pub tree_hits: u64,
+    pub tree_builds: u64,
+    pub layer_hits: u64,
+    pub layer_builds: u64,
+    pub layer_feature_visits: u64,
+    pub layer_gc_bases: u64,
+    pub display_sync_hits: u64,
+    pub display_sync_builds: u64,
+    pub linear: Option<LinearCacheDiagnostics>,
+}
+
 #[cfg(feature = "gui-profiler")]
 static GUI_PROFILER_SERVER: std::sync::OnceLock<Option<puffin_http::Server>> =
     std::sync::OnceLock::new();

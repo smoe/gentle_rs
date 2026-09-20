@@ -160,6 +160,7 @@ impl WindowDna {
         let thread_engine = engine.clone();
         let thread_seq_id = seq_id.clone();
         thread::spawn(move || {
+            crate::gentle_gui_profile_scope!("WindowDna::deferred_load.lock_and_clone");
             let result = thread_engine
                 .read()
                 .map_err(|_| "Engine lock poisoned during deferred load".to_string())

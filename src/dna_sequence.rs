@@ -752,6 +752,7 @@ impl DNAsequence {
     }
 
     pub fn update_computed_features(&mut self) {
+        crate::gentle_gui_profile_scope!("DNAsequence::update_computed_features");
         self.bump_feature_generation();
         if self.is_protein_sequence() {
             self.restriction_enzyme_sites.clear();
@@ -762,11 +763,23 @@ impl DNAsequence {
             self.gc_content = GcContents::default();
             return;
         }
-        self.update_restriction_enyzme_sites();
-        self.update_restriction_enzyme_groups();
-        self.update_open_reading_frames();
-        self.update_methylation_sites();
-        self.update_gc_content();
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::restriction_sites_and_groups");
+            self.update_restriction_enyzme_sites();
+            self.update_restriction_enzyme_groups();
+        }
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::open_reading_frames");
+            self.update_open_reading_frames();
+        }
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::methylation_sites");
+            self.update_methylation_sites();
+        }
+        {
+            crate::gentle_gui_profile_scope!("DNAsequence::gc_content");
+            self.update_gc_content();
+        }
         // TODO amino acids
         // TODO protease sites
     }

@@ -1067,6 +1067,18 @@ Feature tree grouping:
   feature-tree costs. Gene-locus investigations additionally expose separate
   scopes for GUI composition/preview rendering and the engine's occupancy,
   motif, probe-effect, and complete report-building phases.
+- DNA latency scopes additionally separate feature drawing/indexing, deferred
+  record lock/clone, viewport reconciliation, map/overlay refresh, and the
+  restriction, ORF, methylation and GC constructor computations. Launch with
+  `GENTLE_DNA_CACHE_DIAGNOSTICS=1` to expose an optional **DNA cache diagnostics**
+  pane without a profiler build. Its cumulative counters show tree/layer model
+  builds, feature visits, GC bases traversed, layout/index builds, and existing
+  restriction/overlay/GC/display-sync cache activity. A busy or circular renderer
+  reports no linear counters, not zero work. Reading counters does not wait on
+  the renderer, rebuild caches or alter project state; counters contain no
+  sequence or feature names. They count work, not milliseconds. See the
+  [latency plan](dna_feature_rendering_latency_plan.md) and
+  [prebuilt audit runbook](../benches/README.md#dna-feature-density-latency).
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)

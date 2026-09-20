@@ -45,6 +45,30 @@
   native-frame/worker regressions. Live CD44/TGFB1 acceptance and explicit
   dynamic-scoring contracts remain follow-ups, not a new release gate.
 
+## 2026-09-20 - DNA Feature Latency Measurement Foundation
+
+- Reconcile Claude's `.12` plan with the existing layout dirty check, exact
+  viewport visibility semantics and sequence-derived cache freshness. Keep
+  native attribution and auditor-owned budgets ahead of runtime optimization.
+- Add nine synthetic length/density fixtures, 117 constructor/hydration/frame
+  and interaction cases, and 81 content-bound counter observations. Preserve
+  biology and display behavior; no cache key, default, scheduling or culling
+  rule changes. Existing TP73/PATZ1 and native acceptance remain separate.
+- Add an offline build-once/replay runner with executable/source/profile
+  receipts, isolated runtime directories, raw failure/timeout evidence and
+  per-interaction work tables. Timed audits reject development-profile builds.
+- Add optional privacy-minimized cache diagnostics and finer Puffin scopes,
+  including the full-sequence GC work performed on a layer-count cache miss.
+  This is measurement support, not a speedup or release performance verdict.
+- Developer verification on macOS before rebasing on `6e65129b`: 14 focused
+  Rust tests, 12 Python runner
+  tests, the 26-case TP73/control GUI-operation smoke, and two 117-case density
+  smokes pass. Each density process emits the same 81 work observations;
+  `cargo check -q --locked --offline` (also with `gui-profiler`), formatting
+  and whitespace checks pass.
+  Statistical/native audits and the opt-in authentic PATZ1 workload were not
+  run. Development linking retains the known large-`__eh_frame` warning.
+
 ## `v0.1.0-internal.11` - Alpha Candidate
 
 - Synchronize the owner-requested `.11` workspace version, all seven local

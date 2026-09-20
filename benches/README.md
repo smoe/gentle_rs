@@ -102,6 +102,71 @@ pinned fixture-manifest hash rather than the generated project bytes, whose
 audit timestamp changes between equivalent preparations. Retain the exact
 project/report hashes beside Criterion's results.
 
+## DNA feature-density latency
+
+The `.12` measurement foundation adds `dna_feature_latency` over the real
+`MainAreaDna` presentation path. It separates length from feature density: all
+nine combinations of 20,000 / 250,000 / 2,000,000 bp and 100 / 1,000 / 10,000
+features. The large cases are stress probes, not promised interactive limits.
+
+**Fixture provenance and recreation:**
+`src/main_area_dna/latency_benchmark.rs::feature_density_fixture` generates exact
+counts in memory from a fixed artificial DNA repeat, plus/minus joined mRNA and
+CDS locations, exons, regulatory and repeat features. Half the features cluster
+in the initial 5-kbp viewport; half are spread over the locus. There are no
+biological claims, private inputs, downloaded annotations or RNG state. Running
+the target recreates the fixtures and hashes the exact sequence/feature JSON.
+The helper and view-only controls compile only with `benchmark-support`.
+
+The 117 cases comprise constructor, hydration, first frame (deferred/loaded
+tree), steady, one-base pan, zoom, mRNA toggle, selection, hover, and resize from
+1200x800 to 820x520, 1600x1000 and 1920x1080. Each interaction also emits untimed
+before/after cache counters, for 81 observations. Sequence/feature hashes must
+remain unchanged. The synthetic run has no engine, locus-report hydration,
+native window, actual X11 click, GPU, or compositor. Use `gui_operations` above
+for engine-backed TP73/PATZ1 window cases and native acceptance for the rest.
+
+Build **once**, separately from runtime, with no network access:
+
+```bash
+python3 scripts/dna_feature_latency.py prepare --profile dev \
+  --output /tmp/gentle-dna-latency-dev-build
+python3 scripts/dna_feature_latency.py run \
+  --receipt /tmp/gentle-dna-latency-dev-build/build.json \
+  --output /tmp/gentle-dna-latency-smoke --mode smoke
+```
+
+This runs two fresh processes by default (`--repeats 1` is available). Every
+output directory must be new. Preparation uses `cargo test --locked --offline
+--profile PROFILE -p gentle-benchmarks --bench dna_feature_latency --no-run`;
+missing cached dependencies cause an explicit build failure, never a download.
+The receipt retains build command/logs/time, source revision, dirty-diff and
+untracked-build-input hashes, lockfile, toolchain, profile and binary SHA-256.
+Only clean, frozen revisions are eligible for the auditor's baseline.
+
+For Glen's timed run, prepare with `--profile bench-audit` into a different
+directory and run with `--mode audit`. The latter executes the verified binary
+directly with `--bench --quick --noplot`; it never invokes Cargo and rejects a
+development-profile or dirty-source receipt. Baselines remain isolated in each run's
+`criterion/` directory. Keep the full directory, not only the extracted means.
+Two process repeats are evidence for the auditor to assess, not an automatic
+stability or performance pass.
+
+Each replay records `run.json` (including the runner's own hash), exact `run.log`
+bytes/hash, `work.tsv` deltas and,
+for an audit, raw Criterion artifacts and estimate hashes. The runner isolates
+HOME/XDG/temp/cache paths, removes inherited `GENTLE_*` options, disables the
+optional diagnostics pane/profiler, and records host/locale/thread settings.
+It verifies all nine fixtures and all nine interaction records; missing,
+duplicate, wrong-revision or inconsistent-fixture records fail. Timeouts and
+child failures retain their receipt and are never successes. Build or source
+identity changes require a new build receipt. Do not edit the tree during
+preparation. Native input-to-content latency is explicitly **not measured**.
+
+The diagnostics pane and Puffin scopes are described in `docs/gui.md`;
+`docs/dna_feature_rendering_latency_plan.md` retains the conditional optimization
+sequence. Developers smoke-test; Glen provides timed and native acceptance.
+
 ## Specificity finalization
 
 Run the deterministic primer-specificity benchmark with:

@@ -1898,8 +1898,10 @@ impl MainAreaDna {
             .map(|cache| cache.key == next_key)
             .unwrap_or(false);
         if is_current {
+            self.feature_tree_cache_hits = self.feature_tree_cache_hits.saturating_add(1);
             return;
         }
+        self.feature_tree_cache_misses = self.feature_tree_cache_misses.saturating_add(1);
         let model = self.build_feature_tree_model(&next_key);
         self.feature_tree_cache = Some(FeatureTreeCache {
             key: next_key,

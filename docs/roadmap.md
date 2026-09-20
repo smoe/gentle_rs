@@ -111,8 +111,8 @@ Useful session close:
 - Leave unrelated local paper/figure work untouched unless explicitly requested.
 
 ## .12 Priorities
-
-Selected `.12` aim: DNA-feature presentation in the sequence viewer responds immediately on real annotated loci. Work the [feature-rendering latency plan](dna_feature_rendering_latency_plan.md) in order: feature-density fixture ladder, profiler scopes and cache counters first, then confirm or reject its five recorded hypotheses before changing any hotspot; displayed features, coordinates, labels and scientific outputs stay identical. That plan also carries release-like native profiling without the semantic snapshot writer, the startup/construction/hydration/first-paint separation with auditor-owned interaction budgets, resize/input-to-content attribution at all four PATZ1 sizes, and the prebuilt benchmark runner. Keep this separate from `.11` acceptance, follow [DEC-039](decisions.md#dec-039-external-auditor-owns-the-performance-verdict), and treat [Glen's PATZ1 benchmark](gui_usability_acceptance_20260920.md#authentic-patz1-rendering-and-resize-benchmark) as one workload, not a general performance verdict.
+Selected aim: responsive DNA-feature presentation. Follow the [reconciled latency plan](dna_feature_rendering_latency_plan.md) and DEC-039, separately from `.11` acceptance. Have Glen run two prebuilt density-ladder audits at one clean SHA, retaining profile/toolchain/fixture/binary hashes, raw Criterion results and work counters; choose an interactive density ceiling from evidence, not the small PATZ1 workload.
+Next: attribute startup/open, clone/hydration, first paint and native resize/input-to-content without the semantic snapshot writer, capturing locally at all four PATZ1 sizes. Keep CPU, harness waits and compositor timing distinct. Only then change confirmed hotspots through S1-S5; preserve features, coordinates, labels, visibility, derived-data freshness, subject binding, cancellation and scientific outputs. Density rules and scheduling changes need separate evidence.
 
 ## Phase A: AI Communication And Safety Plane
 

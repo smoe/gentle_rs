@@ -65,6 +65,10 @@ mod feature_location_editor_ui;
 #[path = "main_area_dna/feature_tree_ui.rs"]
 mod feature_tree_ui;
 
+#[cfg(feature = "benchmark-support")]
+pub mod latency_benchmark;
+mod latency_diagnostics;
+
 #[path = "main_area_dna/formula_controls.rs"]
 mod formula_controls;
 mod selection_navigation;
@@ -1706,9 +1710,13 @@ pub struct MainAreaDna {
     focused_feature_id: Option<usize>,
     multi_selected_feature_ids: BTreeSet<usize>,
     feature_tree_cache: Option<FeatureTreeCache>,
+    feature_tree_cache_hits: u64,
+    feature_tree_cache_misses: u64,
     layer_visibility_cache: Option<LayerVisibilityCache>,
     layer_visibility_cache_hits: u64,
     layer_visibility_cache_misses: u64,
+    layer_visibility_feature_visits: u64,
+    layer_visibility_gc_bases: u64,
     engine_display_sync_key: Option<EngineDisplaySyncKey>,
     engine_display_sync_cache_hits: u64,
     engine_display_sync_cache_misses: u64,
@@ -2598,9 +2606,13 @@ impl MainAreaDna {
             focused_feature_id: None,
             multi_selected_feature_ids: BTreeSet::new(),
             feature_tree_cache: None,
+            feature_tree_cache_hits: 0,
+            feature_tree_cache_misses: 0,
             layer_visibility_cache: None,
             layer_visibility_cache_hits: 0,
             layer_visibility_cache_misses: 0,
+            layer_visibility_feature_visits: 0,
+            layer_visibility_gc_bases: 0,
             engine_display_sync_key: None,
             engine_display_sync_cache_hits: 0,
             engine_display_sync_cache_misses: 0,
@@ -3287,6 +3299,7 @@ impl MainAreaDna {
         previous_len: usize,
         previous_is_circular: bool,
     ) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::hydrate.reconcile_viewport");
         if self.is_circular() {
             return;
         }
@@ -3488,6 +3501,7 @@ impl MainAreaDna {
     }
 
     fn refresh_construct_reasoning_overlay_if_needed(&mut self, force: bool) -> bool {
+        crate::gentle_gui_profile_scope!("MainAreaDna::refresh_construct_reasoning_overlay");
         let overlay_visible = self
             .dna_display
             .read()
@@ -3810,6 +3824,9 @@ impl MainAreaDna {
         let mut counts = LayerVisibilityCounts::default();
         if let Ok(dna) = self.dna.read() {
             let sequence_length = dna.len();
+            self.layer_visibility_feature_visits = self
+                .layer_visibility_feature_visits
+                .saturating_add(dna.features().len() as u64);
             for feature in dna.features() {
                 if RenderDna::is_source_feature(feature) {
                     continue;
@@ -3906,6 +3923,9 @@ impl MainAreaDna {
                     counts.restriction_site_count = counts.restriction_site_count.saturating_add(1);
                 }
             }
+            self.layer_visibility_gc_bases = self
+                .layer_visibility_gc_bases
+                .saturating_add(dna.len() as u64);
             counts.gc_region_count = GcContents::new_from_sequence_with_bin_size(
                 dna.forward_bytes(),
                 gc_content_bin_size_bp,
@@ -4781,6 +4801,9 @@ impl MainAreaDna {
                 ui.set_max_width(width);
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 self.render_top_panel_contents(ui);
+                if crate::gui_profiler::dna_cache_diagnostics_enabled() {
+                    self.render_cache_diagnostics(ui);
+                }
             });
     }
 
@@ -27193,6 +27216,7 @@ impl MainAreaDna {
     }
 
     pub fn update_dna_map(&mut self) {
+        crate::gentle_gui_profile_scope!("MainAreaDna::update_dna_map");
         let topology_changed = self.is_circular() != self.map_dna.is_circular();
         if topology_changed {
             self.map_dna = RenderDna::new(self.dna.clone(), self.dna_display.clone());

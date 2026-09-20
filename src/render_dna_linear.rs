@@ -514,6 +514,8 @@ pub struct RenderDnaLinear {
     gc_cache: GcContents,
     gc_cache_hits: u64,
     gc_cache_misses: u64,
+    layout_builds: u64,
+    interval_index_builds: u64,
 }
 
 impl RenderDnaLinear {
@@ -626,6 +628,8 @@ impl RenderDnaLinear {
             gc_cache: GcContents::default(),
             gc_cache_hits: 0,
             gc_cache_misses: 0,
+            layout_builds: 0,
+            interval_index_builds: 0,
         }
     }
 
@@ -647,11 +651,26 @@ impl RenderDnaLinear {
         &self.area
     }
 
+    pub(crate) fn cache_diagnostics(&self) -> crate::gui_profiler::LinearCacheDiagnostics {
+        crate::gui_profiler::LinearCacheDiagnostics {
+            layouts: self.layout_builds,
+            interval_index_builds: self.interval_index_builds,
+            restriction_hits: self.restriction_site_presentation_cache_hits,
+            restriction_builds: self.restriction_site_presentation_cache_misses,
+            overlay_hits: self.construct_reasoning_overlay_presentation_cache_hits,
+            overlay_builds: self.construct_reasoning_overlay_presentation_cache_misses,
+            gc_hits: self.gc_cache_hits,
+            gc_builds: self.gc_cache_misses,
+        }
+    }
+
     fn refresh_feature_interval_index(&mut self, dna: &DNAsequence) {
         let generation = dna.feature_generation();
         if self.feature_interval_index.generation == Some(generation) {
             return;
         }
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::build_feature_interval_index");
+        self.interval_index_builds = self.interval_index_builds.saturating_add(1);
         let mut entries = Vec::with_capacity(dna.features().len());
         for (feature_idx, feature) in dna.features().iter().enumerate() {
             let Ok((raw_from, raw_to)) = feature.location.find_bounds() else {
@@ -1638,6 +1657,7 @@ impl RenderDnaLinear {
 
     fn layout_features(&mut self, viewport: LinearViewport) {
         crate::gentle_gui_profile_scope!("RenderDnaLinear::layout_features");
+        self.layout_builds = self.layout_builds.saturating_add(1);
         self.features.clear();
         self.baseline_y = self.area.center().y;
         if self.sequence_length == 0 {
@@ -3382,6 +3402,7 @@ impl RenderDnaLinear {
     }
 
     fn draw_features(&self, painter: &egui::Painter, detail: LinearDetailLevel) {
+        crate::gentle_gui_profile_scope!("RenderDnaLinear::draw_features");
         let (show_features, external_font_size, external_bg_opacity) = self
             .display
             .read()
@@ -5773,6 +5794,64 @@ mod tests {
         assert!(
             !site.contains(gap_point),
             "separate restriction hit areas should not treat the inter-label gap as hovered"
+        );
+    }
+
+    #[test]
+    fn latency_counters_separate_relayout_from_feature_index_rebuild() {
+        let mut renderer = test_renderer_with_features(
+            vec![make_test_feature(Location::simple_range(10, 20))],
+            200,
+        );
+        renderer
+            .display
+            .write()
+            .unwrap()
+            .update_layout_mut()
+            .update_all();
+        let ctx = egui::Context::default();
+        render_test_pass(&ctx, &mut renderer);
+        let first = renderer.cache_diagnostics();
+        assert_eq!(first.layouts, 1);
+        assert_eq!(first.interval_index_builds, 1);
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.cache_diagnostics().layouts, first.layouts);
+        assert_eq!(
+            renderer.cache_diagnostics().interval_index_builds,
+            first.interval_index_builds
+        );
+
+        let resized = renderer.area.shrink2(egui::vec2(20.0, 10.0));
+        ctx.begin_pass(egui::RawInput::default());
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| renderer.render(ui, resized),
+        );
+        crate::egui_compat::discard_test_pass_output(&ctx);
+        assert_eq!(renderer.cache_diagnostics().layouts, first.layouts + 1);
+        assert_eq!(
+            renderer.cache_diagnostics().interval_index_builds,
+            first.interval_index_builds
+        );
+
+        renderer
+            .dna
+            .write()
+            .unwrap()
+            .features_mut()
+            .push(make_test_feature(Location::simple_range(30, 40)));
+        renderer
+            .display
+            .write()
+            .unwrap()
+            .update_layout_mut()
+            .update_all();
+        render_test_pass(&ctx, &mut renderer);
+        assert_eq!(renderer.cache_diagnostics().layouts, first.layouts + 2);
+        assert_eq!(
+            renderer.cache_diagnostics().interval_index_builds,
+            first.interval_index_builds + 1
         );
     }
 

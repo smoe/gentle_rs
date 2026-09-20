@@ -24,3 +24,7 @@ harness = false
 [[bench]]
 name = "gui_operations"
 harness = false
+
+[[bench]]
+name = "dna_feature_latency"
+harness = false
