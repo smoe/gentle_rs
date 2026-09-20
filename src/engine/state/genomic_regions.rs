@@ -224,6 +224,26 @@ fn serialize_for_digest<T: Serialize>(value: &T, label: &str) -> Result<String, 
     })
 }
 
+fn serialize_json_value_for_digest(
+    value: &serde_json::Value,
+    label: &str,
+) -> Result<String, EngineError> {
+    crate::digest_utils::canonical_json_string(value).map_err(|error| {
+        region_error(
+            ErrorCode::Internal,
+            format!("could not serialize {label} for deterministic digest: {error}"),
+        )
+    })
+}
+
+fn canonicalize_embedded_json(region: &mut gp::GenomicRegionOfInterest) {
+    for evidence in &mut region.evidence {
+        if let Some(record) = evidence.source_record.take() {
+            evidence.source_record = Some(crate::digest_utils::sort_json_value(record));
+        }
+    }
+}
+
 fn sort_region_evidence(evidence: &mut [gp::GenomicRegionEvidenceReference]) {
     evidence.sort_by(|left, right| {
         (&left.evidence_id, &left.source_kind, &left.source_id).cmp(&(
@@ -263,7 +283,7 @@ pub(crate) fn recompute_region_digests(
         "evidence": region.evidence,
         "derivation": region.derivation,
     });
-    region.identity_sha256 = sha256_prefixed_str(&serialize_for_digest(
+    region.identity_sha256 = sha256_prefixed_str(&serialize_json_value_for_digest(
         &identity_payload,
         "genomic-region identity",
     )?);
@@ -281,6 +301,7 @@ pub(crate) fn recompute_region_digests(
     }
     let mut content = region.clone();
     content.content_sha256.clear();
+    canonicalize_embedded_json(&mut content);
     region.content_sha256 =
         sha256_prefixed_str(&serialize_for_digest(&content, "genomic-region content")?);
     Ok(())
@@ -291,6 +312,9 @@ pub(crate) fn recompute_set_digest(set: &mut gp::GenomicRegionSet) -> Result<(),
         .sort_by(|left, right| left.region_id.cmp(&right.region_id));
     let mut content = set.clone();
     content.content_sha256.clear();
+    for region in &mut content.regions {
+        canonicalize_embedded_json(region);
+    }
     set.content_sha256 =
         sha256_prefixed_str(&serialize_for_digest(&content, "genomic-region set")?);
     Ok(())
@@ -338,8 +362,10 @@ fn validate_region_digest(region: &gp::GenomicRegionOfInterest) -> Result<(), En
             validate_sha256(digest, "evidence.source_sha256")?;
         }
         if let Some(record) = &evidence.source_record {
-            let digest =
-                sha256_prefixed_str(&serialize_for_digest(record, "evidence source record")?);
+            let digest = sha256_prefixed_str(&serialize_json_value_for_digest(
+                record,
+                "evidence source record",
+            )?);
             if evidence.source_sha256.as_deref() != Some(digest.as_str()) {
                 return Err(region_error(
                     ErrorCode::InvalidInput,
@@ -2627,6 +2653,59 @@ mod tests {
             .expect("region report")
             .as_ref()
             .clone()
+    }
+
+    #[test]
+    fn published_regulatory_panel_region_hashes_survive_json_map_backend_changes() {
+        let fixture = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/docs/examples/assets/regulatory_fragment_panel_demo_regions.json"
+        ));
+        let set: gp::GenomicRegionSet = serde_json::from_str(fixture).expect("published fixture");
+        validate_set_digest(&set).expect("published hashes remain valid");
+
+        let expected = set.clone();
+        let mut recomputed = set;
+        for region in &mut recomputed.regions {
+            recompute_region_digests(region).expect("region digest");
+        }
+        recompute_set_digest(&mut recomputed).expect("set digest");
+        assert_eq!(recomputed, expected);
+    }
+
+    #[test]
+    fn embedded_evidence_json_order_does_not_change_region_digests() {
+        let mut first = serde_json::Map::new();
+        first.insert("z".to_string(), serde_json::json!({"b": 2, "a": 1}));
+        first.insert("a".to_string(), serde_json::json!(0));
+        let mut second = serde_json::Map::new();
+        second.insert("a".to_string(), serde_json::json!(0));
+        second.insert("z".to_string(), serde_json::json!({"a": 1, "b": 2}));
+
+        let mut left = gp::GenomicRegionOfInterest {
+            schema: gp::GENOMIC_REGION_OF_INTEREST_SCHEMA.to_string(),
+            region_id: "json_order".to_string(),
+            interval: gp::GenomicRegionInterval {
+                reference: reference(),
+                start_0based: 10,
+                end_0based_exclusive: 20,
+                ..Default::default()
+            },
+            evidence: vec![gp::GenomicRegionEvidenceReference {
+                evidence_id: "evidence".to_string(),
+                source_kind: "fixture".to_string(),
+                source_id: "fixture".to_string(),
+                source_record: Some(serde_json::Value::Object(first)),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let mut right = left.clone();
+        right.evidence[0].source_record = Some(serde_json::Value::Object(second));
+        recompute_region_digests(&mut left).expect("left digest");
+        recompute_region_digests(&mut right).expect("right digest");
+        assert_eq!(left.identity_sha256, right.identity_sha256);
+        assert_eq!(left.content_sha256, right.content_sha256);
     }
 
     #[test]

@@ -1,6 +1,8 @@
 //! Shared digest helpers for local fingerprints and deterministic identifiers.
 
 use ring::digest::{Context, SHA256, digest};
+use serde::Serialize;
+use serde_json::Value;
 use std::{
     fs::File,
     io::{self, Read},
@@ -31,6 +33,34 @@ pub(crate) fn sha256_prefixed_str(value: &str) -> String {
 
 pub(crate) fn sha256_prefixed_bytes(bytes: &[u8]) -> String {
     format!("sha256:{}", sha256_hex_bytes(bytes))
+}
+
+pub(crate) fn sort_json_value(value: Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut entries = map.into_iter().collect::<Vec<_>>();
+            entries.sort_by(|left, right| left.0.cmp(&right.0));
+            Value::Object(
+                entries
+                    .into_iter()
+                    .map(|(key, value)| (key, sort_json_value(value)))
+                    .collect(),
+            )
+        }
+        Value::Array(values) => Value::Array(values.into_iter().map(sort_json_value).collect()),
+        scalar => scalar,
+    }
+}
+
+/// Serialize JSON with recursively sorted object keys.
+///
+/// `serde_json` can preserve insertion order when another workspace feature
+/// enables `preserve_order`. Digest inputs must not change with that unrelated
+/// feature unification, so canonicalization is explicit here.
+pub(crate) fn canonical_json_string<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
+    serde_json::to_value(value)
+        .map(sort_json_value)
+        .and_then(|value| serde_json::to_string(&value))
 }
 
 pub(crate) fn sha256_file_hex(path: &Path) -> io::Result<String> {
@@ -95,6 +125,7 @@ pub(crate) fn primer_pair_full_id(forward: &str, reverse: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn canonical_oligo_identity_normalizes_case_whitespace_and_u() {
@@ -111,6 +142,18 @@ mod tests {
         assert_ne!(
             primer_pair_full_id("ACGT", "TGCA"),
             primer_pair_full_id("TGCA", "ACGT")
+        );
+    }
+
+    #[test]
+    fn canonical_json_recursively_sorts_object_keys() {
+        let value = json!({
+            "z": {"beta": 2, "alpha": 1},
+            "a": [{"right": 2, "left": 1}],
+        });
+        assert_eq!(
+            canonical_json_string(&value).unwrap(),
+            r#"{"a":[{"left":1,"right":2}],"z":{"alpha":1,"beta":2}}"#
         );
     }
 }

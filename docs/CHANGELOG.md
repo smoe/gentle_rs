@@ -47,6 +47,12 @@
 
 ## `v0.1.0-internal.11` - Alpha Candidate
 
+- Canonicalize JSON maps used by genomic-region identities, embedded source
+  records, collection-membership fingerprints and transcript-assay operation
+  fingerprints. This keeps those hashes identical when optional JavaScript
+  dependencies enable serde_json's insertion-order map backend, while retaining
+  the established field order and hashes of typed region content. Existing
+  fixture hashes and scientific inputs remain unchanged.
 - Synchronize the owner-requested `.11` workspace version, all seven local
   lockfile package versions, README, roadmap and release-note index; external
   dependency versions are unchanged. The earlier `.11` tag at `e1c7dfb2`
