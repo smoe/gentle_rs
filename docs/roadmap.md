@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-18 - Prioritize the [verification-only .11 slice](internal_11_plan.md#verification-before-further-features): Windows regressions, one-SHA native CI/container/packages, then Glen's receipts. No further scientific extension before these gates; `.10` publication remains out of scope.
+Last session: 2026-09-20 - Keep the [verification-only .11 slice](internal_11_plan.md#verification-before-further-features): Windows regressions, one-SHA native CI/container/packages, then Glen's receipts. Queue [measurement-led GUI responsiveness for .12](#12-gui-performance-priorities), not speculative caching. `.10` publication remains out of scope.
 `.10` is published at `84f34a9e` without recorded exact-candidate acceptance; its ledger remains pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -103,12 +103,9 @@ Current non-goals:
   confirmation.
 
 Useful session close:
-
-- Roadmap names the selected next-release aim or explicitly says it remains
-  undecided.
-- Completed outcomes from the session are in [`CHANGELOG.md`](CHANGELOG.md).
-- Any new durable rule is in [`decisions.md`](decisions.md).
-- Unrelated local paper/figure work remains untouched unless explicitly requested.
+- Name the next-release aim or state that it remains undecided.
+- Keep completed outcomes in [`CHANGELOG.md`](CHANGELOG.md) and durable rules in [`decisions.md`](decisions.md).
+- Leave unrelated local paper/figure work untouched unless explicitly requested.
 
 ## Phase A: AI Communication And Safety Plane
 
@@ -257,13 +254,9 @@ severity presentation are recorded in `docs/CHANGELOG.md`.
 
 ## Phase D: Visualization And Workflow UX
 
-Use the GUI as the human inspection surface for engine-owned evidence. Continue
-dense DNA-map readability, alternative-splicing view polish, gel arrangement
-editing, feature editing, contextual interpretation links, visual regression
-fixtures, and scroll/zoom hardening when they fit the selected release story. Useful
-work here improves inspection clarity, deterministic exports, contextual links
-to evidence records, and manual-smoke reliability; defer large visual redesigns
-unrelated to the next release aim; next [contextual availability](contextual_action_availability_plan.md): Glen's live macOS check, then further action families; native-menu and agent/host-probe integration remain deferred.
+Use the GUI as the human inspection surface for engine-owned evidence. Continue dense DNA-map readability, alternative-splicing polish, gel/feature editing, contextual links, visual regression fixtures and scroll/zoom hardening when they fit the selected release story.
+Improve inspection clarity, deterministic exports and manual-smoke reliability; defer unrelated visual redesigns. Next [contextual availability](contextual_action_availability_plan.md): Glen's live macOS check, then further action families; native-menu and agent/host-probe integration remain deferred.
+
 - Evidence-viewer follow-up: keep the Splicing Expert evidence ledger readable
   on large real loci and add direct report-store selectors if probe/expression
   reports become persisted project objects.
@@ -275,6 +268,13 @@ unrelated to the next release aim; next [contextual availability](contextual_act
   shared provider/preflight/quote contracts, then improve product-specific
   starter templates, validation previews, and exported-bundle review affordances
   before considering provider-specific portal/API actions.
+
+### .12 GUI Performance Priorities
+Use [Glen's public PATZ1 benchmark](gui_usability_acceptance_20260920.md#authentic-patz1-rendering-and-resize-benchmark) as a workload, not a general performance verdict; follow DEC-039 and keep these tasks separate from `.11` acceptance.
+1. Profile a release-like native binary without the semantic snapshot writer; retain exact source/toolchain/profile and project/report hashes, native traces and repeated stable-host measurements.
+2. Separate process startup, first DNA-window construction, deferred hydration and first paint; establish auditor-owned interaction budgets for startup/open, pan/zoom/selection, tabs and multiwindow focus.
+3. Attribute resize/input-to-content latency across event delivery, viewport synchronization, repaint/wake-up scheduling and compositor work at all four PATZ1 sizes. Keep CPU paint, semantic-harness waits and release-binary timings distinct; capture locally, not to per-frame network storage.
+4. Provide a prebuilt, quick-running benchmark/acceptance runner with reproducible offline PATZ1 preparation and isolated profile baselines; measure build/link cost separately. Only then change a confirmed runtime hotspot. Caching/culling, virtualization, worker/wake-up changes or a single-root workspace need profiling evidence and preserved subject bindings, cancellation and scientific outputs.
 
 ## Phase E: Integration Polish And Deferred Policy Items
 

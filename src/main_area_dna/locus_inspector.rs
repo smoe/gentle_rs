@@ -993,7 +993,7 @@ impl MainAreaDna {
         }
     }
 
-    pub(super) fn load_splicing_locus_document(
+    pub(crate) fn load_splicing_locus_document(
         &mut self,
         document: crate::locus_report::LocusDocument,
     ) -> Result<(), String> {

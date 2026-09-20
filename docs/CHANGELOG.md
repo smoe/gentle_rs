@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-20 - Integrate Glen's PATZ1 GUI Benchmark
+
+- Integrate Glen's two benchmark/evidence commits through
+  `9a0b9e88da34986923cd959625b54b410f7127f5`, based on `6aa71b11`, while retaining
+  the subsequent portability and reviewed-result handoff repairs.
+- Add opt-in authentic PATZ1 construction, hydration, four-size frame and resize
+  smoke coverage through the real sequence-bound report loader. Preserve the
+  fixture-manifest series identity and separately recorded project/report hashes.
+- Prioritize release-like native profiling without the snapshot writer,
+  startup/first-open and event/repaint analysis, and a prebuilt runner for `.12`.
+  Make caching and other runtime changes conditional on measured hotspots.
+  Glen's retained Linux measurements are historical external evidence, not
+  timings reproduced on this merged checkout or general GUI acceptance.
+
 ## 2026-09-20 - Reviewed Repair Boundaries And Complete Draft Limits
 
 - Count all UTF-8 bytes of a reviewed-result draft, including the command,
@@ -58,6 +72,11 @@
   package-version/tag mismatch and a bounded `.12` usability backlog in
   `gui_usability_acceptance_20260920.md`. Passing the synthetic lifecycle is
   explicitly not a general GUI responsiveness verdict.
+- Extend the optimized GUI audit with an authentic public PATZ1 project (20,802
+  bp, 75 loaded features, 13 Ensembl transcripts and 17 Ensembl/RefSeq source
+  records), four viewport sizes and first-frame-after-resize timings. Keep
+  headless CPU paint costs separate from native X11 resize-to-semantic-update
+  latency; the latter remains visibly above an interactive frame budget.
 
 ## 2026-09-19 - Final Windows TSS And Path Portability Follow-up
 
