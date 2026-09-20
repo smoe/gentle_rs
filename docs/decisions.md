@@ -970,6 +970,17 @@ the package's exact inventory, and imposes motif, interval, file, row, output,
 and wall-clock bounds. An absent package or executable therefore has no startup
 cost and cannot disable local JASPAR scoring or any unrelated workflow.
 
+Annotation-selected regulatory/TSS packages are a distinct provider, not a
+weakened full-scan or TP73-conditioned cofactor contract. Their delivered
+`file_inventory` owns payload paths and counts; the copied original-atlas
+inventory supplies source policy only. Validate bounded metadata and selected
+payloads, never scan all genome files on opening. Keep typed subset coverage,
+annotation releases, full physical footprints and n:m transcript ownership in
+portable reports and downstream views. A known-empty regulatory intersection,
+a valid zero-row file and unsupported coverage must remain distinguishable.
+Catalog inspection cannot invent unavailable score configuration. Package
+hashes prove consistency, not independent reference authentication.
+
 Package hits remain on the package-declared score and retention policy. They
 must not share a numerical axis with GENtle's local scorer unless a future
 contract proves cross-source calibration. In the current providers this is a

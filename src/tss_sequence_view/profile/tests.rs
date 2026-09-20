@@ -234,6 +234,98 @@ fn report_content_validation_is_not_bypassed_by_matching_window_hash() {
 }
 
 #[test]
+fn regulatory_subset_scope_survives_saved_report_gui_and_svg_without_warning_text() {
+    for minus in [false, true] {
+        let (dna, mut report) = fixture(minus);
+        let source = &mut report.imported_motif_evidence[0];
+        let e = &mut source.report;
+        let p = e.provider.as_mut().unwrap();
+        p.provider_kind = REGULATORY_MOTIF_PROVIDER.into();
+        p.run_id.clear(); // The subset binds a production plan, not an invented scan run.
+        e.warnings.clear();
+        e.regulatory_subset = Some(RegulatoryMotifSubset {
+            scope: "regulatory_and_tss".into(),
+            score_selection: "source_retention".into(),
+            annotation_release: "fixture-annotation".into(),
+            regulatory_release: "fixture-regulation".into(),
+            promoter_definition_id: "tss_upstream_700_downstream_300_v1".into(),
+            upstream_bp: 700,
+            downstream_bp: 300,
+            production_plan_sha256: "c".repeat(64),
+            source_commit: "synthetic".into(),
+            verified_files: ["file_inventory.json", "annotation/manifest.json"]
+                .into_iter()
+                .map(|path| RegulatoryMotifFileBinding {
+                    path: path.into(),
+                    bytes: 123,
+                    sha256: "d".repeat(64),
+                })
+                .collect(),
+            coverage: vec![RegulatoryMotifCoverage {
+                chromosome: e.regions[0].requested_chromosome.clone(),
+                motif_id: "MA0001.1".into(),
+                state: RegulatoryMotifCoverageState::Available,
+            }],
+            hit_annotations: e
+                .hits
+                .iter()
+                .enumerate()
+                .map(|(hit_index, h)| RegulatoryMotifHitAnnotation {
+                    hit_index,
+                    query_interval_ids: vec![h.interval_id.clone()],
+                    regulation_tags: 132,
+                    overlaps_regulatory_tss_intersection: true,
+                    promoter_ids: vec![],
+                    regulatory_feature_ids: vec![],
+                })
+                .collect(),
+            ..Default::default()
+        });
+        validate_regulatory_subset(e).unwrap();
+        for change in ["scope", "coverage", "tags", "metadata"] {
+            let mut bad = e.clone();
+            match change {
+                "scope" => bad.regulatory_subset.as_mut().unwrap().complete_genome_scan = true,
+                "coverage" => bad.regulatory_subset.as_mut().unwrap().coverage.clear(),
+                "tags" => {
+                    bad.regulatory_subset.as_mut().unwrap().hit_annotations[0].regulation_tags = 4
+                }
+                _ => bad.regulatory_subset = None,
+            }
+            assert!(validate_regulatory_subset(&bad).is_err(), "{change}");
+        }
+        let digest = sha256_hex_bytes(&serde_json::to_vec(e).unwrap());
+        source.report_sha256 = digest.clone();
+        source.source.sha256 = digest;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("subset-report.json");
+        std::fs::write(&path, serde_json::to_vec(&report).unwrap()).unwrap();
+        let view = TssSequenceView::from_dna(&dna)
+            .unwrap()
+            .load_profile(&path)
+            .unwrap();
+        let lane = view
+            .lanes
+            .iter()
+            .find(|l| l.kind == TssLaneKind::ImportedMotif)
+            .unwrap();
+        assert!(lane.label.contains("regulatory/TSS subset"));
+        assert!(lane.details.contains("Not a complete genome scan"));
+        assert!(lane.details.contains("fixture-regulation"));
+        assert_eq!(lane.features[0].reverse, minus);
+        let pages =
+            gentle_render::tss_profiles::render_tss_profile_pages(&report, &Default::default())
+                .unwrap();
+        assert!(
+            pages
+                .iter()
+                .all(|p| p.svg.contains("Regulatory/TSS intersection only"))
+        );
+        assert!(pages.iter().all(|p| p.svg.contains("fixture-regulation")));
+    }
+}
+
+#[test]
 fn loading_json_binds_exact_file_bytes_and_detaching_restores_annotations() {
     let (dna, report) = fixture(false);
     let base = TssSequenceView::from_dna(&dna).unwrap();

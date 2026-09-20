@@ -3171,6 +3171,7 @@ Shared shell command:
     - `features export-bed SEQ_ID OUTPUT.bed [--coordinate-mode auto|local|genomic] [--include-restriction-sites] [--restriction-enzyme NAME] [--kind KIND] [--kind-not KIND] [--range START..END|--start N --end N] [--overlap|--within|--contains] [--strand any|forward|reverse] [--label TEXT] [--label-regex REGEX] [--qual KEY] [--qual-contains KEY=VALUE] [--qual-regex KEY=REGEX] [--min-len N] [--max-len N] [--nearest-to POSITION] [--limit N] [--offset N] [--sort feature_id|start|end|kind|length] [--desc] [--include-source] [--include-qualifiers]`
     - `features tfbs-summary SEQ_ID --focus START..END [--context START..END] [--min-focus-count N] [--min-context-count N] [--limit N]`
     - `features genomic-motif-evidence [SEQ_ID|--region-set ID] --motif JASPAR_ID [--motif JASPAR_ID ...|--motifs CSV] [--range START..END] [--region [ID=]CHR:START..END ...] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]`
+    - Regulatory/TSS subset packages additionally support `features genomic-motif-evidence --inspect [--search TEXT] [--catalog-offset N] [--catalog-limit N] --package DIR [--path FILE.json]`, or `--gene EXACT_ID_OR_NAME` / `--tss-id ID` in place of the sequence/region target, with 1-64 explicit motifs. See the [offline walkthrough](regulatory_motif_subset.md).
     - `features repeat-query GENOME_ID --rmsk PATH [--rep-class CLASS] [--rep-family FAMILY] [--rep-name NAME] [--alias ALIAS] [--chromosome CHR] [--range START..END] [--limit N] [--path FILE.json]`
     - `features repeat-overlaps SEQ_ID --index RMSK_INTERVAL_INDEX.json [--range START..END] [--limit N] [--path FILE.json]`
     - `features materialize-repeats SEQ_ID --index RMSK_INTERVAL_INDEX.json [--max-features N] [--append] [--path FILE.json]`
@@ -4883,6 +4884,14 @@ Shared shell command:
       - `--motif ALL` or `--motif *` expands to the whole local motif registry
     - Optional precomputed genome-scan notes
       (`features genomic-motif-evidence`):
+      - The rules below describe the original full-scan provider. The separate
+        `genome_regulatory_tfbs_subset` provider uses delivered `file_inventory`,
+        not original-atlas paths in `scan_file_inventory`. It preserves negative
+        source-retained scores by default, exact annotation scope/releases,
+        known-empty intersections and separate TSS/transcript ownership. Its
+        catalog/gene/region commands work from an empty project; no TP73 anchor,
+        `complete.json`, implicit download or DNA annotation is required.
+        [Walkthrough and limits](regulatory_motif_subset.md).
       - returns `gentle.genomic_motif_evidence.v1` without mutating project
         state
       - accepts one genome-anchored `SEQ_ID` (optionally narrowed by local

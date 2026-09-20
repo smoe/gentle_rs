@@ -11477,6 +11477,16 @@ impl ShellCommand {
             }
             Self::FeaturesGenomicMotifEvidence { request, path } => {
                 let target = match &request.target {
+                    GenomicMotifEvidenceTarget::PackageCatalog {
+                        search,
+                        offset,
+                        limit,
+                    } => {
+                        format!("package catalog search={search:?} offset={offset} limit={limit}")
+                    }
+                    GenomicMotifEvidenceTarget::PackageTssWindows { gene_query, tss_id } => {
+                        format!("package TSS windows gene={gene_query:?} tss={tss_id:?}")
+                    }
                     GenomicMotifEvidenceTarget::AnchoredSequence {
                         seq_id,
                         span_start_0based,
@@ -23843,7 +23853,9 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "optional loaded genome-anchored sequence target; alternative to explicit genomic intervals"},
                 {"name": "--region", "required": false, "subject_kind": "other", "detail": "one or more explicit BED-style [ID=]CHR:START..END intervals; alternative to SEQ_ID"},
-                {"name": "--motif|--motifs", "required": true, "subject_kind": "other", "detail": "bounded explicit JASPAR motif identifiers; ALL is refused for row queries"},
+                {"name": "--motif|--motifs", "required": false, "subject_kind": "other", "detail": "required for row queries: 1-64 exact JASPAR accessions; ALL is refused; omitted with --inspect"},
+                {"name": "--inspect", "required": false, "subject_kind": "other", "detail": "regulatory-subset catalog only; --search TEXT, --catalog-offset N and --catalog-limit 1..1000; no hit payloads or project required"},
+                {"name": "--gene|--tss-id", "required": false, "subject_kind": "other", "detail": "regulatory subset: exact annotated gene ID/name or physical TSS ID; alternative to loaded sequence/interval targets, not a TF name search"},
                 {"name": "--package", "required": false, "subject_kind": "other", "detail": "optional finalized jaspar-mapping package root; otherwise GENTLE_JASPAR_GENOME_SCAN_PACKAGE is consulted"},
                 {"name": "--max-rows", "required": false, "subject_kind": "other", "detail": "bounded returned-row limit"},
                 {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.genomic_motif_evidence.v1 JSON path"}
@@ -23865,7 +23877,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "mutating": "false",
             "requires_confirmation": false,
             "args": [
-                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "typed anchored-sequence or explicit-interval request with motif, score, file, row, and timeout bounds"},
+                {"name": "REQUEST", "required": true, "subject_kind": "other", "detail": "typed anchored-sequence, explicit-interval, stored-region-set, package_catalog or package_tss_windows request with motif, score, file, row, and timeout bounds"},
                 {"name": "OUTPUT_PATH", "required": false, "subject_kind": "other", "detail": "optional external gentle.genomic_motif_evidence.v1 JSON path"}
             ],
             "reads": [],
@@ -23875,7 +23887,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 "effect_kind": "external_handoff"
             }],
             "precondition_expr": {"all": []},
-            "description": "Query optional precomputed whole-genome motif evidence through the shared read-only engine operation.",
+            "description": "Query optional precomputed full-scan or annotation-selected regulatory/TSS motif evidence through the shared read-only engine operation; neither source establishes experimental binding.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("QueryGenomicMotifEvidence")
         }),

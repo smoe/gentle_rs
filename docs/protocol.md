@@ -3066,6 +3066,35 @@ Current draft operations:
   - `path` writes the same structured JSON report to disk for reuse outside the
     current adapter session
 - `QueryGenomicMotifEvidence { request, path? }`
+  - also accepts a distinct finalized `genome_regulatory_tfbs_subset` schema-1
+    package. This additive provider does not relax the full-scan or TP73-cofactor
+    package contracts. It verifies manifest-bound metadata/materialized tables,
+    uses delivered `file_inventory` for exact payloads/counts, and reads the
+    original `scan_file_inventory` only for source retention/provenance. No
+    package SQL, macros or views are executed; DuckDB init/extension loading is
+    disabled and selected files are checked by size/SHA-256 under one deadline
+  - subset-specific targets: `target_kind=package_catalog` with `search`,
+    `offset`, `limit` (1..1000), or `target_kind=package_tss_windows` with exactly
+    one of `gene_query` / `tss_id`. Catalog targets reject motif/score/region
+    filters; TSS selection matches exact annotated ownership, not motif names.
+    Original anchored/interval/stored-region targets also work for this provider
+  - optional `regulatory_subset` preserves scope, annotation releases/flanks,
+    production-plan/source binding, verified files, original matrix metadata,
+    typed chromosome/motif coverage, physical TSS windows, transcript owners,
+    native regulatory gene links and per-hit tags/overlap relations. Physical
+    hits are never multiplied by n:m ownership. `score_pseudocount=null` means
+    unavailable/not assessed; it takes precedence over the legacy numeric
+    provider field's default. Empty policy strings do not assert a known policy
+  - `known_empty_intersection` is distinct from available zero-row payloads,
+    unsupported chromosomes/motifs and invalid/missing files. Scores below the
+    floor remain censored, not reconstructed; negative retained hits are not
+    silently filtered. Completeness is subset-only. Full original footprints,
+    both strands and fractional scores remain in BED coordinates. Transcript
+    annotation release is distinct from the sequence source's Ensembl release
+  - subset report admission is shared by TSS GUI/report export, keeping scope
+    and coverage even when free-text warnings are absent. It never merges hits
+    into dense local score arrays. [Reader contract and tutorial](regulatory_motif_subset.md).
+    The following full-scan rules remain unchanged:
   - optional non-mutating access to a finalized `jaspar-mapping` sparse
     whole-genome package through schema `gentle.genomic_motif_evidence.v1`
   - accepts one stored sequence with a genome anchor or an explicit list of

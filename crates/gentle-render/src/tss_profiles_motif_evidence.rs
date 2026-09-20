@@ -93,11 +93,18 @@ impl<'a> Lanes<'a> {
                     provider.score_mode,
                     hits.len(),
                     hits.len().min(LABEL_LIMIT),
-                    if r.warnings.is_empty() {
-                        String::new()
-                    } else {
-                        format!("\nSource warnings: {}", r.warnings.join("; "))
-                    }
+                    format!(
+                        "{}{}",
+                        r.regulatory_subset
+                            .as_ref()
+                            .map(|s| format!("\n{}", s.summary()))
+                            .unwrap_or_default(),
+                        if r.warnings.is_empty() {
+                            String::new()
+                        } else {
+                            format!("\nSource warnings: {}", r.warnings.join("; "))
+                        }
+                    )
                 ),
                 TEXT_WIDTH - 16.0,
                 12.0,

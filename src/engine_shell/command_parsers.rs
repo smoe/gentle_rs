@@ -4840,12 +4840,19 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
         "genomic-motif-evidence" => {
             if tokens.len() < 3 {
                 return Err(
-                    "features genomic-motif-evidence requires SEQ_ID, --region-set ID, or one or more --region [ID=]CHR:START..END, plus --motif TOKEN [--motif TOKEN ...] [--motifs CSV] [--range START..END] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]"
+                    "features genomic-motif-evidence requires SEQ_ID, --region-set ID, --region [ID=]CHR:START..END, --gene EXACT_ID_OR_NAME, or --tss-id ID plus --motif TOKEN; alternatively --inspect [--search TEXT] [--catalog-offset N] [--catalog-limit N]. Options: [--motifs CSV] [--range START..END] [--package DIR] [--database FILE] [--duckdb FILE] [--genome-id ID] [--min-score VALUE] [--min-pwm-relative-score VALUE] [--max-rows N] [--max-payload-files N] [--timeout-seconds N] [--path FILE.json]"
                         .to_string(),
                 );
             }
             let mut seq_id: Option<String> = None;
             let mut region_set_id: Option<String> = None;
+            let mut inspect = false;
+            let mut search = String::new();
+            let mut catalog_offset = 0usize;
+            let mut catalog_limit = 100usize;
+            let mut catalog_options = false;
+            let mut gene_query = None;
+            let mut tss_id = None;
             let mut span_start_0based: Option<usize> = None;
             let mut span_end_0based_exclusive: Option<usize> = None;
             let mut intervals = vec![];
@@ -4873,6 +4880,53 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             }
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
+                    "--inspect" => {
+                        inspect = true;
+                        idx += 1;
+                    }
+                    "--search" => {
+                        search = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--search",
+                            "features genomic-motif-evidence",
+                        )?;
+                        catalog_options = true;
+                    }
+                    "--catalog-offset" | "--catalog-limit" => {
+                        let option = tokens[idx].clone();
+                        let raw = parse_option_path(
+                            tokens,
+                            &mut idx,
+                            &option,
+                            "features genomic-motif-evidence",
+                        )?;
+                        let value = raw
+                            .parse::<usize>()
+                            .map_err(|e| format!("Invalid {option}: {e}"))?;
+                        if option == "--catalog-offset" {
+                            catalog_offset = value;
+                        } else {
+                            catalog_limit = value;
+                        }
+                        catalog_options = true;
+                    }
+                    "--gene" => {
+                        gene_query = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--gene",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
+                    "--tss-id" => {
+                        tss_id = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--tss-id",
+                            "features genomic-motif-evidence",
+                        )?);
+                    }
                     "--region-set" => {
                         region_set_id = Some(parse_option_path(
                             tokens,
@@ -5042,7 +5096,19 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
                     }
                 }
             }
-            if motif_ids.is_empty() {
+            if catalog_options && !inspect {
+                return Err("Catalog options require --inspect".into());
+            }
+            if inspect
+                && (!motif_ids.is_empty()
+                    || minimum_score.is_some()
+                    || minimum_pwm_relative_score.is_some())
+            {
+                return Err(
+                    "--inspect reads metadata only; use --search, not motif/score filters".into(),
+                );
+            }
+            if motif_ids.is_empty() && !inspect {
                 return Err(
                     "features genomic-motif-evidence requires at least one --motif TOKEN"
                         .to_string(),
@@ -5050,32 +5116,50 @@ pub(super) fn parse_features_command(tokens: &[String]) -> Result<ShellCommand, 
             }
             let target_count = usize::from(seq_id.is_some())
                 + usize::from(!intervals.is_empty())
-                + usize::from(region_set_id.is_some());
+                + usize::from(region_set_id.is_some())
+                + usize::from(inspect)
+                + usize::from(gene_query.is_some())
+                + usize::from(tss_id.is_some());
             if target_count != 1 {
                 return Err(
-                    "features genomic-motif-evidence requires exactly one target: SEQ_ID, --region values, or --region-set ID"
+                    "features genomic-motif-evidence requires exactly one target: SEQ_ID, --region values, --region-set ID, --inspect, --gene, or --tss-id"
                         .to_string(),
                 );
             }
-            let target = match (seq_id, intervals.is_empty(), region_set_id) {
-                (Some(seq_id), true, None) => GenomicMotifEvidenceTarget::AnchoredSequence {
-                    seq_id,
-                    span_start_0based,
-                    span_end_0based_exclusive,
-                },
-                (None, false, None) if span_start_0based.is_none() => {
-                    GenomicMotifEvidenceTarget::GenomicIntervals { intervals }
+            let target = if inspect || gene_query.is_some() || tss_id.is_some() {
+                if span_start_0based.is_some() {
+                    return Err("--range requires SEQ_ID".into());
                 }
-                (None, true, Some(region_set_id)) if span_start_0based.is_none() => {
-                    GenomicMotifEvidenceTarget::StoredRegionSet { region_set_id }
+                if inspect {
+                    GenomicMotifEvidenceTarget::PackageCatalog {
+                        search,
+                        offset: catalog_offset,
+                        limit: catalog_limit,
+                    }
+                } else {
+                    GenomicMotifEvidenceTarget::PackageTssWindows { gene_query, tss_id }
                 }
-                (_, _, _) if span_start_0based.is_some() => {
-                    return Err(
-                        "features genomic-motif-evidence --range is valid only with SEQ_ID"
-                            .to_string(),
-                    );
+            } else {
+                match (seq_id, intervals.is_empty(), region_set_id) {
+                    (Some(seq_id), true, None) => GenomicMotifEvidenceTarget::AnchoredSequence {
+                        seq_id,
+                        span_start_0based,
+                        span_end_0based_exclusive,
+                    },
+                    (None, false, None) if span_start_0based.is_none() => {
+                        GenomicMotifEvidenceTarget::GenomicIntervals { intervals }
+                    }
+                    (None, true, Some(region_set_id)) if span_start_0based.is_none() => {
+                        GenomicMotifEvidenceTarget::StoredRegionSet { region_set_id }
+                    }
+                    (_, _, _) if span_start_0based.is_some() => {
+                        return Err(
+                            "features genomic-motif-evidence --range is valid only with SEQ_ID"
+                                .to_string(),
+                        );
+                    }
+                    _ => unreachable!("target count validated above"),
                 }
-                _ => unreachable!("target count validated above"),
             };
             Ok(ShellCommand::FeaturesGenomicMotifEvidence {
                 request: GenomicMotifEvidenceRequest {

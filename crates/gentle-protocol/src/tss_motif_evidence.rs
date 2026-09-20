@@ -31,6 +31,7 @@ pub fn validate(report: &TssProfileReport) -> Result<(), String> {
     let mut ids = BTreeSet::new();
     for source in &report.imported_motif_evidence {
         let evidence = &source.report;
+        validate_regulatory_subset(evidence)?;
         total = total.saturating_add(evidence.hits.len());
         if total > MAX_EVIDENCE_HITS {
             return fail("too many retained hits");
@@ -61,8 +62,9 @@ pub fn validate(report: &TssProfileReport) -> Result<(), String> {
             return fail("genome ID/assembly must match exactly; no aliases or liftover");
         }
         if provider.coordinate_mode != "bed_0based_half_open"
-            || provider.score_mode.is_empty()
-            || provider.run_id.is_empty()
+            || (provider.score_mode.is_empty()
+                && (!evidence.hits.is_empty() || evidence.regulatory_subset.is_none()))
+            || (provider.run_id.is_empty() && evidence.regulatory_subset.is_none())
             || provider.manifest_sha256.is_empty()
         {
             return fail("missing score/provenance or unsupported coordinates");

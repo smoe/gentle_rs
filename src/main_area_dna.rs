@@ -13622,6 +13622,55 @@ impl MainAreaDna {
             let mut navigate_to: Option<(usize, usize, String)> = None;
             ui.group(|ui| {
                 ui.label(egui::RichText::new("Precomputed genomic motif evidence").strong());
+                if let Some(subset) = &report.regulatory_subset {
+                    ui.label(egui::RichText::new(subset.summary()).strong());
+                    let row_label = |ui: &mut egui::Ui, text: String| {
+                        ui.add(egui::Label::new(egui::RichText::new(&text).small()).truncate())
+                            .on_hover_text(text);
+                    };
+                    ui.collapsing("Physical TSS windows", |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("regulatory_tss_windows")
+                            .max_height(180.0)
+                            .show_rows(ui, 20.0, subset.tss_windows.len(), |ui, rows| {
+                                for i in rows {
+                                    let window = &subset.tss_windows[i];
+                                    row_label(ui, format!(
+                                        "{}: {}:{}..{} ({}) | TSS {}",
+                                        window.promoter_id, window.chromosome,
+                                        window.start_0based + 1, window.end_0based_exclusive,
+                                        window.strand, window.tss_0based + 1,
+                                    ));
+                                }
+                            });
+                    });
+                    ui.collapsing(format!("Transcript ownership ({})", subset.transcript_owners.len()), |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("regulatory_tss_owners")
+                            .max_height(180.0)
+                            .show_rows(ui, 20.0, subset.transcript_owners.len(), |ui, rows| {
+                                for i in rows {
+                                    let owner = &subset.transcript_owners[i];
+                                    row_label(ui, format!(
+                                        "{} | {} | {} | {}", owner.tss_id,
+                                        owner.gene_name.as_deref().unwrap_or("unlabelled"),
+                                        owner.gene_id, owner.transcript_id,
+                                    ));
+                                }
+                            });
+                    });
+                    ui.collapsing(format!("Native regulatory gene links ({})", subset.regulatory_gene_links.len()), |ui| {
+                        ui.small("Separate from TSS ownership; no nearest-gene inference.");
+                        egui::ScrollArea::vertical()
+                            .id_salt("regulatory_gene_links")
+                            .max_height(180.0)
+                            .show_rows(ui, 20.0, subset.regulatory_gene_links.len(), |ui, rows| {
+                                for i in rows {
+                                    row_label(ui, subset.regulatory_gene_links[i].to_string());
+                                }
+                            });
+                    });
+                }
                 let availability_color = if report.availability
                     == GenomicMotifEvidenceAvailability::Available
                 {

@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-21 - Regulatory/TSS Subset Motif Reader
+
+- Extend the shared optional genomic-motif query with a distinct regulatory/TSS
+  provider, catalog discovery and exact annotated gene/TSS selection. Keep
+  full-scan and TP73-cofactor readers unchanged. Verify delivered metadata and
+  selected payloads without executing package SQL or opening original-atlas files.
+- Preserve negative/fractional scores, both orientations, full BED footprints,
+  retention floors, known-empty MT coverage, physical TSS windows and separate
+  transcript/regulatory gene ownership. Bind portable subset provenance and
+  enforce it when attaching reports to native TSS views and SVG/PDF exports.
+- Add virtualized ownership details to the existing regional GUI inspector,
+  shared-shell/agent discovery and a [small offline tutorial](regulatory_motif_subset.md).
+  No project mutation, scoring, dependency, download or implicit annotation.
+- Provide a reproducible synthetic DuckDB/Parquet generator and explicit real
+  integration tests, including relocation, corrupt/missing files, source floors,
+  bounded large metadata and shared-shell execution. Retain tests of saved
+  scope/strand presentation and legacy-reader behavior. Production delivery,
+  live GUI and native Windows acceptance remain unclaimed and assigned to Glen.
+
 ## 2026-09-20 - .12 DNA Feature Rendering Latency Plan
 
 - Record the owner-selected `.12` priority in the roadmap and

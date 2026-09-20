@@ -11198,6 +11198,51 @@ fn parse_features_tfbs_scan_for_stored_and_inline_targets() {
 }
 
 #[test]
+fn parse_regulatory_genomic_motif_catalog_and_tss_targets() {
+    for (line, expected) in [
+        (
+            "features genomic-motif-evidence --inspect --search TP73 --catalog-offset 2 --catalog-limit 10",
+            GenomicMotifEvidenceTarget::PackageCatalog {
+                search: "TP73".into(),
+                offset: 2,
+                limit: 10,
+            },
+        ),
+        (
+            "features genomic-motif-evidence --gene TOY --motif MA0861.2",
+            GenomicMotifEvidenceTarget::PackageTssWindows {
+                gene_query: Some("TOY".into()),
+                tss_id: None,
+            },
+        ),
+        (
+            "features genomic-motif-evidence --tss-id exact-tss --motif MA0861.2 --min-score -4",
+            GenomicMotifEvidenceTarget::PackageTssWindows {
+                gene_query: None,
+                tss_id: Some("exact-tss".into()),
+            },
+        ),
+    ] {
+        let ShellCommand::FeaturesGenomicMotifEvidence { request, .. } =
+            parse_shell_line(line).unwrap()
+        else {
+            panic!("wrong command")
+        };
+        assert_eq!(request.target, expected);
+    }
+    for line in [
+        "features genomic-motif-evidence --inspect --gene TOY",
+        "features genomic-motif-evidence --inspect --motif MA0861.2",
+        "features genomic-motif-evidence --inspect --min-score 0",
+        "features genomic-motif-evidence --gene TOY --tss-id p1 --motif MA0861.2",
+        "features genomic-motif-evidence --gene TOY --range 0..10 --motif MA0861.2",
+        "features genomic-motif-evidence --gene TOY --search T --motif MA0861.2",
+    ] {
+        assert!(parse_shell_line(line).is_err(), "{line}");
+    }
+}
+
+#[test]
 fn parse_features_genomic_motif_evidence_for_sequence_and_intervals() {
     let command = parse_shell_line(
         "features genomic-motif-evidence seq_a --range 10..120 --motif MA0525.2 --motifs MA0106.3,MA0107.1 --package /tmp/genome-scan --duckdb /opt/duckdb --genome-id grch38_ensembl116 --min-score 0.5 --min-pwm-relative-score 0.8 --max-rows 250 --max-payload-files 12 --timeout-seconds 8 --path /tmp/hits.json",

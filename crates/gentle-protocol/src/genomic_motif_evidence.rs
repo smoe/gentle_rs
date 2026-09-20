@@ -7,6 +7,9 @@
 use crate::GenomicRegionReference;
 use serde::{Deserialize, Serialize};
 
+mod regulatory;
+pub use regulatory::*;
+
 pub const GENOMIC_MOTIF_EVIDENCE_SCHEMA: &str = "gentle.genomic_motif_evidence.v1";
 pub const DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_ROWS: usize = 10_000;
 pub const DEFAULT_GENOMIC_MOTIF_EVIDENCE_MAX_PAYLOAD_FILES: usize = 256;
@@ -119,6 +122,21 @@ pub struct GenomicMotifEvidenceInterval {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "target_kind", rename_all = "snake_case")]
 pub enum GenomicMotifEvidenceTarget {
+    /// Metadata only; no motif payloads are opened. Supported by regulatory subsets.
+    PackageCatalog {
+        #[serde(default)]
+        search: String,
+        #[serde(default)]
+        offset: usize,
+        limit: usize,
+    },
+    /// Exact annotation gene ID/name or physical TSS ID, never a TF-name lookup.
+    PackageTssWindows {
+        #[serde(default)]
+        gene_query: Option<String>,
+        #[serde(default)]
+        tss_id: Option<String>,
+    },
     AnchoredSequence {
         seq_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -331,6 +349,9 @@ pub struct GenomicMotifEvidenceReport {
     pub query_complete: bool,
     pub hits: Vec<GenomicMotifEvidenceHit>,
     pub warnings: Vec<String>,
+    /// Annotation-selected subset provenance, separate from scan/score provenance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regulatory_subset: Option<RegulatoryMotifSubset>,
 }
 
 #[cfg(test)]

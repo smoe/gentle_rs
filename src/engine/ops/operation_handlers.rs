@@ -38754,6 +38754,8 @@ impl GentleEngine {
             }
             Operation::QueryGenomicMotifEvidence { request, path } => {
                 let regions = match &request.target {
+                    GenomicMotifEvidenceTarget::PackageCatalog { .. }
+                    | GenomicMotifEvidenceTarget::PackageTssWindows { .. } => vec![],
                     GenomicMotifEvidenceTarget::AnchoredSequence {
                         seq_id,
                         span_start_0based,

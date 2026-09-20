@@ -5,6 +5,8 @@
 //! execution failure is returned as typed unavailable evidence rather than
 //! disabling local motif scoring.
 
+mod regulatory;
+
 use crate::digest_utils::{sha256_prefixed_bytes, short_sha256_id};
 use gentle_protocol::{
     GENOMIC_MOTIF_EVIDENCE_SCHEMA, GenomicMotifEvidenceAvailability,
@@ -215,7 +217,25 @@ pub(crate) fn validate_genomic_motif_request(
     request: &GenomicMotifEvidenceRequest,
     regions: &[GenomicMotifQueryRegion],
 ) -> Result<(), String> {
-    if request.motif_ids.is_empty() {
+    let package_target = matches!(
+        request.target,
+        gentle_protocol::GenomicMotifEvidenceTarget::PackageCatalog { .. }
+            | gentle_protocol::GenomicMotifEvidenceTarget::PackageTssWindows { .. }
+    );
+    let catalog = matches!(
+        request.target,
+        gentle_protocol::GenomicMotifEvidenceTarget::PackageCatalog { .. }
+    );
+    regulatory::validate_target(&request.target)?;
+    if catalog
+        && (!request.motif_ids.is_empty()
+            || request.minimum_score.is_some()
+            || request.minimum_pwm_relative_score.is_some()
+            || !regions.is_empty())
+    {
+        return Err("Catalog inspection does not accept row filters or genomic intervals".into());
+    }
+    if request.motif_ids.is_empty() && !catalog {
         return Err("genomic motif evidence requires at least one motif_id".to_string());
     }
     if request.motif_ids.len() > MAX_GENOMIC_MOTIF_EVIDENCE_QUERY_MOTIFS {
@@ -254,7 +274,7 @@ pub(crate) fn validate_genomic_motif_request(
             ));
         }
     }
-    if regions.is_empty() {
+    if regions.is_empty() && !package_target {
         return Err("genomic motif evidence requires at least one genomic interval".to_string());
     }
     if regions.len() > MAX_REGIONS {
@@ -539,7 +559,9 @@ fn resolve_package_paths(request: &GenomicMotifEvidenceRequest) -> Result<Packag
     })?;
     let manifest: Value = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| format!("invalid_package:manifest JSON is invalid: {error}"))?;
-    if manifest.get("schema_version").and_then(Value::as_u64) != Some(2) {
+    let regulatory = manifest.get("kind").and_then(Value::as_str)
+        == Some(gentle_protocol::genomic_motif_evidence::REGULATORY_MOTIF_PROVIDER);
+    if !regulatory && manifest.get("schema_version").and_then(Value::as_u64) != Some(2) {
         return Err(
             "invalid_package:finalized genome-scan manifest schema_version must be 2".to_string(),
         );
@@ -828,6 +850,23 @@ pub(crate) fn query_genomic_motif_evidence(
             ));
         }
     };
+    if paths.manifest.get("kind").and_then(Value::as_str)
+        == Some(gentle_protocol::genomic_motif_evidence::REGULATORY_MOTIF_PROVIDER)
+    {
+        return Ok(regulatory::query(request, regions, &paths));
+    }
+    if matches!(
+        request.target,
+        gentle_protocol::GenomicMotifEvidenceTarget::PackageCatalog { .. }
+            | gentle_protocol::GenomicMotifEvidenceTarget::PackageTssWindows { .. }
+    ) {
+        return Ok(unavailable_report(
+            request,
+            regions,
+            GenomicMotifEvidenceAvailability::IncompatiblePackage,
+            "Package catalog/TSS targets require a genome_regulatory_tfbs_subset package; the full-scan and TP73-cofactor readers are unchanged",
+        ));
+    }
     let executable = request
         .duckdb_executable
         .as_deref()

@@ -2935,6 +2935,15 @@ Controls:
    - Package-native scores and local scores remain separate. The inspector
      shows per-motif retention-floor completeness and warns that a sparse
      package miss is not biological absence.
+   - The configured package can also be the distinct **regulatory/TSS subset**.
+     The inspector names that scope and exposes virtualized physical-TSS,
+     transcript-owner and native regulatory-gene-link details. Empty subset
+     coverage does not assert genome-wide motif absence. Use the shared Shell's
+     `--inspect`, `--gene` or `--tss-id` options for package discovery/queries
+     without loaded DNA; see the [offline walkthrough](regulatory_motif_subset.md).
+     Matching saved queries can be attached to TSS reports and then displayed
+     through `Attach the quantitative report`, with a persistent subset label.
+     No automatic annotation, rescoring or dedicated package wizard is added.
 21. TFBS score tracks
    - Toolbar menu for direct non-mutating continuous TFBS/JASPAR score
      inspection on the current active DNA window.
