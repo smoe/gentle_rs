@@ -18102,6 +18102,47 @@ fn agent_command_results_are_shared_only_by_explicit_bounded_draft_action() {
 }
 
 #[test]
+fn agent_command_result_draft_limit_counts_all_utf8_bytes_without_partial_updates() {
+    const DRAFT_LIMIT: usize = 192 * 1024;
+    let mut result = AgentCommandOutput {
+        command: "features query locus --label '\u{e9}'".into(),
+        output: serde_json::json!({"label": "\u{e9}"}),
+        state_changed: false,
+    };
+    let mut app = GENtleApp::default();
+    for initial in ["Review this result.", "state-summary"] {
+        app.agent_prompt = initial.into();
+        let direct = GENtleApp::agent_prompt_direct_shell_command(initial).is_some();
+        app.stage_agent_command_result_followup(&result).unwrap();
+        assert_eq!(
+            app.agent_prompt.starts_with("Previous local command"),
+            direct
+        );
+        let padding = DRAFT_LIMIT - app.agent_prompt.len();
+        app.agent_prompt = format!("{initial}{}", " ".repeat(padding));
+        let boundary_draft = app.agent_prompt.clone();
+        app.stage_agent_command_result_followup(&result).unwrap();
+        assert_eq!(app.agent_prompt.len(), DRAFT_LIMIT);
+        assert!(
+            app.agent_prompt
+                .ends_with(&serde_json::to_string_pretty(&result.output).unwrap())
+        );
+
+        app.agent_prompt = format!("{boundary_draft} ");
+        let before = app.agent_prompt.clone();
+        assert!(app.stage_agent_command_result_followup(&result).is_err());
+        assert_eq!(app.agent_prompt, before);
+        assert!(app.agent_task.is_none());
+        assert!(app.agent_pending_commands.is_empty());
+    }
+    app.agent_prompt = "Review this result.".into();
+    result.command = "x".repeat(DRAFT_LIMIT);
+    let before = app.agent_prompt.clone();
+    assert!(app.stage_agent_command_result_followup(&result).is_err());
+    assert_eq!(app.agent_prompt, before);
+}
+
+#[test]
 fn native_sequence_viewport_starts_large_enough_for_wrapped_toolbar_controls() {
     let builder = GENtleApp::sequence_viewport_builder("sequence");
     assert_eq!(builder.title.as_deref(), Some("sequence"));

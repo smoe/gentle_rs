@@ -157,14 +157,7 @@ mod tests {
         }
         assert_eq!(prepared.annotation_summary.len(), 2);
         let mut wrong_assembly = report.clone();
-        wrong_assembly
-            .sequence_binding
-            .as_mut()
-            .unwrap()
-            .genome_anchor
-            .as_mut()
-            .unwrap()
-            .genome_id = "T2T-CHM13v2.0".into();
+        wrong_assembly.isoform_evidence.assembly = "T2T-CHM13v2.0".into();
         assert!(crate::transcript_presentation::validate_locus(&wrong_assembly).is_err());
         assert!(
             LocusPresentation::from_report(&wrong_assembly, None)
@@ -279,6 +272,20 @@ mod tests {
             "navigation must not assign a PCR selection"
         );
         let unchanged_viewport = area.current_linear_viewport();
+        let mut stale_catalog = report.clone();
+        stale_catalog
+            .sequence_binding
+            .as_mut()
+            .unwrap()
+            .genome_anchor
+            .as_mut()
+            .unwrap()
+            .genome_id = "other-catalog-entry".into();
+        assert!(
+            area.focus_source_annotation_row(&stale_catalog, row)
+                .is_err()
+        );
+        assert_eq!(area.current_linear_viewport(), unchanged_viewport);
         *area.dna.write().unwrap() = DNAsequence::from_sequence(&"TGCA".repeat(25)).unwrap();
         assert!(area.focus_source_annotation_row(&report, row).is_err());
         assert_eq!(area.current_linear_viewport(), unchanged_viewport);
@@ -304,7 +311,7 @@ mod tests {
         state.metadata.insert(
             "provenance".into(),
             serde_json::json!({"genome_extractions": [{
-                "seq_id": "roi_locus", "genome_id": "GRCh38", "chromosome": "chr7",
+                "seq_id": "roi_locus", "genome_id": "Synthetic human catalog entry", "chromosome": "chr7",
                 "start_1based": 1001, "end_1based": 1100, "anchor_strand": "-",
                 "anchor_verified": true, "recorded_at_unix_ms": 123
             }]}),

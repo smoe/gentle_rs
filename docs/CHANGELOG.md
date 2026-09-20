@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-09-20 - Reviewed Repair Boundaries And Complete Draft Limits
+
+- Count all UTF-8 bytes of a reviewed-result draft, including the command,
+  previous-command prefix and framing. Exact-limit input is accepted; overflow
+  and oversized results leave the draft intact without sending or approving work.
+- Remove the unsupported assembly-versus-catalog-key checks and restore distinct
+  identifier fixtures. Keep source/locus assembly, hashes, geometry and live
+  anchor checks; independent anchor-to-assembly proof remains an explicit gap.
+- Restore the established shared-shell escape grammar and quote the resolution
+  caller. Missing path-like JSON arguments now produce file-read diagnostics.
+- Exercise raw traversal at export and both receipt readers before normalization,
+  add a native-Windows path probe, and prove canonical annotation paths still
+  identify their fixtures. Retain writable PDF synchronization and strict hashes.
+- Extend the input audit to workflow references and all tracked JSON digest
+  records; distinguish three confirmed raw-hash gaps from ten consumer-audit
+  candidates. No scientific fixtures, receipts or checkout rules were changed.
+- Validation on macOS, `dbb305a7` plus this repair: 92 focused Rust tests and
+  nine LF/CRLF checkout tests passed; one artifact-generation test was explicitly
+  ignored. Locked Cargo check, formatting and whitespace checks passed. This
+  was not a full-suite or native-Windows run; the Windows-only probe is pending.
+
 ## 2026-09-20 - Inner-Agent Transcript Assay Result Handoffs
 
 - Add an explicit, bounded **Use reviewed result in next prompt** action for
@@ -40,18 +61,15 @@
 
 ## 2026-09-19 - Final Windows TSS And Path Portability Follow-up
 
-- Reject parent traversal even when Rust exposes `..` as a normal component in
-  a Windows verbatim path, without weakening the existing symlink and fresh
-  destination checks.
-- Open rendered PDFs with write permission before durable synchronization on
-  Windows, and preserve Windows drive/UNC separators in the shared internal
-  shell tokenizer. Keep quoted whitespace and escape behavior covered.
-- Bind the synthetic TSS context fixture to its declared assembly, compare
-  unsupported annotation errors with the canonical manifest path and force LF
-  checkout for the checksum-bound Glen adapter input. No biological outputs or
-  scores change.
-- Focused local checks cover all ten failures observed in Windows run
-  `35461010366`; native Windows confirmation remains pending.
+- Open rendered PDFs with write permission before durable synchronization,
+  compare unsupported-annotation errors with the canonical manifest path and
+  force LF checkout for the checksum-bound Glen adapter input.
+- The initial repair also broadened shell escaping, homogenized a catalog/assembly
+  fixture and added a defensive parent predicate without repairing the normalized
+  traversal test. The September 20 follow-up corrects those shortcomings.
+- The ten named failure tests passed locally on macOS after that initial repair.
+  That was not Windows acceptance, nor proof of the changed shell/identity
+  contracts; native Windows confirmation remains pending.
 
 ## 2026-09-19 - Published Release Version Guard
 
@@ -99,9 +117,9 @@
   remain out of scope; live GUI acceptance is still pending. The existing
   actionable Structure canvas retains its full-locus layout rather than being
   silently re-scaled to the new comparison panel's DNA viewport.
-- Require the source presentation assembly to match the genomic anchor identity
-  before projecting annotation coordinates; matching sequence hashes cannot
-  accidentally authorize coordinates from a different assembly.
+- Initially compared presentation assembly with the anchor catalog key; the
+  September 20 repair removes that invalid cross-namespace check. Source/locus
+  declarations are checked, but independent anchor assembly proof remains open.
 - Verification: 10 engine projection/identity tests, five annotation-adapter
   tests (including real PATZ1), and five locus-inspector tests pass. Locked
   offline `cargo check`, formatting, whitespace and tutorial catalog/manifest

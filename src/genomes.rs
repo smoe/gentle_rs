@@ -15628,6 +15628,10 @@ mod tests {
             assert!(error.message.contains(format));
             assert!(error.message.contains("ToyGenome"));
             assert!(error.message.contains(&manifest.annotation_path));
+            assert!(paths_refer_to_same_location(
+                Path::new(&manifest.annotation_path),
+                &annotation
+            ));
             assert!(error.message.contains("not evidence of zero transcripts"));
             let interval_error = catalog
                 .list_gene_transcript_records("ToyGenome", "chr1", 1, 8, None, None, None)

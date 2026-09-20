@@ -1122,14 +1122,18 @@ fn write_comparisons<'a>(
     Ok(())
 }
 
-/// Resolve only existing, ordinary directory components. In particular, do not
-/// canonicalize away a caller's symlink and then mistakenly call it safe.
 fn is_parent_component(component: &Component<'_>) -> bool {
     matches!(component, Component::ParentDir)
         || matches!(component, Component::Normal(value) if *value == OsStr::new(".."))
 }
 
+/// Resolve only existing, ordinary directory components. In particular, do not
+/// canonicalize away a caller's symlink and then mistakenly call it safe.
 fn checked_directory(path: &Path) -> Result<PathBuf, EngineError> {
+    // A join onto a Windows verbatim current directory can erase parent steps.
+    if path.components().any(|c| is_parent_component(&c)) {
+        return Err(invalid("parent traversal is not allowed in output paths"));
+    }
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -3460,16 +3464,86 @@ pub(crate) mod tests {
         let child = root.join("nested");
         fs::create_dir(&child).unwrap();
         assert_eq!(checked_directory(&child).unwrap(), child);
-        assert!(checked_directory(&child.join("..")).is_err());
+        let traversal = raw_parent_path(&child, "");
+        assert!(traversal.components().any(|c| c == Component::ParentDir));
+        assert!(
+            checked_directory(&traversal)
+                .unwrap_err()
+                .message
+                .contains("parent traversal")
+        );
         fs::write(root.join("file"), b"not a directory").unwrap();
         assert!(checked_directory(&root.join("file/child")).is_err());
     }
 
     #[test]
-    fn parent_guard_rejects_verbatim_windows_normal_parent_components() {
-        // Rust exposes `..` as `Normal` inside some Windows verbatim paths.
+    fn parent_guard_defensively_rejects_literal_parent_components() {
         assert!(is_parent_component(&Component::Normal(OsStr::new(".."))));
         assert!(!is_parent_component(&Component::Normal(OsStr::new("safe"))));
+    }
+
+    // Preserve the intentionally invalid spelling; PathBuf::push/join may
+    // normalize it away on Windows when the root has a verbatim prefix.
+    fn raw_parent_path(child: &Path, suffix: &str) -> PathBuf {
+        let mut raw = child.as_os_str().to_os_string();
+        raw.push(std::path::MAIN_SEPARATOR_STR);
+        raw.push("..");
+        raw.push(std::path::MAIN_SEPARATOR_STR);
+        raw.push(suffix);
+        PathBuf::from(raw)
+    }
+
+    #[test]
+    fn raw_parent_traversal_is_rejected_at_export_and_both_receipt_readers() {
+        let (_temp, root) = temporary_root();
+        let req = request(&root, "export");
+        let receipt = export_tss_profiles(&synthetic_report(), &req).unwrap();
+        let output = Path::new(&req.output_dir);
+        let before = fs::read(output.join(RECEIPT_FILE)).unwrap();
+        let traversal = raw_parent_path(output, "export");
+        assert!(traversal.components().any(|c| c == Component::ParentDir));
+        for error in [
+            checked_directory(&traversal).unwrap_err(),
+            destination(traversal.to_str().unwrap()).unwrap_err(),
+            verify_tss_profile_receipt(&traversal, &receipt).unwrap_err(),
+            read_and_verify_tss_profile_receipt(&traversal).unwrap_err(),
+        ] {
+            assert!(error.message.contains("parent traversal"), "{error:?}");
+        }
+        read_and_verify_tss_profile_receipt(output).unwrap();
+        assert_eq!(fs::read(output.join(RECEIPT_FILE)).unwrap(), before);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn native_windows_raw_parent_paths_survive_parsing_but_not_verbatim_join() {
+        let (temp, root) = temporary_root();
+        eprintln!(
+            "temporary path: {:?}; canonical path: {root:?}",
+            temp.path()
+        );
+        assert_eq!(root.join("nested").join(".."), root);
+        for raw in [
+            r"\\?\C:\a\..\b",
+            r"C:\a\..\b",
+            r"\\server\share\a\..\b",
+            r"nested\..\b",
+        ] {
+            let path = Path::new(raw);
+            assert!(path.components().any(|c| c == Component::ParentDir));
+            assert!(
+                checked_directory(path)
+                    .unwrap_err()
+                    .message
+                    .contains("parent traversal")
+            );
+            assert!(
+                destination(raw)
+                    .unwrap_err()
+                    .message
+                    .contains("parent traversal")
+            );
+        }
     }
 
     #[test]

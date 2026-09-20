@@ -2527,9 +2527,14 @@ typed unassessed coverage, not per-transcript absence warnings. See
 Native DNA-map and Splicing Expert comparison lanes consume one engine-owned
 local projection. Use the sequence anchor orientation exactly once, preserve
 uncropped chain identities and require a live sequence/anchor binding for
-navigation. The presentation assembly must exactly match both the enclosing
-locus assembly and the genomic anchor's `genome_id`; sequence hashes alone do
-not authorize projecting coordinates from another assembly. Comparison rows
+navigation. The presentation assembly must exactly match the enclosing locus
+assembly and the declared annotation build. The anchor's `genome_id` is a
+catalog key, not an independent assembly identifier, and must not be compared
+to that assembly label. Live navigation still requires the exact saved catalog
+key, chromosome, interval, orientation and sequence binding. Independent
+catalog-to-assembly authority is not yet retained in this report: identical
+sequence bytes do not prove that a caller's assembly declaration is correct.
+Do not infer that authority from substring matching or aliases. Comparison rows
 never acquire project feature IDs and must not
 enter support matrices, transcript derivation or primer-design scope. Only
 complete-chain/strand matches may link a loaded transcript to comparison rows;

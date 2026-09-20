@@ -77,13 +77,15 @@ The source-comparison work in `f7afe95d` was an explicit user-requested
 exception to this verification freeze. It does not authorize further feature
 scope before the exact-SHA gates. Windows run
 [35461010366](https://github.com/smoe/gentle_rs/actions/runs/35461010366) at
-`885fac49` reduced the native library result to ten failures. The bounded
-follow-up preserves hash and traversal checks while fixing the five primary
-platform causes: verbatim-path parent segments, PDF sync permissions, internal
-shell handling of Windows paths, a stale synthetic assembly binding and the
-LF policy for a hash-bound adapter input. The remaining failures were dependent
-mutex poisoning. Focused local tests pass; native Windows confirmation remains
-required and is not claimed here.
+`885fac49` produced ten failures: six causes, eight primary failures and two
+PDF-triggered mutex-poison cascades. See the [root-cause analysis](testing.md#september-2026-failure-analysis).
+The follow-up retains PDF write access and byte-exact LF protection, restores
+the shared shell grammar with a quoted caller, and tests raw traversal through
+export and receipt readers. Distinct catalog/assembly fixtures are restored;
+unsupported cross-namespace comparisons are removed, not replaced with aliases.
+Independent anchor-to-assembly authority remains a documented limitation.
+Local regression checks do not certify native Windows behavior; run the new
+Windows path probe and the full suite at the final candidate SHA.
 
 Glen's `bot/gui-usability-20260919-885fac49` contribution restores the reviewed
 native DNA-window sizing, bounded/resizable toolbar, 16 MiB TSS worker and root

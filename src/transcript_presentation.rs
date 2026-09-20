@@ -79,7 +79,6 @@ pub fn validate_locus(
             .as_ref()
             .ok_or("Transcript presentation requires a genomic anchor")?;
         if p.assembly != locus.isoform_evidence.assembly
-            || p.assembly != anchor.genome_id
             || canonical_chr(&p.chromosome) != canonical_chr(&anchor.chromosome)
             || p.locus_sequence_sha256 != bare_hash(&binding.sequence_sha256)
             || p.records.iter().any(|r| match locus.gene_strand.as_str() {
@@ -588,6 +587,38 @@ mod tests {
                 if strand == "+" { 100 } else { 400 }
             );
             gentle_engine::transcript_presentation::validate(&p).unwrap();
+            for orientation in ["+", "-"] {
+                let mut locus: gentle_protocol::isoform_evidence::GeneLocusEvidenceDisplayReport =
+                    serde_json::from_value(serde_json::json!({
+                        "schema": gentle_protocol::GENE_LOCUS_EVIDENCE_DISPLAY_SCHEMA,
+                        "seq_id": "synthetic-locus", "gene_strand": strand,
+                        "locus_local_start_1based": 1, "locus_local_end_1based": 900,
+                        "sequence_binding": {"sequence_sha256": "a".repeat(64), "sequence_length_bp": 900,
+                            "genome_anchor": {"genome_id": "synthetic-catalog-entry", "chromosome": "test",
+                                "start_1based": 1, "end_1based": 900, "strand": orientation}},
+                        "isoform_evidence": {"assembly": "synthetic"},
+                        "transcript_presentation": p
+                    })).unwrap();
+                let original = serde_json::to_value(&locus.transcript_presentation).unwrap();
+                let document = crate::locus_report::LocusDocument::from_json(
+                    &serde_json::to_vec(&locus).unwrap(),
+                )
+                .unwrap();
+                project_locus(document.locus()).unwrap();
+                assert_eq!(
+                    serde_json::to_value(&document.locus().transcript_presentation).unwrap(),
+                    original
+                );
+                // Identical sequence bytes do not excuse a mismatched declared assembly.
+                locus.isoform_evidence.assembly = "other-assembly".into();
+                assert!(validate_locus(&locus).is_err());
+                assert!(
+                    crate::locus_report::LocusDocument::from_json(
+                        &serde_json::to_vec(&locus).unwrap()
+                    )
+                    .is_err()
+                );
+            }
         }
     }
     #[test]

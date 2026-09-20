@@ -69,7 +69,7 @@ Release cut line:
 - Carry the unrecorded `.10` acceptance forward without erasing its historical ledger; bind each new verdict to the selected `.11` SHA.
 - Packaging needs native CI proof; retain the published tag and require Glen's readiness verdict and owner approval before a subsequent release.
 
-Outstanding acceptance scope (including the [Windows root-cause follow-up and remaining input audit](testing.md#september-2026-failure-analysis)):
+Outstanding acceptance scope (including [native Windows repairs and the expanded input audit](testing.md#september-2026-failure-analysis), and [independent anchor-to-assembly authority](architecture.md#source-coherent-locus-transcript-presentation)):
 - Glen reports five-gene export QC at `d978b0c4` with LOCUS-column fix `d37bd427`; recheck the [selected annotated downloads](integrated_locus_tss_profiles.md), receipts and raw signal/motif provenance at the final candidate. Before offering EMBL, re-export into fresh directories and independently compare GenBank/EMBL/FASTA sequences and annotations. [Synthetic format-parity coverage](sequence_format_parity.md) does not replace his September 13 real-data acceptance.
 - Run TP73/PATZ1 and promoter-matrix GUI smoke, including cancellation and [DNA-map/Structure source comparison](transcript_source_presentation.md#dna-map-and-structure-tab) with unchanged primer targets; obtain canonical
   CD44/TGFB1/SERPINE1 region sets before real-candidate analysis; verify overlapping TSS bands, zero-position peaks and per-TSS CUT&RUN/TFBS arrays against continuation-page IDs in the exact supplied bundle, never infer missing ROIs.

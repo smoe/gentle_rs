@@ -57,6 +57,9 @@ an OS-dependent assumption portable.
   not just the output fixture. Check `git check-attr text eol -- PATH` and add a
   scoped `text eol=lf` rule for LF-authored text whose raw bytes are contractual;
   preserve genuinely binary/verbatim resources with an appropriate binary rule.
+  Audit workflow `required_files`, nested operation paths and retained/generated
+  reports as well as sibling manifests. A path reference alone is not a recorded
+  raw-file digest: distinguish raw bytes from parsed sequence/semantic hashes.
   Extend `scripts.test_tutorial_checkouts` with the input and its recorded
   digest. Its disposable Git checkouts simulate LF/CRLF conversion on any host.
   Never normalize raw hash inputs, edit expected digests, or regenerate scientific
@@ -93,6 +96,10 @@ an OS-dependent assumption portable.
   strands and loaded sequence orientations, and reject mismatched identities at
   the layer that owns the necessary evidence. Missing assembly authority must
   remain an explicit limitation, not an alias inferred from a catalog label.
+- **Bounded drafts:** budget the final UTF-8 message, not only its JSON payload.
+  Include pre-existing text, quoted command and all framing/prefixes. Exercise
+  exact-limit and one-byte-over input, multibyte text and rejection without
+  partial mutation or dispatch.
 - **Failure triage:** retain the full failing log and exact revision. Group
   repeated errors by cause; fix the first panic before considering poisoned
   locks. Do not add unconditional poison recovery or timeouts to hide the
@@ -131,14 +138,50 @@ Thus neither convention may be inferred from the field name alone. Native
 Windows acceptance and independent assembly authority remain separate from
 local regression results.
 
-The input audit is not complete. A direct sibling path/digest scan verified
-three further unpinned inputs under `test_files/fixtures/`:
-`isoform_evidence/patz1/patz1_expression.tsv`,
-`isoform_evidence/patz1/patz1_isoform_panel.json`, and
-`transcript_assay_panel/patz1/patz1_assay_probe_evidence.json`. Their recorded
-digests in `patz1_assay_isoform_evidence.json` match the current bytes. Audit
-nested bindings and their consumers before broadening checkout rules; passing
-this Windows run does not establish that every retained input is protected.
+The corrective follow-up restores distinct catalog/assembly fixtures and removes
+the unsupported cross-namespace conditions rather than changing input labels.
+Both gene strands and loaded orientations exercise source loading, portable
+report ingestion and projection; live navigation still rejects a changed catalog
+key. Independent anchor assembly proof remains open. The shared shell grammar is
+restored and the actual `--resolution` caller quotes its path. Raw `OsString`
+traversal tests now reach export and both receipt readers; the Windows-only
+`native_windows_raw_parent_paths_survive_parsing_but_not_verbatim_join` test probes
+raw components versus normalized joins and prints temporary/canonical spellings.
+It has not been executed on macOS; a future Windows run must supply that evidence.
+
+The expanded 2026-09-20 audit at `dbb305a7` plus this repair enumerated all tracked
+JSON with `git ls-files '*.json'`, recursively followed repository fixture-path
+strings (including `docs/examples/workflows/*.json`), and compared current raw
+SHA-256 values with all recorded JSON digest strings, not only sibling fields.
+`git check-attr text eol -- PATH` confirmed three unpinned raw-hash inputs.
+All paths in the following table are under `test_files/fixtures/`; digest
+bindings are in `transcript_assay_panel/patz1/patz1_assay_isoform_evidence.json`.
+
+| Input | Recorded binding and matching SHA-256 prefix |
+| --- | --- |
+| `isoform_evidence/patz1/patz1_expression.tsv` | `/data/provenance/0`, `6d24b485b781` |
+| `isoform_evidence/patz1/patz1_isoform_panel.json` | `/data/provenance/1`, `d7cb725f9c2e` |
+| `transcript_assay_panel/patz1/patz1_assay_probe_evidence.json` | `/data/provenance/2`, `9c9aa103002a` |
+
+The supplied review additionally named ten unpinned inputs. Their path references
+are confirmed below, but their current raw-file digests do **not** occur in
+tracked JSON. They are consumer-audit candidates, not ten more established
+raw-hash bindings. The review's larger confirmed-digest count was not reproduced.
+
+| Additional input(s), under `test_files/fixtures/` | Referencing workflow/request |
+| --- | --- |
+| `evidence_viewer/tp73_cutrun_demo.bed` | `docs/examples/workflows/tp73_genome_evidence_viewer_release_proof.json` |
+| `gene_locus_evidence/general_locus_demo/{h3k4me3_context,tp73_occupancy}.bed` | Adjacent `preparation_request.json` |
+| `gene_locus_evidence/patz1_offline_composer/{saos2_dnp73beta,saos2_tap73alpha,skmel29_dnp73beta,skmel29_tap73alpha}.bed` | `docs/examples/workflows/patz1_gene_locus_evidence_offline.json` |
+| `isoform_evidence/patz1/patz1_minus_strand.gb` | Same PATZ1 locus workflow |
+| `transcript_assay_panel/patz1/patz1_assay_minus_strand.gb` | `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json` |
+| `reporter_vectors/synthetic_mcs_backbone.gb` | `docs/examples/workflows/{promoter_reporter_panel_planning_offline,regulatory_fragment_panel_planning_offline}.json` |
+
+This inventory does not cover dynamically produced hashes, non-JSON receipts,
+or paths reconstructed at runtime. Trace these consumers and add scoped checkout
+coverage before broadening LF rules; no listed input or recorded digest was
+rewritten in this repair. Passing the earlier Windows run does not establish
+that every retained input is protected.
 
 ## 3. CLI/protocol tests (required)
 

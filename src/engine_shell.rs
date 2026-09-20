@@ -16901,7 +16901,14 @@ fn parse_json_payload(raw: &str) -> Result<String, String> {
         return Ok(raw.to_string());
     }
     let candidate = Path::new(trimmed);
-    if candidate.is_file() {
+    // Preserve inline JSON strings/scalars, but report file intent as a file
+    // error instead of passing a missing path to the JSON decoder.
+    let looks_like_path = !trimmed.starts_with('"')
+        && (trimmed.contains(['/', '\\'])
+            || candidate
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("json")));
+    if candidate.is_file() || looks_like_path {
         let text = fs::read_to_string(candidate).map_err(|e| {
             format!(
                 "Could not read JSON file '{}': {e}",

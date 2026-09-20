@@ -2322,6 +2322,13 @@ design. `grna_practical_filter_and_oligos` instead requires an existing
 `guide_set_id`; a generic candidate set is not a guide set.
 
 You can pass JSON from a file with `@file.json` or a bare existing file path.
+Bare path-like arguments (containing `/` or `\`, or ending in `.json`) report
+file-read errors when missing, rather than misleading inline-JSON syntax errors.
+Use `@` to make file intent unambiguous. In GENtle shared shell lines, quote
+paths with spaces or backslashes, for example `--resolution 'C:\GENtle data\resolution.json'`.
+Backslash escapes the next character outside single quotes, including inside
+double quotes; programmatic callers should use the shared `quote_shell_arg`
+helper, not interpolate native paths. This is not the native OS shell grammar.
 When loading from file path, an initial shebang line (`#!...`) is ignored so
 executable script files can embed JSON payloads directly.
 `workflow` accepts both raw workflow payloads (`{"run_id":"...","ops":[...]}`)

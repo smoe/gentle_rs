@@ -4898,6 +4898,31 @@ fn parse_json_payload_reads_existing_file_without_at_prefix() {
 }
 
 #[test]
+fn parse_json_payload_reports_missing_paths_without_reinterpreting_json() {
+    let dir = tempdir().unwrap();
+    for path in [
+        dir.path().join("missing file.json").display().to_string(),
+        r"C:\missing fixture\resolution.json".to_string(),
+        "missing-fixture.json".to_string(),
+    ] {
+        let error = parse_json_payload(&path).unwrap_err();
+        assert!(error.contains("Could not read JSON file"), "{error}");
+        assert!(error.contains(&path), "{error}");
+    }
+    for json in [
+        r#"{"path":"/missing.json"}"#,
+        "[]",
+        r#""C:\\missing.json""#,
+        "null",
+        "true",
+        "12.5",
+        "{malformed",
+    ] {
+        assert_eq!(parse_json_payload(json).unwrap(), json);
+    }
+}
+
+#[test]
 fn parse_json_payload_strips_shebang_from_file() {
     let dir = tempdir().expect("temp dir");
     let path = write_demo_workflow_with_shebang(dir.path(), "workflow.gsh", "from_shebang");
@@ -20184,7 +20209,7 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
     }
 
     let td = tempdir().expect("tempdir");
-    let resolution_path = td.path().join("resolution.json");
+    let resolution_path = td.path().join("resolution with spaces.json");
     fs::write(
         &resolution_path,
         serde_json::to_vec_pretty(&GeneSetResolutionReport {
@@ -20205,9 +20230,14 @@ fn parse_gene_sets_resolve_and_promoter_cohort_commands() {
          --motif-threshold SP1=4.0 --max-distance-bp 75 --anchor-mode motif-only \
          --upstream-bp 800 --downstream-bp 150 --genome-catalog genomes.json \
          --cache-dir cache --output screen.json",
-        resolution_path.display()
+        quote_shell_arg(&resolution_path.to_string_lossy())
     ))
     .expect("parse gene-sets regulatory-partner-screen");
+    assert!(parse_shell_line(&format!(
+        "gene-sets regulatory-partner-screen ToyGenome --resolution {} --anchor-motif TP73 --partner-motif SP1",
+        resolution_path.display()
+    ))
+    .is_err());
     match screen {
         ShellCommand::GeneSetsRegulatoryPartnerScreen {
             genome_id,

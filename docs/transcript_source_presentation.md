@@ -38,6 +38,15 @@ The locus JSON carries `transcript_presentation`, schema
 pages then consume the same canonical presentation. FASTA and locus JSON keep
 their independent existing hash bindings.
 
+The source assembly must exactly match `isoform_evidence.assembly`; the anchor's
+`genome_id` is a catalog key and may legitimately differ. Some legacy internal
+producers put that catalog key in the evidence's assembly field, so inspect the
+actual report rather than guessing its convention. Source-build checks remain
+exact; do not relabel an annotation or infer aliases to make it pass. Reports
+do not yet carry independently verified anchor-to-assembly authority. A matching
+sequence hash alone does not close that gap; live navigation additionally
+checks the saved anchor against the loaded sequence.
+
 For detail-only inspection, the context manifest's gene entry can itself carry
 `transcript_annotation_sources`, with paths relative to the manifest. This
 joins in memory and does not modify its source locus JSON or old overview.
