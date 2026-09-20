@@ -17,6 +17,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import tomllib
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -284,6 +285,64 @@ class ReleaseCandidateTests(unittest.TestCase):
 
 
 class WorkflowWiringTests(unittest.TestCase):
+    def test_replayed_tutorial_reports_use_current_package_version(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+        checked = 0
+
+        def check_versions(value, path):
+            nonlocal checked
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    if key in ("gentle_version", "selection_audit_generator_revision"):
+                        checked += 1
+                        self.assertEqual(item, version,
+                                         f"{path}: regenerate tutorial artifacts after a version bump; "
+                                         "do not relabel provenance without replaying the workflow")
+                    check_versions(item, path)
+            elif isinstance(value, list):
+                for item in value:
+                    check_versions(item, path)
+
+        for path in sorted((root / "docs/tutorial/generated/artifacts").rglob("*.report.json")):
+            with self.subTest(path=path.relative_to(root)):
+                check_versions(json.loads(path.read_bytes()), path.relative_to(root))
+        self.assertGreater(checked, 0, "expected version-bound retained tutorial reports")
+
+    def test_windows_is_unconditional_and_unix_jobs_follow_selection(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        windows = text.split("\n  windows:\n", 1)[1].split("    steps:\n", 1)[0]
+        self.assertIn("runs-on: windows-latest", windows)
+        self.assertNotIn("needs:", windows)
+        self.assertNotIn("if:", windows)
+        for platform in ("macos", "linux"):
+            job = text.split(f"\n  {platform}:\n", 1)[1].split("    steps:\n", 1)[0]
+            self.assertIn("needs: select-platform", job)
+            self.assertIn(f"if: needs.select-platform.outputs.platform == '{platform}'", job)
+
+    def test_sampled_platform_is_unix_and_manual_selection_is_preserved(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        selection = text.split("\n  select-platform:\n", 1)[1].split("\n  headless-linux:\n", 1)[0]
+        script = textwrap.dedent(selection.split("        run: |\n", 1)[1])
+        cases = [(requested, sha, "macos" if sha % 2 == 0 else "linux")
+                 for requested in ("", "sampled") for sha in (0, 1, 2, 3, 0xffffffff)]
+        cases.extend((platform, 0, platform) for platform in ("macos", "linux", "windows"))
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            for requested, sha, expected in cases:
+                with self.subTest(requested=requested, sha=sha):
+                    output.write_text("")
+                    completed = subprocess.run(
+                        ["bash", "-c", script],
+                        env={**os.environ, "REQUESTED_PLATFORM": requested,
+                             "GITHUB_SHA": f"{sha:08x}" + "0" * 32, "GITHUB_OUTPUT": str(output)},
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+                    self.assertEqual(output.read_text().strip(), f"platform={expected}")
+
     def test_workflows_use_reviewed_node24_compatible_actions(self) -> None:
         # Upstream action.yml runtimes were checked on 2026-09-16. The two
         # composite actions use shell steps or Node 24 sub-actions already.
@@ -348,6 +407,7 @@ class WorkflowWiringTests(unittest.TestCase):
         summary = text.split("\n  ci-summary:\n", 1)[1]
         dependencies = summary.split("    needs:\n", 1)[1].split("    if:", 1)[0]
         self.assertIn("      - release-policy\n", dependencies)
+        self.assertIn("      - windows\n", dependencies)
         self.assertIn("    if: always()", summary)
         self.assertIn("RELEASE_POLICY_RESULT: ${{ needs.release-policy.result }}", summary)
         script = textwrap.dedent(summary.split("        run: |\n", 1)[1])
@@ -360,11 +420,11 @@ class WorkflowWiringTests(unittest.TestCase):
                 "HEADLESS_RESULT": "success",
                 "MACOS_RESULT": "skipped",
                 "LINUX_RESULT": "skipped",
-                "WINDOWS_RESULT": "skipped",
+                "WINDOWS_RESULT": "success",
                 selected: "success",
             }
             cases = [(results, True)]
-            for required in ("RELEASE_POLICY_RESULT", "HEADLESS_RESULT", selected):
+            for required in ("RELEASE_POLICY_RESULT", "HEADLESS_RESULT", "WINDOWS_RESULT", selected):
                 for outcome in ("failure", "cancelled", "skipped", ""):
                     cases.append(({**results, required: outcome}, False))
             for case, should_pass in cases:

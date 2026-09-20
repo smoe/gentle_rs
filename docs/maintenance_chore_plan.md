@@ -165,9 +165,10 @@ Pass criteria:
 
 ### Portable Tutorial Checkouts
 
-The sampled macOS/Linux/Windows CI job reuses its built `gentle_examples_docs`
-binary to check two isolated local Git checkouts: `core.autocrlf=false` with
-`core.eol=lf`, and `core.autocrlf=true` with `core.eol=crlf`. Thus every selected
+The required Windows CI job and sampled Linux/macOS job each reuse their built
+`gentle_examples_docs` binary to check two isolated local Git checkouts:
+`core.autocrlf=false` with `core.eol=lf`, and `core.autocrlf=true` with
+`core.eol=crlf`. Thus every selected
 host tests Windows-style conversion as well as LF inputs. Both run `--check`
 and the complete offline `tutorial-check`; comparison and evidence hashes are
 not weakened. Git history is retained for tutorial review dates. Ignored caches,

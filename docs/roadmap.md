@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-20 - Select a version-synchronized `.11` SHA for [release acceptance](release_notes/release_notes_v0.1.0-internal.11.md#acceptance-status): native CI/container/packages, then Glen's receipts. The existing tag predates the version repair; tagging remains owner-managed. Keep [measurement-led .12 profiling](#12-gui-performance-priorities) with Glen and follow the [post-release version rollover](release.md#post-release-development-version).
+Last session: 2026-09-20 - Select a version-synchronized `.11` SHA for [release acceptance](release_notes/release_notes_v0.1.0-internal.11.md#acceptance-status): native CI/container/packages, then Glen's receipts. The existing tag predates the version repair; tagging remains owner-managed. The selected [`.12` aim](#12-priorities) is [DNA-feature rendering latency](dna_feature_rendering_latency_plan.md), measurement-led with Glen; follow the [post-release version rollover](release.md#post-release-development-version).
 `.10` is published at `84f34a9e` without recorded exact-candidate acceptance; its ledger remains pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -57,6 +57,9 @@ Release acceptance:
 - Version metadata, LF/CRLF tutorial replays, capability/parity checks, and the
   deterministic proof workflow pass the pre-tag validation recorded in the
   versioned release notes.
+- Require Windows CI on every push plus one selected Linux/macOS job; before
+  tagging, retain both Unix verdicts at the same SHA. Confirm the `.11` retained
+  tutorial-version replay on native Windows, not only on the local host.
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
   external resources; CI uses tiny local fixtures without restricting the
   engine or GUI contracts to those fixture sizes.
@@ -106,6 +109,10 @@ Useful session close:
 - Name the next-release aim or state that it remains undecided.
 - Keep completed outcomes in [`CHANGELOG.md`](CHANGELOG.md) and durable rules in [`decisions.md`](decisions.md).
 - Leave unrelated local paper/figure work untouched unless explicitly requested.
+
+## .12 Priorities
+
+Selected `.12` aim: DNA-feature presentation in the sequence viewer responds immediately on real annotated loci. Work the [feature-rendering latency plan](dna_feature_rendering_latency_plan.md) in order: feature-density fixture ladder, profiler scopes and cache counters first, then confirm or reject its five recorded hypotheses before changing any hotspot; displayed features, coordinates, labels and scientific outputs stay identical. That plan also carries release-like native profiling without the semantic snapshot writer, the startup/construction/hydration/first-paint separation with auditor-owned interaction budgets, resize/input-to-content attribution at all four PATZ1 sizes, and the prebuilt benchmark runner. Keep this separate from `.11` acceptance, follow [DEC-039](decisions.md#dec-039-external-auditor-owns-the-performance-verdict), and treat [Glen's PATZ1 benchmark](gui_usability_acceptance_20260920.md#authentic-patz1-rendering-and-resize-benchmark) as one workload, not a general performance verdict.
 
 ## Phase A: AI Communication And Safety Plane
 
@@ -255,7 +262,7 @@ severity presentation are recorded in `docs/CHANGELOG.md`.
 ## Phase D: Visualization And Workflow UX
 
 Use the GUI as the human inspection surface for engine-owned evidence. Continue dense DNA-map readability, alternative-splicing polish, gel/feature editing, contextual links, visual regression fixtures and scroll/zoom hardening when they fit the selected release story.
-Improve inspection clarity, deterministic exports and manual-smoke reliability; defer unrelated visual redesigns. Next [contextual availability](contextual_action_availability_plan.md): Glen's live macOS check, then further action families; native-menu and agent/host-probe integration remain deferred.
+Improve inspection clarity, deterministic exports and manual-smoke reliability; defer unrelated visual redesigns. Rendering-latency work belongs to [.12 Priorities](#12-priorities), not here. Next [contextual availability](contextual_action_availability_plan.md): Glen's live macOS check, then further action families; native-menu and agent/host-probe integration remain deferred.
 
 - Evidence-viewer follow-up: keep the Splicing Expert evidence ledger readable
   on large real loci and add direct report-store selectors if probe/expression
@@ -268,13 +275,6 @@ Improve inspection clarity, deterministic exports and manual-smoke reliability; 
   shared provider/preflight/quote contracts, then improve product-specific
   starter templates, validation previews, and exported-bundle review affordances
   before considering provider-specific portal/API actions.
-
-### .12 GUI Performance Priorities
-Use [Glen's public PATZ1 benchmark](gui_usability_acceptance_20260920.md#authentic-patz1-rendering-and-resize-benchmark) as a workload, not a general performance verdict; follow DEC-039 and keep these tasks separate from `.11` acceptance.
-1. Profile a release-like native binary without the semantic snapshot writer; retain exact source/toolchain/profile and project/report hashes, native traces and repeated stable-host measurements.
-2. Separate process startup, first DNA-window construction, deferred hydration and first paint; establish auditor-owned interaction budgets for startup/open, pan/zoom/selection, tabs and multiwindow focus.
-3. Attribute resize/input-to-content latency across event delivery, viewport synchronization, repaint/wake-up scheduling and compositor work at all four PATZ1 sizes. Keep CPU paint, semantic-harness waits and release-binary timings distinct; capture locally, not to per-frame network storage.
-4. Provide a prebuilt, quick-running benchmark/acceptance runner with reproducible offline PATZ1 preparation and isolated profile baselines; measure build/link cost separately. Only then change a confirmed runtime hotspot. Caching/culling, virtualization, worker/wake-up changes or a single-root workspace need profiling evidence and preserved subject bindings, cancellation and scientific outputs.
 
 ## Phase E: Integration Polish And Deferred Policy Items
 

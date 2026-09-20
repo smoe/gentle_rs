@@ -308,7 +308,14 @@ publication from a tag push, a successful build, or a draft GitHub Release.
    Preserve the released notes' actual verdicts and pending evidence.
 3. Run `cargo metadata --locked --offline --no-deps --format-version 1`,
    `cargo test --locked -q --test release_version_consistency`, and
-   `cargo check -q --locked`. Review the diff for dependency or fixture churn.
+   `cargo check -q --locked`. Rebuild `gentle_examples_docs` at the new version
+   and run `tutorial-generate --tutorial-output TEMP_DIR`. Inspect the generated
+   diff and copy back the affected retained reports (including normalized
+   generator-version fields) and their generated checksum report; do not merely
+   relabel old provenance. Run
+   `python3 -m unittest scripts.test_release_candidate -v` and
+   `cargo run --locked --bin gentle_examples_docs -- tutorial-check`.
+   Review the diff for dependency, scientific-result or unrelated fixture churn.
 4. Commit the synchronized development metadata. Push only within the owner's
    authorization; never create/move a tag, upload artifacts or publish a
    release as a side effect. If no agent session is active, do this at the

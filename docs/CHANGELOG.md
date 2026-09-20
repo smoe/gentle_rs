@@ -1,5 +1,34 @@
 # GENtle Changelog
 
+## 2026-09-20 - .12 DNA Feature Rendering Latency Plan
+
+- Record the owner-selected `.12` priority in the roadmap and
+  `dna_feature_rendering_latency_plan.md`: measure feature-density scaling,
+  construction/hydration and native event-to-content latency before optimizing
+  a confirmed hotspot. Glen retains benchmark ownership; proposed interaction
+  budgets are not acceptance, and no runtime performance change is claimed.
+
+## 2026-09-20 - Required Windows CI And Tutorial Version Replay
+
+- Merge `gentle_rs_2_main` at `1d85d4ce` by fast-forward, preserving unrelated
+  local roadmap, paper and poster work.
+- Restore Windows builds and tests on every push/PR. Sample only Linux/macOS;
+  keep manual platform selection and require Windows success in the existing
+  aggregate check even when the Unix job passes.
+- Reproduce the tutorial mismatch from Windows job `106081399002` on macOS:
+  three retained assay reports still declare `.10` after the `.11` version bump.
+  Replay their workflow at `.11` rather than weakening comparison or input
+  hashes. Add an early report-version gate and explicit rollover instructions.
+  The Cargo nightly-lint message is a warning, not the failing build step.
+- Regeneration changes only 14 version fields in the three reports and their
+  three output checksums; scientific values and input hashes are unchanged.
+- Validation on macOS at `1d85d4ce` plus this repair: 36 Python policy/checkout
+  tests, 16 focused Rust tests, all 29 tutorial chapters, locked Cargo check,
+  formatting and whitespace checks pass. Isolated LF/CRLF replays pass with
+  the four regenerated files explicitly overlaid, not as exact-commit evidence.
+  Existing linker and two stale tutorial-review warnings remain. No full-suite,
+  live GUI or native-Windows acceptance is claimed; no tags or push.
+
 ## 2026-09-20 - Report-Backed Native TSS Evidence
 
 - Add background attachment of the existing TSS `report.json` to an annotated

@@ -180,7 +180,7 @@ being guessed into this acceptance fix.
 
 ## `.12` priorities
 
-The [roadmap](roadmap.md#12-gui-performance-priorities) owns the release ordering.
+The [roadmap](roadmap.md#12-priorities) owns the release ordering.
 The PATZ1 results narrow the next investigation; they do not establish that
 feature caching is the solution or permit subtracting debug X11 latency from
 optimized embedded-frame timings to assign a runtime cause.

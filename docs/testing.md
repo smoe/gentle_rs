@@ -28,6 +28,14 @@ cargo test engine::tests::
 
 ### Platform-Specific Coverage
 
+Every push to `main` and every PR runs the full native Windows CI job plus one
+commit-selected Unix job (Linux or macOS), alongside the Linux headless and
+release-policy checks. The aggregate `CI / selected platform` status requires
+Windows, the selected Unix job and both shared checks to succeed. Manual
+`platform=linux|macos` dispatches also run Windows; `platform=windows` runs only
+the Windows desktop job plus the shared checks. `sampled` never selects Windows
+instead of Unix coverage.
+
 A green Windows job does not exercise Unix-only test fixtures. In the
 2026-09-19 source audit, `src/` has 59 tests with adjacent `#[cfg(unix)]` and
 `#[test]` attributes, including 26 in `src/engine/tests.rs`. That file's 44
@@ -111,7 +119,7 @@ the [component parser](https://doc.rust-lang.org/src/std/path.rs.html), and
 Source inspection establishes the mechanism; it does not replace executing the
 regression on Windows. Before release, use the existing `ci.yml` manual platform
 selector for Windows, macOS and Linux at one frozen SHA, with explicit dispatch
-approval. The default sampled push job does not cover all three.
+approval. The default push covers Windows and one Unix platform, not all three.
 
 #### September 2026 Failure Analysis
 
@@ -332,6 +340,13 @@ preserve the serializer's bytes on Windows; do not normalize away a mismatch
 inside the validator. `scripts.test_tutorial_checkouts` exercises the real
 rules in disposable LF and CRLF Git checkouts without rebuilding or changing
 scientific outputs.
+
+Version changes also require replaying the retained tutorial reports: their
+`gentle_version` and normalized `selection_audit_generator_revision` fields
+must match Cargo. The fast `scripts.test_release_candidate` gate checks these
+fields without compiling Rust. Regenerate with the current binary into a
+temporary output directory, inspect the differences, and retain only the
+affected outputs; do not hand-edit historical provenance or weaken drift checks.
 
 CI additionally runs a CLI smoke path for core tutorial chapters via:
 

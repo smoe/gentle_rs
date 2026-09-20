@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: 'Platform to run, or sampled for commit-derived selection'
+        description: 'Additional platform (Windows always runs); sampled selects Linux or macOS, windows runs Windows only'
         required: false
         type: choice
         options:
@@ -53,11 +53,10 @@ jobs:
           set -euo pipefail
           platform="$REQUESTED_PLATFORM"
           if [[ -z "$platform" || "$platform" == "sampled" ]]; then
-            selector=$((16#${GITHUB_SHA:0:8} % 3))
+            selector=$((16#${GITHUB_SHA:0:8} % 2))
             case "$selector" in
               0) platform="macos" ;;
               1) platform="linux" ;;
-              2) platform="windows" ;;
             esac
           fi
           echo "Selected CI platform: $platform"
@@ -414,8 +413,6 @@ jobs:
 
   windows:
     name: Windows
-    needs: select-platform
-    if: needs.select-platform.outputs.platform == 'windows'
     runs-on: windows-latest
     defaults:
       run:
@@ -635,10 +632,14 @@ jobs:
           echo "Selected platform result: $result"
           echo "Release candidate safety result: $RELEASE_POLICY_RESULT"
           echo "Headless Linux result: $HEADLESS_RESULT"
+          echo "Required Windows result: $WINDOWS_RESULT"
           if [[ "$RELEASE_POLICY_RESULT" != "success" ]]; then
             exit 1
           fi
           if [[ "$HEADLESS_RESULT" != "success" ]]; then
+            exit 1
+          fi
+          if [[ "$WINDOWS_RESULT" != "success" ]]; then
             exit 1
           fi
           if [[ "$result" != "success" ]]; then
