@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="980" viewBox="0 0 980 980">
+  <title>G3 — seven assays, 13-class product matrix and both primer sequences</title>
+  <image href="G3-primer-matrix-and-sequences.raw.png" x="-940" y="-100" width="1920" height="1080"/>
+  <rect x="30" y="185" width="935" height="750" fill="none" stroke="#d62728" stroke-width="3"/>
+  <circle cx="42" cy="197" r="11" fill="#d62728"/>
+  <text x="42" y="202" text-anchor="middle" font-family="sans-serif" font-size="14" font-weight="bold" fill="white">1</text>
+</svg>

@@ -1,0 +1,747 @@
+{
+  "schema": "gentle.gui_semantic_snapshot.v2",
+  "coordinate_space": "egui logical points translated by the viewport outer rectangle; native window decorations are excluded",
+  "generation": 706,
+  "settled": false,
+  "items": [
+    {
+      "semantic_id": "agent.help.open",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-4c7e3fb5a77e82d3a7fa41c6f9e1e182",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 183.59375,
+        "min_y": 0.0,
+        "max_x": 256.90625,
+        "max_y": 18.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.display.arrays",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "checkbox",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 347.375,
+        "min_y": 62.0,
+        "max_x": 431.46875,
+        "max_y": 80.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.display.repeats",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "checkbox",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 265.9375,
+        "min_y": 62.0,
+        "max_x": 339.375,
+        "max_y": 80.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.display.tfbs",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "checkbox",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 582.78125,
+        "min_y": 62.0,
+        "max_x": 637.9375,
+        "max_y": 80.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.feature_tree.filter",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "text_input",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 46.1875,
+        "min_y": 268.0,
+        "max_x": 266.1875,
+        "max_y": 287.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.feature_tree.row",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-e43ebf06d2b75ca7fdf57df469503204",
+      "widget_kind": "row",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 26.0,
+        "min_y": 444.0,
+        "max_x": 312.03125,
+        "max_y": 462.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.map.canvas",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "row",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 357.0,
+        "min_y": 249.0,
+        "max_x": 1161.0,
+        "max_y": 369.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.selection.go",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 937.625,
+        "min_y": 21.0,
+        "max_x": 1032.4375,
+        "max_y": 39.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.selection.map_span",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "row",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 357.0,
+        "min_y": 249.0,
+        "max_x": 1160.9613,
+        "max_y": 369.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597,
+      "outcome_role": "ready"
+    },
+    {
+      "semantic_id": "dna.selection.status",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "status",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 0.0,
+        "min_y": 167.0,
+        "max_x": 580.28125,
+        "max_y": 182.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597,
+      "outcome_role": "ready"
+    },
+    {
+      "semantic_id": "dna.selection.zoom",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 817.40625,
+        "min_y": 21.0,
+        "max_x": 929.625,
+        "max_y": 39.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.selection_formula.apply",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 428.0,
+        "min_y": 145.5,
+        "max_x": 489.09375,
+        "max_y": 163.5
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.selection_formula.input",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "text_input",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 0.0,
+        "min_y": 145.0,
+        "max_x": 420.0,
+        "max_y": 164.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597,
+      "outcome_role": "empty"
+    },
+    {
+      "semantic_id": "dna.sequence.branch",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 159.375,
+        "min_y": 185.0,
+        "max_x": 207.8125,
+        "max_y": 203.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.sequence.open_regions",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 889.125,
+        "min_y": 185.0,
+        "max_x": 952.9375,
+        "max_y": 203.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.sequence.open_tools",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 714.90625,
+        "min_y": 185.0,
+        "max_x": 824.3125,
+        "max_y": 203.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.sequence.reverse_complement",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 87.6875,
+        "min_y": 185.0,
+        "max_x": 151.375,
+        "max_y": 203.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.splitter.info_height",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "splitter",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 0.0,
+        "min_y": 619.40625,
+        "max_x": 320.0,
+        "max_y": 627.40625
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.splitter.info_width",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "splitter",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 328.0,
+        "min_y": 219.0,
+        "max_x": 340.0,
+        "max_y": 860.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "dna.tfbs.menu",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 364.375,
+        "min_y": 85.0,
+        "max_x": 429.6875,
+        "max_y": 103.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "window.dna_viewer",
+      "window_id": "window.dna_viewer",
+      "egui_viewport_id": "\"0122\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "window",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 0.0,
+        "min_y": 0.0,
+        "max_x": 1200.0,
+        "max_y": 860.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597,
+      "outcome_role": "ready"
+    },
+    {
+      "semantic_id": "agent.help.open",
+      "window_id": "window.main",
+      "egui_viewport_id": "\"FFFF\"",
+      "subject_scope": "subject-07efb1cf5cff7ba48f81b95014ead327",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 779.875,
+        "min_y": 122.0,
+        "max_x": 849.1875,
+        "max_y": 140.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 706
+    },
+    {
+      "semantic_id": "main.edit.menu",
+      "window_id": "window.main",
+      "egui_viewport_id": "\"FFFF\"",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 400.28125,
+        "min_y": 122.0,
+        "max_x": 427.0625,
+        "max_y": 140.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 706
+    },
+    {
+      "semantic_id": "main.project.save_state",
+      "window_id": "window.main",
+      "egui_viewport_id": "\"FFFF\"",
+      "widget_kind": "status",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 368.0,
+        "min_y": 890.0,
+        "max_x": 508.9375,
+        "max_y": 905.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 706,
+      "outcome_role": "unsaved"
+    },
+    {
+      "semantic_id": "main.project.sequence.open",
+      "window_id": "window.main",
+      "egui_viewport_id": "\"FFFF\"",
+      "subject_scope": "subject-a2a4a108e5430229b8f7d6821552bdc2",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 478.0,
+        "min_y": 466.0,
+        "max_x": 516.0,
+        "max_y": 504.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 706
+    },
+    {
+      "semantic_id": "window.main",
+      "window_id": "window.main",
+      "egui_viewport_id": "\"FFFF\"",
+      "widget_kind": "window",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 360.0,
+        "min_y": 120.0,
+        "max_x": 1560.0,
+        "max_y": 920.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 706,
+      "outcome_role": "ready"
+    },
+    {
+      "semantic_id": "window.pcr_design",
+      "window_id": "window.pcr_design",
+      "egui_viewport_id": "\"8771\"",
+      "widget_kind": "window",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": true
+      },
+      "rect_logical_points": {
+        "min_x": 18.0,
+        "min_y": 38.0,
+        "max_x": 1902.0,
+        "max_y": 1022.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 706,
+      "outcome_role": "ready"
+    },
+    {
+      "semantic_id": "agent.help.open",
+      "window_id": "window.specialist",
+      "egui_viewport_id": "\"8771\"",
+      "subject_scope": "subject-2cffcb8fddbb42c77cf1363e80ebe441",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 105.34375,
+        "min_y": 38.0,
+        "max_x": 178.65625,
+        "max_y": 56.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 706
+    },
+    {
+      "semantic_id": "agent.help.open",
+      "window_id": "window.splicing_expert",
+      "egui_viewport_id": "\"2211\"",
+      "subject_scope": "subject-8c3b185c2f78d23f6220b3eedf078f6c",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 886.0,
+        "min_y": 303.0,
+        "max_x": 959.3125,
+        "max_y": 321.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "splicing.gene_assay_study.open",
+      "window_id": "window.splicing_expert",
+      "egui_viewport_id": "\"2211\"",
+      "subject_scope": "subject-5b793fcf0ad48c584414e7ed1f72f38b",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 1639.0625,
+        "min_y": 405.0,
+        "max_x": 1754.9062,
+        "max_y": 423.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "splicing.tab.evidence",
+      "window_id": "window.splicing_expert",
+      "egui_viewport_id": "\"2211\"",
+      "subject_scope": "subject-5b793fcf0ad48c584414e7ed1f72f38b",
+      "widget_kind": "tab",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 956.40625,
+        "min_y": 333.0,
+        "max_x": 1015.96875,
+        "max_y": 351.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "splicing.tab.locus_figure",
+      "window_id": "window.splicing_expert",
+      "egui_viewport_id": "\"2211\"",
+      "subject_scope": "subject-5b793fcf0ad48c584414e7ed1f72f38b",
+      "widget_kind": "tab",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 1023.96875,
+        "min_y": 333.0,
+        "max_x": 1102.7812,
+        "max_y": 351.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "splicing.tab.structure",
+      "window_id": "window.splicing_expert",
+      "egui_viewport_id": "\"2211\"",
+      "subject_scope": "subject-5b793fcf0ad48c584414e7ed1f72f38b",
+      "widget_kind": "tab",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 886.0,
+        "min_y": 333.0,
+        "max_x": 948.40625,
+        "max_y": 351.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "splicing.transcript_panel.open",
+      "window_id": "window.splicing_expert",
+      "egui_viewport_id": "\"2211\"",
+      "subject_scope": "subject-5b793fcf0ad48c584414e7ed1f72f38b",
+      "widget_kind": "button",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": false,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 1472.4375,
+        "min_y": 405.0,
+        "max_x": 1631.0625,
+        "max_y": 423.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597
+    },
+    {
+      "semantic_id": "window.splicing_expert",
+      "window_id": "window.splicing_expert",
+      "egui_viewport_id": "\"2211\"",
+      "subject_scope": "subject-5b793fcf0ad48c584414e7ed1f72f38b",
+      "widget_kind": "window",
+      "state": {
+        "visible": true,
+        "enabled": true,
+        "selected": true,
+        "hovered": false
+      },
+      "rect_logical_points": {
+        "min_x": 886.0,
+        "min_y": 303.0,
+        "max_x": 1918.0,
+        "max_y": 1047.0
+      },
+      "pixels_per_point": 1.0,
+      "generation": 597,
+      "outcome_role": "ready"
+    }
+  ]
+}

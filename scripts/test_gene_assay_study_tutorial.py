@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import struct
 import tempfile
 import unittest
 
@@ -42,6 +43,40 @@ class StudyTutorialTests(unittest.TestCase):
         self.assertEqual(len(entry["transcripts"]), 13)
         self.assertEqual(entry["strand"], -1)
         self.assertEqual(entry["sequence_length"], 20802)
+
+    def test_public_gui_checkpoint_evidence_is_hash_bound(self):
+        root = ROOT / "docs/screenshots/gene_assay_study_gui"
+        evidence = json.loads((root / "evidence.json").read_text())
+        self.assertEqual(evidence["schema"], "gentle.manual_gui_tutorial_evidence.v1")
+        self.assertEqual(evidence["status"], "manual_hybrid_pass")
+        self.assertFalse(evidence["automated_gui_acceptance"])
+        self.assertFalse(evidence["inner_agent_invoked"])
+        self.assertEqual(
+            evidence["producer"]["revision"],
+            "3c1c32bcceacbe7d327c09f83ba57dcca2682b06",
+        )
+        self.assertEqual(evidence["result"]["completion_status"], "partial")
+        self.assertEqual(evidence["result"]["transcript_records"], 13)
+        self.assertEqual(evidence["result"]["exact_mature_cdna_classes"], 13)
+        self.assertEqual(evidence["result"]["selected_assays"], 7)
+        self.assertEqual(evidence["result"]["unresolved_class_pairs"], 9)
+        self.assertEqual(evidence["result"]["genomic_specificity_assessments"], 0)
+        self.assertEqual(evidence["result"]["whole_transcriptome_specificity"], "not_run")
+
+        self.assertEqual([row["id"] for row in evidence["captures"]], [f"G{i}" for i in range(1, 7)])
+        for row in evidence["captures"]:
+            for field in ("raw_png", "semantic_snapshot", "context_svg"):
+                path = root / row[field]
+                self.assertTrue(path.is_file(), path)
+                self.assertEqual(sha(path), row[f"{field}_sha256"], path)
+            raw = (root / row["raw_png"]).read_bytes()
+            self.assertEqual(raw[:8], b"\x89PNG\r\n\x1a\n")
+            self.assertEqual(struct.unpack(">II", raw[16:24]), (1920, 1080))
+            snapshot = json.loads((root / row["semantic_snapshot"]).read_text())
+            self.assertEqual(snapshot["schema"], "gentle.gui_semantic_snapshot.v2")
+            self.assertGreater(len(snapshot["items"]), 0)
+            context = (root / row["context_svg"]).read_text()
+            self.assertIn(row["raw_png"], context)
 
     @unittest.skipUnless(os.environ.get("GENTLE_TUTORIAL_BIN_DIR"), "supply built CLI for real replay")
     def test_real_cli_preparation_preserves_pending_study_and_candidate_provenance(self):

@@ -1,0 +1,105 @@
+{
+  "schema": "gentle.manual_gui_tutorial_evidence.v1",
+  "status": "manual_hybrid_pass",
+  "automated_gui_acceptance": false,
+  "inner_agent_invoked": false,
+  "network_enforcement": "Linux user plus network namespace; loopback only",
+  "input_policy": "publication_safe_public_reference_only",
+  "producer": {
+    "revision": "3c1c32bcceacbe7d327c09f83ba57dcca2682b06",
+    "package_version": "0.1.0-internal.11",
+    "gentle_gui_sha256": "8e32e19f1cfc767d32c01c3184dd55aa045b3fc0d3c12d30ba4bd698aa4225ae",
+    "gentle_cli_sha256": "09439a09318184b7f7fbf9b64d8450e9876fec9e450a43f1230dd6495ed4cbd2",
+    "rustc": "1.95.0 (59807616e 2026-04-14)",
+    "cargo": "1.95.0 (f2d3ce0bd 2026-03-21)",
+    "host": "x86_64-unknown-linux-gnu; Linux 7.1.3+deb14-amd64"
+  },
+  "inputs": {
+    "fixture_manifest": {
+      "path": "test_files/fixtures/transcript_assay_panel/patz1_reference/manifest.json",
+      "sha256": "6f96dbdda26b34dbf8456559fa7dc66f7fca2802f423604d9e5318818e833c21"
+    },
+    "ensembl_gff3_sha256": "5c4e23e8ccf6d3e85b07bccc034c6b5d2275cb3c58ea97e9984340aa98a9d40a",
+    "ensembl_entry_sha256": "f0b1e83e26579317e2bc2ed00778aaed49ccfe24ee88a6548577062df9a15a5b",
+    "refseq_gff3_sha256": "c497fbd41259261bdc0c52c26ab7f5dd96cd48eef7b53f1057a06a1fce0b3daa",
+    "refseq_genome_fasta_sha256": "6c53910a9ed1e47055f6d84188c146910b5656ee0f68c70cd423efdbc6f583db",
+    "preparation_receipt_sha256": "b796ddf03143c33ecb2eca6760c5aeb07bad05d7940dd1521821f3c4d7689bb4",
+    "locus_report_sha256": "4f84705b05432cda7699d6fbe027f4c8fa99775b9cac904d241fd0583e0cac27",
+    "study_request_sha256": "67b35f6b2807d88e3d31444823e6942c5936be5551b9e1a54fbb10653a68490d",
+    "study_plan_sha256": "7d4b3b2aefb18be97aed6f295dc0b2316fa687b11564a796525338f9b0401071",
+    "publication_request_sha256": "98e1e214b9a1a6b969f43a6103f08e40ec6628defada6b92143f5e127328c512",
+    "primer_panel_sha256": "efe60b2fc2571aa1fe149a37acab96284981b6a9f690e223b0c31698c2d0cfa6",
+    "final_project_sha256": "fd763f1e29fe8bc491c273e09491c33db95500a8e5e8ec5d440367763a0e33a0"
+  },
+  "result": {
+    "primer3_version": "libprimer3 release 2.6.1",
+    "completion_status": "partial",
+    "transcript_records": 13,
+    "exact_mature_cdna_classes": 13,
+    "selected_assays": 7,
+    "candidate_assays": 37,
+    "uncovered_classes": 0,
+    "unresolved_class_pairs": 9,
+    "genomic_specificity_assessments": 0,
+    "whole_transcriptome_specificity": "not_run",
+    "study_executed": false,
+    "order_approved": false
+  },
+  "captures": [
+    {
+      "id": "G1",
+      "raw_png": "G1-locus-and-source-comparison.raw.png",
+      "raw_png_sha256": "d6e022bf2aea74692a68a2ac948b7eb36b394da6d79aac5823e1418b761071b1",
+      "semantic_snapshot": "G1-locus-and-source-comparison.snapshot.json",
+      "semantic_snapshot_sha256": "9f6932b45bb4b093e1ed04294c7194418da15534a5f83daa764b9a2014bcc62f",
+      "context_svg": "G1-locus-and-source-comparison.context.svg",
+      "context_svg_sha256": "e6ca66d2c3014306285653551cf154d8996cf06aa9b557e793d64ddc15d5d18a"
+    },
+    {
+      "id": "G2",
+      "raw_png": "G2-request-and-scope.raw.png",
+      "raw_png_sha256": "cd088d3081e96de78f0fdecd3c40bcbcb4c4ade516448209c7ef0b7dfd7c2f72",
+      "semantic_snapshot": "G2-request-and-scope.snapshot.json",
+      "semantic_snapshot_sha256": "099f8d1f22a4b8e510909bd20e3c0729340b2d9f27d3dc11c869cdfcf6621dd6",
+      "context_svg": "G2-request-and-scope.context.svg",
+      "context_svg_sha256": "b5d9ec912519a63dfc739c7784165f6f8add5df1000228bb53bad5b7890a10fd"
+    },
+    {
+      "id": "G3",
+      "raw_png": "G3-primer-matrix-and-sequences.raw.png",
+      "raw_png_sha256": "bfb578078360bf46ed06429b53228287b179c1ab961b5b552083e8fd6a793f71",
+      "semantic_snapshot": "G3-primer-matrix-and-sequences.snapshot.json",
+      "semantic_snapshot_sha256": "68116df54af514bb1f006fbc81f891b3fbf7997319ec0b8938539109445ce6e8",
+      "context_svg": "G3-primer-matrix-and-sequences.context.svg",
+      "context_svg_sha256": "25aed691017753c1e1b481ad5477ac192438b2a5f061b2250bb3b2040e632b02"
+    },
+    {
+      "id": "G4",
+      "raw_png": "G4-study-plan.raw.png",
+      "raw_png_sha256": "baf72f9ae8f155370e525b889bc5aa4150771344af3b0b441c98eebd0d1c4edb",
+      "semantic_snapshot": "G4-study-plan.snapshot.json",
+      "semantic_snapshot_sha256": "19c1619e9d3261355852612906143d3f5fc64f7fab544ea9563d0e9d7b70e9ee",
+      "context_svg": "G4-study-plan.context.svg",
+      "context_svg_sha256": "07b892abe76457ba477f67a5fc04a5509c606cfad3a41630c7662f84a40e4228"
+    },
+    {
+      "id": "G5",
+      "raw_png": "G5-specificity-gap.raw.png",
+      "raw_png_sha256": "9da3ae5421ef43b6ce758f97ee40e40d6af2511733cc559ecd0828713f737c98",
+      "semantic_snapshot": "G5-specificity-gap.snapshot.json",
+      "semantic_snapshot_sha256": "f83842835583b65ceae7719cef8d26fa7c82efae0f1b8bfaf47d785ac22b042d",
+      "context_svg": "G5-specificity-gap.context.svg",
+      "context_svg_sha256": "d47aa7e006c5fc0bac454a4f08d372ef4cf2b5a06afcf8e8ebccb7d6ccfb3703"
+    },
+    {
+      "id": "G6",
+      "raw_png": "G6-pending-dossier.raw.png",
+      "raw_png_sha256": "81379808c555cf5e4e3416f03125dc0806532739f334c671f4e18377f066e876",
+      "semantic_snapshot": "G6-pending-dossier.snapshot.json",
+      "semantic_snapshot_sha256": "30afd49dee98e412402a126053f4ab9b6283edf57af086f64ed921d6bcc69038",
+      "context_svg": "G6-pending-dossier.context.svg",
+      "context_svg_sha256": "d842bdc6cdfcee5c03937cfe1be4a5f6c6b90798f1242f99a35043c5b3f5ac8d"
+    }
+  ],
+  "interpretation": "The captures demonstrate the manual GUI presentation of the public PATZ1 reference replay. They are not automated GUI acceptance, experimental validation, whole-reference specificity, order approval, or evidence that the pending study executed."
+}
