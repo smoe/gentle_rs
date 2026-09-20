@@ -47,6 +47,10 @@
 
 ## `v0.1.0-internal.11` - Alpha Candidate
 
+- Pin the hash-bound public PATZ1 gene-assay GUI snapshots and context SVGs to
+  LF checkout bytes. A disposable LF/CRLF Git-checkout regression verifies all
+  18 retained screenshot, snapshot and context hashes without changing the
+  captured evidence or its recorded digests.
 - Canonicalize JSON maps used by genomic-region identities, embedded source
   records, collection-membership fingerprints and transcript-assay operation
   fingerprints. This keeps those hashes identical when optional JavaScript

@@ -88,6 +88,58 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), self.payload)
 
+    def test_gene_assay_gui_evidence_hashes_survive_both_checkout_modes(self):
+        (self.root / ".gitattributes").write_bytes(
+            (checker.ROOT / ".gitattributes").read_bytes())
+        evidence_dir = Path("docs/screenshots/gene_assay_study_gui")
+        source_dir = checker.ROOT / evidence_dir
+        evidence = json.loads((source_dir / "evidence.json").read_bytes())
+        expected = {}
+        for row in evidence["captures"]:
+            for field in ("raw_png", "semantic_snapshot", "context_svg"):
+                relative = evidence_dir / row[field]
+                payload = (checker.ROOT / relative).read_bytes()
+                self.assertEqual(hashlib.sha256(payload).hexdigest(), row[f"{field}_sha256"])
+                expected[relative] = (payload, row[f"{field}_sha256"])
+                destination = self.root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(payload)
+        self.assertEqual(len(expected), 18)
+        checker.git(self.root, "add", "--all")
+        checker.git(
+            self.root,
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "-m",
+            "public GUI evidence",
+        )
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if b"docs/screenshots/gene_assay_study_gui/" not in line
+        )
+        broken = Path(self.tmp.name) / "gene-assay-evidence-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        changed = [
+            relative
+            for relative, (payload, _digest) in expected.items()
+            if (broken / relative).read_bytes() != payload
+        ]
+        self.assertEqual(
+            sorted(changed),
+            sorted(relative for relative in expected if relative.suffix in (".json", ".svg")),
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"gene-assay-evidence-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload)
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
     def test_replay_uses_existing_binary_and_forces_offline(self):
         with patch.dict(os.environ, {"GENTLE_TEST_ONLINE": "1"}), \
                 patch.object(checker.subprocess, "run") as run:
