@@ -55,6 +55,14 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
   - one-line parking-lot ideas.
 - If you materially change project status or close/open a gap, update
   `docs/roadmap.md` in the same change.
+- Immediately after an owner-confirmed release, advance `main` to the next
+  internal development version as the first follow-up task, without waiting
+  for another reminder. Follow the [post-release checklist](docs/release.md#post-release-development-version):
+  synchronize `Cargo.toml`, workspace entries in `Cargo.lock`, README, roadmap,
+  changelog and the next release-note draft/index, then run the version guard.
+  Do not advance an active candidate before the release is confirmed, move
+  tags, publish, or reinterpret pending acceptance as passed. If offline, do
+  this on the first resumed development session; this is not a background job.
 - Do not add a `Done` entry to `docs/roadmap.md`. Move completed work directly
   to [`docs/CHANGELOG.md`](docs/CHANGELOG.md) in the same session.
 - Put durable architecture constraints/invariants in

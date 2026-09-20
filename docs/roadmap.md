@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-20 - Keep the [verification-only .11 slice](internal_11_plan.md#verification-before-further-features): Windows regressions, one-SHA native CI/container/packages, then Glen's receipts. Queue [measurement-led GUI responsiveness for .12](#12-gui-performance-priorities), not speculative caching. `.10` publication remains out of scope.
+Last session: 2026-09-20 - Select a version-synchronized `.11` SHA for [release acceptance](release_notes/release_notes_v0.1.0-internal.11.md#acceptance-status): native CI/container/packages, then Glen's receipts. The existing tag predates the version repair; tagging remains owner-managed. Keep [measurement-led .12 profiling](#12-gui-performance-priorities) with Glen and follow the [post-release version rollover](release.md#post-release-development-version).
 `.10` is published at `84f34a9e` without recorded exact-candidate acceptance; its ledger remains pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -20,9 +20,9 @@ Maintenance invariant:
 
 ## Release Gate
 
-Published baseline: `v0.1.0-internal.10` at `84f34a9e479d0dee5d8476aba29c379d370f57e1`. Next `.11` candidate SHA remains to be selected.
-
-Active aim: genome-anchored evidence, transcript-linked promoter recurrence, regulatory-region comparison and approved reporter designs.
+Published baseline: `v0.1.0-internal.10` at `84f34a9e479d0dee5d8476aba29c379d370f57e1`.
+Current candidate: `v0.1.0-internal.11`; final version-synchronized SHA and exact-candidate acceptance remain pending.
+Active aim: gene-informed primer-PAIR studies, source-aware isoform inspection and TSS workflows, with portable evidence and package acceptance; discovery is not experimental validation.
 
 Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,
 motif and coordinate-provenance tracks, plus PATZ1 negative-strand transcript/assay

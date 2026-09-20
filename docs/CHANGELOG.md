@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## `v0.1.0-internal.11` - Alpha Candidate
+
+- Synchronize the owner-requested `.11` workspace version, all seven local
+  lockfile package versions, README, roadmap and release-note index; external
+  dependency versions are unchanged. The earlier `.11` tag at `e1c7dfb2`
+  contains `.10` metadata and remains untouched, not a valid corrected candidate.
+- Expand the [release notes](release_notes/release_notes_v0.1.0-internal.11.md)
+  around gene-informed primer pairs, source-aware transcript inspection, TSS
+  workflows, vector reports and package parity. Keep exact-SHA acceptance and
+  experimental validation separate from implemented features and older CI.
+- Recheck `gentle_rs_2_main`: it already equals `main` at `e1c7dfb2`; no new
+  merge changes are required. Preserve unrelated paper and poster work.
+- Require prompt post-release development-version rollover through `AGENTS.md`
+  and the release checklist, without automatic tagging or publication.
+- At the owner's follow-up request, embed the isoform primer-pair poster in
+  README and retain its native SVG and source/interpretation notes in the
+  figure catalog. Label it as a conceptual explanation, not computed evidence.
+- Verification on macOS, `e1c7dfb2` plus this version/docs/figure update: four
+  release-version tests, 48 release/package/container policy tests, locked
+  offline Cargo metadata/check, format and whitespace checks pass. The rebuilt
+  GUI reports `.11`; debug linking warns about large `__eh_frame` unwind tables
+  but succeeds. SVG byte identity, XML/local links and the rendered README-size
+  preview were checked. No full-suite, native Windows/package or benchmark run.
+
 ## 2026-09-20 - Integrate Glen's PATZ1 GUI Benchmark
 
 - Integrate Glen's two benchmark/evidence commits through

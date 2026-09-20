@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="600mm" height="450mm" viewBox="0 0 2400 1800" role="img" aria-labelledby="title description">
+  <title id="title">GENtle: inputs to isoform-aware primer-pair design</title>
+  <desc id="description">Reference and transcript models, experimental questions, declared biological evidence, primer and product constraints, and panel-selection policy feed an isoform-aware shared engine. Assay intent includes common-region screening, isoform discrimination and long-range structure discovery. A schematic mature-cDNA diagram shows a forward primer spanning an exon junction and a reverse primer directed inward. An illustrative product matrix distinguishes no product, one product and multiple products, with unassessed results kept separate. Specificity can gate design when require-pass is requested; an external plan, execution and finalization route permits redesign after a bound specificity failure. Nine readiness gates are grouped as annotation provenance, cDNA assay test, genomic carryover, transcriptome specificity, critical QC, variant evidence, duplicate review, experimental practicality and gel resolution. Gel interpretation requires named conditions and can reject co-migrating products when required by policy. Full-oligo thermodynamic follow-up remains distinct from complementary-run QC. Outputs retain sequences, predicted products, selection reasons, score terms and provenance. Candidate, assessed and policy-qualified order-ready do not imply experimental validation. All transcript models, matrix entries and the co-migration sketch are conceptual, not calculated assay results.</desc>
+  <metadata>Revision 2, 2026-09-20; source GENtle e1c7dfb221914bdfe18ba14248cf2db625503552. Incorporates independently checked items from the user-supplied Claude review. See isoform_primer_design_inputs_notes.md for the source map, interpretation boundaries, caption and proposed external-pair entry. Native vector artwork; no embedded raster images. English poster figure, 600 x 450 mm.</metadata>
+  <defs>
+    <style>
+      text { font-family: 'Avenir Next', 'DejaVu Sans', sans-serif; fill: #18363d; }
+      .title { font-family: Georgia, serif; font-size: 83px; font-weight: 700; }
+      .overline { font-size: 24px; font-weight: 700; letter-spacing: 2.5px; }
+      .group { font-size: 22px; font-weight: 700; letter-spacing: 1.5px; }
+      .card-title { font-size: 33px; font-weight: 600; }
+      .body { font-size: 27px; }
+      .small { font-size: 23px; }
+      .muted { fill: #536c72; }
+      .teal { fill: #007e80; }
+      .gold { fill: #966419; }
+      .coral { fill: #b4523e; }
+      .bold { font-weight: 600; }
+      .center { text-anchor: middle; }
+      .card { fill: #fff; stroke: #d8e4e5; stroke-width: 2; }
+      .connector { fill: none; stroke: #008184; stroke-width: 3; marker-end: url(#arrow-teal); }
+      .hairline { fill: none; stroke: #becfd1; stroke-width: 2; }
+    </style>
+    <marker id="arrow-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 Z" fill="#008184"/></marker>
+    <marker id="arrow-gold" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9 Z" fill="#b0802b"/></marker>
+    <marker id="arrow-coral" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9 Z" fill="#b4523e"/></marker>
+    <marker id="primer-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto"><path d="M1 1 L9 5 L1 9 Z" fill="#ae493c"/></marker>
+    <pattern id="alternate-exon" width="12" height="12" patternUnits="userSpaceOnUse"><rect width="12" height="12" fill="#f3d5a0"/><path d="M-3 3 L3 -3 M0 12 L12 0 M9 15 L15 9" stroke="#c89a51" stroke-width="1.5"/></pattern>
+  </defs>
+
+  <rect width="2400" height="1800" fill="#fff"/>
+  <path d="M70 77 H105" stroke="#008184" stroke-width="7"/>
+  <text x="122" y="85" class="overline teal">GENtle / GENE-INFORMED ASSAY DESIGN</text>
+  <g id="legend" class="small">
+    <circle cx="1550" cy="76" r="7" fill="#008184"/><text x="1567" y="84">Design inputs</text>
+    <circle cx="1802" cy="76" r="7" fill="#b0802b"/><text x="1819" y="84">Optional evidence</text>
+    <circle cx="2108" cy="76" r="7" fill="#b4523e"/><text x="2125" y="84">Separate checks</text>
+  </g>
+  <text x="70" y="183" class="title">Isoform-aware primer-pair design</text>
+  <text x="73" y="237" font-size="31" class="muted">Choose the biological question. Preserve transcript differences. Make every design decision inspectable.</text>
+
+  <g id="reference-input">
+    <rect x="70" y="288" width="570" height="266" rx="14" class="card"/>
+    <path d="M94 315 H125" stroke="#008184" stroke-width="5"/>
+    <text x="139" y="322" class="group teal">01 / REFERENCE &amp; TRANSCRIPTS</text>
+    <text x="94" y="372" class="card-title">Which molecules are in scope?</text>
+    <text x="94" y="418" class="body"><tspan x="94">Species, assembly and annotation release</tspan><tspan x="94" dy="35">Transcript versions, strand and exon chains</tspan><tspan x="94" dy="35">Alternative starts / ends, CDS and UTRs</tspan></text>
+    <text x="94" y="528" class="small muted">Ensembl / RefSeq: keep design scope explicit.</text>
+  </g>
+  <g id="experimental-input">
+    <rect x="70" y="583" width="570" height="259" rx="14" class="card"/>
+    <path d="M94 610 H125" stroke="#008184" stroke-width="5"/>
+    <text x="139" y="617" class="group teal">02 / EXPERIMENTAL QUESTION</text>
+    <text x="94" y="666" class="card-title">What must the assay measure?</text>
+    <text x="94" y="709" class="body"><tspan x="94">Common screen / isoform discrimination</tspan><tspan x="94" dy="29">Long-range structure discovery, if selected</tspan><tspan x="94" dy="29">Endpoint RT-PCR / SYBR / TaqMan qPCR</tspan><tspan x="94" dy="29">Target scope, controls and RT strategy</tspan><tspan x="94" dy="29">Oligo-dT reach assumptions</tspan></text>
+  </g>
+  <g id="biological-evidence">
+    <rect x="70" y="871" width="570" height="297" rx="14" fill="#fffbf2" stroke="#e8d7b7" stroke-width="2"/>
+    <path d="M94 898 H125" stroke="#b0802b" stroke-width="5"/>
+    <text x="139" y="905" class="group gold">03 / DECLARED EVIDENCE</text>
+    <text x="94" y="954" class="card-title">Which targets merit follow-up?</text>
+    <text x="94" y="998" class="body"><tspan x="94">RNA reads, cDNA / EST and prior qPCR</tspan><tspan x="94" dy="34">Exon / junction arrays and probe coverage</tspan><tspan x="94" dy="34">Expression contrasts and effect thresholds</tspan><tspan x="94" dy="34">Prior observations and user priorities</tspan></text>
+    <text x="94" y="1145" class="small gold">Occupancy / chromatin tracks remain context.</text>
+  </g>
+
+  <g id="input-connectors">
+    <path d="M640 421 H707" class="connector"/>
+    <path d="M640 712 H707" class="connector"/>
+    <path d="M640 1018 H707" fill="none" stroke="#b0802b" stroke-width="3" stroke-dasharray="8 7" marker-end="url(#arrow-gold)"/>
+    <path d="M1760 491 H1691" class="connector"/>
+    <path d="M1760 943 H1691" class="connector"/>
+  </g>
+
+  <g id="shared-design-engine">
+    <rect x="712" y="288" width="972" height="880" rx="20" fill="#f2f8f7" stroke="#9cbfbd" stroke-width="2"/>
+    <text x="750" y="331" class="group teal">ONE SHARED ENGINE / GUI, CLI &amp; AGENTS</text>
+    <text x="750" y="384" font-size="41" font-weight="600">Transcript structure to primer-pair panels</text>
+    <text x="750" y="432" class="body bold">Build mature cDNA templates</text>
+    <text x="1625" y="430" text-anchor="end" class="small muted">5' to 3'</text>
+
+    <g id="schematic-transcripts">
+      <text x="753" y="510" class="body bold">A</text>
+      <text x="753" y="584" class="body bold">B</text>
+      <text x="753" y="658" class="body bold">C</text>
+      <path d="M807 497 H1614 M807 571 H1414 M807 645 H1554" stroke="#79989b" stroke-width="2"/>
+      <g stroke="#fff" stroke-width="2">
+        <rect x="847" y="481" width="170" height="32" fill="#81c4bb"/><rect x="1017" y="481" width="200" height="32" fill="url(#alternate-exon)"/><rect x="1217" y="481" width="360" height="32" fill="#91b7cc"/>
+        <rect x="847" y="555" width="170" height="32" fill="#81c4bb"/><rect x="1017" y="555" width="360" height="32" fill="#91b7cc"/>
+        <rect x="847" y="629" width="110" height="32" fill="#c4ced2"/><rect x="957" y="629" width="200" height="32" fill="url(#alternate-exon)"/><rect x="1157" y="629" width="360" height="32" fill="#91b7cc"/>
+      </g>
+      <g class="small center bold">
+        <text x="932" y="505">E1</text><text x="1117" y="505">E2</text><text x="1397" y="505">E3</text>
+        <text x="932" y="579">E1</text><text x="1197" y="579">E3</text>
+        <text x="902" y="653">E0</text><text x="1057" y="653">E2</text><text x="1337" y="653">E3</text>
+      </g>
+      <path d="M980 474 H1060" stroke="#ae493c" stroke-width="7" marker-end="url(#primer-arrow)"/>
+      <text x="1019" y="461" class="small center coral bold">F</text>
+      <path d="M1484 520 H1404" stroke="#ae493c" stroke-width="7" marker-end="url(#primer-arrow)"/>
+      <text x="1530" y="539" class="small center coral bold">R</text>
+      <path d="M1017 483 V470" stroke="#ae493c" stroke-width="2"/>
+      <text x="750" y="703" class="small muted">F = cDNA-sense binding segment; R = its target's reverse complement.</text>
+      <text x="750" y="737" class="small muted">Shown: F across E1/E2, with R facing inward. Models are schematic.</text>
+    </g>
+
+    <path d="M750 762 H1646" stroke="#b9d2d0" stroke-width="2"/>
+    <text x="750" y="807" class="body bold">Evaluate coverage AND discrimination</text>
+    <text x="750" y="843" class="small muted">Illustrative product matrix, not a calculated assay result</text>
+    <g id="schematic-product-matrix">
+      <rect x="750" y="903" width="896" height="47" rx="6" fill="#e6f1ef"/>
+      <rect x="750" y="997" width="896" height="47" rx="6" fill="#e6f1ef"/>
+      <text x="775" y="887" class="small bold">Class</text>
+      <g class="small center bold"><text x="1053" y="887">Common E3</text><text x="1290" y="887">E1/E2 junction</text><text x="1532" y="887">E1/E3 junction</text></g>
+      <g class="body bold"><text x="797" y="935">A</text><text x="797" y="982">B</text><text x="797" y="1029">C</text></g>
+      <g class="center" font-size="32" font-weight="600" fill="#007e80">
+        <text x="1053" y="935" class="teal">1</text><text x="1290" y="935" class="teal">1</text><text x="1532" y="935" class="muted">0</text>
+        <text x="1053" y="982" class="teal">1</text><text x="1290" y="982" class="muted">0</text><text x="1532" y="982" class="coral">M</text>
+        <text x="1053" y="1029" class="teal">1</text><text x="1290" y="1029" class="muted">0</text><text x="1532" y="1029" class="muted">0</text>
+      </g>
+      <text x="750" y="1079" class="small muted">0 = none / 1 = single / M = multiple products / ? = unassessed</text>
+      <text x="750" y="1112" class="body bold teal">Identical mature cDNAs form one sequence class.</text>
+      <text x="750" y="1147" class="small coral">Optional design gate: --specificity-check require-pass</text>
+    </g>
+  </g>
+
+  <g id="primer-constraints">
+    <rect x="1760" y="288" width="570" height="420" rx="14" class="card"/>
+    <path d="M1784 315 H1815" stroke="#008184" stroke-width="5"/>
+    <text x="1829" y="322" class="group teal">04 / PRIMER &amp; PRODUCT RULES</text>
+    <text x="1784" y="372" class="card-title">What makes a feasible pair?</text>
+    <text x="1784" y="419" class="body"><tspan x="1784">Primer length, GC content and Tm bounds</tspan><tspan x="1784" dy="33">Pair Tm balance; allowed binding windows</tspan><tspan x="1784" dy="33">Fixed bases; required / forbidden motifs</tspan><tspan x="1784" dy="33">3' exactness, mismatch and hit limits</tspan><tspan x="1784" dy="33">Product length and region to be covered</tspan><tspan x="1784" dy="33">Junction placement and overlap limits</tspan><tspan x="1784" dy="33">TaqMan probe constraints, when selected</tspan><tspan x="1784" dy="33">Homopolymer and complementarity QC</tspan></text>
+    <text x="1784" y="686" class="small muted">Declare non-annealing 5' tails / adapters explicitly.</text>
+  </g>
+  <g id="selection-policy">
+    <rect x="1760" y="737" width="570" height="431" rx="14" class="card"/>
+    <path d="M1784 764 H1815" stroke="#008184" stroke-width="5"/>
+    <text x="1829" y="771" class="group teal">05 / PANEL SELECTION POLICY</text>
+    <text x="1784" y="821" class="card-title">What counts as sufficient?</text>
+    <text x="1784" y="868" class="body"><tspan x="1784">All transcripts or an explicit target subset</tspan><tspan x="1784" dy="33">Exact-cDNA classes and end combinations</tspan><tspan x="1784" dy="33">Common controls and junction obligations</tspan><tspan x="1784" dy="33">Required versus preferred targets</tspan><tspan x="1784" dy="33">Assay budget; resolvable size gap (bp)</tspan><tspan x="1784" dy="33">Strict coverage or approved partial results</tspan><tspan x="1784" dy="33">Long-range fallback only when permitted</tspan></text>
+    <text x="1784" y="1110" class="small teal bold"><tspan x="1784">Detecting every transcript is not the same</tspan><tspan x="1784" dy="30">as distinguishing every isoform.</tspan></text>
+  </g>
+
+  <path d="M1490 1169 V1243" fill="none" stroke="#b4523e" stroke-width="3" marker-end="url(#arrow-coral)"/>
+  <path d="M790 1254 V1200 H840 V1169" fill="none" stroke="#008184" stroke-width="3" marker-end="url(#arrow-teal)"/>
+  <text x="871" y="1227" class="small teal">Redesign + reassess after specificity failure</text>
+  <text x="70" y="1227" class="group coral">06 / ASSESSMENT &amp; READINESS GATES</text>
+  <text x="2330" y="1227" text-anchor="end" class="small muted">Nine gates; requirements are policy-bound.</text>
+  <g id="assessment-band">
+    <rect x="70" y="1254" width="2260" height="326" rx="16" fill="#fdf7f3" stroke="#e5c9bc" stroke-width="2"/>
+    <path d="M825 1278 V1555 M1578 1278 V1555" stroke="#e5c9bc" stroke-width="2"/>
+    <g id="reference-specificity">
+      <text x="105" y="1303" class="card-title">Reference &amp; product checks</text>
+      <g fill="none" stroke="#b4523e" stroke-width="3"><circle cx="746" cy="1292" r="17"/><path d="M758 1304 L775 1321 M738 1292 H754 M746 1284 V1300"/></g>
+      <text x="105" y="1349" class="body bold"><tspan x="105">Annotation provenance + cDNA assay test</tspan><tspan x="105" dy="35">Genomic carryover + transcriptome specificity</tspan></text>
+      <text x="105" y="1420" class="body"><tspan x="105">Versioned references; intended / off-target products</tspan><tspan x="105" dy="35">Exact pair identity; search scope and completeness</tspan></text>
+      <text x="105" y="1506" class="body bold coral">Plan &#x2192; execute &#x2192; finalize</text>
+      <text x="105" y="1553" class="small coral">Not assessed / incomplete is not biological failure.</text>
+    </g>
+    <g id="binding-site-variants">
+      <text x="863" y="1303" class="card-title">Oligo safety &amp; identity</text>
+      <g fill="none" stroke="#b4523e" stroke-width="3"><path d="M1485 1280 H1540 M1485 1305 H1540 M1494 1280 V1305 M1530 1280 V1305"/><path d="M1512 1274 V1311" stroke-width="6"/></g>
+      <text x="863" y="1349" class="body bold"><tspan x="863">Critical QC + variant evidence + duplicate review</tspan></text>
+      <text x="863" y="1384" class="body"><tspan x="863">VCF assembly / REF / frequency / 3' binding-site risk</tspan><tspan x="863" dy="35">Full oligos, including complete adapters / tails</tspan><tspan x="863" dy="35">Hairpins; self- and co-present cross-dimers</tspan><tspan x="863" dy="35">Thermodynamic follow-up: method + conditions</tspan></text>
+      <text x="863" y="1522" class="small coral">Missing frequency / evidence is not zero risk.</text>
+      <text x="863" y="1553" class="small coral">Run-length QC alone is not thermodynamics.</text>
+    </g>
+    <g id="experimental-interpretability">
+      <text x="1616" y="1303" class="card-title">Experimental interpretability</text>
+      <text x="1616" y="1349" class="body bold">Experimental practicality + gel resolution</text>
+      <text x="1616" y="1384" class="body"><tspan x="1616">Long-range permission; named gel-run conditions</tspan><tspan x="1616" dy="35">Different products can co-migrate.</tspan></text>
+      <g id="conceptual-co-migration">
+        <title>Conceptual example: two distinct product lengths may form one unresolved band. Not a computed gel result.</title>
+        <path d="M1660 1465 H1740 M1660 1486 H1740" stroke="#b4523e" stroke-width="5"/>
+        <path d="M1780 1476 H1860" fill="none" stroke="#b4523e" stroke-width="3" marker-end="url(#arrow-coral)"/>
+        <rect x="1900" y="1469" width="80" height="14" rx="3" fill="#b4523e"/>
+        <text x="1700" y="1522" class="small center muted">Two lengths</text>
+        <text x="2020" y="1490" class="small muted">One unresolved band</text>
+      </g>
+      <text x="1616" y="1553" class="small coral">Required unresolved gates block order readiness.</text>
+    </g>
+  </g>
+
+  <g id="auditable-output">
+    <text x="70" y="1626" class="group teal">INSPECTABLE OUTPUT</text>
+    <text x="435" y="1626" font-size="29" font-weight="600">Primer sequences + product matrix + reasons / score terms + evidence provenance</text>
+    <path d="M70 1650 H2330" stroke="#d0dfe0" stroke-width="2"/>
+    <text x="70" y="1692" font-size="31" font-weight="600">Candidate</text>
+    <text x="265" y="1692" class="body muted">&#x2192;</text>
+    <text x="320" y="1692" font-size="31" font-weight="600">Assessed</text>
+    <text x="500" y="1692" class="body muted">&#x2192;</text>
+    <text x="552" y="1692" font-size="31" font-weight="600">Order-ready under a named policy</text>
+    <text x="2330" y="1692" text-anchor="end" class="body coral bold">Still not experimental validation.</text>
+    <text x="70" y="1750" class="small muted">Backend: auto / internal / Primer3. Retain hashes, reference releases, effective parameters and human review.</text>
+    <text x="2330" y="1750" text-anchor="end" class="small muted">GENtle internal .11 / schematic overview</text>
+  </g>
+</svg>

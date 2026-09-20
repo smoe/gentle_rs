@@ -1,6 +1,6 @@
 # Internal .11 Workflow Completion And Acceptance
 
-Reconciled: 2026-09-19. The published `.10`
+Reconciled: 2026-09-20. The published `.10`
 tag is `84f34a9e`; its [acceptance ledger](release_notes/release_notes_v0.1.0-internal.10.md#exact-candidate-gate-ledger)
 remains pending. `codex/internal.11` was merged at `8597a6ee`; it no longer
 needs a separate integration decision. The
@@ -9,8 +9,9 @@ needs a separate integration decision. The
 package parity and exact-revision acceptance support that aim. The capture
 programme below remains separate and deferred. No version bump, tag change,
 upstream push, workflow dispatch or publication is part of this follow-up without
-explicit approval. The starting `main` and `origin/main` are `36ba15a0` on
-`smoe/gentle_rs`; the fork's stale `main` is not the verification target.
+explicit approval. The owner requested the `.11` version/notes update on
+2026-09-20; its final candidate SHA remains to be selected. The earlier review
+started at `36ba15a0` on `smoe/gentle_rs`, not the fork's stale `main`.
 
 ## Review Reconciliation
 
@@ -93,8 +94,10 @@ poller wake-up. Its retained audit accepts the synthetic TSS lifecycle twice at
 18/18 steps on tested code `677c796a`, while explicitly withholding general GUI
 responsiveness acceptance. That evidence predates the combined Windows-fix and
 merge result and therefore cannot replace the final exact-SHA GUI gate. The
-package version also remains `0.1.0-internal.10`; a `.11` tag requires a
-separate, explicit version/release-metadata commit before candidate packaging.
+package version at that point was still `0.1.0-internal.10`. The owner-requested
+September 20 version/notes repair advances development metadata to `.11`;
+the already-created tag at `e1c7dfb2` predates that repair. Select a corrected
+SHA before candidate packaging; see the [current release notes](release_notes/release_notes_v0.1.0-internal.11.md#acceptance-status).
 
 Before adding N1 or another scientific extension:
 
@@ -124,9 +127,9 @@ authorized by completion of the local regression fixes alone.
 After the diagnostic and documentation commits, freeze their full final SHA and
 retain it in the handoff. Before any approved dispatch, ensure the named pushed
 ref resolves to that SHA; do not use a moving `main` or the published `.10` tag.
-The version label remains `v0.1.0-internal.10` because it must match Cargo.toml;
-build-only use neither retags `.10` nor certifies the old release. Run commands
-only after explicit approval, substituting that SHA and pushed ref:
+Use `v0.1.0-internal.11` only with a candidate whose committed Cargo metadata
+declares `.11`; build-only use does not change or certify an existing tag.
+Run commands only after explicit approval, substituting that SHA and pushed ref:
 
 ```bash
 CANDIDATE_SHA='REPLACE_WITH_FULL_FROZEN_SHA'
@@ -135,9 +138,9 @@ gh workflow run ci.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" -f platform=windo
 gh workflow run ci.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" -f platform=macos
 gh workflow run ci.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" -f platform=linux
 gh workflow run container.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.11 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 gh workflow run release.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.11 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 ```
 
 | Gate | New candidate run ID | Acceptance evidence |

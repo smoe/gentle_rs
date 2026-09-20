@@ -13,6 +13,23 @@ comes from shared GENtle state and versioned tooling; it does not imply that
 every final presentation asset is emitted by one engine operation without a
 deterministic repository-side rendering step.
 
+## Isoform-Aware Primer-Pair Design
+
+[`isoform_primer_design_inputs.svg`](isoform_primer_design_inputs.svg) is the
+maintained explanatory poster diagram embedded in the README, not an engine
+render or a result from a biological fixture. The native SVG is the editable
+600 x 450 mm master; transcript cartoons, product multiplicity and gel
+co-migration are explicitly conceptual. It contains no external resources,
+scripts or embedded raster images.
+
+Prepared 2026-09-20 against `e1c7dfb221914bdfe18ba14248cf2db625503552`, revision 2
+incorporates independently checked items from the owner-supplied Claude review.
+The [companion notes](isoform_primer_design_inputs_notes.md) retain the caption,
+source/type mapping, orientation and interpretation limits, all nine readiness
+gates and local PDF/PNG re-export commands. Keep the notes and SVG together
+when updating claims. Existing-pair entry is a documented proposed extension,
+not a feature silently added to the drawing.
+
 ## TP73 Inner and Outer Agent Views
 
 `tp73_outer_agent_evidence_viewer.svg` and

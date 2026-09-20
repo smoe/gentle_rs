@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml"><img src="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml/badge.svg" alt="Build and test status"></a>
   <img src="https://img.shields.io/badge/status-internal%20preview-d18b3f" alt="Status: internal preview">
-  <img src="https://img.shields.io/badge/version-0.1.0--internal.10-4e91a0" alt="Version 0.1.0-internal.10">
+  <img src="https://img.shields.io/badge/version-0.1.0--internal.11-4e91a0" alt="Version 0.1.0-internal.11">
   <a href="copyright"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-0f5964" alt="License: GPL-2.0-or-later"></a>
 </p>
 
@@ -133,6 +133,23 @@ build from source or use the documented container route. See
   frontend or one-off script. The
   [extension guide](docs/biological_extension_guide.md) shows contributors and
   coding agents how to add only the missing decision.
+
+## Gene-Informed Primer-Pair Design
+
+Designing a pair that detects transcripts is not the same as distinguishing
+their isoforms. GENtle combines explicit transcript scope, assay objectives,
+source-bound evidence and primer/product constraints, then keeps coverage,
+discrimination and readiness checks inspectable.
+
+[![Isoform-aware primer-pair design: reference transcripts, assay intent, optional evidence and constraints feed the shared engine; product multiplicity, specificity and nine readiness gates remain explicit.](docs/figures/isoform_primer_design_inputs.svg)](docs/figures/isoform_primer_design_inputs.svg)
+
+This maintained explanatory diagram uses **conceptual**, not computed,
+transcripts and assay outcomes. Optional inputs are not automatically available
+or required by every operation; candidate, assessed and policy-qualified
+order-ready do not mean experimentally validated.
+Open the [full-size vector graphic](docs/figures/isoform_primer_design_inputs.svg),
+read its [source map and interpretation notes](docs/figures/isoform_primer_design_inputs_notes.md),
+or follow the [PATZ1 primer-pair tutorial](docs/tutorial/04-08_gene_assay_study_gui.md).
 
 ## What To Trust Today
 
@@ -281,18 +298,20 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 ## Project Status
 
-- Current package version: `0.1.0-internal.10`. This is an unreleased candidate,
-  awaiting Glen's readiness verdict and the release owner's approval.
-- Active release story: a genome-anchored TP73 evidence viewer with inspectable
-  exon, repeat, array, BED, TFBS, and coordinate-build provenance.
+- Current package version: `0.1.0-internal.11`. This alpha candidate awaits
+  exact-revision package checks, Glen's readiness verdict and owner approval.
+- Active release story: gene-informed primer-pair studies, source-aware isoform
+  comparison, TSS collection workflows and auditable annotated/vector exports.
 - Default builds include GUI, CLI, MCP, and documentation paths.
-- Release packaging enables the JavaScript and Lua adapter bundle.
+- Native release packaging enables JavaScript and Lua; the container is
+  headless, without GUI or embedded scripting runtimes.
 - Generated showcase figures come from GENtle engine outputs and/or versioned
-  deterministic repository tooling. They are not manually redrawn.
+  deterministic repository tooling. Maintained explanatory diagrams are
+  explicitly labelled and are not analysis outputs.
 
 See the [`roadmap`](docs/roadmap.md) for the current acceptance gate, the
 [`release guide`](docs/release.md), the
-[`v0.1.0-internal.10` release notes](docs/release_notes/release_notes_v0.1.0-internal.10.md),
+[`v0.1.0-internal.11` release notes](docs/release_notes/release_notes_v0.1.0-internal.11.md),
 and the complete [`release-note index`](docs/release_notes/) for notable
 user-facing changes.
 

@@ -85,17 +85,18 @@ every receipt, rather than treating a fork run as upstream evidence.
 CANDIDATE_SHA=$(git rev-parse HEAD)
 WORKFLOW_REF=main # must already be pushed at CANDIDATE_SHA
 gh workflow run release.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.11 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 gh workflow run container.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.10 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.11 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 ```
 
 Manual runs default to **build-only**. They require the full 40-character commit
 SHA and a version label matching `Cargo.toml`; branch names and abbreviated
-SHAs are rejected. The version label need not be an existing tag. In particular,
-the published `.10` tag does not prevent build-only validation of a later SHA
-while its Cargo version still matches that label. Such a run is not a new `.10`
-release or acceptance of the old tag. No tag is created or moved.
+SHAs are rejected. The version label need not be an existing tag. Build-only
+verification can therefore test a corrected `.11` SHA even when an earlier
+`.11` tag points elsewhere. It does not certify, create or move that tag.
+These examples require `.11` in the candidate's committed Cargo metadata;
+update the label for subsequent development versions, never only the tag.
 Build/check jobs have read-only repository permission;
 the write-capable publication jobs are skipped.
 
@@ -277,7 +278,10 @@ Release-workflow assumptions to re-check before tagging:
 
 ## Standard Tagged Release
 
-1. Ensure `main` is green in CI.
+1. Commit the version and lockfile together with the release-facing metadata.
+   Verify `cargo test --locked -q --test release_version_consistency` and the
+   exact candidate's CI/package gates; a local uncommitted version edit is not
+   part of the tagged source. Keep final publication approval separate.
 2. Create and push a version tag:
    - `git tag vX.Y.Z`
    - `git push smoe vX.Y.Z`
@@ -286,6 +290,34 @@ Release-workflow assumptions to re-check before tagging:
 5. Verify GitHub Release contains all three desktop artifacts, their build
    receipts and the release-attributes inventory. Check the separate container
    workflow for the headless image from the same tag.
+
+## Post-Release Development Version
+
+As the first development task after an owner-confirmed release, advance `main`
+to the next internal version without waiting for another reminder. After the
+`.11` release this means `0.1.0-internal.12`, not a change to the released tag.
+Do not advance while `.11` is still the active candidate, or infer completed
+publication from a tag push, a successful build, or a draft GitHub Release.
+
+1. Update `[workspace.package].version` in root `Cargo.toml` and every local
+   workspace-package entry in `Cargo.lock`. Do not run a broad `cargo update`
+   or change dependency resolutions as part of the rollover.
+2. Update the README badge/current version/release-note link, the roadmap's
+   `Current candidate` and `Published baseline`, the changelog version heading,
+   and the next release-note draft plus `docs/release_notes/README.md`.
+   Preserve the released notes' actual verdicts and pending evidence.
+3. Run `cargo metadata --locked --offline --no-deps --format-version 1`,
+   `cargo test --locked -q --test release_version_consistency`, and
+   `cargo check -q --locked`. Review the diff for dependency or fixture churn.
+4. Commit the synchronized development metadata. Push only within the owner's
+   authorization; never create/move a tag, upload artifacts or publish a
+   release as a side effect. If no agent session is active, do this at the
+   first resumed development session, not through an implied background job.
+
+Before the next release, compare its label against the **committed** candidate
+manifest, not merely the working copy or the current `main` branch. A rerun of
+an old tag uses that tag's original manifest; later source fixes require a new
+candidate. The existing release-candidate safety check must remain fail-closed.
 
 ## Manual Release Re-run
 
