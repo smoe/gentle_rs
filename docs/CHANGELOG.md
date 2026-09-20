@@ -24,6 +24,11 @@
   package-version/tag mismatch and a bounded `.12` usability backlog in
   `gui_usability_acceptance_20260920.md`. Passing the synthetic lifecycle is
   explicitly not a general GUI responsiveness verdict.
+- Extend the optimized GUI audit with an authentic public PATZ1 project (20,802
+  bp, 75 loaded features, 13 Ensembl transcripts and 17 Ensembl/RefSeq source
+  records), four viewport sizes and first-frame-after-resize timings. Keep
+  headless CPU paint costs separate from native X11 resize-to-semantic-update
+  latency; the latter remains visibly above an interactive frame budget.
 
 ## 2026-09-19 - Final Windows TSS And Path Portability Follow-up
 

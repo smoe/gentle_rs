@@ -75,6 +75,33 @@ responsive. It explicitly clears each returned egui texture delta because no
 renderer exists to upload it. Those native concerns remain part of the external
 GUI/Puffin acceptance described in `docs/testing.md`.
 
+For the authentic public PATZ1 workload, first prepare a fresh offline project
+with the exact CLI under review and then opt the benchmark into both the project
+and its bound locus report:
+
+```bash
+audit_root="$(mktemp -d)"
+python3 scripts/prepare_real_patz1_tutorial.py \
+  --gentle-cli target/debug/gentle_cli \
+  --output-dir "$audit_root/patz1"
+GENTLE_GUI_BENCH_PATZ1_STATE="$audit_root/patz1/patz1.gentle.json" \
+GENTLE_GUI_BENCH_PATZ1_REPORT="$audit_root/patz1/locus.report.json" \
+CRITERION_HOME="$PWD/target/bench-audit/criterion" \
+  cargo bench --profile bench-audit -p gentle-benchmarks \
+  --bench gui_operations -- --quick --noplot
+```
+
+The PATZ1 setup fails closed unless it sees the expected 20,802-bp locus,
+at least 75 loaded gene/transcript/exon features, 13 Ensembl transcript records
+and 17 source-comparison records (13 Ensembl plus four RefSeq). It loads the
+portable report through the same sequence-binding and presentation-cache path
+as the GUI. First and steady frames are sampled at `820x520`, `1200x800`,
+`1600x1000`, and `1920x1080`; separate cases measure the first frame after a
+resize from `1200x800` to the other three sizes. The benchmark ID uses the
+pinned fixture-manifest hash rather than the generated project bytes, whose
+audit timestamp changes between equivalent preparations. Retain the exact
+project/report hashes beside Criterion's results.
+
 ## Specificity finalization
 
 Run the deterministic primer-specificity benchmark with:

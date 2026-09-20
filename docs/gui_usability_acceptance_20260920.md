@@ -80,6 +80,67 @@ both final runs spent about 32 seconds in application startup plus opening the
 first locus. The remaining operations were usually about 1--3 seconds each.
 Passing the contract therefore does not answer the user's broader lag report.
 
+## Authentic PATZ1 rendering and resize benchmark
+
+The follow-up benchmark code was tested at
+`2d6789d1f29a2157629e1215b271dde8f1947d2a`. It loads the public, offline PATZ1
+project through the real `ProjectState` path and the portable source-comparison
+report through the same binding-checked loader as the GUI. Setup fails unless
+the fixture contains 20,802 bp, at least 75 loaded features, 13 Ensembl
+transcripts and 17 joined source records (13 Ensembl and four RefSeq). All
+source-comparison rows are expanded in the real DNA-window presentation; the
+benchmark does not replace the locus with a feature-free surrogate.
+
+Optimized `bench-audit` Criterion means on this host were:
+
+| Operation | Viewport | Mean |
+| --- | --- | ---: |
+| eager DNA-window construction | n/a | 27.852 ms |
+| deferred UI-thread hydration | n/a | 32.742 ms |
+| first embedded frame | 820x520 | 29.469 ms |
+| first embedded frame | 1200x800 | 29.496 ms |
+| first embedded frame | 1600x1000 | 28.396 ms |
+| first embedded frame | 1920x1080 | 28.098 ms |
+| steady embedded frame | all four sizes | 0.786--0.793 ms |
+| first frame after resize from 1200x800 | to 820x520 | 3.944 ms |
+| first frame after resize from 1200x800 | to 1600x1000 | 3.839 ms |
+| first frame after resize from 1200x800 | to 1920x1080 | 3.834 ms |
+
+These are CPU-side egui preparation/painting costs. They exclude native window
+creation, GPU upload, X11 event delivery and compositor scheduling. Viewport
+size has little effect on PATZ1's steady paint cost, while initial
+construction/hydration and first paint are well above a 16.7-ms frame budget.
+
+Two fresh-profile Xvfb/Openbox runs then resized the real subject-bound PATZ1
+DNA viewer through `820x520`, `1200x800`, `1600x1000`, `1920x1080`, and back to
+`820x520`. Semantic snapshots confirmed every requested client size. The debug
+GUI took respectively:
+
+- run A: 409.6, 63.1, 229.4, 163.7 and 163.3 ms;
+- run B: 425.7, 62.3, 187.3, 203.7 and 183.4 ms.
+
+Those native timings include the `gui-test-support` semantic snapshot writer
+and therefore are not release-binary frame times. They nevertheless reproduce
+visibly laggy resize-to-confirmed-content behavior and show that the missing
+time lies outside the optimized steady egui paint loop. A discarded harness
+attempt wrote per-frame snapshots directly to CIFS and blocked in kernel I/O;
+valid runs used local NVMe and copied evidence only after exit.
+
+The optimized benchmark's first Thin-LTO build/link was itself expensive; the
+measured matrix ran quickly once the binary existed. This supports a separate
+`.12` task for a prebuilt or faster-linking GUI performance runner, without
+misclassifying build time as runtime latency.
+
+The hash-bound external benchmark bundle is retained under
+`/mnt/storage-box-1-gentle/Glen/gui-benchmark-patz1-20260920-2d6789d1/`.
+Its `SHA256SUMS` manifest has SHA-256
+`69c89f6b802f52bd577522c77c6ce7383d47f720bd2d01776b3ca1498f76b2ec`.
+After upstream advanced to `6aa71b113181d7c61181154175560067f97b570b`,
+the two benchmark commits were rebased. The measured benchmark/window source
+files remained byte-identical, and all 39 non-statistical benchmark cases
+passed again at the post-rebase smoke revision
+`15611fd1151b2aa1f4981df3f84622ebac4f422c`.
+
 Raw public synthetic evidence is retained outside the repository under
 `/mnt/storage-box-1-gentle/Glen/gui-usability-885fac49/`. Its 652-file
 `SHA256SUMS` manifest verifies and has SHA-256
