@@ -11,89 +11,11 @@ toggling feature layers, selecting and hovering. This plan changes *when*
 features appear, never *what* is shown: identical features, coordinates, labels,
 strands and scientific outputs.
 
-Implementation update: S0's developer tools are implemented and smoke-tested;
-Glen's timed/native audit and S1-S5 remain pending. The current `.11` candidate
-is unchanged. The refinements below qualify the original conditional slices;
-counts of work are not timing evidence or performance acceptance.
-
-## Improvements To The Original Plan
-
-1. **An explicit layout signature is not yet a fix.** `RenderDnaLinear::render`
-   already checks the rectangle and layout dirty flag. A signature containing
-   the same rectangle still misses on every resize. First separate actual
-   layout builds, interval-index builds and paint cost; then remove a measured
-   redundant dependency or allocation, with invalidation tests.
-2. **Vary length and count independently.** Use all nine combinations of
-   20 kbp / 250 kbp / 2 Mbp and 100 / 1,000 / 10,000 features. Otherwise
-   whole-sequence recomputation can masquerade as feature-count scaling.
-   Measure both deferred and explicitly loaded feature trees. The 10,000-feature
-   case is a stress workload, not an interactive performance promise.
-3. **Keep visibility honest.** Static grouping and viewport visibility are
-   different products. A bounding-span interval index is not an exon-piece
-   overlap oracle: an intron-only viewport must not make a transcript exon
-   visible. Collapsed or offscreen groups still need correct visible/total
-   counts when queried. Do not simply remove the viewport from existing keys.
-4. **Measure another H2 dependency.** Layer-count cache misses currently call
-   `GcContents::new_from_sequence_with_bin_size` across the full sequence.
-   Record bases traversed separately from feature visits; the layer-count cost
-   is not exclusively a tree problem.
-5. **Existing computed features are not proof of freshness.** Before skipping
-   construction-time recomputation, establish sequence, enzyme-catalog and
-   parameter identity. Worker migration must retain DEC-026 snapshot checks,
-   cancellation, exact results and a responsive observer, as required by DEC-048.
-6. **CPU is not native latency.** Direct display setters in a headless egui
-   benchmark measure presentation work, not X11 events, user navigation, GPU
-   upload, wake-up scheduling, window focus or compositor behavior.
-
-## Hypotheses And Evidence Ledger
-
-| Hypothesis | Instrumented boundary | Current interpretation |
-| --- | --- | --- |
-| H1: rectangle changes trigger costly layout | `RenderDnaLinear::layout_features`, `draw_features`, layout/index counters | Existing dirty check verified; density/timing contribution awaits audit |
-| H2: pan rebuilds whole-locus tree/count models | `FeatureTree::build_model`, tree/count hits and builds, feature visits and GC bases | Viewport-keyed rebuilds verified in source and a deterministic pan regression; runtime share awaits audit |
-| H3: hydration performs presentation work in one UI frame | `WindowDna::poll_deferred_load.hydrate`, replacement, viewport reconciliation, map update, overlay refresh | Background lock/clone and foreground hydration remain separate; native cost awaits audit |
-| H4: constructor recomputes whole-sequence derived features | Separate restriction, ORF, methylation and GC scopes in `DNAsequence::update_computed_features` | Called by the constructor; length-scaling contribution awaits audit |
-| H5: native input-to-content gap | Existing public native acceptance plus a new auditor trace without snapshot writer | Not explained by the CPU harness; scheduling changes remain blocked |
-
-Counters measure work, not time. A counter hit does not establish that the
-cache is fast, and a miss does not establish that it dominates a frame.
-
-## S0: Measurement Foundation
-
-Implemented developer tools:
-
-- `dna_feature_latency` benchmarks the real `MainAreaDna` constructor, hydration,
-  first frame with tree deferred/loaded, steady frame, one-base pan, zoom, mRNA
-  layer toggle, feature selection, hover and three resize transitions. It emits
-  117 cases and 81 counter observations across nine synthetic fixtures.
-- Each fixture binds exact sequence and feature bytes. The generator uses
-  structured, overlapping plus/minus transcripts, CDS, exons, regulatory and
-  repeat features, with half clustered in the first 5 kbp. It uses no private
-  annotation, random state, network, prepared genome or binary fixture blob.
-- `scripts/dna_feature_latency.py prepare` builds offline once and binds the
-  executable, source/diff, toolchain, profile and lockfile. `run` rechecks that
-  binary and executes it directly with isolated profile/cache/temp directories.
-  Build time is separate; failure, timeout, raw logs and work tables are retained.
-- `GENTLE_DNA_CACHE_DIAGNOSTICS=1` exposes an opt-in DNA-viewer diagnostics pane.
-  It is observation-only, reads renderer counters without waiting on its lock,
-  contains no sequence/feature names, and writes nothing to project state.
-- Additional Puffin scopes distinguish feature painting, interval indexing,
-  construction computations and hydration substeps. Existing tree build/render,
-  layer-count and display-sync scopes are retained.
-
-See [the benchmark runbook](../benches/README.md#dna-feature-density-latency)
-for exact generation, build and prebuilt replay commands. Keep the existing
-`gui_operations` TP73/PATZ1 workload: the new synthetic subtree harness does not
-replace engine-backed window/report hydration or real annotations.
-
-**S0 exit still requires Glen:** freeze a clean SHA, run two `bench-audit`
-repeats on a stable host, compare distributions and counter deltas, and capture
-native input-to-content traces at 820x520, 1200x800, 1600x1000 and 1920x1080.
-Separate process startup, open, clone/hydration, first paint, event delivery,
-repaint and compositor delays. Use a release-like binary without the semantic
-snapshot writer; capture locally, not on per-frame network storage. Retain
-project/report hashes and tool/environment identity. The headless runner does
-not claim this acceptance, even when every smoke case passes.
+Status reviewed: 2026-09-21 at `70a3b038`. S0's developer tools landed in
+`5893aa35` and are smoke-tested; its timed/native audit and S1-S5 remain pending.
+This consolidated plan has one hypothesis ledger and one S0 section below.
+The `.11` release gate is unchanged; counts of work are not timing evidence or
+performance acceptance.
 
 ## Why this leads `.12`
 
@@ -113,13 +35,12 @@ usability or performance. The evidence already separates two things:
   sizes, 0.786-0.793 ms steady embedded frame, and 3.83-3.94 ms first frame
   after a resize.
 
-Steady painting of 20,802 bp with 75+ loaded features is therefore not the
-problem. The remaining latency sits in (a) one-shot construction and hydration
-work on the UI thread, (b) work that is redone whenever the viewport or the
-window rectangle changes, and (c) the unattributed distance between an OS event
-and confirmed content, which the headless benchmark cannot observe. PATZ1 is
-also a *small* locus; feature-count timing across the new ladder still awaits
-the external auditor.
+Steady painting of this small 20,802-bp locus with 75+ loaded features is not the
+measured hotspot. The investigation therefore separates (a) one-shot
+construction and hydration work on the UI thread, (b) repeated viewport/resize
+work, and (c) the unattributed distance between an OS event and confirmed
+content, which the headless benchmark cannot observe. These historical numbers
+are not density-ladder acceptance; its timing still awaits the external auditor.
 
 ## Scope
 
@@ -151,85 +72,124 @@ GENtle revision.
 | Tab switch / multiwindow focus | same | <= 100 ms to confirmed content |
 | Process start to first usable window | reference project | attributed, not yet budgeted |
 
-## Hypotheses, to be confirmed or rejected before any optimization
+## Hypotheses And Evidence Ledger
 
-Each hypothesis gets an instrumented scope or counter, a measurement across the
-fixture ladder, and a recorded result. A rejected hypothesis is documented with
-its evidence rather than silently dropped.
+The evidence below separates verified work from unmeasured timing contributions.
+Before optimization, record measurements across the fixture ladder for H1-H4
+and native traces for H5. A rejected hypothesis stays documented with its
+evidence. Counters measure work, not time: a hit does not establish that a cache
+is fast, and a miss does not establish that it dominates a frame.
 
 **H1 - Full relayout on every changed rectangle.**
 In `src/render_dna_linear.rs`, `RenderDnaLinear::render` recomputes
 `layout_features` whenever the drawing rectangle changed or the layout dirty
 flag is set. During a live drag-resize that is one full relayout per frame. The
 relayout allocates a `Seed` per visible feature, including two `String`s (label,
-upper-cased kind), then sorts and lane-allocates them. Expected to scale with
-visible feature count, which PATZ1 barely exercises.
+upper-cased kind), then sorts and lane-allocates them. The rectangle/dirty guard
+already exists; another signature containing the rectangle would still miss on
+every resize. Layout/index counters and `draw_features` scopes separate these
+costs. The renderer regression confirms resize increments layouts without
+rebuilding the interval index; the density-dependent runtime share is unmeasured.
 
 **H2 - Viewport-keyed model rebuilds.**
 `FeatureTreeCacheKey` (`src/main_area_dna/feature_tree_ui.rs`) and
 `LayerVisibilityCacheKey` (`src/main_area_dna.rs`) both contain the viewport,
 and `active_linear_viewport_range` returns `Some` for every linear sequence. A
-one-base pan therefore invalidates both caches and rebuilds models that are
-O(all features), not O(visible features), even while the tree is collapsed or
-scrolled out of sight.
+one-base pan invalidates both caches. Layer-count misses also call
+`GcContents::new_from_sequence_with_bin_size` across the full sequence, so this
+is O(all features + bases), not merely O(visible features). Tree/count
+hits/builds, feature visits and `layer_gc_bases` record the work separately.
+The deterministic pan regression observes tree builds 1 -> 2 and GC bases
+1,200 -> 2,400 without a project mutation; dominance at 2 Mbp remains a timing
+hypothesis. Static grouping and viewport counts must be separated carefully:
+the tree uses exact exon-piece overlap, whereas the existing feature interval
+index uses transcript bounding spans, including introns. They are not
+interchangeable visibility oracles.
 
 **H3 - One-shot hydration inside a single UI frame.**
 `WindowDna::poll_deferred_load` (`src/window_dna.rs`) calls
 `replace_loaded_sequence` -> `replace_active_dna` (`src/main_area_dna.rs`),
 which invalidates every derived cache, reconciles the viewport, updates the map
 renderer and refreshes the construct-reasoning overlay in one frame (32.742 ms
-on PATZ1). The background thread only clones the record; all presentation work
-lands on the UI thread.
+on PATZ1). Background lock/clone, foreground hydration, viewport reconciliation,
+map update and overlay refresh now have separate scopes; the background thread
+still only clones the record. Their dense-locus and native costs await audit.
 
 **H4 - Whole-sequence recompute at window construction.**
 `MainAreaDna::new` calls `ensure_local_restriction_site_catalog_current`, which
 runs `DNAsequence::update_computed_features` (`src/dna_sequence.rs`): restriction
 sites, restriction groups, ORFs, methylation sites and GC content over the whole
-sequence. That is linear in sequence length and unrelated to what the first
-frame shows. Its cost is part of the 27.852 ms eager construction on 20 kbp and
-must be measured at 250 kbp and 2 Mbp.
+sequence, regardless of what the first frame shows. Separate restriction, ORF,
+methylation and GC scopes now attribute this work. Its contribution to the
+27.852 ms eager construction on 20 kbp must be measured at 250 kbp and 2 Mbp.
+Existing computed features alone are not proof that those values are current;
+any reuse needs sequence, enzyme-catalog and parameter identity.
 
 **H5 - The native gap.**
-Native resize-to-confirmed-content exceeded the CPU-side first frame after
-resize by roughly 20x-100x. Attribution across event delivery, viewport
+Native resize-to-confirmed-content substantially exceeded the CPU-side first
+frame after resize. Attribution across event delivery, viewport
 synchronization, repaint scheduling, GPU upload, compositor work and the
 `gui-test-support` snapshot writer does not exist yet. Until it does, no
-conclusion about the renderer is warranted from the native numbers.
+conclusion about the renderer is warranted from the native numbers. Direct
+display setters in the headless harness measure presentation work, not X11
+input, user navigation, window focus or compositor behavior. Scheduling changes
+remain conditional on a native trace without the snapshot writer.
 
 ## Slices
 
-### S0 - Measurement harness (prerequisite, blocks S1-S5)
+### S0 - Measurement Foundation (Tools Implemented; Audit Pending)
 
-- Deterministic, offline, hash-bound **feature-density fixture ladder**:
-  synthetic annotated sequences at roughly 10^2 / 10^3 / 10^4 features over
-  20 kbp / 250 kbp / 2 Mbp, with exon-structured transcripts, regulatory tracks
-  and overlapping lanes, plus the existing public PATZ1 and TP73 fixtures.
-  Regeneration must be a documented command, not a stored binary blob.
-- Extend `gui-profiler` Puffin scopes to the currently unscoped feature path:
-  `draw_features`, feature-tree model build vs. render, layer-visibility count,
-  hydration sub-steps and the construct-reasoning overlay refresh.
-- Surface the existing hit/miss counters (restriction-site presentation, overlay
-  presentation, GC, engine display sync, feature tree, layer visibility) through
-  one diagnostic line or debug pane so cache thrash is observable without a
-  profiler build.
-- Prebuilt, quick-running benchmark/acceptance runner with isolated profile
-  baselines; measure build and link cost separately so it is never reported as
-  runtime latency.
-- Native input-to-content timing on a release-like binary **without** the
-  semantic snapshot writer, at the four PATZ1 viewport sizes (`820x520`,
-  `1200x800`, `1600x1000`, `1920x1080`), capturing locally - never to per-frame
-  network storage, since the discarded CIFS harness blocked in kernel I/O.
-- Separate process startup, first DNA-window construction, deferred hydration
-  and first paint, so the acceptance harness's ~32 s startup-plus-first-locus
-  observation is attributed rather than restated. Retain exact source,
-  toolchain, profile, project and report hashes plus native traces with every
-  recorded measurement.
+**Implemented and smoke-tested; reuse these tools:**
 
-Exit criteria: one command produces a per-fixture, per-interaction table; two
-repeats on a stable host agree; every number carries source revision, profile,
-toolchain and fixture hash.
+- `dna_feature_latency` benchmarks the real `MainAreaDna` constructor, hydration,
+  first frame with tree deferred/loaded, steady frame, one-base pan, zoom, mRNA
+  layer toggle, feature selection, hover and three resize transitions. It emits
+  117 cases and 81 counter observations across all nine combinations of
+  20 kbp / 250 kbp / 2 Mbp and 100 / 1,000 / 10,000 features. Length and count
+  vary independently; the largest case is a stress probe, not an interactive
+  performance promise.
+- Each fixture binds exact sequence and feature bytes. The generator uses
+  structured, overlapping plus/minus transcripts, CDS, exons, regulatory and
+  repeat features, with half clustered in the first 5 kbp. It uses no private
+  annotation, random state, network, prepared genome or binary fixture blob.
+- `scripts/dna_feature_latency.py prepare` builds offline once and binds the
+  executable, source/diff, toolchain, profile and lockfile. `run` rechecks that
+  binary and executes it directly with isolated profile/cache/temp directories.
+  Build time is separate; failure, timeout, raw logs and work tables are retained.
+  Timed audits reject dirty-source or development-profile receipts.
+- `GENTLE_DNA_CACHE_DIAGNOSTICS=1` exposes an opt-in DNA-viewer diagnostics pane.
+  It is observation-only, reads renderer counters without waiting on its lock,
+  contains no sequence/feature names, and writes nothing to project state.
+- Additional Puffin scopes distinguish feature painting, interval indexing,
+  construction computations and hydration substeps. Existing tree build/render,
+  layer-count and display-sync scopes are retained.
 
-### S1 - Stop relayouting what did not change (H1)
+See [the benchmark runbook](../benches/README.md#dna-feature-density-latency)
+for exact generation, build and prebuilt replay commands. Keep the existing
+`gui_operations` TP73/PATZ1 workload: the synthetic subtree harness does not
+replace engine-backed window/report hydration or real annotations.
+
+**Pending audit and exit criteria (Glen):**
+
+1. Freeze a clean SHA and run two prebuilt `bench-audit` repeats on a stable
+   host. Retain the per-fixture, per-interaction tables, raw distributions and
+   counter deltas; assess repeatability rather than treating two successful
+   processes as a timing pass. Bind every result to source revision, profile,
+   toolchain, fixture and binary hashes.
+2. Capture native input-to-content traces at 820x520, 1200x800, 1600x1000 and
+   1920x1080. Separate process startup, open, clone/hydration, first paint,
+   event delivery, repaint and compositor delays. Use a release-like binary
+   without the semantic snapshot writer; capture locally, not on per-frame
+   network storage. Retain project/report hashes and tool/environment identity.
+3. Record the confirmed/rejected/unresolved timing hypotheses above and choose
+   an interactive density ceiling from evidence. Only then authorize the
+   corresponding S1-S5 changes against their evidence requirements below.
+
+The headless runner does not establish native acceptance, even when every smoke
+case passes. S0's implementation is not to be repeated; its measurement gate
+remains open.
+
+### S1 - Reduce Measured Layout Allocations And Dependencies (H1)
 
 `RenderDnaLinear::render` already checks the rectangle and a layout dirty flag.
 A new signature with the same rectangle cannot avoid work during real resizing.

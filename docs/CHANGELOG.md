@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-09-21 - DNA Latency Plan Consolidation
+
+- Merge the duplicated hypothesis and S0 sections into one latency plan. Keep
+  S0's implemented developer tools separate from Glen's pending timed/native
+  audit, and rename S1 to match allocation/dependency work rather than promise
+  that another rectangle cache key avoids resize layout.
+- Integrate the full-sequence GC rescan, exact exon-overlap and derived-data
+  freshness constraints into their relevant hypotheses and slices. Work counters
+  do not prove timing dominance. No runtime, roadmap priority or release-gate
+  change; S1-S5 remain conditional on measured evidence.
+
 ## 2026-09-21 - MCP Process Stack Boundary
 
 - Run the MCP stdio loop on one synchronously joined 16-MiB worker, including
