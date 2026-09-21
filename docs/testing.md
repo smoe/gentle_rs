@@ -117,6 +117,12 @@ an OS-dependent assumption portable.
   repeated errors by cause; fix the first panic before considering poisoned
   locks. Do not add unconditional poison recovery or timeouts to hide the
   original failure. Run targeted integration tests before the full suite.
+- **Process stacks:** `RUST_MIN_STACK` configures spawned Rust threads, not the
+  executable's main-thread stack. Keep real-binary MCP integration coverage
+  with that variable removed from the child environment. The synthetic digest
+  in `tests/adapter_error_contract.rs` checks framed stdout and persisted
+  fragments; malformed framing must still exit unsuccessfully on stderr.
+  Native Windows CI is required to confirm small-main-stack fixes.
 
 Native behavior is documented by [Rust's Windows path normalization rules](https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push),
 the [component parser](https://doc.rust-lang.org/src/std/path.rs.html), and

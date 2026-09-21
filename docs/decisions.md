@@ -159,6 +159,14 @@ Stack-overflow fixes should reduce dispatcher frame depth without forking
 behavior. Prefer narrow helper dispatch and expanded-stack workers for
 confirmed small-stack failures in shell/engine routes.
 
+The MCP stdio entry point runs its complete read/decode/dispatch/write loop on
+one explicitly sized 16-MiB worker stack and synchronously joins it. This covers
+typed operation decoding before shared engine execution, not just the inner
+dispatcher. It neither detaches execution nor creates a worker per request.
+Transport errors still reach the binary's stderr/nonzero-exit boundary, and
+panics are propagated rather than converted to successful responses. Do not
+rely on `RUST_MIN_STACK` to enlarge the Windows process main thread.
+
 ## DEC-010: `#[inline(never)]` Helper Dispatch
 
 Status: active

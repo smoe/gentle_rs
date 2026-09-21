@@ -40,6 +40,7 @@ const SERVER_NAME: &str = "gentle_mcp";
 const SERVER_TITLE: &str = "GENtle MCP";
 const MAX_MCP_CONTENT_LENGTH_BYTES: usize = 8 * 1024 * 1024;
 const MAX_MCP_JSON_DEPTH: usize = 96;
+const MCP_STDIO_STACK_SIZE: usize = 16 * 1024 * 1024;
 
 mod primer_tools;
 
@@ -60,7 +61,23 @@ struct ToolCallParams {
     arguments: Value,
 }
 
+/// Serve stdio synchronously on an explicitly sized stack, including typed
+/// request decoding and engine dispatch. `RUST_MIN_STACK` does not resize the
+/// process main thread used by an installed MCP binary.
 pub fn run_stdio_server(state_path: &str) -> Result<(), String> {
+    let state_path = state_path.to_owned();
+    let worker = std::thread::Builder::new()
+        .name("gentle-mcp-stdio".to_string())
+        .stack_size(MCP_STDIO_STACK_SIZE)
+        .spawn(move || run_stdio_server_on_worker(&state_path))
+        .map_err(|error| format!("Could not start MCP stdio worker: {error}"))?;
+    match worker.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
+    }
+}
+
+fn run_stdio_server_on_worker(state_path: &str) -> Result<(), String> {
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut reader = BufReader::new(stdin.lock());

@@ -1,10 +1,15 @@
+//! Real-binary adapter boundary tests with deterministic synthetic requests and
+//! an inline BamHI sequence saved only in a temporary project. No network or
+//! external fixtures are required; requests exercise stdout framing, errors,
+//! state persistence and MCP startup independently of Cargo's stack environment.
+
 use gentle::{dna_sequence::DNAsequence, engine::ProjectState};
 use gentle_protocol::{CapabilityAdapter, CapabilitySource, EngineError};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeSet,
     io::Write,
-    process::{Command, Stdio},
+    process::{Command, Output, Stdio},
 };
 
 fn frame(payload: &Value) -> Vec<u8> {
@@ -23,8 +28,9 @@ fn read_framed_response(output: &[u8]) -> Value {
     serde_json::from_str(&text[split_at..]).expect("MCP JSON body")
 }
 
-fn run_mcp_once(request: Value) -> Value {
+fn run_mcp_input(input: &[u8]) -> Output {
     let mut child = Command::new(env!("CARGO_BIN_EXE_gentle_mcp"))
+        .env_remove("RUST_MIN_STACK")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -34,9 +40,13 @@ fn run_mcp_once(request: Value) -> Value {
         .stdin
         .as_mut()
         .expect("mcp stdin")
-        .write_all(&frame(&request))
+        .write_all(input)
         .expect("write MCP frame");
-    let output = child.wait_with_output().expect("wait gentle_mcp");
+    child.wait_with_output().expect("wait gentle_mcp")
+}
+
+fn run_mcp_once(request: Value) -> Value {
+    let output = run_mcp_input(&frame(&request));
     assert!(
         output.status.success(),
         "gentle_mcp failed: {}",
@@ -92,6 +102,30 @@ fn mcp_digest_keeps_stdout_protocol_framed() {
             .and_then(Value::as_array)
             .map(Vec::len),
         Some(3)
+    );
+    let persisted = ProjectState::load_from_path(&state_path.to_string_lossy())
+        .expect("load persisted digest state");
+    for seq_id in response["result"]["structuredContent"]["result"]["created_seq_ids"]
+        .as_array()
+        .expect("created digest fragments")
+    {
+        assert!(
+            persisted
+                .sequences
+                .contains_key(seq_id.as_str().expect("fragment id"))
+        );
+    }
+}
+
+#[test]
+fn mcp_framing_failure_exits_without_stdout_noise() {
+    let output = run_mcp_input(b"Content-Length: invalid\r\n\r\n");
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty(), "MCP errors must stay off stdout");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Invalid Content-Length"),
+        "MCP worker error must reach stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
     );
 }
 

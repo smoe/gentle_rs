@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-21 - MCP Process Stack Boundary
+
+- Run the MCP stdio loop on one synchronously joined 16-MiB worker, including
+  typed request decoding and operation dispatch. Windows CI job `106187346909`
+  at `558587b6` overflowed the process main stack during the digest integration
+  test despite `RUST_MIN_STACK=16777216`; that variable does not enlarge main.
+- Keep protocol framing, confirmation, persistence and engine behavior intact.
+  Real-binary tests remove inherited stack configuration, assert saved digest
+  fragments, and cover stderr-only transport failure with unsuccessful exit.
+- No local build or tests run at the owner's request; native Windows CI must
+  confirm the repair. No tag or release-status change.
+
 ## 2026-09-21 - Windows CLI Fetch Fixture JSON
 
 - Serialize the dbSNP CLI parity fixture's genome catalog with `serde_json`
