@@ -23423,6 +23423,11 @@ fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
                 Err(error) => panic!("Ensembl fixture accept: {error}"),
             }
         };
+        // Windows inherits the listener's nonblocking mode on accepted sockets.
+        // The request reader needs blocking I/O bounded by the timeouts below.
+        stream
+            .set_nonblocking(false)
+            .expect("blocking Ensembl fixture connection");
         stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();

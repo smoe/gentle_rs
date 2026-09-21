@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-21 - Ensembl HTTP Fixture Socket Mode
+
+- Explicitly restore blocking mode on the accepted connection in the synthetic
+  Ensembl region HTTP test. Windows can inherit the nonblocking listener mode,
+  causing request-line reads to fail with `WouldBlock` before HTTP data arrives.
+- Retain the 60-second accept deadline, 10-second read/write timeouts and all
+  request, sequence, anchor and provenance assertions. Production networking
+  and timeout policy are unchanged. The tutorial 60-second progress notices
+  are unrelated to this failure.
+- No local builds or tests run at the owner's request; Windows CI must verify
+  the existing engine integration regression.
+
 ## 2026-09-21 - MCP Process Stack Boundary
 
 - Run the MCP stdio loop on one synchronously joined 16-MiB worker, including

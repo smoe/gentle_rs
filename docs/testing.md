@@ -79,6 +79,12 @@ an OS-dependent assumption portable.
   `sync_all`, without `create` or `truncate`. Retain sync errors and receipt
   verification; test unchanged bytes/length across synchronization. Close
   handles before rename/removal when their sharing policy requires it.
+- **Loopback HTTP fixtures:** a nonblocking listener can yield a nonblocking
+  accepted stream on Windows. Before using blocking readers or `write_all`,
+  explicitly call `stream.set_nonblocking(false)` and retain finite read/write
+  timeouts. Setting a timeout alone does not change the socket mode. Keep the
+  listener's bounded accept loop; do not hide `WouldBlock` with longer deadlines
+  or skip the real HTTP operation. See [Winsock accept semantics](https://learn.microsoft.com/en-us/windows/win32/api/winsock2/nf-winsock2-accept#remarks).
 - **Shell boundaries:** use `quote_shell_arg` when constructing GENtle shared
   shell lines; use `Command::arg` for native subprocess arguments and a JSON
   serializer for JSON. These are different grammars. Round-trip spaces,
