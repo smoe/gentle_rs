@@ -167,6 +167,14 @@ Transport errors still reach the binary's stderr/nonzero-exit boundary, and
 panics are propagated rather than converted to successful responses. Do not
 rely on `RUST_MIN_STACK` to enlarge the Windows process main thread.
 
+The standalone CLI likewise runs its complete argument parsing, direct-command
+and shared-shell dispatch on one explicitly sized 16-MiB worker, synchronously
+joined by main. SIGUSR1 diagnostic setup and the structured stderr/nonzero-exit
+boundary remain in main; worker panics propagate. Do not rely on shell/engine
+inner workers alone: direct CLI operations can exhaust the main stack before
+reaching such a boundary. Real-binary tests must remove inherited
+`RUST_MIN_STACK` for both successful operation output and error handling.
+
 ## DEC-010: `#[inline(never)]` Helper Dispatch
 
 Status: active

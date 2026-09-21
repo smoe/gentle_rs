@@ -321,6 +321,22 @@ class WorkflowWiringTests(unittest.TestCase):
             self.assertIn("needs: select-platform", job)
             self.assertIn(f"if: needs.select-platform.outputs.platform == '{platform}'", job)
 
+    def test_windows_checks_adapter_processes_before_long_test_suites(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        windows = text.split("\n  windows:\n", 1)[1].split("\n  ci-summary:\n", 1)[0]
+        step = "      - name: CLI and MCP process-boundary regressions\n"
+        self.assertIn(step, windows)
+        body = windows.split(step, 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn(
+            "run: cargo test -q --locked --test adapter_error_contract "
+            "--test reporter_construct_handoff_cli", body)
+        self.assertNotIn("continue-on-error:", body)
+        self.assertNotIn("if:", body)
+        for later in ("Examples and tutorial schema/drift checks",
+                      "Workflow example runtime tests", "Full test suite"):
+            self.assertLess(windows.index(step), windows.index(f"- name: {later}\n"))
+
     def test_sampled_platform_is_unix_and_manual_selection_is_preserved(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()

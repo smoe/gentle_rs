@@ -1,3 +1,7 @@
+//! Real-binary reporter planning using the committed VKORC1 tutorial candidate
+//! set. Replays the plan-handoff command into a fresh temporary directory without
+//! inherited stack configuration; no network or generated fixture is required.
+
 use serde_json::Value;
 use std::process::Command;
 
@@ -6,6 +10,7 @@ fn reporter_plan_handoff_cli_writes_output_schema_and_macro_command() {
     let temp = tempfile::tempdir().expect("tempdir");
     let output = temp.path().join("handoff.json");
     let output_result = Command::new(env!("CARGO_BIN_EXE_gentle_cli"))
+        .env_remove("RUST_MIN_STACK")
         .args([
             "reporters",
             "plan-handoff",
@@ -25,6 +30,9 @@ fn reporter_plan_handoff_cli_writes_output_schema_and_macro_command() {
         &std::fs::read_to_string(&output).expect("read reporter handoff output"),
     )
     .expect("parse handoff JSON");
+    let stdout: Value =
+        serde_json::from_slice(&output_result.stdout).expect("CLI stdout is one JSON result");
+    assert_eq!(stdout["reporter_construct_handoff"], payload);
     assert_eq!(
         payload["schema"].as_str(),
         Some("gentle.reporter_construct_handoff.v1")

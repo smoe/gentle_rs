@@ -74,6 +74,7 @@ use gentle::engine::{
 };
 
 const DEFAULT_STATE_PATH: &str = ".gentle_state.json";
+const CLI_STACK_SIZE: usize = 16 * 1024 * 1024;
 const DEFAULT_REBASE_RESOURCE_PATH: &str = "data/resources/rebase.enzymes.json";
 const DEFAULT_JASPAR_RESOURCE_PATH: &str = "data/resources/jaspar.motifs.json";
 const DEFAULT_JASPAR_REMOTE_METADATA_PATH: &str = "data/resources/jaspar.remote_metadata.json";
@@ -1117,9 +1118,23 @@ fn main() {
     if let Err(error) = runtime_status::install_sigusr1_stderr_dump_thread() {
         eprintln!("Warning: could not install SIGUSR1 runtime-status diagnostics: {error}");
     }
-    if let Err(e) = run() {
+    if let Err(e) = run_on_worker() {
         eprintln!("{}", cli_error_payload(&e));
         std::process::exit(1);
+    }
+}
+
+fn run_on_worker() -> Result<(), String> {
+    // Cover parsing and direct engine routes, not only shared-shell workers.
+    // RUST_MIN_STACK cannot enlarge the Windows process main thread.
+    let worker = std::thread::Builder::new()
+        .name("gentle-cli".to_string())
+        .stack_size(CLI_STACK_SIZE)
+        .spawn(run)
+        .map_err(|error| format!("Could not start CLI worker: {error}"))?;
+    match worker.join() {
+        Ok(result) => result,
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 

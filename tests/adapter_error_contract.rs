@@ -1,7 +1,8 @@
 //! Real-binary adapter boundary tests with deterministic synthetic requests and
 //! an inline BamHI sequence saved only in a temporary project. No network or
 //! external fixtures are required; requests exercise stdout framing, errors,
-//! state persistence and MCP startup independently of Cargo's stack environment.
+//! state persistence and CLI/MCP startup independently of Cargo's stack
+//! environment.
 
 use gentle::{dna_sequence::DNAsequence, engine::ProjectState};
 use gentle_protocol::{CapabilityAdapter, CapabilitySource, EngineError};
@@ -132,10 +133,15 @@ fn mcp_framing_failure_exits_without_stdout_noise() {
 #[test]
 fn cli_error_boundary_emits_engine_error_payload() {
     let output = Command::new(env!("CARGO_BIN_EXE_gentle_cli"))
+        .env_remove("RUST_MIN_STACK")
         .arg("definitely-not-a-command")
         .output()
         .expect("run failing gentle_cli command");
     assert!(!output.status.success());
+    assert!(
+        output.stdout.starts_with(b"Usage:"),
+        "Unknown CLI commands retain their usage output"
+    );
 
     let payload: Value = serde_json::from_slice(&output.stderr).expect("CLI stderr JSON error");
     let _error: EngineError = serde_json::from_value(payload.clone()).expect("EngineError payload");

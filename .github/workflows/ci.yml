@@ -458,6 +458,9 @@ jobs:
       - name: Build Windows binaries
         run: cargo build --features script-interfaces --bins
 
+      - name: CLI and MCP process-boundary regressions
+        run: cargo test -q --locked --test adapter_error_contract --test reporter_construct_handoff_cli
+
       - name: DNA viewer repro binary smoke
         run: |
           $modes = cargo run -q --bin gentle_dna_viewer_repro -- --list-modes

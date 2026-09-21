@@ -130,11 +130,18 @@ an OS-dependent assumption portable.
   locks. Do not add unconditional poison recovery or timeouts to hide the
   original failure. Run targeted integration tests before the full suite.
 - **Process stacks:** `RUST_MIN_STACK` configures spawned Rust threads, not the
-  executable's main-thread stack. Keep real-binary MCP integration coverage
-  with that variable removed from the child environment. The synthetic digest
-  in `tests/adapter_error_contract.rs` checks framed stdout and persisted
+  executable's main-thread stack. Keep real-binary CLI and MCP integration
+  coverage with that variable removed from the child environment; unit tests
+  running inside Cargo's larger test threads do not cover process startup.
+  Include direct CLI engine routes as well as shell forwarding. The synthetic
+  digest in `tests/adapter_error_contract.rs` checks framed stdout and persisted
   fragments; malformed framing must still exit unsuccessfully on stderr.
-  Native Windows CI is required to confirm small-main-stack fixes.
+  `tests/reporter_construct_handoff_cli.rs` checks direct reporter planning and
+  equality between the stdout result and saved handoff. The CLI error test
+  retains JSON stderr, existing usage output and unsuccessful exit. Windows CI
+  runs both integration targets before tutorial replays and the long test suites;
+  `scripts.test_release_candidate` guards that ordering. Native Windows CI is
+  required to confirm small-main-stack fixes.
 
 Native behavior is documented by [Rust's Windows path normalization rules](https://doc.rust-lang.org/std/path/struct.PathBuf.html#method.push),
 the [component parser](https://doc.rust-lang.org/src/std/path.rs.html), and

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-22 - CLI Process Stack Boundary
+
+- Run the standalone CLI's parsing and dispatch on one synchronously joined
+  16-MiB worker, matching the existing MCP policy. Windows job `106500574945`
+  at `c8d02be8` overflowed the CLI process main stack in `reporters plan-handoff`
+  despite `RUST_MIN_STACK=16777216`; that variable does not resize main.
+- Preserve reporter logic, JSON output, structured stderr, exit status and
+  panic propagation. The real-binary reporter test removes inherited stack
+  configuration and compares stdout with the saved handoff; the CLI error
+  regression also removes the variable and preserves existing usage output.
+- Run these CLI/MCP boundary regressions earlier in Windows CI, before tutorial
+  replays and long test suites, with an offline workflow-ordering guard.
+- No local builds or tests run at the owner's request. Native Windows CI must
+  verify the fix; no release tag or acceptance status is changed.
+
 ## 2026-09-21 - Parity Matrix Checkout Line Endings
 
 - Pin the generated `docs/gui_cli_mcp_parity.md` to LF. Windows job
