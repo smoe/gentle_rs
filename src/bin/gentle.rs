@@ -114,11 +114,13 @@ Agent Assistant API environment:\n  \
 {AGENT_MODEL_ENV}     optional model override\n\n\
 GUI diagnostics:\n  \
 {gui_profile_env}=1    enable Puffin GUI profiling when built with --features gui-profiler\n  \
-{gui_profile_addr_env}  optional profiler bind address (default {gui_profile_addr})\n\n  \
+{gui_profile_addr_env}  optional profiler bind address (default {gui_profile_addr})\n  \
+{startup_trace_env}=PATH  write bounded CPU startup checkpoints to a new JSON file on exit\n\n  \
 ChatGPT, Claude.ai/Claude Code, and Le Chat subscription/login tokens are not API keys.",
         gui_profile_env = gui_profiler::GUI_PROFILER_ENV,
         gui_profile_addr_env = gui_profiler::GUI_PROFILER_ADDR_ENV,
-        gui_profile_addr = gui_profiler::DEFAULT_GUI_PROFILER_ADDR
+        gui_profile_addr = gui_profiler::DEFAULT_GUI_PROFILER_ADDR,
+        startup_trace_env = gui_profiler::startup_trace::STARTUP_TRACE_ENV,
     )
 }
 
@@ -131,6 +133,8 @@ fn persist_root_window_state() -> bool {
 }
 
 fn main() -> eframe::Result<()> {
+    let main_entered = std::time::Instant::now();
+    let _startup_trace = gui_profiler::startup_trace::start_from_env(main_entered);
     install_panic_logging();
     gui_profiler::init_from_env();
     configure_macos_process_name();
@@ -169,7 +173,9 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
-    eframe::run_native(
+    let native_run =
+        gui_profiler::startup_trace::span(gui_profiler::startup_trace::Phase::NativeRun);
+    let result = eframe::run_native(
         "GENtle",
         options,
         Box::new(move |_cc| {
@@ -177,7 +183,9 @@ fn main() -> eframe::Result<()> {
                 cli.project_path.as_deref(),
             )))
         }),
-    )
+    );
+    native_run.finish(result.is_ok());
+    result
 }
 
 #[cfg(test)]
@@ -248,6 +256,7 @@ mod tests {
         assert!(help.contains(gentle::agent_bridge::MISTRAL_API_KEY_ENV));
         assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ENV));
         assert!(help.contains(gentle::gui_profiler::GUI_PROFILER_ADDR_ENV));
+        assert!(help.contains(gentle::gui_profiler::startup_trace::STARTUP_TRACE_ENV));
         assert!(help.contains("subscription/login tokens are not API keys"));
     }
 }

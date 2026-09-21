@@ -167,6 +167,63 @@ The diagnostics pane and Puffin scopes are described in `docs/gui.md`;
 `docs/dna_feature_rendering_latency_plan.md` retains the conditional optimization
 sequence. Developers smoke-test; Glen provides timed and native acceptance.
 
+### Startup phase checkpoints
+
+The desktop binary can retain a small CPU timeline without `gui-test-support`,
+Puffin, screenshots or per-frame disk writes. On a locally built, identified
+binary, use an explicit **new file** in an existing local output directory:
+
+```bash
+GENTLE_GUI_STARTUP_TRACE=/tmp/gentle-startup-empty-01.json \
+  /absolute/path/to/gentle
+GENTLE_GUI_STARTUP_TRACE=/tmp/gentle-startup-project-01.json \
+  /absolute/path/to/gentle --project /absolute/path/to/public-project.gentle.json
+```
+
+Open the intended DNA window, then exit normally. The destination is written
+only after the native loop returns; an existing file is never overwritten.
+Missing parent directories or write failures are reported on stderr without
+changing project behavior. Forced termination can leave no file: absence is
+not evidence of fast startup or a successful run. There is no live flush button
+or hang-capture promise. Unset/empty `GENTLE_GUI_STARTUP_TRACE` is inert.
+
+`gentle.gui_startup_trace.v1` binds the compiled source revision and reports
+monotonic microseconds since Rust `main` entry. It excludes OS process loading
+before that point. Each event has a fixed phase/kind and process-local ordinal
+subject/span, never a sequence name, bases, path, credential or error text.
+Matched span begin/end rows distinguish completion, failure and interruption.
+The record is capped at 512 events; contention/cap losses increment
+`dropped_events`. Any loss or unmatched span makes the affected duration
+unavailable, not zero. Do not sum nested or overlapping worker spans.
+
+Use these boundaries for attribution:
+
+- `native_run` begin to `app_initialize` begin separates pre-constructor native
+  setup from app defaults, help preparation, configuration and credential load.
+  `native_run` ends on exit, not when startup finishes.
+- `project_read_decode` and `project_install` distinguish file/parsing work from
+  installation and presentation-state reset. Failed loads have no install span.
+- `root_first_frame` may be a splash; `root_workspace_frame` excludes it. Both
+  precede the optional semantic snapshot writer, not GPU/compositor completion.
+- `dna_open_dispatch` measures the common application dispatcher, including a
+  focus/no-match return; completion does not imply a window opened. Constructor
+  and worker subjects identify subsequent work without persistent sequence IDs.
+- `dna_worker_scheduled`, `dna_engine_read_lock`, `dna_sequence_clone`,
+  `dna_worker_result` and `dna_hydrate` separate scheduling, lock wait, copying
+  and foreground hydration. Direct/eager routes legitimately lack worker spans.
+- `dna_native_content_frame` / `dna_embedded_content_frame` occur once after
+  loaded DNA rendering returns, never for loading/error placeholders. Deferred
+  feature trees or evidence jobs may still be pending. These are CPU markers,
+  **not subject-verified, fully ready or compositor-presented content**.
+
+Glen should retain exact binary/lockfile/project/report hashes, toolchain,
+profile, flags, isolated profile/cache setup and cold/warm conditions alongside
+each trace. Compare release-like native macOS and Linux runs as separate
+evidence classes; record process-launch and visibly confirmed content with the
+external native audit. This file alone cannot certify an interaction budget,
+and enabling tracing adds some overhead. The existing Criterion replay remains
+unchanged and clears inherited `GENTLE_*` options.
+
 ## Specificity finalization
 
 Run the deterministic primer-specificity benchmark with:

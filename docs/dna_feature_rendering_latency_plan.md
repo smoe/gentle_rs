@@ -12,9 +12,11 @@ features appear, never *what* is shown: identical features, coordinates, labels,
 strands and scientific outputs.
 
 Implementation update: the existing S0 density tools are implemented and
-smoke-tested. The added startup phase markers, exact owner-selected boundary
-cases and macOS cross-check below remain pending, as do Glen's timed/native
-audit and runtime slices S1-S6. B0 separates build feedback from runtime
+smoke-tested. Opt-in startup phase checkpoints now cover app initialization,
+project loading and first root/DNA CPU frames; they do not confirm native
+presentation. Exact owner-selected boundary cases and the macOS cross-check
+remain pending, as do Glen's timed/native audit and runtime slices S1-S6.
+B0 separates build feedback from runtime
 performance. This plan does not change the `.11` candidate; counts of work are
 not timing evidence or performance acceptance.
 
@@ -115,7 +117,7 @@ native acceptance; the owner decides release scope and any explicit deferral.
 | H3: hydration performs presentation work in one UI frame | `WindowDna::poll_deferred_load.hydrate`, replacement, viewport reconciliation, map update, overlay refresh | Background lock/clone and foreground hydration remain separate; native cost awaits audit |
 | H4: constructor recomputes whole-sequence derived features | Separate restriction, ORF, methylation and GC scopes in `DNAsequence::update_computed_features` | Called by the constructor; length-scaling contribution awaits audit |
 | H5: native input-to-content gap | Existing public native acceptance plus a new auditor trace without snapshot writer | Not explained by the CPU harness; scheduling changes remain blocked |
-| H6: startup/first-locus dominates perceived delay | Proposed process entry, app construction, project load, first usable root window, open request and first subject-correct paint markers | About 32 s observed only in the debug acceptance harness; product time versus fixed waits/I/O/snapshot overhead is unresolved |
+| H6: startup/first-locus dominates perceived delay | Opt-in Rust-entry, app initialization, project load, root/DNA CPU-frame and deferred-load phase checkpoints; external presentation confirmation still required | About 32 s observed only in the debug acceptance harness; product time versus fixed waits/I/O/snapshot overhead is unresolved |
 
 Counters measure work, not time. A counter hit does not establish that the
 cache is fast, and a miss does not establish that it dominates a frame.
@@ -142,6 +144,12 @@ Implemented developer tools:
 - Additional Puffin scopes distinguish feature painting, interval indexing,
   construction computations and hydration substeps. Existing tree build/render,
   layer-count and display-sync scopes are retained.
+- `GENTLE_GUI_STARTUP_TRACE` retains bounded, process-local CPU checkpoints
+  without biological identifiers or per-frame I/O, writing a new JSON file
+  only on native-loop exit. The [startup runbook](../benches/README.md#startup-phase-checkpoints)
+  distinguishes splash, project decoding/installation, worker lock/clone,
+  hydration and content-frame return; losses/failures remain explicit. Neither
+  these markers nor a successful return prove visible or fully ready content.
 
 See [the benchmark runbook](../benches/README.md#dna-feature-density-latency)
 for exact generation, build and prebuilt replay commands. Keep the existing
@@ -279,9 +287,9 @@ macOS before generalizing Xvfb/Openbox observations into a product fix.
 
 **H6 - Startup and first usable content.**
 The harness combines process startup, project/window opening, fixed waits and
-capture work. Add phase markers around `src/bin/gentle.rs`,
-`GENtleApp::new_with_project`, project load and the first usable root/window
-frames; connect the open request to existing hydration/paint scopes. Use an
+capture work. Use the bounded CPU phase markers around `src/bin/gentle.rs`,
+app initialization, project load, first root/workspace and DNA frames alongside
+independent native presentation timestamps and the existing profiler scopes. Use an
 empty clean profile and the same public PATZ1/TP73 projects. A small constructor
 benchmark cannot exonerate or explain process startup.
 
@@ -314,9 +322,9 @@ benchmark cannot exonerate or explain process startup.
   toolchain, profile, project and report hashes plus native traces with every
   recorded measurement.
 - Add the owner-selected envelope boundary where the current ladder lacks it,
-  and retain a local macOS native cross-check before general S5 changes. Startup
-  instrumentation and baseline collection belong here; S6 owns the resulting
-  product fixes, not another open-ended profiling task.
+  and retain a local macOS native cross-check before general S5 changes. Bind
+  the CPU startup trace to external native observations; the new markers do
+  not replace that acceptance. S6 owns the resulting product fixes.
 
 Exit criteria: one command produces a per-fixture, per-interaction table; two
 repeats on a stable host agree; every number carries source revision, profile,

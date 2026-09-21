@@ -40,6 +40,21 @@
 - No local builds or tests run at the owner's request; Windows CI must verify
   the existing engine integration regression.
 
+## 2026-09-21 - Bounded Startup CPU Checkpoints
+
+- Add optional `GENTLE_GUI_STARTUP_TRACE` recording for native setup, app
+  initialization, project decoding/installation and first root/workspace/DNA
+  CPU frames. Deferred DNA loading distinguishes scheduling, lock wait, cloning
+  and hydration. Loading/error placeholders do not claim content.
+- Keep the recorder bounded and nonblocking, with explicit loss counts and
+  failed/interrupted scopes. Use only process-local ordinals and fixed labels;
+  write a new JSON file on exit, never overwrite retained evidence or write on
+  the paint path. The ordinary GUI remains uninstrumented by default.
+- Document a direct-binary runbook and limitations: Rust-entry is not OS
+  launch, CPU-frame return is not compositor/subject-readiness confirmation,
+  and forced termination may leave no output. No optimization, new profile,
+  scientific behavior change or performance acceptance is claimed.
+
 ## 2026-09-21 - Reconcile .12 Performance Review
 
 - Address the owner-supplied Claude review with an explicit startup/first usable
