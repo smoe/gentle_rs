@@ -10,6 +10,9 @@ docs/tutorial/generated/** export-ignore
 # Cross-platform candidate receipts bind the lockfile's exact bytes.
 Cargo.lock text eol=lf
 
+# The generated capability matrix is compared byte-for-byte with LF output.
+docs/gui_cli_mcp_parity.md text eol=lf
+
 # Generated tutorial indexes are checked byte-for-byte against LF serialization.
 docs/tutorial/catalog.json text eol=lf
 docs/tutorial/manifest.json text eol=lf

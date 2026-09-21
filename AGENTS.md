@@ -94,6 +94,10 @@ Reference: [`docs/architecture.md`](docs/architecture.md)
   shared shell helper, and validate raw paths before normalization. Do not
   weaken hashes, change shell grammar, or homogenize fixture identifiers merely
   to make a failing test pass.
+- Every new byte-exact generated-file freshness check must include a scoped
+  checkout policy and LF/CRLF coverage in the fast `scripts.test_tutorial_checkouts`
+  CI gate. This includes Markdown projections, not just hashed fixtures or JSON;
+  do not defer newline coverage to the full Rust suite.
 - Separate primary failures from cascades (for example, mutex poisoning after
   an export panic). Record the tested SHA/platform and explicitly identify
   unrun native-Windows checks; a sampled CI pass or macOS run is not proof of

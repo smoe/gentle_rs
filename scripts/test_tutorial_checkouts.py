@@ -2,7 +2,8 @@
 
 Fixtures are created below from literal bytes, committed only inside temporary
 repositories, and consumed by the checkout/replay tests. The byte-preservation
-regression also copies existing provenance-documented TSS and probe fixtures.
+regressions also copy the generated capability matrix and existing
+provenance-documented TSS and probe fixtures.
 No network, build, real checkout changes, or platform-specific tools are used.
 """
 
@@ -140,12 +141,49 @@ class TutorialCheckoutTests(unittest.TestCase):
                     self.assertEqual(checked_out, payload)
                     self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
 
+    def test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes(self):
+        relative = "docs/gui_cli_mcp_parity.md"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertIn(b"\n", payload)
+        self.assertFalse(b"\r" in payload,
+                         f"{relative} requires a scoped .gitattributes text eol=lf rule")
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "generated capability matrix")
+
+        # Negative control: the missing rule must reproduce CRLF checkout drift.
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if relative.encode() not in line
+        )
+        broken = Path(self.tmp.name) / "parity-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertTrue(
+            (broken / relative).read_bytes() == payload.replace(b"\n", b"\r\n"),
+            "The missing-rule control must reproduce CRLF conversion of the parity matrix",
+        )
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"parity-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertTrue(
+                    (target / relative).read_bytes() == payload,
+                    f"{relative} changed during {mode[0]} checkout; preserve the "
+                    "generator's exact bytes with .gitattributes text eol=lf",
+                )
+
     def test_replay_uses_existing_binary_and_forces_offline(self):
         with patch.dict(os.environ, {"GENTLE_TEST_ONLINE": "1"}), \
                 patch.object(checker.subprocess, "run") as run:
             checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
         self.assertEqual([call.args[0] for call in run.call_args_list],
-                         [["existing-binary", "--check"], ["existing-binary", "tutorial-check"]])
+                         [["existing-binary", "parity-matrix-check"],
+                          ["existing-binary", "--check"], ["existing-binary", "tutorial-check"]])
         for call in run.call_args_list:
             self.assertNotIn("GENTLE_TEST_ONLINE", call.kwargs["env"])
             self.assertEqual(call.kwargs["cwd"], self.root)
@@ -206,7 +244,7 @@ class TutorialCheckoutTests(unittest.TestCase):
     def test_failed_check_or_timeout_cannot_be_reported_as_success(self):
         for error in (subprocess.CalledProcessError(1, "validator"),
                       subprocess.TimeoutExpired("validator", 12)):
-            for failed_call in (0, 1):
+            for failed_call in (0, 1, 2):
                 with self.subTest(error=type(error).__name__, failed_call=failed_call), \
                         patch.object(checker.subprocess, "run",
                                      side_effect=[None] * failed_call + [error]):

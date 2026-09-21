@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-09-21 - Parity Matrix Checkout Line Endings
+
+- Pin the generated `docs/gui_cli_mcp_parity.md` to LF. Windows job
+  `106385613077` at `24c1ecf1` differed only in 1,150 CRLF line endings;
+  matrix content, the generator and strict freshness comparison are unchanged.
+- Cover the real Markdown in the existing no-build Python CI checkout gate,
+  including a missing-rule negative control. Run `parity-matrix-check` first
+  in both prebuilt-binary LF/CRLF replays, before the longer tutorial checks.
+  Require this early coverage for all byte-exact generated-file checks in the
+  contributor/testing guidance, not only hashed inputs and generated JSON.
+- No local builds or tests run at the owner's request. GitHub CI must execute
+  the new regression and confirm native Windows freshness at the repaired SHA.
+
 ## 2026-09-21 - Ensembl HTTP Fixture Socket Mode
 
 - Explicitly restore blocking mode on the accepted connection in the synthetic

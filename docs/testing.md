@@ -73,6 +73,12 @@ an OS-dependent assumption portable.
   Never normalize raw hash inputs, edit expected digests, or regenerate scientific
   outputs to conceal checkout drift. Semantic text comparisons may normalize
   line endings only when their contract explicitly permits it.
+- **Generated-file freshness:** a raw comparison against a generator is also a
+  byte contract, even without a stored hash. Pin LF-authored Markdown as well as
+  JSON and add LF/CRLF coverage to `scripts.test_tutorial_checkouts` in the same
+  change. The fast `release-policy` CI job runs it without compiling Rust. Its
+  parity-matrix regression uses the real committed Markdown and a missing-rule
+  negative control; do not use Python's newline-normalizing text reads here.
 - **File handles:** choose access rights for every operation on a handle, not
   just the initial open. Windows `FlushFileBuffers` needs write access, so reopen
   a rendered PDF with `OpenOptions::new().write(true).open(...)` before
@@ -351,12 +357,17 @@ it prints a paste-ready tutorial feedback context with the chapter id, source
 JSON, workflow JSON, generated chapter path, artifact directory, failing check,
 and suggested GitHub issue-template category.
 
-The generated `docs/tutorial/catalog.json` and `docs/tutorial/manifest.json`
-also have byte-exact drift checks. Their targeted `.gitattributes` LF rules
-preserve the serializer's bytes on Windows; do not normalize away a mismatch
-inside the validator. `scripts.test_tutorial_checkouts` exercises the real
-rules in disposable LF and CRLF Git checkouts without rebuilding or changing
-scientific outputs.
+The generated `docs/tutorial/catalog.json`, `docs/tutorial/manifest.json` and
+`docs/gui_cli_mcp_parity.md` also have byte-exact drift checks. Their targeted
+`.gitattributes` LF rules preserve the serializer's bytes on Windows; do not
+normalize away a mismatch inside the validator. The
+`scripts.test_tutorial_checkouts` suite exercises the real rules in disposable
+LF and CRLF Git checkouts without rebuilding or changing scientific outputs.
+
+The prebuilt-binary checkout replay runs `parity-matrix-check` before `--check`
+and `tutorial-check` in both modes, so matrix drift fails before the longer
+tutorial replay and full Rust suite. This complements the no-build Python
+checkout gate; neither replaces native-platform acceptance.
 
 Version changes also require replaying the retained tutorial reports: their
 `gentle_version` and normalized `selection_audit_generator_revision` fields

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay tutorial checks under LF and CRLF Git checkout policies on any host.
+"""Replay parity and tutorial checks under LF and CRLF Git checkout policies.
 
 Uses local, temporary clones sharing read-only objects; never builds Rust,
 fetches references, initializes submodules, or modifies the source checkout.
@@ -53,7 +53,7 @@ def check_checkout(binary, checkout, mode, timeout):
     env = os.environ.copy()
     # This gate checks committed offline teaching artifacts, not live services.
     env.pop("GENTLE_TEST_ONLINE", None)
-    for argument in ("--check", "tutorial-check"):
+    for argument in ("parity-matrix-check", "--check", "tutorial-check"):
         print(f"[{mode}] {binary.name} {argument}", flush=True)
         try:
             subprocess.run([str(binary), argument], cwd=checkout, env=env,
