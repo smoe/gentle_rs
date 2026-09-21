@@ -181,31 +181,13 @@ being guessed into this acceptance fix.
 ## `.12` priorities
 
 The [roadmap](roadmap.md#12-priorities) owns the release ordering.
+The [DNA feature latency plan](dna_feature_rendering_latency_plan.md) owns
+the implementation sequence, scope decisions and audit gates, including startup
+and build-feedback work. This document retains historical acceptance evidence,
+not a second mutable task list.
 The PATZ1 results narrow the next investigation; they do not establish that
 feature caching is the solution or permit subtracting debug X11 latency from
 optimized embedded-frame timings to assign a runtime cause.
-
-1. Run the existing GUI profiler on a release-like native binary with the
-   semantic snapshot writer disabled. Retain exact binary/source, profile,
-   toolchain and fixture/project/report hashes; keep repeated native measurements
-   separate from CPU Criterion and instrumented X11 evidence.
-2. Profile process startup, first DNA-window opening, deferred hydration and
-   first paint separately. Have the external auditor establish reproducible
-   interaction budgets for opening, pan/zoom/selection, tabs and multiwindow
-   focus; do not include screenshot waits in runtime budgets.
-3. Trace input/resize events through native viewports, repaint scheduling,
-   worker completion wake-ups and the compositor at all four PATZ1 sizes.
-   Use local capture storage, copying retained evidence only after the run.
-4. Provide a fast, prebuilt benchmark/acceptance runner with reproducible
-   offline fixture preparation and profile-separated baselines. Evaluate build
-   and link feedback separately from runtime; a new fast profile is not an
-   interchangeable release-performance baseline.
-5. Only after identifying a concrete runtime hotspot, make the smallest change
-   and retain compatible before/after measurements. Caching/culling, large
-   table/tree virtualization, removing repeated scans or repaint coupling,
-   bounded workers, and a single-root workspace remain conditional options,
-   not predetermined fixes. Preserve subject binding, typed operations,
-   scientific outputs, visible progress and cancellation.
 
 These are `.12` usability goals, not claims that the two narrow fixes resolve
 the reported general lag.

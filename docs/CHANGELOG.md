@@ -40,6 +40,19 @@
 - No local builds or tests run at the owner's request; Windows CI must verify
   the existing engine integration regression.
 
+## 2026-09-21 - Reconcile .12 Performance Review
+
+- Address the owner-supplied Claude review with an explicit startup/first usable
+  content slice, conditional first-content budget dependencies, a native macOS
+  cross-check and pending workload/circular-scope decisions before timed audits.
+- Separate measured build feedback from runtime work, reuse the existing
+  build-once runner, and distinguish Cargo crate extraction from a single-root
+  GUI workspace. No broad extraction, new profile or runtime change is approved.
+- Keep the implementation sequence in the latency plan; replace the historical
+  GUI acceptance report's duplicate task list with a pointer. Preserve its
+  original verdicts and receipts. No new performance or release acceptance is
+  claimed; the revised proposal still needs owner scope choices.
+
 ## 2026-09-21 - MCP Process Stack Boundary
 
 - Run the MCP stdio loop on one synchronously joined 16-MiB worker, including

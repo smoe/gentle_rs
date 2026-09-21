@@ -111,8 +111,8 @@ Useful session close:
 - Leave unrelated local paper/figure work untouched unless explicitly requested.
 
 ## .12 Priorities
-Selected aim: responsive DNA-feature presentation. Follow the [reconciled latency plan](dna_feature_rendering_latency_plan.md) and DEC-039, separately from `.11` acceptance. Have Glen run two prebuilt density-ladder audits at one clean SHA, retaining profile/toolchain/fixture/binary hashes, raw Criterion results and work counters; choose an interactive density ceiling from evidence, not the small PATZ1 workload.
-Next: attribute startup/open, clone/hydration, first paint and native resize/input-to-content without the semantic snapshot writer, capturing locally at all four PATZ1 sizes. Keep CPU, harness waits and compositor timing distinct. Only then change confirmed hotspots through S1-S5; preserve features, coordinates, labels, visibility, derived-data freshness, subject binding, cancellation and scientific outputs. Density rules and scheduling changes need separate evidence.
+Selected aim: responsive startup and DNA-feature presentation, separately from `.11` acceptance. The [reconciled latency plan](dna_feature_rendering_latency_plan.md) owns the work sequence and DEC-039 audit gates; confirm the owner-selected workload ceiling and circular scope before Glen's release-target runs. Its 250 kbp / 5,000-feature, linear-first envelope is a recommendation awaiting confirmation, not accepted performance.
+Next: Glen's prebuilt baseline and native attribution, including a local macOS cross-check. S6 owns startup/first-content fixes and may lead; S1-S5 follow measured runtime contribution, while B0 handles build feedback independently without authorizing a broad crate split. Preserve scientific output, freshness and cancellation; the plan records target-bound acceptance separately from stress tests and harness timing.
 
 ## Phase A: AI Communication And Safety Plane
 
