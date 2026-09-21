@@ -3645,6 +3645,58 @@ mod tests {
         );
     }
 
+    fn write_dbsnp_test_catalog(
+        catalog_path: &Path,
+        fasta_path: &Path,
+        ann_path: &Path,
+        cache_dir: &Path,
+    ) {
+        fs::write(
+            catalog_path,
+            json!({
+                "ToyGenome": {
+                    "description": "toy dbsnp genome",
+                    "sequence_local": fasta_path,
+                    "annotations_local": ann_path,
+                    "cache_dir": cache_dir,
+                }
+            })
+            .to_string(),
+        )
+        .expect("write catalog");
+    }
+
+    #[test]
+    fn test_dbsnp_fixture_catalog_preserves_escaped_paths() {
+        let td = tempdir().expect("tempdir");
+        let catalog_path = td.path().join("catalog.json");
+        // Synthetic path strings exercise JSON escaping on every host, without
+        // requiring foreign-platform paths to exist or resolve locally.
+        for root in [
+            r"C:\Users\RUNNER~1\AppData\Local\Temp\toy genome",
+            r"\\server\share\toy genome",
+            r"\\?\C:\Users\runneradmin\toy genome",
+            r#"/tmp/toy "quoted" genome"#,
+        ] {
+            let fasta_path = Path::new(root).join("toy.fa");
+            let ann_path = Path::new(root).join("toy.gtf");
+            let cache_dir = Path::new(root).join("cache");
+            write_dbsnp_test_catalog(&catalog_path, &fasta_path, &ann_path, &cache_dir);
+            let catalog = gentle::genomes::GenomeCatalog::from_json_file(
+                catalog_path.to_str().expect("UTF-8 catalog path"),
+            )
+            .expect("fixture must load through the production catalog parser");
+            assert_eq!(catalog.list_genomes(), vec!["ToyGenome".to_string()]);
+            let entries: HashMap<String, gentle::genomes::GenomeCatalogEntry> =
+                serde_json::from_slice(&fs::read(&catalog_path).expect("read catalog"))
+                    .expect("typed catalog entries");
+            let entry = &entries["ToyGenome"];
+            assert_eq!(entry.sequence_local.as_deref(), fasta_path.to_str());
+            assert_eq!(entry.annotations_local.as_deref(), ann_path.to_str());
+            assert_eq!(entry.cache_dir.as_deref(), cache_dir.to_str());
+        }
+    }
+
     #[inline(never)]
     fn run_forwarded_dbsnp_fetch_dispatch_parity_test() {
         let _env_lock = TEST_ENV_LOCK.lock().expect("env lock");
@@ -3664,23 +3716,7 @@ mod tests {
         )
         .expect("write gtf");
         let catalog_path = td.path().join("catalog.json");
-        fs::write(
-            &catalog_path,
-            format!(
-                r#"{{
-  "ToyGenome": {{
-    "description": "toy dbsnp genome",
-    "sequence_local": "{}",
-    "annotations_local": "{}",
-    "cache_dir": "{}"
-  }}
-}}"#,
-                fasta_path.display(),
-                ann_path.display(),
-                cache_dir.display()
-            ),
-        )
-        .expect("write catalog");
+        write_dbsnp_test_catalog(&catalog_path, &fasta_path, &ann_path, &cache_dir);
         let catalog_path_str = catalog_path.to_string_lossy().to_string();
         let mock_dir = td.path().join("mock_dbsnp");
         fs::create_dir_all(&mock_dir).expect("create mock dir");

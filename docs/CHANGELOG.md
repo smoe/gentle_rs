@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-09-21 - Windows CLI Fetch Fixture JSON
+
+- Serialize the dbSNP CLI parity fixture's genome catalog with `serde_json`
+  instead of interpolating native paths into JSON. Windows backslashes caused
+  the primary catalog-parse failure; the subsequent GenBank `PoisonError` was
+  a cascade from the shared environment lock, not a second parser defect.
+- Exercise drive, UNC, verbatim and quoted path strings through the same fixture
+  writer and production catalog loader on every host. Production behavior and
+  mutex poisoning safeguards are unchanged; native Windows acceptance remains
+  a separate CI requirement.
+
 ## 2026-09-21 - Regulatory/TSS Subset Motif Reader
 
 - Extend the shared optional genomic-motif query with a distinct regulatory/TSS

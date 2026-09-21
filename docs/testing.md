@@ -84,6 +84,11 @@ an OS-dependent assumption portable.
   serializer for JSON. These are different grammars. Round-trip spaces,
   apostrophes, drive/UNC/verbatim paths and backslashes through the real parser.
   Repair an unquoted caller rather than changing all adapters' escape semantics.
+- **JSON fixture paths:** construct catalogs and requests with `serde_json`
+  rather than interpolating `Path::display()` into JSON text. Include synthetic
+  drive, UNC, verbatim and quoted path strings in a host-independent round-trip
+  through the actual fixture writer and production parser; a native temporary
+  path alone does not expose Windows backslash escaping on Unix.
 - **Path validation:** inspect the original path's native components before
   `join`, `push`, or canonicalization can erase traversal. Keep symlink checks
   and drive/UNC-root handling. Construct deliberately invalid test paths as raw
