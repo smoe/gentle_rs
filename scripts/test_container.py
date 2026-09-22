@@ -165,6 +165,39 @@ class ContainerContractTests(unittest.TestCase):
                     if extra:
                         self.assertIn("dependency leaked", result.stderr)
 
+    def test_rnapkin_has_build_and_runtime_fonts_and_installs_before_gentle(self) -> None:
+        docker = (ROOT / "Dockerfile").read_text().replace("\\\n", "")
+        builder, runtime = docker.split("FROM debian:${DEBIAN_SUITE}-slim AS runtime-cli", 1)
+        for stage, packages in (
+            (builder, ("pkg-config", "libfontconfig1-dev", "libfreetype6-dev")),
+            (runtime, ("libfontconfig1", "libfreetype6", "fonts-dejavu-core")),
+        ):
+            install = next(line for line in stage.splitlines() if "apt-get install" in line)
+            for package in packages:
+                with self.subTest(package=package):
+                    self.assertIn(package, shlex.split(install))
+        command = next(line for line in builder.splitlines() if line.startswith("RUN cargo install "))
+        self.assertEqual(shlex.split(command), [
+            "RUN", "cargo", "install", "--locked", "--version", "0.3.9",
+            "--root", "/opt/rnapkin", "rnapkin", "-j1",
+        ])
+        self.assertLess(builder.index(command), builder.index("COPY Cargo.toml"))
+        self.assertLess(builder.index(command), builder.index("RUN cargo build "))
+        self.assertIn("COPY --from=build /opt/rnapkin/bin/rnapkin /usr/local/bin/rnapkin", runtime)
+
+    def test_container_smoke_renders_rna_with_fonts_without_network(self) -> None:
+        workflow = (ROOT / ".github/workflows/container.yml").read_text()
+        smoke = workflow.split("      - name: Smoke headless container without network access\n", 1)[1]
+        smoke = smoke.split("      - name: Retain container build identity\n", 1)[0]
+        self.assertIn('--network none --entrypoint /bin/sh "$CLI_IMAGE" -ec', smoke)
+        self.assertIn("ldd /usr/local/bin/rnapkin", smoke)
+        self.assertIn("rnapkin --version", smoke)
+        self.assertIn('printf "%s\\n" "GGGAAACCC" "(((...)))" > hairpin.dbn', smoke)
+        for extension in ("svg", "png"):
+            with self.subTest(extension=extension):
+                self.assertIn(f"timeout 30 rnapkin --height 128 -o hairpin.{extension} hairpin.dbn", smoke)
+                self.assertIn(f"test -s hairpin.{extension}", smoke)
+
     def test_workflow_builds_and_publishes_only_the_headless_target(self) -> None:
         workflow = (ROOT / ".github/workflows/container.yml").read_text()
         self.assertEqual(workflow.count("target: runtime-cli"), 2)

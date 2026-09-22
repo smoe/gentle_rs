@@ -66,6 +66,9 @@ Release acceptance:
 - Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes;
   rerun gates on candidate changes, never combine nearby revisions' passes.
 - CI must prove the Linux tarball, Windows ZIP, macOS DMG and headless `runtime-cli` container (no GUI/JS/Lua). Validate the reduced build on the release runner before claiming the OOM fixed.
+- Re-run container validation after the `rnapkin` font-library repair. Run
+  `35717368172` at `a10715cb` compiled GENtle successfully but failed installing
+  the helper; final-image linking and SVG/PNG rendering remain unverified.
 
 Release cut line:
 

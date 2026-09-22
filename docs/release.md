@@ -22,6 +22,16 @@ Container Registry (GHCR); a tag push alone only runs build checks:
   now mean headless, not browser GUI. Native builds retain GUI and scripting.
 - current image platform: `linux/amd64`
 
+The RNA drawing helper `rnapkin` is pinned to `0.3.9` and installed with its
+locked dependencies and one build job before GENtle compilation. Its Plotters
+renderer needs Fontconfig and FreeType development libraries in the builder,
+and the corresponding runtime libraries plus DejaVu fonts in the final image.
+These support headless rendering; they do not restore the GENtle GUI. Container
+CI checks the helper's dynamic linking and renders a hand-crafted RNA hairpin
+to SVG and PNG without network access, as the unprivileged runtime user. The
+PNG check exercises font loading, not only executable discovery. This is a
+packaging smoke, not validation of an RNA folding prediction.
+
 The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
 packaging remain deferred. `linux_distribution=tarball` records the artifact
 actually built, not a future intention. Until that workflow has passed on the

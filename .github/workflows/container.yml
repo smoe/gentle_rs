@@ -104,6 +104,19 @@ jobs:
             done
             test -s /opt/gentle/assets/genomes.json
             python3 -c "import gentle_py"
+            deps=$(ldd /usr/local/bin/rnapkin)
+            if printf "%s\n" "$deps" | grep -q "not found"; then
+              printf "%s\n" "$deps" >&2; exit 1
+            fi
+            rnapkin --version
+            cd "$(mktemp -d)"
+            # Hand-crafted nine-base hairpin; checks packaging, not RNA folding.
+            printf "%s\n" "GGGAAACCC" "(((...)))" > hairpin.dbn
+            timeout 30 rnapkin --height 128 -o hairpin.svg hairpin.dbn
+            timeout 30 rnapkin --height 128 -o hairpin.png hairpin.dbn
+            test -s hairpin.svg
+            grep -q "<svg" hairpin.svg
+            test -s hairpin.png
           '
 
       - name: Retain container build identity

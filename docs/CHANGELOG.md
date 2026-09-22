@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-22 - Headless RNA Renderer Dependencies
+
+- Container job `106712018459` at `a10715cb` completed GENtle's headless
+  `release-fast` build in 75m14s, then failed installing `rnapkin` because
+  Fontconfig development files were absent. Add Fontconfig/FreeType build
+  libraries and explicit runtime libraries, retaining the existing fonts
+  without adding GUI or embedded scripting dependencies.
+- Pin `rnapkin` to `0.3.9` with `--locked -j1` and install it before the long
+  GENtle build in a source-independent layer. Keep installation failures fatal
+  rather than silently publishing an image missing a documented helper.
+- Extend container CI with dynamic-link checks and bounded, network-free SVG
+  and PNG rendering of a hand-crafted hairpin. Add fast container-policy
+  regressions for dependencies, install ordering, version and smoke wiring.
+- No local builds or tests run at the owner's request; Linux container CI must
+  verify the repair. Release tags and acceptance status remain unchanged.
+
 ## 2026-09-22 - CLI Process Stack Boundary
 
 - Run the standalone CLI's parsing and dispatch on one synchronously joined

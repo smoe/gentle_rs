@@ -16,12 +16,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     clang \
     cmake \
     git \
+    libfontconfig1-dev \
+    libfreetype6-dev \
     libssl-dev \
     perl \
     pkg-config \
     rust-all \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# RNA rendering needs font libraries, not a desktop GUI. Fail before GENtle's
+# long build and keep this pinned helper layer independent of source changes.
+RUN cargo install --locked --version 0.3.9 --root /opt/rnapkin rnapkin -j1
 
 WORKDIR /opt/gentle
 
@@ -47,7 +53,6 @@ RUN cargo tree --locked --no-default-features --edges normal,build --prefix none
     fi
 RUN cargo build --locked --profile "${GENTLE_CARGO_PROFILE}" --no-default-features \
     --bin gentle_cli --bin gentle_mcp --bin gentle_examples_docs -j1
-RUN cargo install --locked --root /opt/rnapkin rnapkin
 
 RUN mkdir -p /opt/gentle-dist-cli/bin /opt/gentle-dist-cli/integrations \
     && install -Dm755 "target/${GENTLE_CARGO_PROFILE}/gentle_cli" /opt/gentle-dist-cli/bin/gentle_cli \
@@ -80,6 +85,8 @@ RUN sed -i -E 's/^Components: main$/Components: main non-free/' /etc/apt/sources
     && apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fonts-dejavu-core \
+    libfontconfig1 \
+    libfreetype6 \
     ncbi-blast+ \
     passwd \
     primer3 \
