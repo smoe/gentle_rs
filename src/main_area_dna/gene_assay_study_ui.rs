@@ -432,12 +432,51 @@ mod tests {
             "Reverse: {} | [{}, {})",
             pair.reverse.sequence, pair.reverse.start_0based, pair.reverse.end_0based_exclusive
         )));
+        assert!(
+            labels.contains(&format!(
+                "predicted amplicon · {} bp",
+                pair.amplicon_length_bp
+            )),
+            "{labels}"
+        );
+        assert!(
+            labels.contains(&format!(
+                "Green: predicted amplicon cDNA {}-{}",
+                pair.amplicon_start_0based + 1,
+                pair.amplicon_end_0based_exclusive
+            )),
+            "{labels}"
+        );
+        assert!(
+            labels.contains("Amplicon detail (expanded; exact mature-cDNA coordinates)"),
+            "{labels}"
+        );
         for transcript in &report.transcript_rows {
             assert!(labels.contains(&transcript.transcript_id));
         }
         assert_eq!(selected, report.selected_assays.last().unwrap().assay_id);
         assert_eq!(before, serde_json::to_value(&report).unwrap());
         assert!(report.specificity_acceptance.is_none());
+    }
+
+    #[test]
+    fn selected_pair_track_maps_exact_cdna_product_boundaries() {
+        let rect = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1000.0, 112.0));
+        let geometry =
+            selected_primer_pair_track_geometry(rect, 1000, (100, 121), (200, 220), (100, 220))
+                .expect("valid mature-cDNA intervals should project");
+        let expected = |position: usize| 12.0 + 976.0 * position as f32 / 1000.0;
+        assert!((geometry.forward_left - expected(100)).abs() < 0.001);
+        assert!((geometry.forward_right - expected(121)).abs() < 0.001);
+        assert!((geometry.reverse_left - expected(200)).abs() < 0.001);
+        assert!((geometry.reverse_right - expected(220)).abs() < 0.001);
+        assert!((geometry.amplicon_left - expected(100)).abs() < 0.001);
+        assert!((geometry.amplicon_right - expected(220)).abs() < 0.001);
+
+        assert!(
+            selected_primer_pair_track_geometry(rect, 1000, (100, 121), (200, 220), (220, 100),)
+                .is_none()
+        );
     }
 }
 
@@ -569,6 +608,58 @@ fn show_json(ui: &mut egui::Ui, title: &str, value: &impl serde::Serialize) {
             ui.monospace(text);
         }
     });
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SelectedPrimerPairTrackGeometry {
+    axis_left: f32,
+    axis_right: f32,
+    forward_left: f32,
+    forward_right: f32,
+    reverse_left: f32,
+    reverse_right: f32,
+    amplicon_left: f32,
+    amplicon_right: f32,
+}
+
+fn selected_primer_pair_track_geometry(
+    rect: egui::Rect,
+    cdna_length_bp: usize,
+    forward: (usize, usize),
+    reverse: (usize, usize),
+    amplicon: (usize, usize),
+) -> Option<SelectedPrimerPairTrackGeometry> {
+    if cdna_length_bp == 0
+        || forward.0 >= forward.1
+        || reverse.0 >= reverse.1
+        || amplicon.0 >= amplicon.1
+        || forward.1 > cdna_length_bp
+        || reverse.1 > cdna_length_bp
+        || amplicon.1 > cdna_length_bp
+    {
+        return None;
+    }
+    let axis_left = rect.left() + 12.0;
+    let axis_right = rect.right() - 12.0;
+    if axis_right <= axis_left {
+        return None;
+    }
+    let map = |position_0based: usize| {
+        egui::lerp(
+            axis_left..=axis_right,
+            position_0based as f32 / cdna_length_bp as f32,
+        )
+    };
+    Some(SelectedPrimerPairTrackGeometry {
+        axis_left,
+        axis_right,
+        forward_left: map(forward.0),
+        forward_right: map(forward.1),
+        reverse_left: map(reverse.0),
+        reverse_right: map(reverse.1),
+        amplicon_left: map(amplicon.0),
+        amplicon_right: map(amplicon.1),
+    })
 }
 
 impl MainAreaDna {
@@ -1255,62 +1346,235 @@ impl MainAreaDna {
             && group.cdna_length_bp > 0
         {
             let (rect, _) = ui.allocate_exact_size(
-                egui::vec2(ui.available_width().max(120.0), 68.0),
+                egui::vec2(ui.available_width().max(180.0), 112.0),
                 egui::Sense::hover(),
             );
-            let x = |bp: usize| {
-                rect.left()
-                    + rect.width() * bp.min(group.cdna_length_bp) as f32
-                        / group.cdna_length_bp as f32
-            };
             let painter = ui.painter();
-            painter.line_segment(
-                [
-                    egui::pos2(rect.left(), rect.center().y),
-                    egui::pos2(rect.right(), rect.center().y),
-                ],
-                egui::Stroke::new(1.0, egui::Color32::GRAY),
+            let geometry = selected_primer_pair_track_geometry(
+                rect,
+                group.cdna_length_bp,
+                (
+                    assay.primer_pair.forward.start_0based,
+                    assay.primer_pair.forward.end_0based_exclusive,
+                ),
+                (
+                    assay.primer_pair.reverse.start_0based,
+                    assay.primer_pair.reverse.end_0based_exclusive,
+                ),
+                (
+                    assay.primer_pair.amplicon_start_0based,
+                    assay.primer_pair.amplicon_end_0based_exclusive,
+                ),
             );
-            for (primer, direction, color) in [
-                (
-                    &assay.primer_pair.forward,
-                    1.0,
-                    egui::Color32::from_rgb(0, 114, 178),
-                ),
-                (
-                    &assay.primer_pair.reverse,
-                    -1.0,
-                    egui::Color32::from_rgb(213, 94, 0),
-                ),
-            ] {
-                let left = x(primer.start_0based);
-                let right = x(primer.end_0based_exclusive);
-                let (from, to) = if direction > 0.0 {
-                    (left, right)
-                } else {
-                    (right, left)
-                };
-                painter.arrow(
-                    egui::pos2(from, rect.center().y),
-                    egui::vec2(to - from, 0.0),
-                    egui::Stroke::new(3.0, color),
+            if let Some(geometry) = geometry {
+                let axis_y = rect.top() + 62.0;
+                let blue = egui::Color32::from_rgb(0, 114, 178);
+                let orange = egui::Color32::from_rgb(213, 94, 0);
+                let product = egui::Color32::from_rgb(0, 158, 115);
+                let product_fill = egui::Color32::from_rgba_unmultiplied(0, 158, 115, 72);
+                let product_rect = egui::Rect::from_min_max(
+                    egui::pos2(geometry.amplicon_left, axis_y - 7.0),
+                    egui::pos2(geometry.amplicon_right, axis_y + 7.0),
                 );
+                painter.rect_filled(product_rect, 2.0, product_fill);
+                painter.line_segment(
+                    [
+                        egui::pos2(geometry.amplicon_left, axis_y - 11.0),
+                        egui::pos2(geometry.amplicon_left, axis_y + 16.0),
+                    ],
+                    egui::Stroke::new(2.0, product),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(geometry.amplicon_right, axis_y - 11.0),
+                        egui::pos2(geometry.amplicon_right, axis_y + 16.0),
+                    ],
+                    egui::Stroke::new(2.0, product),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(geometry.axis_left, axis_y),
+                        egui::pos2(geometry.axis_right, axis_y),
+                    ],
+                    egui::Stroke::new(1.0, egui::Color32::GRAY),
+                );
+
+                let primer_glyph = |left: f32, right: f32, y: f32, color| {
+                    painter.rect_filled(
+                        egui::Rect::from_min_max(
+                            egui::pos2(left, y - 3.0),
+                            egui::pos2(right.max(left + 2.0), y + 3.0),
+                        ),
+                        1.0,
+                        color,
+                    );
+                };
+                primer_glyph(
+                    geometry.forward_left,
+                    geometry.forward_right,
+                    axis_y - 18.0,
+                    blue,
+                );
+                painter.arrow(
+                    egui::pos2(geometry.forward_left, axis_y - 18.0),
+                    egui::vec2(
+                        (geometry.forward_right - geometry.forward_left).max(10.0),
+                        0.0,
+                    ),
+                    egui::Stroke::new(2.5, blue),
+                );
+                primer_glyph(
+                    geometry.reverse_left,
+                    geometry.reverse_right,
+                    axis_y + 18.0,
+                    orange,
+                );
+                painter.arrow(
+                    egui::pos2(geometry.reverse_right, axis_y + 18.0),
+                    egui::vec2(
+                        (geometry.reverse_left - geometry.reverse_right).min(-10.0),
+                        0.0,
+                    ),
+                    egui::Stroke::new(2.5, orange),
+                );
+
+                painter.text(
+                    egui::pos2(
+                        (geometry.amplicon_left + geometry.amplicon_right) * 0.5,
+                        rect.top() + 19.0,
+                    ),
+                    egui::Align2::CENTER_CENTER,
+                    format!(
+                        "predicted amplicon · {} bp",
+                        assay.primer_pair.amplicon_length_bp
+                    ),
+                    egui::FontId::proportional(12.0),
+                    product,
+                );
+                painter.text(
+                    egui::pos2(geometry.amplicon_left - 4.0, rect.top() + 34.0),
+                    egui::Align2::RIGHT_TOP,
+                    format!("start {}", assay.primer_pair.amplicon_start_0based + 1),
+                    egui::FontId::monospace(10.0),
+                    product,
+                );
+                painter.text(
+                    egui::pos2(geometry.amplicon_right + 4.0, rect.top() + 34.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("end {}", assay.primer_pair.amplicon_end_0based_exclusive),
+                    egui::FontId::monospace(10.0),
+                    product,
+                );
+                painter.text(
+                    egui::pos2(geometry.axis_left, rect.bottom() - 3.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    "5' · 1",
+                    egui::FontId::monospace(10.0),
+                    ui.visuals().text_color(),
+                );
+                painter.text(
+                    egui::pos2(geometry.axis_right, rect.bottom() - 3.0),
+                    egui::Align2::RIGHT_BOTTOM,
+                    format!("{} · 3'", group.cdna_length_bp),
+                    egui::FontId::monospace(10.0),
+                    ui.visuals().text_color(),
+                );
+                ui.small(format!(
+                    "Blue: forward primer. Green: predicted amplicon cDNA {}-{} ({} bp). Orange: reverse primer. Primer glyph arrows may be widened for visibility; green boundaries remain exact. Source-locus strand does not reverse this cDNA axis.",
+                    assay.primer_pair.amplicon_start_0based + 1,
+                    assay.primer_pair.amplicon_end_0based_exclusive,
+                    assay.primer_pair.amplicon_length_bp
+                ));
+
+                let amplicon = (
+                    assay.primer_pair.amplicon_start_0based,
+                    assay.primer_pair.amplicon_end_0based_exclusive,
+                );
+                let forward = (
+                    assay.primer_pair.forward.start_0based,
+                    assay.primer_pair.forward.end_0based_exclusive,
+                );
+                let reverse = (
+                    assay.primer_pair.reverse.start_0based,
+                    assay.primer_pair.reverse.end_0based_exclusive,
+                );
+                if forward.0 >= amplicon.0
+                    && forward.1 <= amplicon.1
+                    && reverse.0 >= amplicon.0
+                    && reverse.1 <= amplicon.1
+                {
+                    let detail_length = amplicon.1 - amplicon.0;
+                    let (detail_rect, _) = ui.allocate_exact_size(
+                        egui::vec2(ui.available_width().max(180.0), 82.0),
+                        egui::Sense::hover(),
+                    );
+                    let detail = selected_primer_pair_track_geometry(
+                        detail_rect,
+                        detail_length,
+                        (forward.0 - amplicon.0, forward.1 - amplicon.0),
+                        (reverse.0 - amplicon.0, reverse.1 - amplicon.0),
+                        (0, detail_length),
+                    )
+                    .expect("validated amplicon-relative primer geometry");
+                    let detail_painter = ui.painter();
+                    let detail_y = detail_rect.top() + 46.0;
+                    detail_painter.text(
+                        egui::pos2(detail_rect.center().x, detail_rect.top() + 8.0),
+                        egui::Align2::CENTER_TOP,
+                        "Amplicon detail (expanded; exact mature-cDNA coordinates)",
+                        egui::FontId::proportional(11.0),
+                        ui.visuals().text_color(),
+                    );
+                    detail_painter.rect_filled(
+                        egui::Rect::from_min_max(
+                            egui::pos2(detail.axis_left, detail_y - 6.0),
+                            egui::pos2(detail.axis_right, detail_y + 6.0),
+                        ),
+                        2.0,
+                        product_fill,
+                    );
+                    detail_painter.line_segment(
+                        [
+                            egui::pos2(detail.axis_left, detail_y - 12.0),
+                            egui::pos2(detail.axis_left, detail_y + 13.0),
+                        ],
+                        egui::Stroke::new(2.0, product),
+                    );
+                    detail_painter.line_segment(
+                        [
+                            egui::pos2(detail.axis_right, detail_y - 12.0),
+                            egui::pos2(detail.axis_right, detail_y + 13.0),
+                        ],
+                        egui::Stroke::new(2.0, product),
+                    );
+                    detail_painter.arrow(
+                        egui::pos2(detail.forward_left, detail_y - 10.0),
+                        egui::vec2(detail.forward_right - detail.forward_left, 0.0),
+                        egui::Stroke::new(3.0, blue),
+                    );
+                    detail_painter.arrow(
+                        egui::pos2(detail.reverse_right, detail_y + 10.0),
+                        egui::vec2(detail.reverse_left - detail.reverse_right, 0.0),
+                        egui::Stroke::new(3.0, orange),
+                    );
+                    detail_painter.text(
+                        egui::pos2(detail.axis_left, detail_rect.bottom() - 2.0),
+                        egui::Align2::LEFT_BOTTOM,
+                        format!("start {}", amplicon.0 + 1),
+                        egui::FontId::monospace(10.0),
+                        product,
+                    );
+                    detail_painter.text(
+                        egui::pos2(detail.axis_right, detail_rect.bottom() - 2.0),
+                        egui::Align2::RIGHT_BOTTOM,
+                        format!("end {}", amplicon.1),
+                        egui::FontId::monospace(10.0),
+                        product,
+                    );
+                }
+            } else {
+                ui.small("The stored primer/product coordinates cannot be projected onto the design mature-cDNA axis.");
             }
-            painter.text(
-                rect.left_top(),
-                egui::Align2::LEFT_TOP,
-                "0 | mature cDNA 5'",
-                egui::FontId::monospace(11.0),
-                ui.visuals().text_color(),
-            );
-            painter.text(
-                rect.right_top(),
-                egui::Align2::RIGHT_TOP,
-                format!("{} | 3'", group.cdna_length_bp),
-                egui::FontId::monospace(11.0),
-                ui.visuals().text_color(),
-            );
-            ui.small("Blue: forward; orange: reverse. Source-locus strand does not reverse this cDNA axis.");
         }
         for reason in &summary.selection_reasons {
             ui.label(&reason.message);

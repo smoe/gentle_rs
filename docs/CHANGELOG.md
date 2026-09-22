@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-22 - Selected Transcript-Assay Amplicon Footprint
+
+- Make the Gene assay study selected-pair map visually distinguish forward
+  primer, predicted amplicon and reverse primer on the mature-cDNA axis.
+  Exact product boundaries now have explicit start/end markers and a filled
+  span, so a stored assay's amplified region is legible without deriving it
+  from coordinate text alone. Pair the full-transcript overview with an
+  explicitly labelled expanded amplicon detail where the two primers and
+  their inward-facing orientation remain readable for short products.
+- Keep the coordinate claim narrow: the map displays mature-cDNA coordinates
+  from the persisted panel report and does not fabricate a genomic projection.
+  Primer arrows may be widened for visibility; the product boundaries remain
+  exact. Add deterministic geometry and rendered-label regressions.
+
 ## 2026-09-22 - CLI Process Stack Boundary
 
 - Run the standalone CLI's parsing and dispatch on one synchronously joined

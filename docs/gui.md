@@ -5043,7 +5043,15 @@ qPCR form:
     transcript scope, recommendation/override and exact operation digests
   - inspect persisted panels on that sequence, explicitly distinguishing
     comparison panels from plan-bound results; selected-pair views show both
-    primer footprints on mature cDNA and each transcript's stored products
+    primer footprints on mature cDNA and each transcript's stored products.
+    The selected-pair axis marks the exact 1-based displayed start/end of the
+    predicted amplicon with a filled green product span, while blue/orange
+    arrows retain forward/reverse orientation. Primer arrows may use a minimum
+    on-screen width for legibility, but the green product boundaries remain
+    exact. A second, explicitly labelled expanded detail maps the primers
+    within those same exact amplicon boundaries, without pretending to share
+    the full-transcript scale. Both views are mature-cDNA projections, not an
+    inferred genomic overlay
   - the coverage-scope box uses the experimental handoff's engine-owned
     accounting: annotated records, distinct mature cDNAs, uncovered records
     and records outside the assessed universe remain separate. Identical
