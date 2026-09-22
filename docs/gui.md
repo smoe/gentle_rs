@@ -5044,6 +5044,8 @@ qPCR form:
   - inspect persisted panels on that sequence, explicitly distinguishing
     comparison panels from plan-bound results; selected-pair views show both
     primer footprints on mature cDNA and each transcript's stored products.
+    The interval table retains explicitly labelled 0-based half-open bounds;
+    the plots use explicitly labelled 1-based inclusive positions.
     The selected-pair axis marks the exact 1-based displayed start/end of the
     predicted amplicon with a filled green product span, while blue/orange
     arrows retain forward/reverse orientation. Primer arrows may use a minimum

@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-09-22 - Selected Assay Integration Review
+
+- Merge Glen's `18ae846e` with its original history. Distinguish the table's
+  0-based half-open intervals from the plots' 1-based inclusive positions in
+  the live selected-pair view; stored coordinates and geometry are unchanged.
+- Extend the rendered-label regression to require both coordinate conventions,
+  the missing-specificity warning and the absence of order approval. Glen's
+  public PATZ1/A6 visual review remains source-commit evidence, not native
+  acceptance of the merged revision.
+
 ## 2026-09-22 - Selected Transcript-Assay Amplicon Footprint
 
 - Make the Gene assay study selected-pair map visually distinguish forward

@@ -451,6 +451,10 @@ mod tests {
             labels.contains("Amplicon detail (expanded; exact mature-cDNA coordinates)"),
             "{labels}"
         );
+        assert!(labels.contains("Table intervals: mature-cDNA 0-based half-open coordinates"));
+        assert!(labels.contains("Plot positions are mature-cDNA 1-based inclusive"));
+        assert!(labels.contains("Specificity not assessed"));
+        assert!(labels.contains("Candidate sequences are not an order approval"));
         for transcript in &report.transcript_rows {
             assert!(labels.contains(&transcript.transcript_id));
         }
@@ -1320,7 +1324,7 @@ impl MainAreaDna {
             "Design transcript: {} | locus strand {}",
             assay.design_transcript_id, report.strand
         ));
-        ui.small("Primer footprints below are mature-cDNA 0-based half-open coordinates, not genomic coordinates. Both oligo sequences are written 5' to 3'. Tm is not annealing temperature.");
+        ui.small("Table intervals: mature-cDNA 0-based half-open coordinates, not genomic coordinates. Both oligo sequences are written 5' to 3'. Tm is not annealing temperature.");
         for (role, primer) in [
             ("Forward", &assay.primer_pair.forward),
             ("Reverse", &assay.primer_pair.reverse),
@@ -1480,7 +1484,7 @@ impl MainAreaDna {
                     ui.visuals().text_color(),
                 );
                 ui.small(format!(
-                    "Blue: forward primer. Green: predicted amplicon cDNA {}-{} ({} bp). Orange: reverse primer. Primer glyph arrows may be widened for visibility; green boundaries remain exact. Source-locus strand does not reverse this cDNA axis.",
+                    "Blue: forward primer. Green: predicted amplicon cDNA {}-{} ({} bp). Orange: reverse primer. Plot positions are mature-cDNA 1-based inclusive. Primer glyph arrows may be widened for visibility; green boundaries remain exact. Source-locus strand does not reverse this cDNA axis.",
                     assay.primer_pair.amplicon_start_0based + 1,
                     assay.primer_pair.amplicon_end_0based_exclusive,
                     assay.primer_pair.amplicon_length_bp
