@@ -6237,13 +6237,22 @@ Error: `{err}`"
     }
 
     pub fn new() -> Self {
-        let mut app = Self::default();
+        use crate::gui_profiler::startup_trace::{Phase, measure, span};
+        let initialize = span(Phase::AppInitialize);
+        let mut app = measure(Phase::AppDefaults, Self::default);
         window_backdrop::set_window_backdrop_settings(app.window_backdrops.clone());
-        app.refresh_help_docs();
-        app.load_persisted_configuration(true);
-        app.refresh_agent_token_file_credentials();
-        app.load_bed_track_subscriptions_from_state();
-        app.mark_clean_snapshot();
+        measure(Phase::HelpPreparation, || app.refresh_help_docs());
+        measure(Phase::ConfigurationLoad, || {
+            app.load_persisted_configuration(true)
+        });
+        measure(Phase::CredentialRefresh, || {
+            app.refresh_agent_token_file_credentials()
+        });
+        measure(Phase::InitialStatePreparation, || {
+            app.load_bed_track_subscriptions_from_state();
+            app.mark_clean_snapshot();
+        });
+        initialize.finish(true);
         app
     }
 
@@ -6451,44 +6460,49 @@ Error: `{err}`"
         seq_id: &str,
         compact_lane_layout: bool,
     ) {
-        if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
-            if compact_lane_layout
-                && let Some(window) = self.windows.get(&viewport_id)
-                && let Ok(mut window) = window.write()
-            {
-                window.enable_compact_lane_layout();
-            }
-            self.queue_focus_viewport(viewport_id);
-            return;
-        }
-        if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
-            if compact_lane_layout {
-                window.enable_compact_lane_layout();
-            }
-            return;
-        }
-        let exists = self
-            .engine
-            .read()
-            .unwrap()
-            .state()
-            .sequences
-            .contains_key(seq_id);
-        if exists {
-            let runtime_frame = runtime_status_registry().push_with_detail(
-                RuntimeStatusFrameKind::GuiAction,
-                "Opening DNA Sequence Viewer",
-                Some(format!("Loading sequence '{seq_id}'")),
-            );
-            runtime_frame.update_phase("queued");
-            self.sequence_window_open_runtime_frames
-                .insert(seq_id.to_string(), runtime_frame);
-            let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
-            if compact_lane_layout {
-                window.enable_compact_lane_layout();
-            }
-            self.new_windows.push(window);
-        }
+        crate::gui_profiler::startup_trace::measure(
+            crate::gui_profiler::startup_trace::Phase::DnaOpenDispatch,
+            || {
+                if let Some(viewport_id) = self.find_open_sequence_viewport_id(seq_id) {
+                    if compact_lane_layout
+                        && let Some(window) = self.windows.get(&viewport_id)
+                        && let Ok(mut window) = window.write()
+                    {
+                        window.enable_compact_lane_layout();
+                    }
+                    self.queue_focus_viewport(viewport_id);
+                    return;
+                }
+                if let Some(window) = self.find_pending_sequence_window_mut(seq_id) {
+                    if compact_lane_layout {
+                        window.enable_compact_lane_layout();
+                    }
+                    return;
+                }
+                let exists = self
+                    .engine
+                    .read()
+                    .unwrap()
+                    .state()
+                    .sequences
+                    .contains_key(seq_id);
+                if exists {
+                    let runtime_frame = runtime_status_registry().push_with_detail(
+                        RuntimeStatusFrameKind::GuiAction,
+                        "Opening DNA Sequence Viewer",
+                        Some(format!("Loading sequence '{seq_id}'")),
+                    );
+                    runtime_frame.update_phase("queued");
+                    self.sequence_window_open_runtime_frames
+                        .insert(seq_id.to_string(), runtime_frame);
+                    let mut window = Window::new_dna_lazy(seq_id.to_string(), self.engine.clone());
+                    if compact_lane_layout {
+                        window.enable_compact_lane_layout();
+                    }
+                    self.new_windows.push(window);
+                }
+            },
+        );
     }
 
     fn open_sequence_window(&mut self, seq_id: &str) {
@@ -16076,8 +16090,21 @@ Error: `{err}`"
     }
 
     fn load_project_from_file_with_recent(&mut self, path: &str, track_recent: bool) -> Result<()> {
-        let state = ProjectState::load_from_path(path).map_err(|e| anyhow!(e.to_string()))?;
+        use crate::gui_profiler::startup_trace::{Phase, context};
+        let trace = context().child();
+        let load = trace.span(Phase::ProjectLoad);
+        let decode = trace.span(Phase::ProjectReadDecode);
+        let result = ProjectState::load_from_path(path).map_err(|e| anyhow!(e.to_string()));
+        decode.finish(result.is_ok());
+        let state = match result {
+            Ok(state) => state,
+            Err(error) => {
+                load.finish(false);
+                return Err(error);
+            }
+        };
 
+        let install = trace.span(Phase::ProjectInstall);
         self.cancel_agent_commands_for_project_change();
         self.engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
         self.set_current_project_path(path, track_recent);
@@ -16193,6 +16220,8 @@ Error: `{err}`"
         self.load_background_job_history_from_state();
 
         self.mark_clean_snapshot();
+        install.finish(true);
+        load.finish(true);
         Ok(())
     }
 
@@ -25650,6 +25679,7 @@ impl GENtleApp {
                 Some("ready"),
             );
         }
+        let mut workspace_rendered = false;
         let update_result = catch_unwind(AssertUnwindSafe(|| {
             crate::gentle_gui_profile_scope!("GENtleApp::render_root_ui");
             Self::configure_platform_viewport_mode(ctx);
@@ -25736,6 +25766,7 @@ impl GENtleApp {
             } else {
                 self.dismiss_splash_screen();
                 self.render_root_workspace(ctx, project_dirty);
+                workspace_rendered = true;
                 self.render_reference_genome_prepare_dialog(ctx);
                 self.render_reference_genome_retrieve_dialog(ctx);
                 self.render_new_sequence_dialog(ctx);
@@ -25822,6 +25853,12 @@ impl GENtleApp {
         }));
         if update_result.is_err() {
             eprintln!("E GENtleApp: recovered from panic in app update");
+        } else {
+            use crate::gui_profiler::startup_trace::{Phase, checkpoint};
+            checkpoint(Phase::RootFirstFrame);
+            if workspace_rendered {
+                checkpoint(Phase::RootWorkspaceFrame);
+            }
         }
         #[cfg(feature = "gui-test-support")]
         if let Err(error) = crate::gui_test_support::finish_frame(ctx) {
@@ -25833,3 +25870,7 @@ impl GENtleApp {
 #[cfg(test)]
 #[path = "app/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "app/startup_trace_tests.rs"]
+mod startup_trace_tests;

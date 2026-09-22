@@ -6,6 +6,9 @@
 
 use std::env;
 
+/// Bounded, opt-in CPU startup checkpoints, independent of native screenshots.
+pub mod startup_trace;
+
 pub const GUI_PROFILER_ENV: &str = "GENTLE_GUI_PROFILE";
 pub const GUI_PROFILER_ADDR_ENV: &str = "GENTLE_GUI_PROFILE_ADDR";
 pub const DEFAULT_GUI_PROFILER_ADDR: &str = "127.0.0.1:8585";

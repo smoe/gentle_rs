@@ -11,10 +11,73 @@ toggling feature layers, selecting and hovering. This plan changes *when*
 features appear, never *what* is shown: identical features, coordinates, labels,
 strands and scientific outputs.
 
-Implementation update: S0's developer tools are implemented and smoke-tested;
-Glen's timed/native audit and S1-S5 remain pending. The current `.11` candidate
-is unchanged. The refinements below qualify the original conditional slices;
-counts of work are not timing evidence or performance acceptance.
+Implementation update: the existing S0 density tools are implemented and
+smoke-tested. Opt-in startup phase checkpoints now cover app initialization,
+project loading and first root/DNA CPU frames; they do not confirm native
+presentation. Exact owner-selected boundary cases and the macOS cross-check
+remain pending, as do Glen's timed/native audit and runtime slices S1-S6.
+B0 separates build feedback from runtime
+performance. This plan does not change the `.11` candidate; counts of work are
+not timing evidence or performance acceptance.
+
+## Review Reconciliation (2026-09-21)
+
+The owner supplied Claude's read-only review; these revisions were checked
+against `4e858f3a66cec54f5bdc3eec76fb2f18683773e9`, with the same latency
+paths at `70a3b038`. They are Codex's revised proposal, not a second Claude
+review or owner approval of the open scope choices.
+
+| Original plan | Claude feedback | Revised minimal plan |
+| --- | --- | --- |
+| Measure startup, but only S1-S5 own fixes | The largest observed delay has no implementation owner | Add S6 for startup/first usable content; run it first if attribution confirms the dominant product delay |
+| Prebuilt runner; ambiguous workspace non-goal | Build feedback needs its own scope | Reuse the landed build-once runner; B0 permits evidence-led build-boundary work, independently of runtime hotspots, not an unconditional root-crate split |
+| Workload ceiling and circular scope remain open | Decide these before the audit | Record explicit owner choices below; add exact boundary fixtures before a pass/fail audit |
+| First-content budget lacks a dependency | Whole-sequence recomputation may exhaust it | Make S3/freshness-correct reuse a conditional prerequisite; do not extrapolate the whole PATZ1 constructor as recomputation time |
+| Native evidence is Linux/Xvfb only | Cross-check on macOS before S5 | Require a local release-like macOS trace and retain platform-specific conclusions |
+| Three overlapping priority lists | Keep one implementation sequence | Roadmap owns release scope, this plan owns steps, and the historical acceptance report links here |
+
+## Audit Admission Decisions
+
+These two owner decisions were requested on 2026-09-21 and remain pending.
+Recommendations are not accepted performance promises:
+
+- **Interactive envelope:** recommend linear loci up to 250 kbp and 5,000
+  loaded features; retain 2 Mbp and 10,000 features as stress cases. If selected,
+  add at least the exact 250 kbp / 5,000-feature boundary with the same clustered
+  annotation and deferred/loaded-tree modes. The current 100/1,000/10,000 ladder
+  cannot certify that boundary by interpolation. Include representative visible
+  restriction/derived layers and record their counts, not only input features.
+- **Circular scope:** recommend linear optimization first, with circular-map
+  correctness and native interaction regression checks still required. If the
+  owner instead requires circular optimization, agree its fixture envelope and
+  budgets before running a dedicated pass/fail audit; linear results do not
+  establish circular performance.
+
+Confirm these choices before Glen's release-target audit. Preparatory traces
+may still diagnose a problem, but cannot declare an undecided workload accepted.
+Glen proposes host-bound numerical budgets from the baseline; the owner agrees
+the release target before optimization. Do not relax it after seeing results
+without an explicit recorded scope decision. Stress cases must remain correct,
+inspectable and interruptible where work is cancellable, but are not silently
+held to the interactive timing table.
+
+## Execution Order And Ownership
+
+The slice numbers identify work, not a mandatory S1-through-S6 order. Codex
+provides instrumentation, smoke checks and bounded fixes; Glen owns timed and
+native acceptance; the owner decides release scope and any explicit deferral.
+
+1. Resolve audit admission, then finish S0 attribution. Reuse the prebuilt
+   runner; pursue B0 only if build cost still impedes those audits.
+2. Compare startup/first-content and ongoing-interaction costs. Prioritize S6
+   if the large startup observation is a product delay; otherwise document its
+   harness/environment contribution and select the largest confirmed H1-H4 path.
+3. Apply S1-S3 according to measured contribution, not their numbering. S5 needs
+   platform-specific native evidence; S4 needs a remaining drawing-budget miss
+   within the agreed envelope. Neither is an automatic follow-up.
+4. Re-run correctness and compatible before/after measurements after each
+   change, then obtain one exact-candidate verdict. Preserve `.11` evidence
+   separately; this plan does not reopen or silently waive its release gates.
 
 ## Improvements To The Original Plan
 
@@ -54,6 +117,7 @@ counts of work are not timing evidence or performance acceptance.
 | H3: hydration performs presentation work in one UI frame | `WindowDna::poll_deferred_load.hydrate`, replacement, viewport reconciliation, map update, overlay refresh | Background lock/clone and foreground hydration remain separate; native cost awaits audit |
 | H4: constructor recomputes whole-sequence derived features | Separate restriction, ORF, methylation and GC scopes in `DNAsequence::update_computed_features` | Called by the constructor; length-scaling contribution awaits audit |
 | H5: native input-to-content gap | Existing public native acceptance plus a new auditor trace without snapshot writer | Not explained by the CPU harness; scheduling changes remain blocked |
+| H6: startup/first-locus dominates perceived delay | Opt-in Rust-entry, app initialization, project load, root/DNA CPU-frame and deferred-load phase checkpoints; external presentation confirmation still required | About 32 s observed only in the debug acceptance harness; product time versus fixed waits/I/O/snapshot overhead is unresolved |
 
 Counters measure work, not time. A counter hit does not establish that the
 cache is fast, and a miss does not establish that it dominates a frame.
@@ -80,6 +144,12 @@ Implemented developer tools:
 - Additional Puffin scopes distinguish feature painting, interval indexing,
   construction computations and hydration substeps. Existing tree build/render,
   layer-count and display-sync scopes are retained.
+- `GENTLE_GUI_STARTUP_TRACE` retains bounded, process-local CPU checkpoints
+  without biological identifiers or per-frame I/O, writing a new JSON file
+  only on native-loop exit. The [startup runbook](../benches/README.md#startup-phase-checkpoints)
+  distinguishes splash, project decoding/installation, worker lock/clone,
+  hydration and content-frame return; losses/failures remain explicit. Neither
+  these markers nor a successful return prove visible or fully ready content.
 
 See [the benchmark runbook](../benches/README.md#dna-feature-density-latency)
 for exact generation, build and prebuilt replay commands. Keep the existing
@@ -94,6 +164,13 @@ repaint and compositor delays. Use a release-like binary without the semantic
 snapshot writer; capture locally, not on per-frame network storage. Retain
 project/report hashes and tool/environment identity. The headless runner does
 not claim this acceptance, even when every smoke case passes.
+
+Before a general S5 scheduling change, also obtain a short local macOS native
+resize/open trace on the same source and public fixture, with its own binary,
+profile, window sizes and environment recorded and no semantic snapshot writer.
+One trace is a diagnostic cross-check, not a macOS performance verdict. Do not
+pool Linux and macOS timings or attribute differences to an OS from unlike
+profiles. Windows native acceptance remains separate when making Windows claims.
 
 ## Why this leads `.12`
 
@@ -113,19 +190,21 @@ usability or performance. The evidence already separates two things:
   sizes, 0.786-0.793 ms steady embedded frame, and 3.83-3.94 ms first frame
   after a resize.
 
-Steady painting of 20,802 bp with 75+ loaded features is therefore not the
-problem. The remaining latency sits in (a) one-shot construction and hydration
-work on the UI thread, (b) work that is redone whenever the viewport or the
-window rectangle changes, and (c) the unattributed distance between an OS event
-and confirmed content, which the headless benchmark cannot observe. PATZ1 is
-also a *small* locus; feature-count timing across the new ladder still awaits
-the external auditor.
+Optimized steady painting of this small PATZ1 locus is inexpensive in the
+embedded benchmark. It neither explains the debug harness's startup observation
+nor proves all painting fast. Construction/hydration, viewport-dependent work,
+native event-to-content delay and process/project startup remain distinct
+hypotheses. The roughly 32 seconds includes fixed waits and capture overhead;
+do not call it 32 seconds of application startup or subtract the optimized
+Criterion timings from it. Feature-count scaling still awaits the auditor.
 
 ## Scope
 
-In scope: linear and circular DNA-map feature presentation, the feature tree and
-layer-visibility panel that mirror it, the per-window hydration path that first
-makes features visible, and the repaint/resize scheduling around them.
+In scope: process/project startup through first usable root and DNA windows,
+DNA-map feature presentation, the feature tree and layer-visibility panel,
+per-window hydration, and repaint/resize scheduling. The proposed linear-first
+optimization scope and circular regression floor await the owner decisions
+above. B0 is a separate, bounded build-feedback workstream, not GUI redesign.
 
 Out of scope for `.12`: visual redesign, new feature classes, engine-side
 annotation work, sequence-text panel work beyond what the feature path forces,
@@ -137,19 +216,29 @@ this plan adds no new execution authority.
 
 ## Proposed interaction budgets
 
-These are proposals to be confirmed, tightened or replaced by the auditor, and
-are only meaningful bound to one host, toolchain, profile, fixture hash and
-GENtle revision.
+These proposals assume the recommended envelope, pending owner confirmation.
+Glen establishes reproducible numerical targets before optimization; each is
+bound to a host, toolchain, profile, fixture hash and GENtle revision. First
+usable content means subject-correct selected feature content, not an empty
+window or progress placeholder. Record pending derived work separately.
 
 | Interaction | Subject | Proposed budget |
 | --- | --- | ---: |
-| First confirmed feature content after open | <= 250 kbp, <= 5,000 features | <= 500 ms, no single frame > 100 ms |
+| First confirmed feature content after an open request in a usable application | <= 250 kbp, <= 5,000 features | <= 500 ms, no single frame > 100 ms; conditional S3 dependency below |
 | Pan / zoom step | same | p95 <= 16.7 ms CPU prepare+paint |
 | Live resize | 1920x1080 | every intermediate frame <= 33 ms; confirmed content <= 150 ms |
 | Feature layer toggle (CDS/repeat/array/TFBS) | same | <= 100 ms to confirmed content |
 | Selection / hover | same | <= 16.7 ms, no model rebuild |
 | Tab switch / multiwindow focus | same | <= 100 ms to confirmed content |
-| Process start to first usable window | reference project | attributed, not yet budgeted |
+| Process start to usable root window, and separately first subject-correct locus | empty profile and reference project, cold/warm recorded separately | S6 owns attribution and any fix; agree budgets after baseline and before optimization/acceptance |
+
+The first-content target depends on S3 if H3/H4 leaves insufficient frame or
+wall-time budget. Freshness-correct reuse or deferred work is a possible means,
+not a presumed fix. The 27.852 ms figure includes the entire PATZ1 constructor;
+its recomputation share is unknown, so multiplying it by a length ratio is not
+a measured prediction. Test the selected boundary instead. The 2 Mbp stress
+case has no 500 ms promise. Likewise, startup cannot receive a green verdict
+while its budgets remain unspecified; an explicit owner deferral is not a pass.
 
 ## Hypotheses, to be confirmed or rejected before any optimization
 
@@ -190,15 +279,23 @@ frame shows. Its cost is part of the 27.852 ms eager construction on 20 kbp and
 must be measured at 250 kbp and 2 Mbp.
 
 **H5 - The native gap.**
-Native resize-to-confirmed-content exceeded the CPU-side first frame after
-resize by roughly 20x-100x. Attribution across event delivery, viewport
+Debug native resize and optimized embedded-frame timings differ markedly, but
+are not comparable measurements. Attribution across event delivery, viewport
 synchronization, repaint scheduling, GPU upload, compositor work and the
-`gui-test-support` snapshot writer does not exist yet. Until it does, no
-conclusion about the renderer is warranted from the native numbers.
+`gui-test-support` snapshot writer does not exist yet. Cross-check on native
+macOS before generalizing Xvfb/Openbox observations into a product fix.
+
+**H6 - Startup and first usable content.**
+The harness combines process startup, project/window opening, fixed waits and
+capture work. Use the bounded CPU phase markers around `src/bin/gentle.rs`,
+app initialization, project load, first root/workspace and DNA frames alongside
+independent native presentation timestamps and the existing profiler scopes. Use an
+empty clean profile and the same public PATZ1/TP73 projects. A small constructor
+benchmark cannot exonerate or explain process startup.
 
 ## Slices
 
-### S0 - Measurement harness (prerequisite, blocks S1-S5)
+### S0 - Measurement harness (prerequisite for runtime changes S1-S6)
 
 - Deterministic, offline, hash-bound **feature-density fixture ladder**:
   synthetic annotated sequences at roughly 10^2 / 10^3 / 10^4 features over
@@ -224,10 +321,36 @@ conclusion about the renderer is warranted from the native numbers.
   observation is attributed rather than restated. Retain exact source,
   toolchain, profile, project and report hashes plus native traces with every
   recorded measurement.
+- Add the owner-selected envelope boundary where the current ladder lacks it,
+  and retain a local macOS native cross-check before general S5 changes. Bind
+  the CPU startup trace to external native observations; the new markers do
+  not replace that acceptance. S6 owns the resulting product fixes.
 
 Exit criteria: one command produces a per-fixture, per-interaction table; two
 repeats on a stable host agree; every number carries source revision, profile,
-toolchain and fixture hash.
+toolchain and fixture hash. The workload, circular scope and budgets are
+recorded; stress outcomes and release-target outcomes remain separate.
+
+### B0 - Build feedback (independent of runtime hypotheses)
+
+The dedicated benchmark crate still depends on the root library with
+`desktop-gui`; a cold or changed-source build can be expensive. However,
+`scripts/dna_feature_latency.py prepare` already builds once and `run` replays
+the hash-bound binary without Cargo. Use that path first. It solves repeat-run
+rebuilds, not initial compilation or iteration after a source edit.
+
+If build cost still blocks work, retain cold and incremental Cargo timings,
+compile versus LTO/link phases, wall time and peak RSS. Evaluate the smallest
+evidence-backed build/dependency-boundary change; a narrowly reviewed crate
+extraction is eligible without proving a runtime hotspot. Follow DEC-006/007,
+preserve production profiles and benchmark semantics, and remeasure build cost
+at named revisions. Root source size alone does not prove which extraction
+helps, and no broad engine/GUI split is authorized by this plan.
+
+This is distinct from a single-root **GUI workspace** (replacing native child
+windows with one application workspace), which remains a conditional UX/runtime
+change. Neither faster linking nor a different audit profile establishes a
+runtime speedup; build comparisons have their own acceptance evidence.
 
 ### S1 - Stop relayouting what did not change (H1)
 
@@ -273,6 +396,9 @@ by sub-step at 250 kbp and 2 Mbp.
 
 ### S4 - Density-aware feature drawing (only if S1-S3 leave a gap)
 
+Here "gap" means an attributed drawing-budget miss inside the owner-approved
+interactive envelope, not merely a slow 10,000-feature stress run.
+
 The renderer already has explicit detail thresholds
 (`FEATURE_LABEL_MAX_BP_PER_PX`, `RE_SITE_MAX_BP_PER_PX`, ORF and methylation
 limits). If drawing still dominates at high feature density, extend that
@@ -288,8 +414,34 @@ intermediate resize events so one relayout serves a burst, remove redundant
 repaint wake-ups on the DNA-window path, and establish whether the snapshot
 writer or the renderer explains the acceptance-harness timings. Keep CPU paint,
 semantic-harness waits and release-binary timings distinct in every report.
-Worker migration, virtualization or a single-root workspace remain out of scope
-without profiling evidence.
+Require the S0 macOS cross-check before a general scheduling change. If the
+delay belongs to the Xvfb harness or snapshot writer, repair/label that path
+rather than changing production scheduling; a Linux-specific product defect
+can still warrant a narrowly evidenced fix. Worker migration, virtualization
+or a single-root GUI workspace remain conditional on runtime profiling.
+
+### S6 - Startup and first usable content (H6; may run first)
+
+Codex owns the smallest product fix justified by S0's startup attribution;
+Glen owns its repeatable acceptance. If this is the dominant confirmed delay,
+prioritize S6 ahead of S1-S5 rather than leaving it until the end.
+
+- Separate process launch to responsive root window, requested project load,
+  DNA-window admission/hydration and first subject-correct feature content.
+  Retain time spent in harness waits, external I/O, GPU/window initialization
+  and project parsing separately; do not silently remove costs from totals.
+- Compare empty-profile startup and explicit public-project opening, with
+  cold/warm conditions documented. Do not change project restoration, skip
+  validation or discard annotations merely to make startup look faster.
+- Fix only the confirmed blocking phase. Where that phase is the existing
+  constructor/hydration path, implement S3 once and report its contribution to
+  both open-window and process-to-content totals. Preserve cancellation,
+  stale-result checks and sequence identity for any background work.
+- Agree numerical startup targets with the owner and Glen after baseline
+  attribution, before optimization. Exit requires target-bound before/after
+  native evidence on the selected projects, not a splash screen or a quicker
+  harness checkpoint. If no product defect remains, retain that finding and
+  test the actual startup against the agreed targets; do not infer acceptance.
 
 ## Correctness guardrails
 
@@ -309,25 +461,32 @@ without profiling evidence.
 1. Implementation posts the S0 table plus the confirmed/rejected hypothesis
    ledger at one named SHA, with `cargo test -p gentle-benchmarks --bench
    gui_operations` green and the fixture regeneration command recorded.
-2. The auditor repeats the ladder on a stable host with a release-like binary,
-   retains raw Criterion artifacts and environment metadata, and compares only
-   matching profile/host/toolchain/fixture/revision baselines.
+2. The auditor repeats the ladder on a stable host with a release-like binary
+   and retains raw Criterion artifacts and environment metadata. Baseline
+   repeats share a revision; before/after comparisons name both revisions and
+   hold profile, host, toolchain and fixture identity constant. Do not pool
+   different profiles or treat a build-speed improvement as a runtime result.
 3. Native acceptance covers open, pan, zoom, live resize, layer toggles and
-   selection on PATZ1 and TP73, plus the largest ladder fixture, with
-   before/after bound to two SHAs.
-4. The performance verdict is the auditor's. Implementation-side numbers are
-   evidence, not acceptance.
+   selection on PATZ1 and TP73 plus the exact agreed envelope boundary. Record
+   startup/S6 targets, the macOS cross-check and circular regression checks;
+   retain the largest ladder fixture as a separate stress outcome.
+4. The performance verdict is the auditor's. An unresolved owner scope choice
+   or unbudgeted startup cannot be a green `.12` result. Implementation-side
+   numbers are evidence, not acceptance.
 
 ## Non-goals without evidence
 
 Virtualization, worker migration, GPU renderer replacement, caching or culling
-strategies, and workspace restructuring are all conditional on a confirmed,
-attributed hotspot. This plan explicitly forbids starting with them.
+strategies, and single-root GUI workspace restructuring are all conditional on
+a confirmed, attributed runtime hotspot. This plan explicitly forbids starting
+with them. Build-boundary work follows B0 instead; that carve-out is neither a
+runtime-performance claim nor approval for a broad root-crate rewrite.
 
 ## Open questions
 
-- Which feature-count ceiling does `.12` commit to supporting interactively?
-- Does the circular map need the same treatment in `.12`, or only after the
-  linear path is attributed?
+- Owner: confirm the interactive envelope and circular scope under Audit
+  Admission Decisions before the release-target audit.
+- Owner/Glen: freeze startup and interaction budgets after baseline attribution,
+  before optimization; proposals above are not accepted measurements.
 - Is the native gap compositor-bound on all three platforms, or specific to the
   Xvfb/Openbox acceptance environment?

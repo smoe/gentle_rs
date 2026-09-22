@@ -16,6 +16,30 @@
 - No local builds or tests run at the owner's request; Linux container CI must
   verify the repair. Release tags and acceptance status remain unchanged.
 
+## 2026-09-22 - Selected Assay Integration Review
+
+- Merge Glen's `18ae846e` with its original history. Distinguish the table's
+  0-based half-open intervals from the plots' 1-based inclusive positions in
+  the live selected-pair view; stored coordinates and geometry are unchanged.
+- Extend the rendered-label regression to require both coordinate conventions,
+  the missing-specificity warning and the absence of order approval. Glen's
+  public PATZ1/A6 visual review remains source-commit evidence, not native
+  acceptance of the merged revision.
+
+## 2026-09-22 - Selected Transcript-Assay Amplicon Footprint
+
+- Make the Gene assay study selected-pair map visually distinguish forward
+  primer, predicted amplicon and reverse primer on the mature-cDNA axis.
+  Exact product boundaries now have explicit start/end markers and a filled
+  span, so a stored assay's amplified region is legible without deriving it
+  from coordinate text alone. Pair the full-transcript overview with an
+  explicitly labelled expanded amplicon detail where the two primers and
+  their inward-facing orientation remain readable for short products.
+- Keep the coordinate claim narrow: the map displays mature-cDNA coordinates
+  from the persisted panel report and does not fabricate a genomic projection.
+  Primer arrows may be widened for visibility; the product boundaries remain
+  exact. Add deterministic geometry and rendered-label regressions.
+
 ## 2026-09-22 - CLI Process Stack Boundary
 
 - Run the standalone CLI's parsing and dispatch on one synchronously joined
@@ -55,6 +79,34 @@
   are unrelated to this failure.
 - No local builds or tests run at the owner's request; Windows CI must verify
   the existing engine integration regression.
+
+## 2026-09-21 - Bounded Startup CPU Checkpoints
+
+- Add optional `GENTLE_GUI_STARTUP_TRACE` recording for native setup, app
+  initialization, project decoding/installation and first root/workspace/DNA
+  CPU frames. Deferred DNA loading distinguishes scheduling, lock wait, cloning
+  and hydration. Loading/error placeholders do not claim content.
+- Keep the recorder bounded and nonblocking, with explicit loss counts and
+  failed/interrupted scopes. Use only process-local ordinals and fixed labels;
+  write a new JSON file on exit, never overwrite retained evidence or write on
+  the paint path. The ordinary GUI remains uninstrumented by default.
+- Document a direct-binary runbook and limitations: Rust-entry is not OS
+  launch, CPU-frame return is not compositor/subject-readiness confirmation,
+  and forced termination may leave no output. No optimization, new profile,
+  scientific behavior change or performance acceptance is claimed.
+
+## 2026-09-21 - Reconcile .12 Performance Review
+
+- Address the owner-supplied Claude review with an explicit startup/first usable
+  content slice, conditional first-content budget dependencies, a native macOS
+  cross-check and pending workload/circular-scope decisions before timed audits.
+- Separate measured build feedback from runtime work, reuse the existing
+  build-once runner, and distinguish Cargo crate extraction from a single-root
+  GUI workspace. No broad extraction, new profile or runtime change is approved.
+- Keep the implementation sequence in the latency plan; replace the historical
+  GUI acceptance report's duplicate task list with a pointer. Preserve its
+  original verdicts and receipts. No new performance or release acceptance is
+  claimed; the revised proposal still needs owner scope choices.
 
 ## 2026-09-21 - MCP Process Stack Boundary
 

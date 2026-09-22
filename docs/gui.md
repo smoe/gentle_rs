@@ -1079,6 +1079,13 @@ Feature tree grouping:
   sequence or feature names. They count work, not milliseconds. See the
   [latency plan](dna_feature_rendering_latency_plan.md) and
   [prebuilt audit runbook](../benches/README.md#dna-feature-density-latency).
+  For startup attribution, set `GENTLE_GUI_STARTUP_TRACE` to a new JSON output
+  path before launching the desktop binary. The bounded, name-free CPU trace is
+  written only on exit, not on the paint path; no screenshots, database queries
+  or project writes are introduced. Failed loads and loading placeholders do
+  not become content checkpoints. See the [startup runbook](../benches/README.md#startup-phase-checkpoints)
+  for missing-event handling and the distinction from native presentation and
+  performance acceptance. This diagnostic is off by default.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)
@@ -5036,7 +5043,17 @@ qPCR form:
     transcript scope, recommendation/override and exact operation digests
   - inspect persisted panels on that sequence, explicitly distinguishing
     comparison panels from plan-bound results; selected-pair views show both
-    primer footprints on mature cDNA and each transcript's stored products
+    primer footprints on mature cDNA and each transcript's stored products.
+    The interval table retains explicitly labelled 0-based half-open bounds;
+    the plots use explicitly labelled 1-based inclusive positions.
+    The selected-pair axis marks the exact 1-based displayed start/end of the
+    predicted amplicon with a filled green product span, while blue/orange
+    arrows retain forward/reverse orientation. Primer arrows may use a minimum
+    on-screen width for legibility, but the green product boundaries remain
+    exact. A second, explicitly labelled expanded detail maps the primers
+    within those same exact amplicon boundaries, without pretending to share
+    the full-transcript scale. Both views are mature-cDNA projections, not an
+    inferred genomic overlay
   - the coverage-scope box uses the experimental handoff's engine-owned
     accounting: annotated records, distinct mature cDNAs, uncovered records
     and records outside the assessed universe remain separate. Identical

@@ -14,6 +14,7 @@ use crate::{
     app::{request_open_graphics_settings_from_native_menu, request_open_help_from_native_menu},
     dna_sequence::DNAsequence,
     engine::GentleEngine,
+    gui_profiler::startup_trace::{self, Phase, TraceContext},
     main_area_dna::MainAreaDna,
     window_backdrop::{
         WindowBackdropKind, current_window_backdrop_settings, paint_window_backdrop,
@@ -68,6 +69,7 @@ enum DeferredAnalysisFocus {
 /// - `MainAreaDna` owns the actual sequence-window UI state and rendering.
 pub struct WindowDna {
     main_area: MainAreaDna,
+    startup_trace: TraceContext,
     pending_dna_load: Option<Arc<Mutex<Receiver<Result<DNAsequence, String>>>>>,
     awaiting_first_content_paint: bool,
     deferred_load_message: Option<String>,
@@ -143,54 +145,74 @@ impl WindowDna {
 
     /// Construct an eager sequence window when sequence content is already in hand.
     pub fn new(dna: DNAsequence, seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
-        Self {
+        let startup_trace = startup_trace::context().child();
+        let construct = startup_trace.span(Phase::DnaConstruct);
+        let window = Self {
             main_area: MainAreaDna::new(dna, Some(seq_id), Some(engine)),
+            startup_trace,
             pending_dna_load: None,
             awaiting_first_content_paint: true,
             deferred_load_message: None,
             deferred_analysis_focus: None,
             close_requested: false,
-        }
+        };
+        construct.finish(true);
+        window
     }
 
     /// Construct a lazy sequence window that resolves sequence payload from the
     /// shared engine in the background before handing off to `MainAreaDna`.
     pub fn new_lazy(seq_id: String, engine: Arc<RwLock<GentleEngine>>) -> Self {
+        let startup_trace = startup_trace::context().child();
+        let construct = startup_trace.span(Phase::DnaConstruct);
         let (tx, rx) = mpsc::channel::<Result<DNAsequence, String>>();
         let thread_engine = engine.clone();
         let thread_seq_id = seq_id.clone();
+        let thread_trace = startup_trace.clone();
+        startup_trace.checkpoint(Phase::DnaWorkerScheduled);
         thread::spawn(move || {
             crate::gentle_gui_profile_scope!("WindowDna::deferred_load.lock_and_clone");
+            let lock = thread_trace.span(Phase::DnaEngineReadLock);
             let result = thread_engine
                 .read()
-                .map_err(|_| "Engine lock poisoned during deferred load".to_string())
-                .and_then(|guard| {
-                    guard
-                        .state()
-                        .sequences
-                        .get(&thread_seq_id)
-                        .cloned()
-                        .ok_or_else(|| {
-                            format!(
-                                "Sequence '{}' no longer exists while opening window",
-                                thread_seq_id
-                            )
-                        })
-                });
+                .map_err(|_| "Engine lock poisoned during deferred load".to_string());
+            lock.finish(result.is_ok());
+            let result = result.and_then(|guard| {
+                let clone = thread_trace.span(Phase::DnaSequenceClone);
+                let result = guard
+                    .state()
+                    .sequences
+                    .get(&thread_seq_id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        format!(
+                            "Sequence '{}' no longer exists while opening window",
+                            thread_seq_id
+                        )
+                    });
+                clone.finish(result.is_ok());
+                result
+            });
+            thread_trace.checkpoint(Phase::DnaWorkerResult);
             let _ = tx.send(result);
         });
         let placeholder = DNAsequence::from_sequence("").expect("valid empty sequence");
         crate::gentle_gui_profile_scope!("WindowDna::new_lazy.placeholder");
+        let placeholder_construct = startup_trace.span(Phase::DnaPlaceholderConstruct);
         let mut main_area = MainAreaDna::new(placeholder, Some(seq_id), Some(engine));
         main_area.defer_feature_tree_until_interaction();
-        Self {
+        placeholder_construct.finish(true);
+        let window = Self {
             main_area,
+            startup_trace,
             pending_dna_load: Some(Arc::new(Mutex::new(rx))),
             awaiting_first_content_paint: true,
             deferred_load_message: None,
             deferred_analysis_focus: None,
             close_requested: false,
-        }
+        };
+        construct.finish(true);
+        window
     }
 
     fn apply_deferred_analysis_focus(&mut self) {
@@ -275,27 +297,39 @@ impl WindowDna {
             match recv_result {
                 Ok(Ok(Ok(dna))) => {
                     crate::gentle_gui_profile_scope!("WindowDna::poll_deferred_load.hydrate");
+                    let hydrate = self.startup_trace.span(Phase::DnaHydrate);
                     self.main_area.replace_loaded_sequence(dna);
                     self.pending_dna_load = None;
                     self.deferred_load_message = None;
                     self.apply_deferred_analysis_focus();
+                    hydrate.finish(true);
                 }
                 Ok(Ok(Err(message))) => {
+                    self.startup_trace.checkpoint(Phase::DnaLoadFailed);
                     self.pending_dna_load = None;
                     self.deferred_load_message = Some(message);
                 }
                 Ok(Err(TryRecvError::Empty)) => {}
                 Ok(Err(TryRecvError::Disconnected)) => {
+                    self.startup_trace.checkpoint(Phase::DnaLoadFailed);
                     self.pending_dna_load = None;
                     self.deferred_load_message = Some(
                         "Deferred sequence load channel disconnected unexpectedly".to_string(),
                     );
                 }
                 Err(message) => {
+                    self.startup_trace.checkpoint(Phase::DnaLoadFailed);
                     self.pending_dna_load = None;
                     self.deferred_load_message = Some(message);
                 }
             }
+        }
+    }
+
+    fn finish_first_content_frame(&mut self, phase: Phase) {
+        if self.awaiting_first_content_paint {
+            self.startup_trace.checkpoint(phase);
+            self.awaiting_first_content_paint = false;
         }
     }
 
@@ -410,7 +444,7 @@ impl WindowDna {
             } else {
                 // MainAreaDna owns the root panel layout for sequence windows.
                 self.main_area.render(ctx);
-                self.awaiting_first_content_paint = false;
+                self.finish_first_content_frame(Phase::DnaNativeContentFrame);
             }
         }));
         if result.is_err() {
@@ -486,7 +520,7 @@ impl WindowDna {
                 );
             } else {
                 self.render_bounded_embedded_main_area(ui);
-                self.awaiting_first_content_paint = false;
+                self.finish_first_content_frame(Phase::DnaEmbeddedContentFrame);
             }
         }));
         if result.is_err() {
@@ -922,6 +956,149 @@ impl WindowDna {
 mod tests {
     use super::*;
     use crate::engine::Engine;
+
+    fn startup_trace_frame(window: &mut WindowDna) {
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1200.0, 800.0),
+                )),
+                ..Default::default()
+            },
+            |ui| window.update_embedded(ui),
+        );
+        output.textures_delta.clear();
+    }
+
+    #[test]
+    fn startup_trace_lazy_window_records_clone_hydration_and_one_content_frame() {
+        // Synthetic sequence created through the same engine route as a pasted record.
+        let mut engine = GentleEngine::default();
+        engine
+            .apply(crate::engine::Operation::CreateSequenceFromText {
+                sequence_text: "GAATTCACGT".into(),
+                output_id: Some("private_sequence_name_not_for_trace".into()),
+                name: None,
+                circular: false,
+            })
+            .unwrap();
+        let engine = Arc::new(RwLock::new(engine));
+        let (_, report) = startup_trace::capture(|| {
+            let mut window =
+                WindowDna::new_lazy("private_sequence_name_not_for_trace".into(), engine);
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while window.pending_dna_load.is_some() && std::time::Instant::now() < deadline {
+                window.poll_deferred_load();
+                thread::sleep(Duration::from_millis(1));
+            }
+            assert!(window.pending_dna_load.is_none());
+            assert!(window.deferred_load_message.is_none());
+            startup_trace_frame(&mut window);
+            startup_trace_frame(&mut window);
+            assert!(!window.is_opening());
+            assert_eq!(
+                window.main_area.dna().read().unwrap().get_forward_string(),
+                "GAATTCACGT"
+            );
+        });
+        let events = report["events"].as_array().unwrap();
+        for phase in [
+            "dna_construct",
+            "dna_engine_read_lock",
+            "dna_sequence_clone",
+            "dna_hydrate",
+        ] {
+            let count = events
+                .iter()
+                .filter(|event| event["phase"] == phase && event["kind"] == "completed")
+                .count();
+            assert!(
+                count == 1 || report["dropped_events"].as_u64().unwrap() > 0,
+                "{phase}: missing unreported observation"
+            );
+        }
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["phase"] == "dna_embedded_content_frame")
+                .count(),
+            1
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| event["subject"] == events[0]["subject"])
+        );
+        assert!(
+            !report
+                .to_string()
+                .contains("private_sequence_name_not_for_trace")
+        );
+        assert!(!report.to_string().contains("GAATTCACGT"));
+    }
+
+    #[test]
+    fn startup_trace_loading_and_failed_windows_do_not_claim_content() {
+        let (_, report) = startup_trace::capture(|| {
+            let mut window = WindowDna::new(
+                DNAsequence::from_sequence("ACGT").unwrap(),
+                "seq1".into(),
+                Arc::new(RwLock::new(GentleEngine::default())),
+            );
+            let (sender, receiver) = mpsc::channel();
+            window.pending_dna_load = Some(Arc::new(Mutex::new(receiver)));
+            startup_trace_frame(&mut window);
+            assert!(window.is_opening());
+            sender.send(Err("synthetic load failure".into())).unwrap();
+            startup_trace_frame(&mut window);
+            assert!(window.deferred_load_message.is_some());
+        });
+        let events = report["events"].as_array().unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|event| event["phase"] == "dna_load_failed")
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event["phase"] == "dna_embedded_content_frame"
+                    || event["phase"] == "dna_native_content_frame")
+        );
+    }
+
+    #[test]
+    fn startup_trace_native_cpu_frame_is_distinct_from_embedded_path() {
+        let (_, report) = startup_trace::capture(|| {
+            let mut window = WindowDna::new(
+                DNAsequence::from_sequence("ACGT").unwrap(),
+                "seq1".into(),
+                Arc::new(RwLock::new(GentleEngine::default())),
+            );
+            let ctx = egui::Context::default();
+            for _ in 0..2 {
+                let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                    crate::egui_compat::with_current_root_ui(ui, |ctx| window.update(ctx));
+                });
+                output.textures_delta.clear();
+            }
+        });
+        let events = report["events"].as_array().unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event["phase"] == "dna_native_content_frame")
+                .count(),
+            1
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| event["phase"] == "dna_embedded_content_frame")
+        );
+    }
 
     #[test]
     fn splicing_expert_deferred_error_does_not_hide_loaded_dna() {
