@@ -128,6 +128,16 @@ impl WindowDna {
         self.main_area.set_tss_view(enabled)
     }
 
+    pub(crate) fn queue_tss_profile(&mut self, path: std::path::PathBuf) -> Result<(), String> {
+        if self.pending_dna_load.is_some() {
+            return Err(
+                "DNA sequence is still loading; retry profile attachment after loading finishes"
+                    .into(),
+            );
+        }
+        self.main_area.queue_tss_profile(path)
+    }
+
     fn render_deferred_load_indicator(ui: &mut egui::Ui) {
         let phase = ((ui.input(|input| input.time) * 10.0) as usize) % 4;
         let marker = match phase {

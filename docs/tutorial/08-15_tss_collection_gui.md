@@ -124,3 +124,12 @@ not authorize sequence overwrite; a new derivation normally needs a new name.
 Record separate verdicts for the automated subset, manual lifecycle and live
 biology. Glen's TP73/DeltaNp73 acceptance remains a separate private-data test.
 None of this fixture proves active promoters or complete biological coverage.
+
+## Continue with one regulatory profile
+
+This tutorial ends when the annotated windows are materialized, validated and
+reopenable. To inspect one member's exon/CDS context, CUT&RUN/chromatin lanes,
+stored motif peaks and a separately bound full score report, continue with
+[08.16: Inspect TFBS scores and regulatory evidence at one annotated TSS](08-16_tss_regulatory_view_gui.md).
+That chapter keeps GUI, GUI Shell and inner-agent commands together and does not
+rescore the sequence merely to display the retained report.

@@ -6863,6 +6863,12 @@ Shared GUI/agent navigation: focus the intended DNA window, then use
 `ui open tss-view` or `ui focus tss-view`; `ui close tss-view` restores Standard
 map. No arbitrary project sequence is selected when the active DNA context is
 missing. Headless execution records the intent with `applied=false`.
+To attach the same report as the native file-picker path, use
+`ui open tss-view --report REPORT_JSON` (or `ui focus ...`). The active annotated
+TSS viewer performs the normal binding validation asynchronously; the intent
+does not select a sequence implicitly, rescore motifs or query DuckDB. Tutorial
+[08.16](tutorial/08-16_tss_regulatory_view_gui.md) demonstrates GUI, GUI Shell
+and inner-agent wording side by side.
 
 For an annotated anchored locus, **TFBS scan > Transcript starts / TSS windows...**
 now provides a background inventory, explicit row selection and approval, then

@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-23 - Native TSS Evidence Tutorial And Report-Attachment Parity
+
+- Split the regulatory teaching path by question: tutorial 08.13 now focuses on
+  PWM/PSSM score interpretation, 08.15 retains collection derivation/lifecycle,
+  and new 08.16 teaches native per-TSS inspection with public synthetic inputs.
+- Add `ui open|focus tss-view --report REPORT_JSON` so GUI Shell and reviewed
+  inner-agent suggestions use the same bounded, hash/geometry-validating report
+  attachment as **Load TSS profile report...**. It targets only the active
+  annotated TSS viewer and performs no rescoring or evidence query.
+- Retain separate screenshots before/after profile attachment and distinguish
+  annotation, CUT&RUN/chromatin signal, stored motif peaks, score curves and
+  unavailable evidence. The native viewer remains a per-TSS peer; integrated
+  whole-locus PDF composition remains a separate publication path.
+
 ## 2026-09-23 - CLI Service Parity Registry Isolation
 
 - Windows job `107075366344` at `e4c94bf3` built successfully but failed one

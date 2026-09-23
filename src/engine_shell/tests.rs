@@ -47512,5 +47512,37 @@ fn tss_view_ui_intent_is_discoverable_and_headless_does_not_claim_display() {
     }
     let target = UiIntentTarget::parse("tss-view").unwrap();
     assert_eq!(target.arguments()[0].name, "collection_id");
+    assert_eq!(target.arguments()[1].name, "report_path");
     assert!(target.detail().contains("No rescoring") || target.detail().contains("no rescoring"));
+}
+
+#[test]
+fn tss_profile_ui_intent_is_explicit_and_non_mutating() {
+    for action in ["open", "focus"] {
+        let command = parse_shell_line(&format!(
+            "ui {action} tss-view --report 'reports/tss profile/report.json'"
+        ))
+        .unwrap();
+        match &command {
+            ShellCommand::UiTssProfile {
+                action: parsed_action,
+                report_path,
+            } => {
+                assert_eq!(parsed_action.as_str(), action);
+                assert_eq!(report_path, "reports/tss profile/report.json");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let mut engine = GentleEngine::default();
+        let result = execute_shell_command(&mut engine, &command).unwrap();
+        assert!(!result.state_changed);
+        assert_eq!(result.output["applied"], false);
+        assert_eq!(
+            result.output["ui_intent"]["report_path"],
+            "reports/tss profile/report.json"
+        );
+    }
+    assert!(parse_shell_line("ui close tss-view --report report.json").is_err());
+    assert!(parse_shell_line("ui open tss-view --report").is_err());
+    assert!(parse_shell_line("ui open tss-view --unknown report.json").is_err());
 }

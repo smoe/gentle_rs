@@ -1,4 +1,4 @@
-# Explain a PWM/PSSM score versus binding affinity: TP73 and TSS promoter traces
+# Understand PWM/PSSM scores before reading promoter traces
 
 From a motif logo to a promoter trace: what does the score mean?
 
@@ -7,6 +7,13 @@ have not had to audit motif statistics. It starts with four synthetic columns,
 then follows three real software paths: the independent `jaspar-mapping`
 scanner, GENtle's local dense scorer, and GENtle's reduced promoter-cofactor
 browser.
+
+This is the **score-interpretation** tutorial. For the shorter hands-on path
+through GENtle's native annotated TSS viewer, continue with
+[08.16: Inspect TFBS scores and regulatory evidence at one annotated TSS](08-16_tss_regulatory_view_gui.md).
+Tutorial [08.15](08-15_tss_collection_gui.md) separately covers deriving and
+reopening a collection of TSS windows. Keeping these questions separate avoids
+turning one chapter into a small regulatory-analysis textbook with buttons.
 
 The short version is simple: **a motif score says how compatible one DNA word
 is with one specified sequence model and scoring policy**. It is not a binding
@@ -151,8 +158,12 @@ gentle_cli features tss-tfbs-profiles \
   --formats svg
 ```
 
-This route is available through the shared GUI Shell and command palette; there
-is currently no dedicated TSS-profile wizard. Do not infer one from the output.
+This scoring/export route is available through the shared GUI Shell and command
+palette; there is no separate scoring wizard. GENtle does, however, now have a
+native **TSS / Regulatory** viewer for an already annotated TSS record. It can
+attach the retained `report.json` through **Load TSS profile report...** or
+`ui open tss-view --report REPORT_JSON`, without rescoring. See
+[08.16](08-16_tss_regulatory_view_gui.md) for that interactive inspection path.
 For a typed workflow example of inline dense TFBS scoring, see
 [`tfbs_track_similarity_stateless_offline.json`](../examples/workflows/tfbs_track_similarity_stateless_offline.json);
 the multi-page TSS document command above remains a shared-Shell/CLI operation.
@@ -395,3 +406,11 @@ scores, and imported scanner-native scores require their own producer-policy aud
 
 Passing software tests and checksums establishes implementation consistency,
 not independent scientific validation of a motif's biological interpretation.
+
+### Continue in the GUI
+
+Use [08.16](08-16_tss_regulatory_view_gui.md) after this chapter when you want
+to see annotation, CUT&RUN/chromatin intervals, stored motif peaks and the full
+forward/reverse score arrays as distinct native lanes. Use
+[08.15](08-15_tss_collection_gui.md) first when you still need to derive and
+approve the TSS windows themselves.

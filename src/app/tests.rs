@@ -17972,6 +17972,43 @@ fn tss_view_ui_intent_targets_active_dna_and_fails_without_context() {
 }
 
 #[test]
+fn tss_profile_ui_intent_targets_only_the_active_annotated_tss_window() {
+    let command = parse_shell_line("ui open tss-view --report report.json").unwrap();
+    let mut app = GENtleApp::default();
+    assert!(
+        app.try_apply_shell_ui_intent(&command)
+            .unwrap()
+            .contains("activate")
+    );
+
+    let dna = crate::tss_sequence_view::tests::fixture(false);
+    let viewport = egui::ViewportId::from_hash_of("tss_profile_intent_test");
+    let key = GENtleApp::native_menu_key_for_viewport(viewport);
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .insert("toy_tss".into(), dna.clone());
+    app.windows.insert(
+        viewport,
+        Arc::new(RwLock::new(Window::new_dna(
+            dna,
+            "toy_tss".into(),
+            app.engine.clone(),
+        ))),
+    );
+    app.native_window_key_to_viewport.insert(key, viewport);
+    app.active_window_menu_key = Some(key);
+    let message = app.try_apply_shell_ui_intent(&command).unwrap();
+    assert!(message.contains("Queued TSS profile report"), "{message}");
+    assert!(
+        message.contains("No scoring or database query"),
+        "{message}"
+    );
+}
+
+#[test]
 fn tss_workspace_collection_open_is_deferred_and_reuses_pending_windows() {
     let mut engine = crate::engine::synthetic_tss_engine(false);
     let request = crate::engine::synthetic_tss_approval(&engine);

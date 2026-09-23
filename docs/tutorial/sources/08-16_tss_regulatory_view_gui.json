@@ -1,0 +1,44 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "tss_regulatory_view_gui",
+  "title": "Inspect TFBS scores and regulatory evidence at one annotated TSS",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
+      "caption": "Native TSS / Regulatory view before profile attachment: annotation, structure and signal remain distinct from a complete score trace.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-23"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
+      "caption": "The same viewer after attaching its hash-bound profile report; score curves are added without rescoring or a database query.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-23"
+    }
+  ],
+  "catalog": {
+    "order": 94,
+    "path": "docs/tutorial/08-16_tss_regulatory_view_gui.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "agent_users",
+      "regulatory_analysis",
+      "wet_lab_biologists"
+    ],
+    "notes": "Offline synthetic native TSS-view walkthrough. Opens an annotated minus-strand TSS, distinguishes structure, CUT&RUN-style signal and stored motif peaks, then attaches a hash-bound TFBS score report through the same GUI/shared-shell/inner-agent route. No rescoring, database query, binding claim or biological TSS preference.",
+    "estimated_minutes": 10,
+    "difficulty": "intermediate",
+    "network": "offline",
+    "interfaces": ["GUI", "CLI / GUI Shell", "inner agent"],
+    "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
+    "produces": ["interactive native TSS evidence view"],
+    "group": "08",
+    "group_position": 16
+  }
+}
