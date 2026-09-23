@@ -3393,6 +3393,10 @@ mod tests {
     fn assert_forwarded_services_dispatch_matches_shared_shell_execution(
         forwarded_args: Vec<String>,
     ) {
+        // Status, handoff and guide read JASPAR. Keep sync-jaspar's temporary
+        // registry replacement/reset outside this entire two-adapter comparison.
+        let _serial = lock_jaspar_tests();
+
         fn normalize_macos_dyld_pid(text: &str) -> Option<String> {
             let mut rest = text;
             let mut normalized = String::new();

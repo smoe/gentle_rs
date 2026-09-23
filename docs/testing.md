@@ -129,6 +129,14 @@ an OS-dependent assumption portable.
   repeated errors by cause; fix the first panic before considering poisoned
   locks. Do not add unconditional poison recovery or timeouts to hide the
   original failure. Run targeted integration tests before the full suite.
+- **Shared test registries:** read-only status/parity tests must acquire the
+  same test mutex as tests replacing or reloading a process-global registry.
+  Hold it across both adapter executions and their assertions, not separately
+  per call, and restore temporary registries before releasing the writer's
+  guard. Windows job `107075366344` at `e4c94bf3` exposed a JASPAR count of 1
+  versus 2,633 when CLI service parity overlapped the one-motif sync fixture.
+  Do not strip counts or summaries, weaken equality, or serialize the whole
+  suite to hide this race; it is not inherently Windows-specific.
 - **Process stacks:** `RUST_MIN_STACK` configures spawned Rust threads, not the
   executable's main-thread stack. Keep real-binary CLI and MCP integration
   coverage with that variable removed from the child environment; unit tests

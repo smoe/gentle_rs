@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-23 - CLI Service Parity Registry Isolation
+
+- Windows job `107075366344` at `e4c94bf3` built successfully but failed one
+  CLI test: `services status` observed the concurrent JASPAR sync test's
+  one-motif registry in one adapter call and the restored 2,633-motif registry
+  in the other. The differing summary line followed the same count change.
+- Hold the existing CLI JASPAR test mutex for the entire shared service-parity
+  helper, covering status, handoff and guide without changing runtime behavior,
+  normalizing scientific fields or disabling parallel tests. Keep the existing
+  full-output parity assertions and document the reader/writer isolation rule.
+- No local builds or tests run at the owner's request. Native Windows and
+  parallel-suite confirmation remain pending. The identical CertUtil sharing
+  violation on both sides is a separate legacy-checksum probe issue, not the
+  cause of this assertion; it is recorded for follow-up, not changed here.
+
 ## 2026-09-22 - Lower-Cost Native Release Builds
 
 - Return the native release profile to Cargo defaults, removing forced fat LTO

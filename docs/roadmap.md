@@ -57,9 +57,9 @@ Release acceptance:
 - Version metadata, LF/CRLF tutorial replays, capability/parity checks, and the
   deterministic proof workflow pass the pre-tag validation recorded in the
   versioned release notes.
-- Require Windows CI on every push plus one selected Linux/macOS job; before
-  tagging, retain both Unix verdicts at the same SHA. Confirm the `.11` retained
-  tutorial-version replay on native Windows, not only on the local host.
+- Require Windows CI on every push plus one selected Linux/macOS job; before tagging, retain both Unix verdicts at the same SHA. Confirm the `.11` retained tutorial-version replay on native Windows, not only locally.
+  Recheck CLI service parity under normal parallelism after the JASPAR test-lock repair for job `107075366344` at `e4c94bf3`.
+  Track that log's legacy SHA-1 CertUtil probe sharing violation separately; it was identical in both outputs, not the parity failure.
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
   external resources; CI uses tiny local fixtures without restricting the
   engine or GUI contracts to those fixture sizes.
