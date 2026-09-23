@@ -47,17 +47,16 @@ Start GENtle from the extracted directory so relative resource and tutorial
 paths resolve. Save personal projects outside the release directory when you
 want to replace or remove that directory for an upgrade.
 
-The archive contains the GUI, CLI, MCP server, JavaScript/Lua entrypoints,
+The current packaging recipe contains the GUI, CLI, MCP server,
 example-document generator and publication-report entrypoint in `bin/`, plus
 tracked resources, tutorial docs/fixtures and the Python adapter source.
-Embedded script interfaces are enabled in the release build. Untracked genome
-caches and local analysis files are never included.
+Embedded JavaScript/Lua entrypoints are omitted for now; they remain available
+as optional source builds. Older archives retain their tagged recipe.
+Untracked genome caches and local analysis files are never included.
 
 ```bash
 ./bin/gentle_cli --state /path/to/project.gentle.json capabilities
 ./bin/gentle_mcp --help
-./bin/gentle_js --version
-./bin/gentle_lua --version
 ```
 
 `VERSION` and `REVISION` identify the source tag and full commit. The companion

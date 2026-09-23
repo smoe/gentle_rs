@@ -507,20 +507,21 @@ cargo bench --profile bench-audit -p gentle-benchmarks \
   --bench gui_operations -- --quick --noplot
 ```
 
-`bench-audit` keeps the release profile's `opt-level=3` and stripping, but uses
-thin LTO, 16 codegen units, and `panic=unwind` for practical routine audits.
+`bench-audit` uses `opt-level=3`, explicit stripping, thin LTO, 16 codegen units
+and `panic=unwind` for routine audits; its effective settings remain unchanged.
 Cargo forces unwind for benchmark targets regardless of the release panic
 setting. The dedicated, non-published `gentle-benchmarks` package depends on
 GENtle only as a library with default features disabled, while explicitly
 enabling the `desktop-gui` modules imported by the GUI benchmark together with
 `benchmark-support`. Cargo therefore compiles the measured GUI library code but
 does not prepare the root package's application binaries before sampling. Plain
-`cargo bench -p gentle-benchmarks --bench gui_operations ...` remains the exact
-release-like fat-LTO, one-codegen-unit mode. The two modes characterize
-different binaries and their results must never be compared. A cold library
-build and link can remain substantial; the custom profile is intended to bound
-that pressure and support cacheable repeated audits, not to promise an
-instantaneous first build. Build metadata tracks the current loose Git branch
+`cargo bench -p gentle-benchmarks --bench gui_operations ...` now inherits
+Cargo's default release settings (`lto=false`, 16 codegen units, no stripping),
+not the historical fat-LTO/single-codegen-unit recipe. Keep old measurements
+bound to their original revision/settings. The two modes characterize different
+binaries and their results must never be compared. A cold library build and
+link can remain substantial; neither profile promises an instantaneous first
+build. Build metadata tracks the current loose Git branch
 ref; repository-wide `packed-refs` is only tracked as a fallback so unrelated
 worktree maintenance does not discard the audit cache.
 

@@ -138,7 +138,10 @@ jobs:
         run: cargo install cargo-bundle --locked
 
       - name: Build locked release binaries
-        run: cargo build --locked --release --features script-interfaces --bins -j1
+        run: >-
+          cargo build --locked --release -j1
+          --bin gentle --bin gentle_cli --bin gentle_mcp
+          --bin gentle_examples_docs --bin gentle_publication_report
 
       - name: Smoke published entrypoints
         shell: bash
@@ -149,15 +152,13 @@ jobs:
           "${CARGO_TARGET_DIR}/release/gentle${suffix}" --version
           "${CARGO_TARGET_DIR}/release/gentle_cli${suffix}" --help
           "${CARGO_TARGET_DIR}/release/gentle_mcp${suffix}" --help
-          "${CARGO_TARGET_DIR}/release/gentle_js${suffix}" --version
-          "${CARGO_TARGET_DIR}/release/gentle_lua${suffix}" --version
           "${CARGO_TARGET_DIR}/release/gentle_examples_docs${suffix}" --help
           "${CARGO_TARGET_DIR}/release/gentle_publication_report${suffix}" --help
           git diff --exit-code -- Cargo.lock Cargo.toml
 
       - name: Build macOS bundle
         if: runner.os == 'macOS'
-        run: cargo bundle --release --features script-interfaces --bin gentle --format ${{ matrix.bundle_format }}
+        run: cargo bundle --release --bin gentle --format ${{ matrix.bundle_format }}
 
       - name: Inspect macOS bundle outputs
         if: runner.os == 'macOS'
@@ -337,13 +338,15 @@ jobs:
           python3 scripts/release_candidate.py verify
           python3 - <<'PY'
           import hashlib, json, os, pathlib, subprocess
+          from scripts.package_desktop import BINARIES
           tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
           platform = os.environ["PACKAGE_PLATFORM"]
           arch = os.environ["PACKAGE_ARCH"].lower()
           record = {
               "schema": "gentle.release_build.v1", "tag": tag,
               "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
-              "platform": platform, "arch": arch, "features": ["script-interfaces"],
+              "platform": platform, "arch": arch, "features": [],
+              "default_features": True, "binaries": list(BINARIES),
               "profile": "release",
               "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
               "cargo": subprocess.check_output(["cargo", "--version"], text=True).strip(),

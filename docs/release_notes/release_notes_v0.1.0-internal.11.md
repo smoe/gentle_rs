@@ -87,8 +87,14 @@ preview hashes and receipts must not authorize the changed grouping.
 
 ## Packages And Portability
 
-Native packaging now stages the same seven GENtle entrypoints and tracked
+The current native packaging recipe stages the same five GENtle entrypoints and tracked
 resources on Windows, macOS and Linux, with revision/version/checksum records.
+It includes the GUI, CLI, MCP, examples/docs and publication-report tools.
+JavaScript/Lua remain optional source interfaces, not packaged binaries.
+Native compilation uses Cargo's default optimized release profile instead of
+fat LTO and a single codegen unit, retaining one build job. This changed recipe
+requires fresh exact-candidate package checks; older artifacts and acceptance
+records retain their original build settings.
 The workflow tests actual extracted ZIP/DMG/tarball contents outside the
 checkout, including CLI, MCP and tutorial-manifest entrypoints. These checks
 do not establish GUI usability, signing or external-tool availability.
@@ -96,7 +102,7 @@ do not establish GUI usability, signing or external-tool availability.
 The container now compiles genuinely headless tools with `--no-default-features`:
 no GENtle GUI, embedded JavaScript/Lua, Xvfb or VNC/noVNC. Required embedded
 icon inputs are copied into the builder, but no GUI executable is distributed.
-Native desktop packages retain GUI and scripting. Container availability is
+Native desktop packages retain the GUI. Container availability is
 separate from native downloads and is not claimed until its own build succeeds.
 
 Windows repairs also cover quoted shell paths, canonical path identity and

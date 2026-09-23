@@ -17,6 +17,11 @@ import re
 import subprocess
 import tomllib
 
+if __package__:
+    from .package_desktop import BINARIES
+else:
+    from package_desktop import BINARIES
+
 
 def full_sha(value: str) -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", value):
@@ -111,8 +116,10 @@ def collect_installers(root: Path, candidate: dict) -> dict:
         for key in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode"):
             if receipt.get(key) != candidate[key]:
                 raise ValueError(f"Build receipt {key} does not match the selected candidate")
-        if receipt.get("profile") != "release" or receipt.get("features") != ["script-interfaces"]:
-            raise ValueError("Build receipt does not describe the release-shaped script bundle")
+        if (receipt.get("profile") != "release" or receipt.get("features") != []
+                or receipt.get("default_features") is not True
+                or receipt.get("binaries") != list(BINARIES)):
+            raise ValueError("Build receipt does not describe the five-binary desktop bundle")
         if not all(isinstance(receipt.get(key), str) and receipt[key] for key in ("rustc", "cargo")):
             raise ValueError("Build receipt is missing Rust/Cargo toolchain identity")
     artifacts = []

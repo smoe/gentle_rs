@@ -620,9 +620,11 @@ Rules:
 
 - default Cargo builds should optimize for GUI/CLI/MCP/docs workflows and must
   not require JS/Lua runtime dependencies
-- release packaging builds may opt back into the embedded scripting feature set
-  (`script-interfaces`) so published release builds validate against the
-  broader adapter surface
+- current native release packaging builds only `gentle`, `gentle_cli`,
+  `gentle_mcp`, `gentle_examples_docs` and `gentle_publication_report` with
+  default desktop features; embedded JS/Lua binaries are not packaged
+- source builds may opt into `script-interfaces`; their separate CI checks
+  remain required rather than adding those dependencies to release packaging
 - embedded JS/Lua adapter modules and binaries may be feature-gated, but their
   engine contracts must remain identical when enabled
 - Python remains a separate thin wrapper over `gentle_cli`
@@ -630,6 +632,12 @@ Rules:
   logic into a dedicated Python build path
 - feature-gating adapters must never be used to fork engine behavior or create
   adapter-only business logic
+
+Native release compilation uses Cargo's default release profile, not forced
+fat LTO or a single codegen unit. The explicit `release-fast` container and
+`bench-audit` profiles retain their separate settings. Package receipts bind
+the profile, default-feature selection, additional features and binary list;
+changing that recipe requires fresh exact-candidate package acceptance.
 
 ### Container/distribution policy
 
@@ -651,8 +659,9 @@ Rules:
   builder stages should come from Debian `rust-all`
 - non-Debian additions are acceptable only as narrow, explicit exceptions when
   a shipped GENtle feature would otherwise be unavailable in the image
-- GUI and embedded scripting remain available in native distributions; do not
-  build or redistribute them, Xvfb or VNC/noVNC in the OCI image
+- GUI remains in native desktop packages; embedded scripting remains an
+  optional source build. Do not build or redistribute either, Xvfb or VNC/noVNC
+  in the OCI image
 - Linux/Apptainer support should consume the same OCI image whenever possible
   (`docker://` / `docker-archive://`) rather than creating a separate
   packaging logic path prematurely

@@ -10,9 +10,11 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import plistlib
+import shlex
 import shutil
 import subprocess
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -101,7 +103,7 @@ class DesktopPackageTests(unittest.TestCase):
                 with patch.object(package.subprocess, "run", return_value=
                                   subprocess.CompletedProcess([], 0, "ok", "")) as run:
                     self.smoke(root, platform)
-                self.assertEqual(run.call_count, 8)
+                self.assertEqual(run.call_count, 6)
                 calls = [call.args[0] for call in run.call_args_list]
                 self.assertIn([str(binary_root / ("gentle_cli" + suffix)), "capabilities"], calls)
                 self.assertIn([str(binary_root / ("gentle_examples_docs" + suffix)),
@@ -110,6 +112,45 @@ class DesktopPackageTests(unittest.TestCase):
                     self.assertEqual(call.kwargs["cwd"], resource_root)
                     self.assertFalse(resource_root.is_relative_to(self.repo))
                     self.assertEqual(call.kwargs["timeout"], 120)
+
+    def test_staging_excludes_scripting_and_reproduction_binaries(self) -> None:
+        extras = ("gentle_js", "gentle_lua", "gentle_dna_viewer_repro", "gentle_egui_window_repro")
+        bundle_binaries = self.app / "Contents/MacOS"
+        bundle_binaries.mkdir()
+        for name in (*package.BINARIES, *extras):
+            (bundle_binaries / name).write_text("stale cargo-bundle executable\n")
+        for name in extras:
+            for suffix in ("", ".exe"):
+                (self.binaries / (name + suffix)).write_text("unrequested executable\n")
+        for platform in ("macos", "windows", "linux"):
+            with self.subTest(platform=platform):
+                root = self.stage(platform)
+                binary_root, _ = package.layout(root, platform)
+                suffix = ".exe" if platform == "windows" else ""
+                self.assertEqual({path.name for path in binary_root.iterdir()},
+                                 {name + suffix for name in package.BINARIES})
+                for name in package.BINARIES:
+                    self.assertEqual((binary_root / (name + suffix)).read_bytes(),
+                                     (self.binaries / (name + suffix)).read_bytes())
+
+    def test_smoke_rejects_scripting_even_when_recorded_in_checksums(self) -> None:
+        for platform in ("macos", "windows", "linux"):
+            root = self.stage(platform)
+            binary_root, _ = package.layout(root, platform)
+            suffix = ".exe" if platform == "windows" else ""
+            for name in ("gentle_js", "gentle_lua"):
+                with self.subTest(platform=platform, binary=name):
+                    extra = binary_root / (name + suffix)
+                    extra.write_text("unexpected scripting executable\n")
+                    (root / "SHA256SUMS").write_text("".join(
+                        f"{package.digest(path)}  {path.relative_to(root).as_posix()}\n"
+                        for path in package.files(root)
+                    ), encoding="utf-8")
+                    with patch.object(package.subprocess, "run") as run:
+                        with self.assertRaisesRegex(ValueError, "Unexpected packaged scripting binary"):
+                            self.smoke(root, platform)
+                        run.assert_not_called()
+                    extra.unlink()
 
     def test_zip_and_tar_survive_extraction_with_complete_inventory(self) -> None:
         for platform, archive_format in (("windows", "zip"), ("linux", "gztar")):
@@ -213,6 +254,56 @@ class DesktopPackageTests(unittest.TestCase):
 
 
 class WorkflowWiringTests(unittest.TestCase):
+    def test_native_release_uses_cargo_defaults_without_changing_custom_profiles(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        manifest = tomllib.loads((repo / "Cargo.toml").read_text())
+        profiles = manifest["profile"]
+        self.assertNotIn("release", profiles, "Native releases must use Cargo defaults")
+        self.assertEqual(profiles["release-fast"], {
+            "inherits": "release", "lto": "thin", "codegen-units": 16,
+            "opt-level": 2, "panic": "abort", "strip": True,
+        })
+        self.assertEqual(profiles["bench-audit"], {
+            "inherits": "release", "lto": "thin", "codegen-units": 16,
+            "panic": "unwind", "strip": True,
+        })
+
+    def test_native_release_builds_only_the_five_packaged_binaries(self) -> None:
+        self.assertEqual(package.BINARIES, (
+            "gentle", "gentle_cli", "gentle_mcp",
+            "gentle_examples_docs", "gentle_publication_report",
+        ))
+        repo = Path(__file__).resolve().parents[1]
+        workflow = (repo / ".github/workflows/release.yml").read_text()
+        build = workflow.split("- name: Build locked release binaries\n", 1)[1].split("\n      - name:", 1)[0]
+        tokens = shlex.split(build.split("run: >-\n", 1)[1])
+        self.assertEqual(tokens[:2], ["cargo", "build"])
+        self.assertIn("--locked", tokens)
+        self.assertIn("--release", tokens)
+        self.assertIn("-j1", tokens)
+        self.assertEqual([tokens[i + 1] for i, token in enumerate(tokens) if token == "--bin"],
+                         list(package.BINARIES))
+        for flag in ("--bins", "--all-targets", "--workspace", "--features", "--all-features", "--no-default-features"):
+            self.assertNotIn(flag, tokens)
+        self.assertIn("run: cargo bundle --release --bin gentle --format", workflow)
+        self.assertNotIn("script-interfaces", workflow)
+        self.assertNotIn("CARGO_PROFILE_RELEASE_", workflow)
+        self.assertNotIn("RUSTFLAGS:", workflow)
+        self.assertIn('"features": []', workflow)
+        self.assertIn('"default_features": True, "binaries": list(BINARIES)', workflow)
+        self.assertIn("from scripts.package_desktop import BINARIES", workflow)
+        for name in package.BINARIES:
+            self.assertIn(f'/release/{name}${{suffix}}"', workflow)
+        for name in ("gentle_js", "gentle_lua"):
+            self.assertNotIn(f'/release/{name}${{suffix}}"', workflow)
+
+        manifest = tomllib.loads((repo / "Cargo.toml").read_text())
+        self.assertEqual(set(manifest["features"]["default"]), {"desktop-gui", "screenshot-capture"})
+        for name, feature in (("gentle_js", "js-interface"), ("gentle_lua", "lua-interface")):
+            binary = next(binary for binary in manifest["bin"] if binary["name"] == name)
+            self.assertEqual(binary["required-features"], [feature])
+            self.assertIn(feature, manifest["features"]["script-interfaces"])
+
     def test_release_stages_and_checks_each_platform_after_extraction(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         workflow = (repo / ".github/workflows/release.yml").read_text()

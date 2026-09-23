@@ -63,12 +63,9 @@ Release acceptance:
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
   external resources; CI uses tiny local fixtures without restricting the
   engine or GUI contracts to those fixture sizes.
-- Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes;
-  rerun gates on candidate changes, never combine nearby revisions' passes.
-- CI must prove the Linux tarball, Windows ZIP, macOS DMG and headless `runtime-cli` container (no GUI/JS/Lua). Validate the reduced build on the release runner before claiming the OOM fixed.
-- Re-run container validation after the `rnapkin` font-library repair. Run
-  `35717368172` at `a10715cb` compiled GENtle successfully but failed installing
-  the helper; final-image linking and SVG/PNG rendering remain unverified.
+- Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes; rerun gates on candidate changes, never combine nearby revisions' passes.
+- CI must prove the Linux tarball, Windows ZIP and macOS DMG at one SHA with Cargo-default release settings and five binaries (no JS/Lua), fresh receipts and extracted-package smokes. Historical fat-LTO/script-enabled passes do not certify this recipe; runtime acceptance remains Glen's. Ubuntu's runner shutdown is not confirmed OOM evidence.
+- Re-run headless `runtime-cli` container validation (no GUI/JS/Lua) after the `rnapkin` font-library repair: run `35717368172` at `a10715cb` compiled GENtle but failed installing the helper; final-image linking and SVG/PNG rendering remain unverified.
 
 Release cut line:
 
@@ -88,7 +85,7 @@ Outstanding acceptance scope (including [native Windows repairs and the expanded
 ## Next Session Priorities
 
 1. Have Glen recheck three introductory GUI chapters plus promoter-similarity navigation and TATA evidence review/materialization at the merged SHA, retaining outcomes/screenshots. Run [synthetic TSS acceptance](tutorial/08-15_tss_collection_gui.md) first, retaining the repeated-open/Forget/Undo ledger separately from manual restart, stale-member editing and visual orientation checks. Exercise the [TSS collection workflow](tss_workspace.md#acceptance) on TP73: membership, strands/flanks, separate-process approval, cache refresh, DeltaNp73-only cropped locus, validated scans, repeated opening and inner-agent handoff. Compare symbol/ID memberships with mixed or case-variant gene labels; verify historical collections stay intact while new grouping requires fresh approval. Include stored-collection inspection and confirmed stale-registry removal without deleting sequences. Check unsupported-index warnings and locus-level unassigned transcripts remain distinct from loaded-feature coverage and gene-specific exclusions.
-2. Carry forward the `.10` ledger at one named new candidate: locked tests, script build/entrypoints, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs. Keep the tagged-source ledger unchanged.
+2. Carry forward the `.10` ledger at one named new candidate: locked tests, five native package entrypoints plus separate optional scripting checks, tutorial/parity, IRF9/Q00978, benchmarks, circular ORF/feature regressions and TP73/PATZ1 TFBS/reporter/CUT&RUN/locus proofs with exact JASPAR 2026 PFMs. Keep the tagged-source ledger unchanged.
    Keep tutorial 08.13's live GUI capture and real Parquet acceptance separate from the [synthetic TSS tutorial replay](tss_tfbs_profiles.md#rescoring-existing-reports) and mocked tests. For private five-gene rescoring, first obtain the old scored report/receipt and exact matrix/context bindings; the [historical input inventory](tss_tfbs_profiles.md#check-input-completeness-before-regeneration) alone is not acceptance.
 3. After explicit push/dispatch approval, run macOS/Linux/Windows CI (including all-feature checks), headless container validation and [build-only packaging](release.md#build-only-candidate-verification) at one frozen SHA on a compatible pushed ref in `smoe/gentle_rs` (or an explicitly approved fork ref, not its stale `main`). Check the logged candidate SHA, not only the workflow revision; retain receipts and repository/run URLs before approval. Native GUI launch/tutorial navigation remain separate. The tagged `.10` Windows ZIP recipe remains GUI-only. No further feature scope until these gates; tagging and upload remain owner-managed.
 4. Have Glen refresh the `a5b01843` receipt with native interval/score and catalog-bound assembly checks; preserve verified figures unless mismatched. Validate the [candidate-first view and peak-centred follow-up](cofactor_candidate_interface_plan.md); keep offline regeneration, live Conservation/partner-evidence proof and ClawBio compatibility pending removal review.

@@ -12,7 +12,7 @@ import subprocess
 
 
 BINARIES = (
-    "gentle", "gentle_cli", "gentle_mcp", "gentle_js", "gentle_lua",
+    "gentle", "gentle_cli", "gentle_mcp",
     "gentle_examples_docs", "gentle_publication_report",
 )
 # Match the Linux distribution inventory, never downloaded/untracked caches.
@@ -73,11 +73,11 @@ def stage(repo: Path, binaries: Path, destination: Path, platform: str,
             if (not app_icon.is_file()
                     or not app_icon.resolve().is_relative_to(app_bundle / "Contents/Resources")):
                 raise ValueError("Missing or escaping declared bundle icon")
-        # cargo-bundle's directory globs may include local caches. Replace its
-        # Resources entirely in the fresh copy, preserving the native app shell.
+        # Replace resources and executables with the reviewed inventory, not
+        # cargo-bundle's globs or stale scripting/reproduction binaries.
         shutil.copytree(
             app_bundle, destination, symlinks=True,
-            ignore=lambda directory, names: ["Resources"]
+            ignore=lambda directory, names: ["Resources", "MacOS"]
             if Path(directory) == app_bundle / "Contents" else [],
         )
     else:
@@ -134,6 +134,9 @@ def smoke(root: Path, platform: str, revision: str, checkout: Path) -> None:
 
     binary_root, resource_root = layout(root, platform)
     suffix = ".exe" if platform == "windows" else ""
+    for name in ("gentle_js", "gentle_lua"):
+        if (binary_root / (name + suffix)).exists():
+            raise ValueError(f"Unexpected packaged scripting binary: {name}")
     for relative in ("assets/genomes.json", "docs/tutorial/manifest.json",
                      "test_files", "integrations/python/gentle_py"):
         resource = resource_root / relative
@@ -141,8 +144,7 @@ def smoke(root: Path, platform: str, revision: str, checkout: Path) -> None:
             raise ValueError(f"Missing packaged resource: {relative}")
     commands = (
         ("gentle", "--version"), ("gentle_cli", "capabilities"),
-        ("gentle_mcp", "--help"), ("gentle_js", "--version"),
-        ("gentle_lua", "--version"), ("gentle_examples_docs", "--help"),
+        ("gentle_mcp", "--help"), ("gentle_examples_docs", "--help"),
         ("gentle_publication_report", "--help"),
         ("gentle_examples_docs", "tutorial-manifest-check"),
     )

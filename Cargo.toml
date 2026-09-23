@@ -208,24 +208,23 @@ codegen-units = 256
 [profile.dev.package."*"]
 debug = 0
 
-[profile.release]
-opt-level = 3
-lto = 'fat'
-panic = 'abort'
-codegen-units = 1
-strip = true
+# Native releases use Cargo's default release profile. Keep the distinct
+# container and audit profiles explicit so they do not change with that policy.
 
 [profile.release-fast]
 inherits = "release"
 lto = "thin"
 codegen-units = 16
 opt-level = 2
+panic = "abort"
+strip = true
 
 [profile.bench-audit]
 inherits = "release"
 lto = "thin"
 codegen-units = 16
 panic = "unwind"
+strip = true
 
 [patch.crates-io]
 egui_commonmark = { path = "vendor/egui_commonmark" }

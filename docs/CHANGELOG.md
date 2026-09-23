@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-09-22 - Lower-Cost Native Release Builds
+
+- Return the native release profile to Cargo defaults, removing forced fat LTO
+  and one codegen unit while retaining optimization level 3 and one CI build
+  job. Make the container/audit profiles' formerly inherited panic/stripping
+  settings explicit so their effective configuration stays unchanged.
+- Build and package only GUI, CLI, MCP, examples/docs and publication-report
+  binaries. Keep JS/Lua as optional source interfaces with ordinary CI coverage,
+  not native release dependencies; do not build the unshipped GUI repro tools.
+- Bind installer receipts to default features, no additional features and the
+  five-binary inventory. Replace macOS bundle executables from that inventory
+  so stale scripting binaries cannot leak into the package. Add offline guards
+  for profile/build/package parity, stale bundles and receipt rejection.
+- No local builds or tests run at the owner's request. All-platform package CI
+  and Glen's runtime acceptance remain pending. Ubuntu job `106760981415`
+  reported runner shutdown/exit 143, not proven OOM; this change does not claim
+  a confirmed diagnosis. Existing tags and historical evidence are untouched.
+
 ## 2026-09-22 - Headless RNA Renderer Dependencies
 
 - Container job `106712018459` at `a10715cb` completed GENtle's headless

@@ -3,12 +3,26 @@
 The current installer workflow prepares these layouts; published artifacts
 retain the layout of their tagged source:
 
-- macOS: `.dmg` containing the app, all native entrypoints in
+- macOS: `.dmg` containing the app, the five release entrypoints in
   `Contents/MacOS/`, and tracked resources in `Contents/Resources/`
-- Windows: `.zip` containing a `gentle-<tag>/` directory, all native entrypoints
+- Windows: `.zip` containing a `gentle-<tag>/` directory, the five release entrypoints
   in `bin/`, and tracked resources alongside it
-- Linux: `.tar.gz` for x86-64, built on Ubuntu 24.04; GUI plus CLI/MCP/script
+- Linux: `.tar.gz` for x86-64, built on Ubuntu 24.04; GUI plus CLI/MCP/docs/report
   entrypoints and tracked resources. See [Linux tarball quick start](linux_tarball.md).
+
+The five native binaries are `gentle`, `gentle_cli`, `gentle_mcp`,
+`gentle_examples_docs` and `gentle_publication_report`. Embedded JavaScript/Lua
+and the two GUI reproduction binaries are not built or packaged by this
+workflow. JS/Lua remain optional source builds with separate CI checks.
+
+Native builds use Cargo's default release profile: optimization level 3,
+16 codegen units, `lto=false` (no cross-crate LTO), unwind panics and no explicit
+symbol stripping. This removes the forced fat-LTO/single-codegen-unit build,
+not release optimization. One Cargo build job (`-j1`) remains in the installer
+workflow. This reduces requested optimization work but does not establish
+that an earlier runner shutdown was caused by memory exhaustion; new builds
+and runtime acceptance are still required. The container's `release-fast`
+and auditor's `bench-audit` profiles keep their existing effective settings.
 
 Explicitly approved releases also publish container images through GitHub
 Container Registry (GHCR); a tag push alone only runs build checks:
@@ -19,7 +33,7 @@ Container Registry (GHCR); a tag push alone only runs build checks:
   `ghcr.io/<owner>/<repo>:latest` by an explicitly approved publish run
 - GUI and embedded JS/Lua are no longer built or redistributed in containers;
   historical `gui` / `<tag>-gui` images are not refreshed. Bare tags and `latest`
-  now mean headless, not browser GUI. Native builds retain GUI and scripting.
+  now mean headless, not browser GUI. Native packages retain the GUI, not scripting.
 - current image platform: `linux/amd64`
 
 The RNA drawing helper `rnapkin` is pinned to `0.3.9` and installed with its
@@ -122,13 +136,15 @@ These are packaging/entrypoint checks, not graphical or scientific acceptance.
 The shared `gentle.release_candidate.v1` receipt records candidate SHA, lockfile
 hash, workflow revision, version label and `validate_only`/`publish` mode.
 Installer receipts also bind the actual archive digest, toolchain, release
-profile and script features. Collection compares every receipt with the selected
+profile, `default_features: true`, `features: []` (no additional features), and
+the five-binary inventory. Collection compares every receipt with the selected
 candidate, not merely with the other receipts; missing, stale, mixed-mode or
 modified packages fail closed. Docker retains its existing `release-fast`
 profile and Debian `forky` build arguments, distinct from the installers'
 `release` profile. Its receipt records `default_features: false`, `features: []`
 and the explicit CLI/MCP/docs binary list; the build checks that desktop and
-embedded scripting dependencies are absent. Native installer features are unchanged.
+embedded scripting dependencies are absent. Native installers use the default
+desktop features without opting into scripting.
 `.gitattributes` keeps `Cargo.lock` byte-identical under LF and CRLF checkouts;
 candidate receipts continue to hash actual bytes, not normalized text. The
 offline release-policy tests exercise both Git checkout policies and reject
@@ -208,7 +224,7 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
     - schema marker: `gentle.release_attributes.v1`
     - includes actual `linux_distribution`, common revision and lockfile hash,
       plus artifact names, sizes and SHA-256 digests.
-  - Checks tag/package identity and builds the locked script-enabled binaries
+  - Checks tag/package identity and builds only the five locked native binaries
     before packaging. Per-platform build receipts bind tag, full revision,
     lockfile hash, toolchain and profile; publication rejects mismatched or
     missing platform receipts and missing archive formats.
@@ -236,8 +252,8 @@ Example:
 ## Local Pre-Tag Smoke Checklist
 
 Before pushing an internal or public release tag, run a release-shaped local
-smoke pass that matches the packaging feature set rather than the lean default
-developer build.
+smoke pass that matches the packaging profile, default features and explicit
+binary inventory.
 
 Required local matrix:
 
@@ -245,11 +261,10 @@ Required local matrix:
 cargo check -q --locked
 cargo test --locked --workspace
 cargo test --locked -q --test release_version_consistency
-cargo build --locked --release --features script-interfaces --bins
+cargo build --locked --release -j1 --bin gentle --bin gentle_cli --bin gentle_mcp \
+  --bin gentle_examples_docs --bin gentle_publication_report
 target/release/gentle --version
 target/release/gentle_cli capabilities
-target/release/gentle_js --version
-target/release/gentle_lua --version
 target/release/gentle_examples_docs --check
 target/release/gentle_examples_docs tutorial-check
 target/release/gentle_examples_docs tutorial-manifest-check
@@ -356,12 +371,12 @@ requires its own approved publication event.
 
 ## Smoke Checks in Release Workflow
 
-`scripts/package_desktop.py` stages the same seven entrypoints and tracked
+`scripts/package_desktop.py` stages the same five entrypoints and tracked
 resource inventory on all three platforms. It excludes untracked caches,
 rejects resource links outside the checkout, and records `REVISION`, `VERSION`
-and `SHA256SUMS`. On macOS it replaces cargo-bundle's resource-directory copy
-in a fresh app, retaining its declared generated icon, so local downloads cannot
-enter the DMG through a bundle glob.
+and `SHA256SUMS`. On macOS it replaces cargo-bundle's resource and executable
+directories in a fresh app, retaining its declared generated icon, so local
+downloads or stale scripting binaries cannot enter the DMG through a bundle glob.
 Linux still records `ldd` output and rejects unresolved runtime libraries.
 
 After mounting the DMG or extracting the ZIP/tarball under runner temporary

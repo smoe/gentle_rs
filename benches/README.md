@@ -14,23 +14,24 @@ Timed runs and release-facing comparisons belong to the external auditor.
 
 GENtle provides two deliberately non-comparable optimized modes:
 
-- Routine audit uses `--profile bench-audit`. It keeps release `opt-level=3`
-  and stripping, but uses thin LTO, 16 codegen units, and `panic=unwind` to
-  reduce cold-build pressure and make cached audits practical. Cargo already
+- Routine audit uses `--profile bench-audit`: `opt-level=3`, explicit stripping,
+  thin LTO, 16 codegen units and `panic=unwind`. These effective settings are
+  unchanged by the 2026-09-22 native release-profile simplification. Cargo
   forces unwind for benchmark targets; matching that setting throughout the
-  audit dependency graph avoids compiling the root library once for each panic
-  strategy.
+  audit dependency graph avoids a separate panic-strategy build.
 - Exact release-like audit uses `cargo bench -p gentle-benchmarks` without a
-  profile override and therefore preserves the existing fat-LTO,
-  one-codegen-unit benchmark build. Use it when compilation cost and exact
-  release-like code generation are part of the question.
+  profile override and now inherits Cargo's default release settings, including
+  `lto=false`, 16 codegen units and no stripping. Historical fat-LTO,
+  one-codegen-unit results retain their original settings; do not relabel them
+  or reuse them as baselines for the new recipe.
 
 Cargo keeps compiled artifacts under `target/bench-audit/` and
 `target/release/`, respectively. Criterion 0.8.2 does not infer the Cargo
 profile and otherwise stores both modes under the shared `target/criterion/`
 tree. Set `CRITERION_HOME` as shown below so measurements remain under the
-matching profile directory. Never compare results across these modes: the
-routine mode deliberately differs in LTO, codegen units, and panic strategy.
+matching profile directory. Never compare results across these modes: they
+differ in LTO and stripping. Retain the revision and effective settings, not
+just the profile name, which spans different historical configurations.
 The benchmarks live in the dedicated, non-published `gentle-benchmarks`
 workspace package. It depends on GENtle as a library with default features
 disabled and explicitly enables `desktop-gui` plus `benchmark-support`, because

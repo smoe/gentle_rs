@@ -218,7 +218,9 @@ class ReleaseCandidateTests(unittest.TestCase):
             receipt = {
                 **{k: candidate[k] for k in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode")},
                 "schema": "gentle.release_build.v1", "platform": platform, "arch": "x64",
-                "features": ["script-interfaces"], "profile": "release",
+                "features": [], "default_features": True, "profile": "release",
+                "binaries": ["gentle", "gentle_cli", "gentle_mcp",
+                             "gentle_examples_docs", "gentle_publication_report"],
                 "rustc": "synthetic rustc", "cargo": "synthetic cargo",
                 "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
             }
@@ -235,6 +237,19 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.assertEqual(len(result["artifacts"]), 3)
         self.assertTrue(all(row["bytes"] > 0 for row in result["artifacts"]))
 
+    def test_standalone_collector_uses_the_desktop_binary_contract(self) -> None:
+        folder, candidate, _ = self.installers()
+        output = self.root / "release-attributes.json"
+        subprocess.run(
+            [sys.executable, str(Path(policy.__file__).resolve()), "collect",
+             "--root", str(self.root), "--artifacts", str(folder), "--output", str(output)],
+            env={**os.environ, **self.env, "EXPECTED_REVISION": self.sha,
+                 "EXPECTED_LOCK_SHA256": candidate["cargo_lock_sha256"],
+                 "CANDIDATE_MODE": "validate_only"},
+            check=True, capture_output=True, text=True,
+        )
+        self.assertEqual(json.loads(output.read_text())["revision"], self.sha)
+
     def test_consistently_wrong_revision_still_fails_against_candidate(self) -> None:
         folder, candidate, paths = self.installers()
         for path in paths:
@@ -250,13 +265,22 @@ class ReleaseCandidateTests(unittest.TestCase):
         for key, value in (
             ("schema", "unknown"), ("tag", "v0.1.0-internal.11"), ("revision", "0" * 40),
             ("cargo_lock_sha256", "0" * 64), ("workflow_revision", "0" * 40),
-            ("mode", "publish"), ("profile", "release-fast"), ("features", []),
+            ("mode", "publish"), ("profile", "release-fast"), ("features", ["script-interfaces"]),
+            ("default_features", False), ("default_features", None),
+            ("binaries", None), ("binaries", original["binaries"][:-1]),
+            ("binaries", [*original["binaries"], "gentle_js", "gentle_lua"]),
             ("rustc", ""), ("cargo", ""),
         ):
             changed = copy.deepcopy(original)
             changed[key] = value
             paths[0].write_text(json.dumps(changed))
             with self.subTest(field=key), self.assertRaises(ValueError):
+                policy.collect_installers(folder, candidate)
+        for key in ("features", "default_features", "binaries"):
+            changed = copy.deepcopy(original)
+            del changed[key]
+            paths[0].write_text(json.dumps(changed))
+            with self.subTest(missing=key), self.assertRaises(ValueError):
                 policy.collect_installers(folder, candidate)
         paths[0].unlink()
         with self.assertRaisesRegex(ValueError, "exactly Linux"):

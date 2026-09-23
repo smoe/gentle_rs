@@ -1424,9 +1424,11 @@ features.
 Release-build policy:
 
 - default local builds stay lean unless JS/Lua support is requested explicitly
-- release packaging builds enable `--features script-interfaces`
-- for a local optimized build that matches release behavior, use
-  `cargo build --release --features script-interfaces`
+- native release packaging uses Cargo's default release profile and desktop
+  features, without embedded JS/Lua; source builds can still opt into
+  `--features script-interfaces`
+- to build only the five native release entrypoints, use
+  `cargo build --locked --release -j1 --bin gentle --bin gentle_cli --bin gentle_mcp --bin gentle_examples_docs --bin gentle_publication_report`
 
 ## Protocol-first example source
 

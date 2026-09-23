@@ -300,7 +300,8 @@ instead of depending on browser GUI containers.
 The maintained OCI distribution builds only `gentle_cli`, `gentle_mcp` and
 `gentle_examples_docs`, with Cargo default features disabled and no embedded
 JS/Lua features. It retains the Python CLI wrapper and scientific helper tools.
-Native GUI/scripting distributions are unchanged. The container dependency
+Native desktop packages retain the GUI; embedded scripting is an optional
+source build, not part of the current package inventory. The container dependency
 guard must reject desktop and embedded scripting runtimes before compilation.
 New bare release tags and `latest` refer to this headless image; historical
 `gui` tags are not refreshed or presented as current releases.
@@ -894,10 +895,12 @@ evidence where needed. Shared CI runners may compile or smoke benchmark targets
 but do not establish strict timing gates without repeated stable-host evidence
 and an auditor-approved threshold.
 
-Routine thin-LTO, unwind-panic audit binaries and exact release-like fat-LTO,
-abort-panic audit binaries are distinct evidence classes. Baselines are
+Routine thin-LTO `bench-audit` binaries and Cargo-default release-profile
+binaries are distinct evidence classes. Historical fat-LTO, single-codegen-unit
+release measurements must retain their original profile identity; the
+2026-09-22 release-profile change does not relabel those results. Baselines are
 comparable only when profile, host, toolchain, fixture hash, and GENtle revision
-match; retained metadata and baseline labels must identify the profile
+match; retained metadata and baseline labels must identify the effective profile
 explicitly.
 
 ## DEC-040: Tutorial GUI Contracts Cannot Invent Execution Authority
