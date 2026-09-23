@@ -18000,6 +18000,10 @@ fn tss_profile_ui_intent_targets_only_the_active_annotated_tss_window() {
     );
     app.native_window_key_to_viewport.insert(key, viewport);
     app.active_window_menu_key = Some(key);
+    app.open_agent_assistant_dialog();
+    app.active_window_menu_key = Some(GENtleApp::native_menu_key_for_viewport(
+        GENtleApp::agent_assistant_viewport_id(),
+    ));
     let message = app.try_apply_shell_ui_intent(&command).unwrap();
     assert!(message.contains("Queued TSS profile report"), "{message}");
     assert!(

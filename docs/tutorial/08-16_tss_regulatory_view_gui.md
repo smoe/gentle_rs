@@ -30,6 +30,9 @@ geometry and sequence hash before its curves appear.
 - Start GENtle from a repository checkout or package that includes this guide.
 - Keep the repository root as your working directory when entering commands in
   **Agent Assistant**.
+- Before a `ui ...` command, focus the intended DNA window and open Agent
+  Assistant from there. GENtle binds that explicit launch subject while the
+  assistant has focus; it does not fall back to another project sequence.
 - Use these retained public inputs:
   - [`synthetic-minus.annotated-tss.gb`](reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb)
   - [`synthetic-minus.profile-report.json`](reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json)

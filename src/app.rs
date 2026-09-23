@@ -1094,6 +1094,7 @@ pub struct GENtleApp {
     genome_blast_import_clear_existing: bool,
     show_command_palette_dialog: bool,
     command_palette_subject: Option<subject_selection::PaletteSubject>,
+    agent_assistant_subject: Option<subject_selection::PaletteSubject>,
     command_palette_dispatching: bool,
     command_palette_query: String,
     command_palette_selected: usize,
@@ -3031,6 +3032,7 @@ impl Default for GENtleApp {
             tracked_autosync_full_scan_count: 0,
             show_command_palette_dialog: false,
             command_palette_subject: None,
+            agent_assistant_subject: None,
             command_palette_dispatching: false,
             command_palette_query: String::new(),
             command_palette_selected: 0,
@@ -8865,6 +8867,15 @@ Error: `{err}`"
 
     fn active_dna_window_context(&self) -> Option<(String, Option<(usize, usize)>)> {
         let active_key = self.active_window_menu_key?;
+        if active_key == Self::native_menu_key_for_viewport(Self::agent_assistant_viewport_id())
+            && let Some(subject) = &self.agent_assistant_subject
+            && subject.engine.ptr_eq(&Arc::downgrade(&self.engine))
+            && subject
+                .viewport
+                .is_none_or(|viewport| self.windows.contains_key(&viewport))
+        {
+            return subject.context.clone().ok();
+        }
         let viewport_id = *self.native_window_key_to_viewport.get(&active_key)?;
         let window = self.windows.get(&viewport_id)?;
         let guard = window.read().ok()?;

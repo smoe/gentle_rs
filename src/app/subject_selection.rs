@@ -3,9 +3,9 @@
 use super::*;
 
 pub(super) struct PaletteSubject {
-    context: Result<(String, Option<(usize, usize)>), String>,
-    viewport: Option<ViewportId>,
-    engine: std::sync::Weak<RwLock<GentleEngine>>,
+    pub(super) context: Result<(String, Option<(usize, usize)>), String>,
+    pub(super) viewport: Option<ViewportId>,
+    pub(super) engine: std::sync::Weak<RwLock<GentleEngine>>,
 }
 
 impl GENtleApp {

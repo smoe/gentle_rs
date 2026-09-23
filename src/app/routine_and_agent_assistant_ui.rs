@@ -287,6 +287,9 @@ impl GENtleApp {
     pub(super) fn open_agent_assistant_dialog(&mut self) {
         self.refresh_agent_system_catalog();
         let was_open = self.show_agent_assistant_dialog;
+        if !was_open {
+            self.agent_assistant_subject = Some(self.capture_palette_subject());
+        }
         self.show_agent_assistant_dialog = true;
         self.mark_window_open_or_focus(Self::agent_assistant_viewport_id(), was_open);
     }
