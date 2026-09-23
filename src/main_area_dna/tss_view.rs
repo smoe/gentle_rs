@@ -219,6 +219,14 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_primary_tss_map_ui(&mut self, ui: &mut egui::Ui) {
+        // The primary-map host may use a horizontal layout for its other map
+        // implementations.  The TSS evidence view is a document-like stack;
+        // establish that layout explicitly so controls and lanes cannot be
+        // pushed beyond the right edge of the native viewport.
+        ui.vertical(|ui| self.render_primary_tss_map_contents(ui));
+    }
+
+    fn render_primary_tss_map_contents(&mut self, ui: &mut egui::Ui) {
         self.poll_tss_view(ui.ctx());
         self.poll_tss_profile(ui.ctx());
         if self.tss_ui.profile_load.is_none()
@@ -1149,5 +1157,38 @@ mod tests {
                 assert!(area.tss_ui.pending.is_none());
             }
         }
+    }
+
+    #[test]
+    fn tss_view_establishes_a_vertical_document_layout_inside_horizontal_host() {
+        let dna = crate::tss_sequence_view::tests::fixture(false);
+        let mut area = MainAreaDna::new(dna.clone(), None, None);
+        area.tss_view_available();
+        area.tss_ui.document = Some(Ok(Arc::new(TssSequenceView::from_dna(&dna).unwrap())));
+        let ctx = egui::Context::default();
+        let mut used = egui::Rect::NOTHING;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 700.0),
+            )),
+            ..Default::default()
+        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                ui.horizontal(|ui| {
+                    area.render_primary_tss_map_ui(ui);
+                    used = ui.min_rect();
+                });
+            },
+        );
+        let _ = crate::egui_compat::end_test_pass(&ctx);
+        assert!(used.height() > 250.0, "TSS document collapsed to {used:?}");
+        assert!(
+            used.width() <= 900.0,
+            "TSS document escaped viewport: {used:?}"
+        );
     }
 }
