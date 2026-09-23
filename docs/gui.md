@@ -6867,7 +6867,7 @@ To attach the same report as the native file-picker path, use
 `ui open tss-view --report REPORT_JSON` (or `ui focus ...`). The active annotated
 TSS viewer performs the normal binding validation asynchronously; the intent
 does not select a sequence implicitly, rescore motifs or query DuckDB. Tutorial
-[08.16](tutorial/08-16_tss_regulatory_view_gui.md) demonstrates GUI, GUI Shell
+[08.16](tutorial/08-16_tss_regulatory_view_gui.md) demonstrates GUI, Agent Assistant
 and inner-agent wording side by side.
 
 For an annotated anchored locus, **TFBS scan > Transcript starts / TSS windows...**

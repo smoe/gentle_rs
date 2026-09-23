@@ -31,11 +31,11 @@
       "regulatory_analysis",
       "wet_lab_biologists"
     ],
-    "notes": "Offline synthetic native TSS-view walkthrough. Opens an annotated minus-strand TSS, distinguishes structure, CUT&RUN-style signal and stored motif peaks, then attaches a hash-bound TFBS score report through the same GUI/shared-shell/inner-agent route. No rescoring, database query, binding claim or biological TSS preference.",
+    "notes": "Offline synthetic native TSS-view walkthrough. Opens an annotated minus-strand TSS, distinguishes structure, CUT&RUN-style signal and stored motif peaks, then attaches a hash-bound TFBS score report through the same GUI-hosted Agent Assistant/inner-agent route. Headless and sequence-local shells retain an unapplied typed UI intent. No rescoring, database query, binding claim or biological TSS preference.",
     "estimated_minutes": 10,
     "difficulty": "intermediate",
     "network": "offline",
-    "interfaces": ["GUI", "CLI / GUI Shell", "inner agent"],
+    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI intent receipt"],
     "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
     "produces": ["interactive native TSS evidence view"],
     "group": "08",

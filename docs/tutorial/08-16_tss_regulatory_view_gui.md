@@ -19,14 +19,17 @@ In about 10 minutes you will:
 4. distinguish annotation, CUT&RUN-style signal, stored motif peaks and score
    curves without calling any of them proof of binding.
 
-The GUI, GUI Shell and inner-agent routes below converge on the same native
-viewer and report loader. The report is validated against the exact reference,
-TSS geometry and sequence hash before its curves appear.
+The GUI and Agent Assistant/inner-agent routes below converge on the same
+native viewer and report loader. Headless and sequence-local shells emit the
+same typed UI-intent receipt, but only the project GUI host can apply it to an
+active viewer. The report is validated against the exact reference, TSS
+geometry and sequence hash before its curves appear.
 
 ## Before you start
 
 - Start GENtle from a repository checkout or package that includes this guide.
-- Keep the repository root as your working directory when using the GUI Shell.
+- Keep the repository root as your working directory when entering commands in
+  **Agent Assistant**.
 - Use these retained public inputs:
   - [`synthetic-minus.annotated-tss.gb`](reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb)
   - [`synthetic-minus.profile-report.json`](reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json)
@@ -41,7 +44,7 @@ TSS geometry and sequence hash before its curves appear.
 Choose **File → Open Sequence…** and open
 `docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb`.
 
-**GUI Shell / shared operation**
+**Agent Assistant / shared operation**
 
 ```text
 /open file docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb --id synthetic_minus_tss
@@ -68,7 +71,7 @@ control, TATA-related annotations and stored `MA0004.1` motif peaks.
 
 In the DNA window choose **TSS / Regulatory** beside **Standard map**.
 
-**GUI Shell / shared operation**
+**Agent Assistant / shared operation**
 
 ```text
 ui open tss-view
@@ -92,14 +95,15 @@ the stored peak features.
 Choose **Load TSS profile report…** and select
 `docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json`.
 
-**GUI Shell / shared operation**
+**Agent Assistant / shared operation**
 
 ```text
 ui open tss-view --report docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json
 ```
 
-From a headless `gentle_cli shell`, this command records an unapplied GUI intent;
-only a GUI host can attach a report to its active viewer.
+From a headless `gentle_cli shell` or the sequence-local **Shell…** dialog, this
+command records an unapplied GUI intent. Run it from **Agent Assistant** when
+you want the project GUI host to attach the report to its active viewer.
 
 **Ask the inner agent**
 

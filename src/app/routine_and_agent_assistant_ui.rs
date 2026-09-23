@@ -163,6 +163,7 @@ mod command_tests {
             "helpers blast-list",
             "genomes blast-status blast-job-1",
             "genomes blast-cancel blast-job-1",
+            "ui open tss-view --report report.json",
         ] {
             assert_eq!(
                 GENtleApp::agent_prompt_direct_shell_command(command),
@@ -2100,6 +2101,7 @@ impl GENtleApp {
         } else if trimmed.len() <= 1024 * 1024
             && parse_shell_line(trimmed).is_ok_and(|command| {
                 crate::command_execution::CommandExecutionService::manages(&command)
+                    || Self::shell_command_is_hosted_ui_intent(&command)
                     || command.is_blast_job_command()
             })
         {
@@ -2107,6 +2109,22 @@ impl GENtleApp {
         } else {
             None
         }
+    }
+
+    fn shell_command_is_hosted_ui_intent(command: &ShellCommand) -> bool {
+        matches!(
+            command,
+            ShellCommand::UiSplicingExpert { .. }
+                | ShellCommand::UiTssCollection { .. }
+                | ShellCommand::UiTssProfile { .. }
+                | ShellCommand::UiRecentProject { .. }
+                | ShellCommand::UiTutorialProject { .. }
+                | ShellCommand::UiTutorialGuide { .. }
+                | ShellCommand::UiConfiguration { .. }
+                | ShellCommand::UiSequenceWindow { .. }
+                | ShellCommand::UiSequenceSelection { .. }
+                | ShellCommand::UiIntent { .. }
+        )
     }
 
     fn agent_prompt_bare_absolute_path_hint(prompt: &str) -> Option<String> {
