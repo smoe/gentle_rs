@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-24 - Packaged-Profile Latency Acceptance
+
+- Define native "release-like" acceptance as the packaged `--release` GUI;
+  distinguish it from both Criterion harness modes. Preserve `bench-audit`
+  continuity and record the two-step release-profile change without assuming
+  a runtime speedup or slowdown.
+- Assign Glen a repeated, same-SHA, same-host PATZ1 native open/resize profile
+  comparison, with matched conditions, binary hashes and retained distributions.
+  Keep it separate from code-change baselines; no universal timing offset or
+  LTO-only causal claim is justified by that comparison.
+- Align the latency plan, benchmark runbook, DEC-039, testing guide and roadmap.
+  Documentation only: no installer-CI stages or build settings changed, and no
+  local builds, tests or benchmarks run. Glen's measurements remain pending.
+
 ## 2026-09-24 - Native Release LTO And Failure Diagnostics
 
 - Inspect the complete logs of installer run `35968255595` at `ad0338a7`:
@@ -7,6 +21,11 @@
   101; Ubuntu's runner reported shutdown and exit 143. Neither establishes OOM.
   Both already used one build job, no JS/Lua, and disabled debug/incremental
   compilation. Do not treat redundant flags as a memory fix or increase jobs.
+- Windows job `107531770703` in that same run passed compilation, entrypoint
+  and extracted-ZIP smokes, and artifact upload at `ad0338a7`, taking 2h12m53s.
+  A 90-minute job timeout would have interrupted this successful run. Retain
+  that Windows verdict for the original recipe; it does not verify the new
+  `lto="off"` candidate or prove the cause of either Unix termination.
 - Disable remaining within-crate LTO through Cargo's native release
   `lto="off"`, retaining other defaults and the five-binary package inventory.
   Keep the container/audit thin-LTO profiles and historical acceptance unchanged.

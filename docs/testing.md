@@ -528,7 +528,12 @@ native release settings (`lto="off"`, 16 codegen units, no stripping),
 not the historical fat-LTO/single-codegen-unit or Cargo-default `lto=false`
 recipes. Keep old measurements
 bound to their original revision/settings. The two modes characterize different
-binaries and their results must never be compared. A cold library build and
+harness binaries: do not pool them or substitute one for the other's code-change
+baseline. Neither is the packaged GUI. Native acceptance and Glen's separate,
+repeated same-SHA profile comparison follow the
+[measurement-profile contract](dna_feature_rendering_latency_plan.md#measurement-profiles);
+the comparison is not a universal correction for historical results and adds
+no benchmark stage to installer CI. A cold library build and
 link can remain substantial; neither profile promises an instantaneous first
 build. Build metadata tracks the current loose Git branch
 ref; repository-wide `packed-refs` is only tracked as a fallback so unrelated

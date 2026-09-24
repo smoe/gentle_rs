@@ -899,10 +899,22 @@ Routine thin-LTO `bench-audit` binaries and native release-profile binaries
 are distinct evidence classes. Historical fat-LTO/single-codegen-unit and
 Cargo-default (`lto=false`) release measurements retain their original profile
 identity; neither the 2026-09-22 simplification nor the subsequent native
-`lto="off"` change relabels those results. Baselines are
+`lto="off"` change relabels those results. Baseline repeats are
 comparable only when profile, host, toolchain, fixture hash, and GENtle revision
 match; retained metadata and baseline labels must identify the effective profile
 explicitly.
+
+Native latency acceptance uses the packaged `--release` GUI and its effective
+build recipe, not a Criterion harness, even if that harness inherits `release`.
+Retain extracted-package identity separately from local counterpart builds and
+instrumented diagnostics. Keep `bench-audit` for historical ladder continuity.
+A controlled same-SHA, same-host native profile comparison may quantify the
+recipe difference with repeated, condition-matched samples; it is not a
+code-change baseline, cannot isolate LTO from other recipe differences, and
+must not become a universal timing correction. Ordinary before/after code
+comparisons name both revisions and hold the effective profile constant.
+The [measurement-profile contract](dna_feature_rendering_latency_plan.md#measurement-profiles)
+assigns this comparison to Glen without adding benchmark work to installer CI.
 
 ## DEC-040: Tutorial GUI Contracts Cannot Invent Execution Authority
 

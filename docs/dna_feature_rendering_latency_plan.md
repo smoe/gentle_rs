@@ -11,14 +11,14 @@ toggling feature layers, selecting and hovering. This plan changes *when*
 features appear, never *what* is shown: identical features, coordinates, labels,
 strands and scientific outputs.
 
-Implementation update: S0's density tools landed in `5893aa35` and are
-smoke-tested. Opt-in startup phase checkpoints now cover app initialization,
-project loading and first root/DNA CPU frames; they do not confirm native
-presentation. Exact owner-selected boundary cases and the macOS cross-check
-remain pending, as do Glen's timed/native audit and the broader runtime slices.
-A bounded S2 simplification counts GC bins arithmetically instead of computing
-GC values just to discard them. It preserves half-open counts and does not
-claim a measured GUI speedup or completion of S2.
+Implementation update, checked against `7aff63e1`: S0's density tools landed in
+`5893aa35` and are smoke-tested. Opt-in startup phase checkpoints (`d24c3fa7`)
+now cover app initialization, project loading and first root/DNA CPU frames;
+they do not confirm native presentation. Exact owner-selected boundary cases and
+the macOS cross-check remain pending, as do Glen's timed/native audit and the
+broader runtime slices. A bounded S2 simplification (`ee9eb483`) counts GC bins
+arithmetically instead of computing GC values just to discard them. It preserves
+half-open counts and does not claim a measured GUI speedup or completion of S2.
 B0 separates build feedback from runtime performance. The consolidated
 hypothesis ledger and S0 section below retain both updates. This plan does not
 change the `.11` candidate; counts of work are not timing evidence or performance
@@ -37,8 +37,43 @@ review or owner approval of the open scope choices.
 | Prebuilt runner; ambiguous workspace non-goal | Build feedback needs its own scope | Reuse the landed build-once runner; B0 permits evidence-led build-boundary work, independently of runtime hotspots, not an unconditional root-crate split |
 | Workload ceiling and circular scope remain open | Decide these before the audit | Record explicit owner choices below; add exact boundary fixtures before a pass/fail audit |
 | First-content budget lacks a dependency | Whole-sequence recomputation may exhaust it | Make S3/freshness-correct reuse a conditional prerequisite; do not extrapolate the whole PATZ1 constructor as recomputation time |
-| Native evidence is Linux/Xvfb only | Cross-check on macOS before S5 | Require a local release-like macOS trace and retain platform-specific conclusions |
+| Native evidence is Linux/Xvfb only | Cross-check on macOS before S5 | Require a local packaged-profile macOS trace and retain platform-specific conclusions |
 | Three overlapping priority lists | Keep one implementation sequence | Roadmap owns release scope, this plan owns steps, and the historical acceptance report links here |
+
+## Build Profile Context (Two Steps)
+
+The native release recipe changed twice while this plan was being written, and
+[DEC-039](decisions.md#dec-039-external-auditor-owns-the-performance-verdict)
+keeps both steps as distinct evidence classes:
+
+- `e4c94bf3` dropped the explicit release block,
+  so native releases took Cargo's defaults instead of fat LTO, one codegen unit,
+  `panic=abort` and stripping. Its default `lto=false` still permitted local
+  thin LTO. `release-fast` retained its explicit panic/stripping settings.
+- `ffe5c637` then set `[profile.release] lto = "off"`, disabling even
+  within-crate LTO. That is the current tree state.
+
+`bench-audit` inherits `opt-level=3` from `release` and explicitly sets thin LTO,
+16 codegen units, `panic=unwind` and stripping. Making stripping explicit
+preserved its previously inherited value, so the
+audit profile's effective settings survived both steps unchanged. Three
+consequences bind this plan:
+
+- The PATZ1 means quoted below keep their original profile identity. Per DEC-039
+  and the [audit-profile notes](../benches/README.md#audit-profiles), record the
+  effective settings, not only the `release` profile name, which now spans three
+  historical configurations.
+- Today's native `release` binary and the thin-LTO audit binary use different
+  optimization recipes. Neither the direction nor the perceptibility of a
+  runtime difference is established. Record effective settings with every
+  measurement and do not pool traces across either boundary.
+- B0's build-cost premise changed: the native release path no longer performs a
+  fat-LTO link. Re-baseline build cost on current `main` before proposing any
+  dependency-boundary change.
+
+These are build-configuration changes with their own acceptance evidence, still
+under release validation. Their runtime effects remain unmeasured; neither
+establishes a speedup or regression of the runtime hypotheses below.
 
 ## Audit Admission Decisions
 
@@ -64,6 +99,41 @@ the release target before optimization. Do not relax it after seeing results
 without an explicit recorded scope decision. Stress cases must remain correct,
 inspectable and interruptible where work is cancellable, but are not silently
 held to the interactive timing table.
+
+### Measurement Profiles
+
+For native acceptance, **release-like means the packaged `--release` GUI**, not
+the `bench-audit` harness. Prefer the extracted candidate package and retain its
+artifact and binary hashes, source SHA, lockfile, toolchain, features and
+effective profile settings. A locally rebuilt counterpart must match the
+packaging recipe and be identified as such; it is not extracted-package evidence.
+Do not substitute `benchmark-support`, `gui-test-support`, a semantic snapshot
+writer or a profiler-specific build for the shipped binary. Keep instrumented
+diagnostics separately labelled and retain external input-to-content evidence.
+
+Keep `bench-audit` for continuity of the headless Criterion ladder. The optional
+release-profile Criterion harness also remains a harness: its target, features
+and event/rendering environment differ from the packaged desktop application.
+Neither harness can satisfy native acceptance, even when its CPU timings pass.
+
+Glen should additionally measure a controlled **same-SHA native profile pair**:
+the packaged-release GUI and a native GUI built with `bench-audit`, keeping
+features and all other build inputs identical. Prebuild both outside timing;
+use the same host, toolchain, public PATZ1 project/report, window sizes, tracing
+settings and equivalent isolated application settings/cache state. Repeat open
+and resize operations for each profile, alternate run order, separate cold and
+warm conditions, and retain individual samples, repetition counts, medians and
+spread alongside both binary hashes. No semantic snapshot writer is used.
+
+This comparison measures the whole profile recipe, not LTO alone. Report any
+observed difference for that workload and host; do not derive a universal offset
+or correct historical timings with it. Ordinary code-change comparisons still
+hold the profile constant. Native release acceptance must meet its own agreed
+budgets regardless of the audit ladder's outcome.
+
+This is an external audit requirement, **not an additional installer-CI build
+or benchmark stage**. It does not explain past compiler/runner terminations;
+build reliability and runtime performance require separate evidence.
 
 ## Execution Order And Ownership
 
@@ -96,7 +166,9 @@ usability or performance. The evidence already separates two things:
   163.3 ms (run A) and 425.7 / 62.3 / 187.3 / 203.7 / 183.4 ms (run B), with the
   `gui-test-support` snapshot writer included.
 - The optimized `bench-audit` Criterion means for the same authentic PATZ1
-  project were 27.852 ms eager DNA-window construction, 32.742 ms deferred
+  project, taken before the release-profile steps above and valid only for their
+  own revision and effective settings, were 27.852 ms eager DNA-window
+  construction, 32.742 ms deferred
   UI-thread hydration, 28.1-29.5 ms first embedded frame at all four viewport
   sizes, 0.786-0.793 ms steady embedded frame, and 3.83-3.94 ms first frame
   after a resize.
@@ -278,15 +350,18 @@ replace engine-backed window/report hydration or real annotations.
    toolchain, fixture and binary hashes.
 2. Capture native input-to-content traces at 820x520, 1200x800, 1600x1000 and
    1920x1080. Separate process startup, open, clone/hydration, first paint,
-   event delivery, repaint and compositor delays. Use a release-like binary
-   without the semantic snapshot writer; capture locally, not on per-frame
-   network storage. Retain project/report hashes and tool/environment identity.
+   event delivery, repaint and compositor delays. Use the packaged-release GUI
+   under [Measurement Profiles](#measurement-profiles), without the semantic
+   snapshot writer; capture locally, not on per-frame
+   network storage. Retain project/report hashes, tool/environment identity and
+   the binary's effective profile settings, which the profile name alone no
+   longer fixes.
    Bind the CPU startup trace to external native observations; S6 owns any
    resulting product fixes, not a faster harness checkpoint.
 3. Before a general S5 scheduling change, obtain a short local macOS native
    resize/open trace on the same source and public fixture, with its own binary,
-   profile, window sizes and environment recorded and no semantic snapshot
-   writer. This is a diagnostic cross-check, not a macOS performance verdict.
+   packaged-release profile, window sizes and environment recorded and no
+   semantic snapshot writer. This is a diagnostic cross-check, not a macOS performance verdict.
    Do not pool Linux and macOS timings or attribute differences to an OS from
    unlike profiles. Windows native acceptance remains separate for Windows claims.
 4. Record the confirmed/rejected/unresolved timing hypotheses and agree
@@ -296,8 +371,9 @@ replace engine-backed window/report hydration or real annotations.
    outcomes separate, without silently changing the admitted density ceiling.
 
 The headless runner does not establish native acceptance, even when every smoke
-case passes. S0's implementation is not to be repeated; its measurement gate
-remains open.
+case passes. Retain Glen's repeated native profile-pair comparison separately
+from the ladder and native acceptance. S0's implementation is not to be
+repeated; its measurement gate remains open.
 
 ### B0 - Build feedback (independent of runtime hypotheses)
 
@@ -307,8 +383,11 @@ The dedicated benchmark crate still depends on the root library with
 the hash-bound binary without Cargo. Use that path first. It solves repeat-run
 rebuilds, not initial compilation or iteration after a source edit.
 
-If build cost still blocks work, retain cold and incremental Cargo timings,
-compile versus LTO/link phases, wall time and peak RSS. Evaluate the smallest
+If build cost still blocks work, first re-baseline it on current `main`:
+`e4c94bf3` removed fat LTO and `ffe5c637` disabled remaining local LTO in the
+native release path, so earlier build timings no longer describe that recipe.
+Then retain cold and incremental Cargo timings, compile versus LTO/link phases, wall time and
+peak RSS. Evaluate the smallest
 evidence-backed build/dependency-boundary change; a narrowly reviewed crate
 extraction is eligible without proving a runtime hotspot. Follow DEC-006/007,
 preserve production profiles and benchmark semantics, and remeasure build cost
@@ -436,15 +515,18 @@ prioritize S6 ahead of S1-S5 rather than leaving it until the end.
 1. Implementation posts the S0 table plus the confirmed/rejected hypothesis
    ledger at one named SHA, with `cargo test -p gentle-benchmarks --bench
    gui_operations` green and the fixture regeneration command recorded.
-2. The auditor repeats the ladder on a stable host with a release-like binary
+2. The auditor repeats the headless ladder on a stable host with `bench-audit`
    and retains raw Criterion artifacts and environment metadata. Baseline
    repeats share a revision; before/after comparisons name both revisions and
-   hold profile, host, toolchain and fixture identity constant. Do not pool
+   hold effective profile settings, host, toolchain and fixture identity
+   constant, spanning no profile redefinition. Do not pool
    different profiles or treat a build-speed improvement as a runtime result.
-3. Native acceptance covers open, pan, zoom, live resize, layer toggles and
-   selection on PATZ1 and TP73 plus the exact agreed envelope boundary. Record
+3. Native acceptance uses the packaged-release GUI and covers open, pan, zoom,
+   live resize, layer toggles and selection on PATZ1 and TP73 plus the exact agreed envelope boundary. Record
    startup/S6 targets, the macOS cross-check and circular regression checks;
-   retain the largest ladder fixture as a separate stress outcome.
+   retain the largest ladder fixture as a separate stress outcome. Record the
+   repeated same-SHA native profile comparison under Measurement Profiles;
+   neither it nor the headless ladder replaces packaged-profile acceptance.
 4. The performance verdict is the auditor's. An unresolved owner scope choice
    or unbudgeted startup cannot be a green `.12` result. Implementation-side
    numbers are evidence, not acceptance.

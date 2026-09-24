@@ -12,16 +12,16 @@ Timed runs and release-facing comparisons belong to the external auditor.
 
 ## Audit profiles
 
-GENtle provides two deliberately non-comparable optimized modes:
+GENtle provides two distinct optimized harness modes:
 
 - Routine audit uses `--profile bench-audit`: `opt-level=3`, explicit stripping,
   thin LTO, 16 codegen units and `panic=unwind`. These effective settings are
-  unchanged by the 2026-09-22 native release-profile simplification. Cargo
-  forces unwind for benchmark targets; matching that setting throughout the
+  unchanged by the native release-profile changes in `e4c94bf3` and `ffe5c637`.
+  Cargo forces unwind for benchmark targets; matching that setting throughout the
   audit dependency graph avoids a separate panic-strategy build.
-- Exact release-like audit uses `cargo bench -p gentle-benchmarks` without a
-  profile override and now inherits Cargo's default release settings, including
-  `lto=false`, 16 codegen units and no stripping. Historical fat-LTO,
+- Release-profile harness runs use `cargo bench -p gentle-benchmarks` without a
+  profile override and inherit the current release settings, including
+  `lto="off"`, 16 codegen units and no stripping. Historical fat-LTO,
   one-codegen-unit results retain their original settings; do not relabel them
   or reuse them as baselines for the new recipe.
 
@@ -29,9 +29,11 @@ Cargo keeps compiled artifacts under `target/bench-audit/` and
 `target/release/`, respectively. Criterion 0.8.2 does not infer the Cargo
 profile and otherwise stores both modes under the shared `target/criterion/`
 tree. Set `CRITERION_HOME` as shown below so measurements remain under the
-matching profile directory. Never compare results across these modes: they
-differ in LTO and stripping. Retain the revision and effective settings, not
-just the profile name, which spans different historical configurations.
+matching profile directory. Do not pool these modes or use one as a code-change
+baseline for the other: they differ in LTO and stripping. A controlled same-SHA
+profile comparison is a separate diagnostic, not a reusable timing correction.
+Retain the revision and effective settings, not just the profile name, which
+spans different historical configurations.
 The benchmarks live in the dedicated, non-published `gentle-benchmarks`
 workspace package. It depends on GENtle as a library with default features
 disabled and explicitly enables `desktop-gui` plus `benchmark-support`, because
@@ -43,6 +45,15 @@ build fingerprint follows the current loose branch ref
 and consults repository-wide `packed-refs` only when that loose ref is absent,
 so Git maintenance in another worktree does not invalidate an otherwise
 unchanged audit build.
+
+Neither harness is the packaged GUI. Native release-facing acceptance uses the
+packaged `--release` desktop binary, without the semantic snapshot writer;
+retain extracted-package evidence separately from matching local builds.
+Glen's repeated, same-SHA PATZ1 native open/resize comparison of release and
+`bench-audit` GUI binaries follows the
+[measurement-profile contract](../docs/dna_feature_rendering_latency_plan.md#measurement-profiles).
+The headless ladder stays on `bench-audit` for historical continuity. No runtime
+speed difference is assumed, and this audit adds no installer-CI benchmark stage.
 
 ## GUI-critical operations
 
@@ -56,7 +67,7 @@ CRITERION_HOME="$PWD/target/bench-audit/criterion" \
   --bench gui_operations -- --quick --noplot
 ```
 
-For the exact release-like mode, omit `--profile` and change only the retained
+For the release-profile harness, omit `--profile` and change only the retained
 result directory:
 
 ```bash
@@ -219,7 +230,7 @@ Use these boundaries for attribution:
 
 Glen should retain exact binary/lockfile/project/report hashes, toolchain,
 profile, flags, isolated profile/cache setup and cold/warm conditions alongside
-each trace. Compare release-like native macOS and Linux runs as separate
+each trace. Keep packaged-release native macOS and Linux runs as separate
 evidence classes; record process-launch and visibly confirmed content with the
 external native audit. This file alone cannot certify an interaction budget,
 and enabling tracing adds some overhead. The existing Criterion replay remains
@@ -273,10 +284,11 @@ CRITERION_HOME="$PWD/target/bench-audit/criterion" \
 
 Use `/usr/bin/time -l` instead of `-v` on macOS. Keep the console log and the
 corresponding `target/bench-audit/criterion/` subtree with the audit record.
-For an exact release-like baseline, use `cargo bench -p gentle-benchmarks`
+For a release-profile harness baseline, use `cargo bench -p gentle-benchmarks`
 without `--profile`, set
 `CRITERION_HOME="$PWD/target/release/criterion"`, and prefix the baseline label
-with `release-like`. Compare only against a baseline produced by the same
+with `release-profile` (do not rename historical evidence). Compare baseline
+repeats only against a baseline produced by the same
 profile, host, toolchain, fixture hash, and GENtle revision. The auditor decides
 whether a difference is meaningful after also performing the real GUI
 interaction check; GENtle does not turn a noisy shared runner result into a

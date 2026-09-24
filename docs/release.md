@@ -40,6 +40,13 @@ and incremental compilation were already disabled; repeating those flags is
 not a new mitigation. Do not raise parallelism or infer a timeout from these
 logs, and do not switch to paid runners without explicit approval.
 
+Windows job `107531770703` in the same run passed the full package build,
+entrypoint and extracted-ZIP smokes, and artifact upload at `ad0338a7` in
+2h12m53s. This is a passing Windows package verdict for the original recipe,
+not evidence for the subsequent `lto="off"` change or a diagnosis of the Unix
+failures. Keep the default 360-minute job allowance: a 90-minute cap would
+have interrupted this successful build.
+
 Explicitly approved releases also publish container images through GitHub
 Container Registry (GHCR); a tag push alone only runs build checks:
 
