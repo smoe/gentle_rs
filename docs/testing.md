@@ -524,8 +524,9 @@ enabling the `desktop-gui` modules imported by the GUI benchmark together with
 `benchmark-support`. Cargo therefore compiles the measured GUI library code but
 does not prepare the root package's application binaries before sampling. Plain
 `cargo bench -p gentle-benchmarks --bench gui_operations ...` now inherits
-Cargo's default release settings (`lto=false`, 16 codegen units, no stripping),
-not the historical fat-LTO/single-codegen-unit recipe. Keep old measurements
+native release settings (`lto="off"`, 16 codegen units, no stripping),
+not the historical fat-LTO/single-codegen-unit or Cargo-default `lto=false`
+recipes. Keep old measurements
 bound to their original revision/settings. The two modes characterize different
 binaries and their results must never be compared. A cold library build and
 link can remain substantial; neither profile promises an instantaneous first

@@ -64,7 +64,7 @@ Release acceptance:
   external resources; CI uses tiny local fixtures without restricting the
   engine or GUI contracts to those fixture sizes.
 - Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes; rerun gates on candidate changes, never combine nearby revisions' passes.
-- CI must prove the Linux tarball, Windows ZIP and macOS DMG at one SHA with Cargo-default release settings and five binaries (no JS/Lua), fresh receipts and extracted-package smokes. Historical fat-LTO/script-enabled passes do not certify this recipe; runtime acceptance remains Glen's. Ubuntu's runner shutdown is not confirmed OOM evidence.
+- CI must prove all native packages at one SHA with `lto="off"`, other Cargo defaults, one build job and five binaries (no JS/Lua), fresh receipts and extracted-package smokes. Investigate run `35968255595`'s macOS compiler SIGKILL and Ubuntu runner shutdown using retained diagnostics; neither proves OOM. Historical builds do not certify this recipe; runtime acceptance remains Glen's.
 - Re-run headless `runtime-cli` container validation (no GUI/JS/Lua) after the `rnapkin` font-library repair: run `35717368172` at `a10715cb` compiled GENtle but failed installing the helper; final-image linking and SVG/PNG rendering remain unverified.
 
 Release cut line:

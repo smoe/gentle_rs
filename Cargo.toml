@@ -208,8 +208,10 @@ codegen-units = 256
 [profile.dev.package."*"]
 debug = 0
 
-# Native releases use Cargo's default release profile. Keep the distinct
-# container and audit profiles explicit so they do not change with that policy.
+# Disable even within-crate LTO for native releases; keep other Cargo defaults.
+# Container and audit profiles explicitly retain their separate LTO policy.
+[profile.release]
+lto = "off"
 
 [profile.release-fast]
 inherits = "release"

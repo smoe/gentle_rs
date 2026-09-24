@@ -895,10 +895,11 @@ evidence where needed. Shared CI runners may compile or smoke benchmark targets
 but do not establish strict timing gates without repeated stable-host evidence
 and an auditor-approved threshold.
 
-Routine thin-LTO `bench-audit` binaries and Cargo-default release-profile
-binaries are distinct evidence classes. Historical fat-LTO, single-codegen-unit
-release measurements must retain their original profile identity; the
-2026-09-22 release-profile change does not relabel those results. Baselines are
+Routine thin-LTO `bench-audit` binaries and native release-profile binaries
+are distinct evidence classes. Historical fat-LTO/single-codegen-unit and
+Cargo-default (`lto=false`) release measurements retain their original profile
+identity; neither the 2026-09-22 simplification nor the subsequent native
+`lto="off"` change relabels those results. Baselines are
 comparable only when profile, host, toolchain, fixture hash, and GENtle revision
 match; retained metadata and baseline labels must identify the effective profile
 explicitly.

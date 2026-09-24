@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-24 - Native Release LTO And Failure Diagnostics
+
+- Inspect the complete logs of installer run `35968255595` at `ad0338a7`:
+  macOS's `rustc` library process received SIGKILL (9), with Cargo then returning
+  101; Ubuntu's runner reported shutdown and exit 143. Neither establishes OOM.
+  Both already used one build job, no JS/Lua, and disabled debug/incremental
+  compilation. Do not treat redundant flags as a memory fix or increase jobs.
+- Disable remaining within-crate LTO through Cargo's native release
+  `lto="off"`, retaining other defaults and the five-binary package inventory.
+  Keep the container/audit thin-LTO profiles and historical acceptance unchanged.
+- Retain combined compiler output and Unix resource statistics as diagnostic
+  artifacts without masking a failed build. Runner loss can still prevent the
+  final log upload. Add profile/wiring guards and synthetic process-boundary
+  regressions for successful and failed builds; no real compiler runs in those
+  logging regressions.
+- No local builds or tests run at the owner's request. GitHub must verify
+  native packages at a new candidate SHA; this is a mitigation, not a confirmed
+  root-cause repair. No tags, publication, paid runners or cache policy changed.
+
 ## 2026-09-23 - CLI Service Parity Registry Isolation
 
 - Windows job `107075366344` at `e4c94bf3` built successfully but failed one

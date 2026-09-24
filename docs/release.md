@@ -15,14 +15,30 @@ The five native binaries are `gentle`, `gentle_cli`, `gentle_mcp`,
 and the two GUI reproduction binaries are not built or packaged by this
 workflow. JS/Lua remain optional source builds with separate CI checks.
 
-Native builds use Cargo's default release profile: optimization level 3,
-16 codegen units, `lto=false` (no cross-crate LTO), unwind panics and no explicit
-symbol stripping. This removes the forced fat-LTO/single-codegen-unit build,
-not release optimization. One Cargo build job (`-j1`) remains in the installer
-workflow. This reduces requested optimization work but does not establish
-that an earlier runner shutdown was caused by memory exhaustion; new builds
-and runtime acceptance are still required. The container's `release-fast`
-and auditor's `bench-audit` profiles keep their existing effective settings.
+Native builds use `lto="off"` in `Cargo.toml`, retaining other Cargo release
+defaults: optimization level 3, 16 codegen units, unwind panics and no explicit
+symbol stripping. Unlike `lto=false`, `"off"` also disables within-crate thin
+LTO. One Cargo build job (`-j1`) remains in the installer workflow; JS/Lua stay
+excluded. This is a resource-reduction measure, not proof of the cause of a
+compiler kill. New builds and runtime acceptance are still required. The
+container's `release-fast` and auditor's `bench-audit` profiles explicitly keep
+their existing thin-LTO settings.
+
+Installer builds stream combined compiler output into
+`gentle-release-build.log`, including revision/toolchain, initial Unix memory
+and disk information, and `/usr/bin/time` resource statistics on macOS/Linux.
+The pipeline preserves build failure through `pipefail`; an `always()` upload
+retains the log for 14 days when the runner is still available. Runner shutdown
+can prevent both final statistics and upload, so retain the Actions log too.
+These logs are diagnostics, not package acceptance receipts.
+
+At `ad0338a7`, run `35968255595` recorded macOS job `107531770716`'s library
+compiler ending in `signal: 9, SIGKILL`, followed by Cargo exit 101. Memory
+pressure is plausible, not established by that signal alone. Ubuntu job
+`107531770722` instead reported runner shutdown and exit 143. Debug information
+and incremental compilation were already disabled; repeating those flags is
+not a new mitigation. Do not raise parallelism or infer a timeout from these
+logs, and do not switch to paid runners without explicit approval.
 
 Explicitly approved releases also publish container images through GitHub
 Container Registry (GHCR); a tag push alone only runs build checks:

@@ -102,7 +102,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential clang cmake pkg-config perl \
+            build-essential clang cmake pkg-config perl time \
             libegl1-mesa-dev libfontconfig1-dev libfreetype6-dev libgbm-dev \
             libglib2.0-dev libgl1-mesa-dev libgtk-3-dev libnss3-dev libssl-dev \
             libwayland-dev libx11-dev libx11-xcb-dev libxcb1-dev \
@@ -138,10 +138,41 @@ jobs:
         run: cargo install cargo-bundle --locked
 
       - name: Build locked release binaries
-        run: >-
-          cargo build --locked --release -j1
-          --bin gentle --bin gentle_cli --bin gentle_mcp
-          --bin gentle_examples_docs --bin gentle_publication_report
+        shell: bash
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/gentle-release-build.log"
+          {
+            echo "revision=$EXPECTED_REVISION platform=$RUNNER_OS"
+            rustc --version --verbose
+            cargo --version
+            if [[ "$RUNNER_OS" == "Linux" ]]; then
+              free -h
+              df -h .
+            elif [[ "$RUNNER_OS" == "macOS" ]]; then
+              sysctl hw.memsize
+              vm_stat
+              df -h .
+            fi
+          } 2>&1 | tee "$log"
+          build=(cargo build --locked --release -j1
+            --bin gentle --bin gentle_cli --bin gentle_mcp
+            --bin gentle_examples_docs --bin gentle_publication_report)
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            build=(/usr/bin/time -v "${build[@]}")
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            build=(/usr/bin/time -l "${build[@]}")
+          fi
+          "${build[@]}" 2>&1 | tee -a "$log"
+
+      - name: Retain release build diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: release-build-log-${{ matrix.platform }}-${{ needs.candidate.outputs.revision }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/gentle-release-build.log
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Smoke published entrypoints
         shell: bash

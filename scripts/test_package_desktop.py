@@ -14,6 +14,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import textwrap
 import tomllib
 import unittest
 from unittest.mock import patch
@@ -254,11 +255,12 @@ class DesktopPackageTests(unittest.TestCase):
 
 
 class WorkflowWiringTests(unittest.TestCase):
-    def test_native_release_uses_cargo_defaults_without_changing_custom_profiles(self) -> None:
+    def test_native_release_disables_all_lto_without_changing_custom_profiles(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
         profiles = manifest["profile"]
-        self.assertNotIn("release", profiles, "Native releases must use Cargo defaults")
+        self.assertEqual(profiles["release"], {"lto": "off"},
+                         "Disable all native LTO; retain other Cargo defaults")
         self.assertEqual(profiles["release-fast"], {
             "inherits": "release", "lto": "thin", "codegen-units": 16,
             "opt-level": 2, "panic": "abort", "strip": True,
@@ -276,7 +278,7 @@ class WorkflowWiringTests(unittest.TestCase):
         repo = Path(__file__).resolve().parents[1]
         workflow = (repo / ".github/workflows/release.yml").read_text()
         build = workflow.split("- name: Build locked release binaries\n", 1)[1].split("\n      - name:", 1)[0]
-        tokens = shlex.split(build.split("run: >-\n", 1)[1])
+        tokens = shlex.split(build.split("build=(", 1)[1].split(")", 1)[0])
         self.assertEqual(tokens[:2], ["cargo", "build"])
         self.assertIn("--locked", tokens)
         self.assertIn("--release", tokens)
@@ -303,6 +305,59 @@ class WorkflowWiringTests(unittest.TestCase):
             binary = next(binary for binary in manifest["bin"] if binary["name"] == name)
             self.assertEqual(binary["required-features"], [feature])
             self.assertIn(feature, manifest["features"]["script-interfaces"])
+
+    def test_release_build_retains_diagnostics_even_on_failure(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        workflow = (repo / ".github/workflows/release.yml").read_text()
+        build = workflow.split("- name: Build locked release binaries\n", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("shell: bash", build)
+        self.assertIn("set -euo pipefail", build)
+        self.assertIn('build=(/usr/bin/time -v "${build[@]}")', build)
+        self.assertIn('build=(/usr/bin/time -l "${build[@]}")', build)
+        self.assertIn('"${build[@]}" 2>&1 | tee -a "$log"', build)
+        upload = workflow.split("- name: Retain release build diagnostics\n", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("if: ${{ always() }}", upload)
+        self.assertIn("uses: actions/upload-artifact@v6", upload)
+        self.assertIn("${{ runner.temp }}/gentle-release-build.log", upload)
+        self.assertIn("${{ matrix.platform }}", upload)
+        self.assertIn("${{ github.run_attempt }}", upload)
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"),
+                         "Synthetic executable stand-ins require a POSIX host and Bash")
+    def test_release_build_logging_preserves_cargo_exit_status(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        workflow = (repo / ".github/workflows/release.yml").read_text()
+        build = workflow.split("- name: Build locked release binaries\n", 1)[1].split("\n      - name:", 1)[0]
+        script = textwrap.dedent(build.split("run: |\n", 1)[1])
+        with tempfile.TemporaryDirectory(prefix="synthetic release log ") as directory:
+            root = Path(directory)
+            # No real compiler runs: these stand-ins reproduce the process boundary.
+            (root / "rustc").write_text("#!/bin/sh\nprintf 'synthetic rustc\\n'\n")
+            (root / "cargo").write_text(
+                "#!/bin/sh\n"
+                "if [ \"$1\" = --version ]; then printf 'synthetic cargo\\n'; exit 0; fi\n"
+                "printf 'synthetic build stdout\\n'\n"
+                "printf 'synthetic compiler stderr\\n' >&2\n"
+                "exit \"$SYNTHETIC_CARGO_EXIT\"\n"
+            )
+            for name in ("cargo", "rustc"):
+                (root / name).chmod(0o755)
+            for code in (0, 101, 143):
+                with self.subTest(exit_code=code):
+                    result = subprocess.run(
+                        [shutil.which("bash"), "-c", script], cwd=root,
+                        env={**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                             "RUNNER_TEMP": str(root), "RUNNER_OS": "Windows",
+                             "EXPECTED_REVISION": "synthetic-revision",
+                             "SYNTHETIC_CARGO_EXIT": str(code)},
+                        capture_output=True, text=True, timeout=30,
+                    )
+                    self.assertEqual(result.returncode, code, result.stdout + result.stderr)
+                    log = (root / "gentle-release-build.log").read_text()
+                    self.assertIn("synthetic build stdout", log)
+                    self.assertIn("synthetic compiler stderr", log)
+                    self.assertIn("revision=synthetic-revision platform=Windows", log)
+                    self.assertEqual(result.stdout, log)
 
     def test_release_stages_and_checks_each_platform_after_extraction(self) -> None:
         repo = Path(__file__).resolve().parents[1]

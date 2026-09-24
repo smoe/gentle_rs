@@ -633,8 +633,10 @@ Rules:
 - feature-gating adapters must never be used to fork engine behavior or create
   adapter-only business logic
 
-Native release compilation uses Cargo's default release profile, not forced
-fat LTO or a single codegen unit. The explicit `release-fast` container and
+Native release compilation disables all LTO with `lto="off"` in the Cargo
+release profile, retaining other defaults rather than forcing a single codegen
+unit. Do not substitute `lto=false`, which permits within-crate thin LTO.
+The explicit `release-fast` container and
 `bench-audit` profiles retain their separate settings. Package receipts bind
 the profile, default-feature selection, additional features and binary list;
 changing that recipe requires fresh exact-candidate package acceptance.

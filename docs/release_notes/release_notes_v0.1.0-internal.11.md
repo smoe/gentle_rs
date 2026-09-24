@@ -91,8 +91,10 @@ The current native packaging recipe stages the same five GENtle entrypoints and 
 resources on Windows, macOS and Linux, with revision/version/checksum records.
 It includes the GUI, CLI, MCP, examples/docs and publication-report tools.
 JavaScript/Lua remain optional source interfaces, not packaged binaries.
-Native compilation uses Cargo's default optimized release profile instead of
-fat LTO and a single codegen unit, retaining one build job. This changed recipe
+The `ad0338a7` installer run used Cargo's default optimized release profile,
+not fat LTO or a single codegen unit. The subsequent installer repair disables
+all native LTO (`lto="off"`), retaining other defaults and one build job, and
+retains compiler/resource diagnostics. This changed recipe
 requires fresh exact-candidate package checks; older artifacts and acceptance
 records retain their original build settings.
 The workflow tests actual extracted ZIP/DMG/tarball contents outside the
