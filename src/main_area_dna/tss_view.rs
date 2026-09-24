@@ -4,7 +4,11 @@ use super::*;
 use crate::tss_sequence_view::{TssLaneKind, TssSequenceView, TssViewFeature, TssViewLane};
 use std::sync::mpsc::{Receiver, TryRecvError};
 
+mod local_scoring;
+use local_scoring::LocalScoreState;
+
 type LoadedView = Result<Arc<TssSequenceView>, String>;
+pub(super) type SvgExportReceiver = Arc<Mutex<Receiver<Result<String, String>>>>;
 
 #[derive(Clone, Debug)]
 struct ProfileLoad {
@@ -22,10 +26,12 @@ pub(super) struct TssUiState {
     profile_load: Option<ProfileLoad>,
     requested_profile_path: Option<std::path::PathBuf>,
     profile_error: Option<String>,
+    local_scores: LocalScoreState,
     structures: bool,
     signals: bool,
     motifs: bool,
     traces: bool,
+    local_traces: bool,
     imported: bool,
     other: bool,
     filter: String,
@@ -43,15 +49,43 @@ impl Default for TssUiState {
             profile_load: None,
             requested_profile_path: None,
             profile_error: None,
+            local_scores: LocalScoreState::default(),
             structures: true,
             signals: true,
             motifs: true,
             traces: true,
+            local_traces: true,
             imported: true,
             other: true,
             filter: String::new(),
             selected: None,
         }
+    }
+}
+
+impl TssUiState {
+    fn visible_lanes(&self, view: &TssSequenceView) -> Vec<usize> {
+        let filter = self.filter.to_lowercase();
+        view.lanes
+            .iter()
+            .enumerate()
+            .filter(|(_, lane)| {
+                let enabled = match lane.kind {
+                    TssLaneKind::Structure => self.structures,
+                    TssLaneKind::Signal => self.signals,
+                    TssLaneKind::Motif => self.motifs,
+                    TssLaneKind::ScoreTrace => self.traces,
+                    TssLaneKind::LocalScoreTrace => self.local_traces,
+                    TssLaneKind::ImportedMotif => self.imported,
+                    TssLaneKind::Other => self.other,
+                };
+                enabled
+                    && (filter.is_empty()
+                        || lane.label.to_lowercase().contains(&filter)
+                        || lane.id.to_lowercase().contains(&filter))
+            })
+            .map(|(i, _)| i)
+            .collect()
     }
 }
 
@@ -61,12 +95,120 @@ fn color(kind: TssLaneKind) -> egui::Color32 {
         TssLaneKind::Signal => egui::Color32::from_rgb(165, 65, 100),
         TssLaneKind::Motif => egui::Color32::from_rgb(0, 140, 115),
         TssLaneKind::ScoreTrace => egui::Color32::from_rgb(30, 105, 185),
+        TssLaneKind::LocalScoreTrace => egui::Color32::from_rgb(0, 130, 100),
         TssLaneKind::ImportedMotif => egui::Color32::from_rgb(180, 100, 25),
         TssLaneKind::Other => egui::Color32::from_rgb(180, 125, 30),
     }
 }
 
 impl MainAreaDna {
+    fn tss_svg_snapshot(
+        &mut self,
+        profile: ViewSvgExportProfile,
+    ) -> Result<
+        (
+            Arc<TssSequenceView>,
+            crate::tss_sequence_view::TssViewSvgOptions,
+        ),
+        String,
+    > {
+        self.refresh_tss_recognition();
+        if self.tss_ui.profile_load.is_some()
+            || self.tss_ui.pending.is_some()
+            || self.tss_ui.requested_profile_path.is_some()
+        {
+            return Err("Wait for the TSS document/report to finish loading before export".into());
+        }
+        if self.tss_ui.local_scores.running() {
+            return Err("Wait for local TSS scoring, or cancel it, before export".into());
+        }
+        let view = self
+            .tss_ui
+            .document
+            .as_ref()
+            .ok_or("TSS document is not ready")?
+            .as_ref()
+            .map_err(Clone::clone)?
+            .clone();
+        let (start, span, length) = self.current_linear_viewport();
+        let layout =
+            Self::view_svg_export_layout(profile, self.last_linear_map_width_px, true, false);
+        let (start, span) =
+            Self::expand_linear_export_window(start, span, length, layout.viewport_span_multiplier);
+        let options = crate::tss_sequence_view::TssViewSvgOptions {
+            start_0based: start,
+            end_0based_exclusive: start.saturating_add(span).min(length),
+            lane_indices: self.tss_ui.visible_lanes(&view),
+            width_px: layout.canvas_width_px as u32,
+            print_size_mm: layout.print_size_mm,
+        };
+        Ok((view, options))
+    }
+
+    pub(super) fn export_tss_view_svg(
+        &mut self,
+        profile: ViewSvgExportProfile,
+        ctx: &egui::Context,
+    ) {
+        if self.tss_svg_export.is_some() {
+            self.op_status = "A TSS SVG export is already running".into();
+            return;
+        }
+        let (view, options) = match self.tss_svg_snapshot(profile) {
+            Ok(snapshot) => snapshot,
+            Err(e) => {
+                self.op_status = e;
+                return;
+            }
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(format!("tss.{}.svg", profile.file_stem_suffix()))
+            .add_filter("SVG", &["svg"])
+            .save_file()
+        else {
+            self.op_status = "Export canceled".into();
+            return;
+        };
+        let (send, receiver) = std::sync::mpsc::channel();
+        self.tss_svg_export = Some(Arc::new(Mutex::new(receiver)));
+        self.op_status = "Exporting the selected TSS view snapshot...".into();
+        let ctx = ctx.clone();
+        std::thread::spawn(move || {
+            let result =
+                crate::tss_sequence_view::write_tss_view_svg(&view, &options, &path).map(|hash| {
+                    format!(
+                        "Exported TSS SVG snapshot: {} (SHA-256 {hash})",
+                        path.display()
+                    )
+                });
+            let _ = send.send(result);
+            ctx.request_repaint();
+        });
+    }
+
+    pub(super) fn poll_tss_svg_export(&mut self, ctx: &egui::Context) {
+        let Some(receiver) = &self.tss_svg_export else {
+            return;
+        };
+        let result = receiver
+            .lock()
+            .map_err(|_| TryRecvError::Disconnected)
+            .and_then(|r| r.try_recv());
+        match result {
+            Ok(result) => {
+                self.op_status = result.unwrap_or_else(|e| format!("TSS SVG export failed: {e}"));
+                self.tss_svg_export = None;
+            }
+            Err(TryRecvError::Empty) => {
+                ctx.request_repaint_after(std::time::Duration::from_millis(100))
+            }
+            Err(_) => {
+                self.op_status = "TSS SVG export worker stopped".into();
+                self.tss_svg_export = None;
+            }
+        }
+    }
+
     pub(super) fn tss_display_title(&self) -> Option<&str> {
         self.tss_ui
             .document
@@ -167,11 +309,8 @@ impl MainAreaDna {
         let Some(Ok(source)) = self.tss_ui.document.clone() else {
             return;
         };
-        let annotations = self
-            .tss_ui
-            .annotations
-            .get_or_insert_with(|| source.clone())
-            .clone();
+        // Attaching/detaching a report must preserve independently computed lanes.
+        let annotations = source.clone();
         let (send, receiver) = std::sync::mpsc::channel();
         self.tss_ui.profile_error = None;
         self.tss_ui.profile_load = Some(ProfileLoad {
@@ -229,7 +368,9 @@ impl MainAreaDna {
     fn render_primary_tss_map_contents(&mut self, ui: &mut egui::Ui) {
         self.poll_tss_view(ui.ctx());
         self.poll_tss_profile(ui.ctx());
+        self.poll_tss_local_scores(ui.ctx());
         if self.tss_ui.profile_load.is_none()
+            && !self.tss_ui.local_scores.running()
             && self
                 .tss_ui
                 .document
@@ -255,7 +396,7 @@ impl MainAreaDna {
         ui.heading(&view.title);
         ui.small("Annotation-derived TSS | transcript-oriented genomic DNA, not a spliced transcript or reporter construct");
         ui.horizontal_wrapped(|ui| {
-            if ui.add_enabled(self.tss_ui.profile_load.is_none(), egui::Button::new("Load TSS profile report...")).on_hover_text("Select report.json from the same TSS SVG/PDF bundle. Validates the report, exact reference, TSS geometry and sequence hash; does not rescore or query DuckDB.").clicked()
+            if ui.add_enabled(self.tss_ui.profile_load.is_none() && !self.tss_ui.local_scores.running(), egui::Button::new("Load TSS profile report...")).on_hover_text("Select report.json from the same TSS SVG/PDF bundle. Validates the report, exact reference, TSS geometry and sequence hash; does not rescore or query DuckDB.").clicked()
                 && let Some(path) = rfd::FileDialog::new().add_filter("TSS profile JSON", &["json"]).pick_file()
             {
                 self.load_tss_profile(path, ui.ctx());
@@ -266,10 +407,10 @@ impl MainAreaDna {
                 if ui.button("Cancel attachment").on_hover_text("Ignore this worker's result; its bounded file read may still finish in the background.").clicked() {
                     self.tss_ui.profile_load = None;
                 }
-            } else if view.profile.is_some() && ui.button("Detach report").clicked() {
-                if let Some(base) = &self.tss_ui.annotations {
-                    self.tss_ui.document = Some(Ok(base.clone()));
-                }
+            } else if view.profile.is_some() && ui.add_enabled(!self.tss_ui.local_scores.running(), egui::Button::new("Detach report")).clicked() {
+                let mut detached = (*view).clone();
+                detached.clear_profile();
+                self.tss_ui.document = Some(Ok(Arc::new(detached)));
                 self.tss_ui.selected = None;
                 self.tss_ui.profile_error = None;
             }
@@ -285,11 +426,13 @@ impl MainAreaDna {
         } else {
             ui.small("Annotated file only: load report.json for complete TFBS curves and attached DuckDB hits. These cannot be reconstructed from stored peaks.");
         }
+        self.render_tss_local_scoring(ui, &view);
         ui.horizontal_wrapped(|ui| {
             ui.checkbox(&mut self.tss_ui.structures, "Exons / CDS");
             ui.checkbox(&mut self.tss_ui.signals, "CUT&RUN / chromatin");
             ui.checkbox(&mut self.tss_ui.motifs, "Stored motif peaks");
             ui.checkbox(&mut self.tss_ui.traces, "Report TFBS curves");
+            ui.checkbox(&mut self.tss_ui.local_traces, "Locally computed curves");
             ui.checkbox(&mut self.tss_ui.imported, "DuckDB peaks");
             ui.checkbox(&mut self.tss_ui.other, "Other annotations");
             ui.label("Filter lanes");
@@ -301,36 +444,20 @@ impl MainAreaDna {
                 ui.label(warning);
             }
             ui.label(&view.provenance);
+            if let Some(local) = &view.local_scoring {
+                ui.label(format!("Locally computed: {} | report SHA-256 {} | source {} | cache {} | producer {}", local.request.score_kind.as_str(), local.report_sha256, local.source_binding_sha256, local.cache_key_sha256, local.producer_revision));
+                ui.label("Model scores are not experimental binding or luciferase activity. Missing/ambiguous windows are gaps, not zero scores. No network or DuckDB query.");
+            }
             if let Some(profile) = &view.profile {
                 ui.label(format!("Report file SHA-256: {}", profile.file_sha256));
-                ui.label("Validated report contents and sequence binding, not a full receipt audit or independent reference authentication. Original annotated features remain unchanged; reporter constructs and native-view export are not supplied by this attachment.");
+                ui.label("Validated report contents and sequence binding, not a full receipt audit or independent reference authentication. Original annotated features remain unchanged; reporter constructs are not supplied by this attachment.");
                 for warning in &profile.warnings {
                     ui.label(warning);
                 }
             }
         });
 
-        let filter = self.tss_ui.filter.to_lowercase();
-        let lanes: Vec<usize> = view
-            .lanes
-            .iter()
-            .enumerate()
-            .filter(|(_, lane)| {
-                let enabled = match lane.kind {
-                    TssLaneKind::Structure => self.tss_ui.structures,
-                    TssLaneKind::Signal => self.tss_ui.signals,
-                    TssLaneKind::Motif => self.tss_ui.motifs,
-                    TssLaneKind::ScoreTrace => self.tss_ui.traces,
-                    TssLaneKind::ImportedMotif => self.tss_ui.imported,
-                    TssLaneKind::Other => self.tss_ui.other,
-                };
-                enabled
-                    && (filter.is_empty()
-                        || lane.label.to_lowercase().contains(&filter)
-                        || lane.id.to_lowercase().contains(&filter))
-            })
-            .map(|(i, _)| i)
-            .collect();
+        let lanes = self.tss_ui.visible_lanes(&view);
         ui.small(format!("{} / {} lanes visible. Hover for source intervals; displayed interval ends are not individual read ends.", lanes.len(), view.lanes.len()));
         let (start, span, _) = self.current_linear_viewport();
         let start = start.min(view.geometry.length().unwrap() - 1);
@@ -760,7 +887,7 @@ fn paint_trace(
                 if reverse {
                     egui::Color32::from_rgb(170, 70, 105)
                 } else {
-                    color(TssLaneKind::ScoreTrace)
+                    color(lane.kind)
                 },
             );
             let mut path = Vec::new();
@@ -895,9 +1022,14 @@ fn trace_selection(
         clipped: false,
         label: format!("{} | motif-window footprint", lane.label),
         details: format!(
-            "{}\n{}\nRaw + {} / - {} [{}]\nGenomic strand of local +: {}; of local -: {}. {}",
+            "{}\n{}\n{} + {} / - {} [{}]\nGenomic strand of local +: {}; of local -: {}. {}",
             view.coordinate_label(pos),
             view.coordinate_label(pos + trace.motif_length_bp - 1),
+            if lane.kind == TssLaneKind::LocalScoreTrace {
+                "Computed"
+            } else {
+                "Raw"
+            },
             value(forward),
             value(reverse),
             lane.units,
@@ -912,6 +1044,49 @@ fn trace_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tss_svg_snapshot_matches_lane_filters_and_refuses_stale_or_loading_views() {
+        let (dna, report) = crate::tss_sequence_view::profile_fixture(true);
+        let mut area = MainAreaDna::new(dna.clone(), None, None);
+        area.tss_view_available();
+        let view = Arc::new(
+            TssSequenceView::from_dna(&dna)
+                .unwrap()
+                .with_profile(&report)
+                .unwrap(),
+        );
+        area.tss_ui.document = Some(Ok(view.clone()));
+        area.tss_ui.traces = false;
+        area.tss_ui.filter = "MA0001.1".into();
+        let (_, options) = area.tss_svg_snapshot(ViewSvgExportProfile::Screen).unwrap();
+        assert_eq!(options.lane_indices, area.tss_ui.visible_lanes(&view));
+        assert!(!options.lane_indices.is_empty());
+        assert!(
+            options
+                .lane_indices
+                .iter()
+                .all(|&i| view.lanes[i].kind == TssLaneKind::ImportedMotif)
+        );
+        assert!(
+            crate::tss_sequence_view::render_tss_view_svg(&view, &options)
+                .unwrap()
+                .contains("data-lane-id=")
+        );
+        let (_, receiver) = std::sync::mpsc::channel();
+        area.tss_ui.profile_load = Some(ProfileLoad {
+            source: view,
+            receiver: Arc::new(Mutex::new(receiver)),
+        });
+        assert!(
+            area.tss_svg_snapshot(ViewSvgExportProfile::Screen)
+                .unwrap_err()
+                .contains("finish loading")
+        );
+        area.replace_loaded_sequence(crate::tss_sequence_view::tests::fixture(false));
+        assert!(area.tss_svg_snapshot(ViewSvgExportProfile::Screen).is_err());
+        assert!(area.tfbs_task.is_none());
+    }
 
     #[test]
     fn tss_profile_native_frame_preserves_raw_scores_and_window_start_selection() {

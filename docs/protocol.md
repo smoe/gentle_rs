@@ -559,6 +559,32 @@ Behavior notes:
 - `SummarizeTfbsScoreTracks` returns the structured per-position forward/reverse
   score arrays over a `SequenceScanTarget`, so the same report path works for
   stored `seq_id` spans and inline ASCII DNA.
+- Each track now supplies additive `score_validity.forward/reverse` boolean
+  arrays, aligned with its numeric arrays and `scored_window_count`. A false
+  slot is unavailable, not a zero score; its numeric value is a compatibility
+  placeholder. True zero (including explicit negative-score clipping) remains
+  valid. Legacy reports without masks, or malformed mask lengths, are
+  unassessed, not implicitly valid. Shared `score_at` accessors enforce this.
+  All-unavailable tracks have no maximum position, normalization or top peaks.
+  The existing non-negative `max_score`/positive `max_position_0based` peak
+  convention is unchanged: an evaluated all-zero track is valid but does not
+  acquire a positive peak or shared/cohort-conserved peak status.
+  Peaks exclude invalid slots; directional/correlation calculations omit
+  incomplete tracks without compacting positions or imputing zeros. Numeric-only
+  cohort, similarity and locus-track consumers fail with `InvalidInput` when
+  complete evaluability is required. SVG/GUI plots leave explicit gaps;
+  legacy/incomplete correlation figures are unavailable. The schema remains
+  `v1` with additive masks; consumers must honor them before numeric analysis.
+- Additive `scoring_provenance` binds the uppercase scored-span DNA SHA-256,
+  scorer policy ID, deterministic background length/seed and ordered resolved
+  matrices. Each matrix digest hashes JSON `(id, declared name, A/C/G/T count
+  columns)` actually used by the scorer, not a later registry lookup. Legacy
+  absence is unavailable. Native TSS local lanes require this binding and
+  validity masks, use the same `SummarizeTfbsScoreTracks` computation with an
+  explicit linear `InlineSequence`, and do not reinterpret attached evidence.
+  No new operation or request field is introduced; all adapters receive the
+  same additive score report. The native cache is a separate presentation cache,
+  not a persisted biological feature or an assay-readiness verdict.
 - motif tokens in `motifs[]` resolve through the same shared TF-query layer:
   - exact motif ids / TF names
   - aliases such as `OCT4`

@@ -1417,6 +1417,7 @@ pub struct MainAreaDna {
     primary_map_mode: PrimaryMapMode,
     dna_presentation_mode: DnaPresentationMode,
     tss_ui: tss_view::TssUiState,
+    tss_svg_export: Option<tss_view::SvgExportReceiver>,
     show_all_contextual_transcripts: bool,
     dotplot_ui: DotplotOpsUiState,
     dotplot_query_override_seq_id: String,
@@ -2308,6 +2309,7 @@ impl MainAreaDna {
             primary_map_mode: PrimaryMapMode::Standard,
             dna_presentation_mode: DnaPresentationMode::Region,
             tss_ui: tss_view::TssUiState::default(),
+            tss_svg_export: None,
             show_all_contextual_transcripts: false,
             dotplot_ui: DotplotOpsUiState::default(),
             dotplot_query_override_seq_id: String::new(),
@@ -6787,7 +6789,7 @@ impl MainAreaDna {
                 .on_hover_text(ViewSvgExportProfile::Screen.hover_text())
                 .clicked()
             {
-                self.export_active_view_svg(ViewSvgExportProfile::Screen);
+                self.export_active_view_svg(ViewSvgExportProfile::Screen, ui.ctx());
             }
             ui.menu_button(Self::tr("sequence.view_svg"), |ui| {
                 if ui
@@ -6795,7 +6797,7 @@ impl MainAreaDna {
                     .on_hover_text(ViewSvgExportProfile::WideContext.hover_text())
                     .clicked()
                 {
-                    self.export_active_view_svg(ViewSvgExportProfile::WideContext);
+                    self.export_active_view_svg(ViewSvgExportProfile::WideContext, ui.ctx());
                     ui.close();
                 }
                 if ui
@@ -6803,7 +6805,7 @@ impl MainAreaDna {
                     .on_hover_text(ViewSvgExportProfile::PrintA3Landscape.hover_text())
                     .clicked()
                 {
-                    self.export_active_view_svg(ViewSvgExportProfile::PrintA3Landscape);
+                    self.export_active_view_svg(ViewSvgExportProfile::PrintA3Landscape, ui.ctx());
                     ui.close();
                 }
                 ui.separator();
@@ -13101,9 +13103,15 @@ impl MainAreaDna {
             .map(|track| {
                 let label =
                     Self::promoter_design_track_label(&track.tf_id, track.tf_name.as_deref());
+                if track.scored_window_count == 0 {
+                    return format!("{label} no_windows");
+                }
+                if track.evaluated_strand_windows() == 0 {
+                    return format!("{label} unavailable_or_unassessed");
+                }
                 match track.max_position_0based {
                     Some(position) => format!("{label}@{position} {:.2}", track.max_score),
-                    None => format!("{label} no_windows"),
+                    None => format!("{label} no_positive_peak"),
                 }
             })
             .collect::<Vec<_>>();
@@ -22134,6 +22142,7 @@ impl MainAreaDna {
     }
 
     fn poll_tfbs_task(&mut self, ctx: &egui::Context) {
+        self.poll_tss_svg_export(ctx);
         if self.tfbs_task.is_none() {
             return;
         }
@@ -23172,9 +23181,9 @@ impl MainAreaDna {
         (expanded_start, expanded_span)
     }
 
-    fn export_active_view_svg(&mut self, profile: ViewSvgExportProfile) {
+    fn export_active_view_svg(&mut self, profile: ViewSvgExportProfile, ctx: &egui::Context) {
         if matches!(self.primary_map_mode, PrimaryMapMode::Tss) {
-            self.op_status = "Native TSS view export (including attached report lanes) is not yet available. Use the original receipt-bound TSS report export for quantitative SVG/PDF; switch to Standard map to export flat annotations.".into();
+            self.export_tss_view_svg(profile, ctx);
             return;
         }
         let Some(seq_id) = self.seq_id.clone() else {

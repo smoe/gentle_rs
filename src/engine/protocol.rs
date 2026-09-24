@@ -985,7 +985,9 @@ pub struct TfbsTrackSimilarityReport {
 ///
 /// `forward_scores[i]` and `reverse_scores[i]` correspond to the motif window
 /// that starts at `track_start_0based + i`. Scores may be clipped to `0.0`
-/// when the parent report requests positive-only display.
+/// when the parent report requests positive-only display. Numeric slots whose
+/// validity mask is false are placeholders, NOT zero scores. A missing/malformed
+/// mask in legacy input means validity is unknown; use `score_at` to read values.
 pub struct TfbsScoreTrackRow {
     pub tf_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -995,7 +997,9 @@ pub struct TfbsScoreTrackRow {
     pub motif_logo_columns: Vec<JasparExpertColumn>,
     pub track_start_0based: usize,
     pub scored_window_count: usize,
+    /// Historical non-negative peak summary, not a substitute for score validity.
     pub max_score: f64,
+    /// Location of the positive maximum; evaluated zero/negative tracks have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_position_0based: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1008,6 +1012,54 @@ pub struct TfbsScoreTrackRow {
     pub forward_scores: Vec<f64>,
     #[serde(default)]
     pub reverse_scores: Vec<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score_validity: Option<TfbsScoreTrackValidity>,
+}
+
+/// Per-strand evaluability at the original motif-window starts; no gap compaction.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TfbsScoreTrackValidity {
+    pub forward: Vec<bool>,
+    pub reverse: Vec<bool>,
+}
+
+impl TfbsScoreTrackRow {
+    pub fn score_at(&self, index: usize, reverse: bool) -> Option<f64> {
+        let validity = self.score_validity.as_ref()?;
+        if self.forward_scores.len() != self.scored_window_count
+            || self.reverse_scores.len() != self.scored_window_count
+            || validity.forward.len() != self.scored_window_count
+            || validity.reverse.len() != self.scored_window_count
+        {
+            return None;
+        }
+        let (values, mask) = if reverse {
+            (&self.reverse_scores, &validity.reverse)
+        } else {
+            (&self.forward_scores, &validity.forward)
+        };
+        let score = *values.get(index)?;
+        (mask.get(index) == Some(&true) && score.is_finite()).then_some(score)
+    }
+
+    pub fn fully_evaluated(&self) -> bool {
+        self.score_validity.as_ref().is_some_and(|v| {
+            v.forward.len() == self.scored_window_count
+                && v.reverse.len() == self.scored_window_count
+                && self.forward_scores.len() == self.scored_window_count
+                && self.reverse_scores.len() == self.scored_window_count
+        }) && (0..self.scored_window_count)
+            .all(|i| self.score_at(i, false).is_some() && self.score_at(i, true).is_some())
+    }
+
+    pub fn evaluated_strand_windows(&self) -> usize {
+        (0..self.scored_window_count)
+            .map(|i| {
+                usize::from(self.score_at(i, false).is_some())
+                    + usize::from(self.score_at(i, true).is_some())
+            })
+            .sum()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -1147,6 +1199,29 @@ pub struct TfbsScoreTrackReport {
     pub cross_strand_correlation_summary: Option<TfbsScoreTrackCrossStrandCorrelationSummary>,
     #[serde(default)]
     pub tracks: Vec<TfbsScoreTrackRow>,
+    /// Actual scorer inputs, not a claim that a locally resolved motif matches an external panel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scoring_provenance: Option<TfbsScoreTrackProvenance>,
+}
+
+/// Content identity of the matrices actually consumed by the shared scorer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TfbsScoreTrackMatrixBinding {
+    pub matrix_id: String,
+    pub matrix_name: Option<String>,
+    /// SHA-256 of JSON (resolved ID, declared name, ordered A/C/G/T count columns).
+    pub matrix_sha256: String,
+}
+
+/// Additive provenance; absent legacy values cannot authorize sequence-bound local lanes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TfbsScoreTrackProvenance {
+    pub scorer: String,
+    /// Uppercase DNA in the scored span, in scan orientation, without annotations.
+    pub sequence_sha256: String,
+    pub background_length_bp: usize,
+    pub background_seed: u64,
+    pub matrices: Vec<TfbsScoreTrackMatrixBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]

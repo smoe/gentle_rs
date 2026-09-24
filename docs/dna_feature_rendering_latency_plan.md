@@ -11,14 +11,16 @@ toggling feature layers, selecting and hovering. This plan changes *when*
 features appear, never *what* is shown: identical features, coordinates, labels,
 strands and scientific outputs.
 
-Implementation update, checked against `7aff63e1`: S0's density tools landed in
-`5893aa35` and are smoke-tested. Opt-in startup phase checkpoints (`d24c3fa7`)
-now cover app initialization, project loading and first root/DNA CPU frames;
-they do not confirm native presentation. Exact owner-selected boundary cases and
-the macOS cross-check remain pending, as do Glen's timed/native audit and the
-broader runtime slices. A bounded S2 simplification (`ee9eb483`) counts GC bins
-arithmetically instead of computing GC values just to discard them. It preserves
-half-open counts and does not claim a measured GUI speedup or completion of S2.
+Implementation update: S0's density tools landed in `5893aa35` and are
+smoke-tested. Opt-in startup phase checkpoints (`d24c3fa7`) cover app
+initialization, project loading and first root/DNA CPU frames; they do not
+confirm native presentation. The exact proposed 250 kbp / 5,000-feature
+boundary now includes explicit derived layers and content-bound workload checks.
+Owner scope choices, the macOS cross-check and Glen's timed/native audit remain
+pending. A bounded S2 simplification (`ee9eb483`) counts GC bins arithmetically
+instead of computing GC values just to discard them. It preserves half-open
+counts and does not claim a measured GUI speedup or completion of S2; broader
+runtime slices remain pending.
 B0 separates build feedback from runtime performance. The consolidated
 hypothesis ledger and S0 section below retain both updates. This plan does not
 change the `.11` candidate; counts of work are not timing evidence or performance
@@ -81,11 +83,12 @@ These two owner decisions were requested on 2026-09-21 and remain pending.
 Recommendations are not accepted performance promises:
 
 - **Interactive envelope:** recommend linear loci up to 250 kbp and 5,000
-  loaded features; retain 2 Mbp and 10,000 features as stress cases. If selected,
-  add at least the exact 250 kbp / 5,000-feature boundary with the same clustered
-  annotation and deferred/loaded-tree modes. The current 100/1,000/10,000 ladder
-  cannot certify that boundary by interpolation. Include representative visible
-  restriction/derived layers and record their counts, not only input features.
+  loaded features; retain 2 Mbp and 10,000 features as stress cases. The exact
+  250 kbp / 5,000-feature boundary is now available with the same clustered
+  annotation and deferred/loaded-tree modes, plus explicit synthetic restriction,
+  GC, ORF and methylation layers and their counts. This closes the fixture gap,
+  not the scope decision or timing gate. The original nine cases remain
+  comparable; their results alone cannot certify this boundary by interpolation.
 - **Circular scope:** recommend linear optimization first, with circular-map
   correctness and native interaction regression checks still required. If the
   owner instead requires circular optimization, agree its fixture envelope and
@@ -308,19 +311,26 @@ constructor benchmark cannot exonerate or explain process startup.
 - `dna_feature_latency` benchmarks the real `MainAreaDna` constructor, hydration,
   first frame with tree deferred/loaded, steady frame, one-base pan, zoom, mRNA
   layer toggle, feature selection, hover and three resize transitions. It emits
-  117 cases and 81 counter observations across all nine combinations of
-  20 kbp / 250 kbp / 2 Mbp and 100 / 1,000 / 10,000 features. Length and count
-  vary independently; the largest case is a stress probe, not an interactive
-  performance promise.
+  130 cases and 90 counter observations across all nine combinations of
+  20 kbp / 250 kbp / 2 Mbp and 100 / 1,000 / 10,000 features, plus the exact
+  250 kbp / 5,000-feature boundary. Length and count vary independently; the
+  largest case is a stress probe, not an interactive performance promise.
 - Each fixture binds exact sequence and feature bytes. The generator uses
   structured, overlapping plus/minus transcripts, CDS, exons, regulatory and
   repeat features, with half clustered in the first 5 kbp. It uses no private
   annotation, random state, network, prepared genome or binary fixture blob.
+- The additional boundary fixture has explicit synthetic cut-site/ORF/methylation
+  inputs and enabled derived layers. Untimed inventories reuse current toolbar
+  counts; absent/stale caches are unavailable, not zero. The old nine cases and
+  their identities are unchanged. One synthetic enzyme does not represent the
+  full restriction catalog; authentic workloads remain required.
 - `scripts/dna_feature_latency.py prepare` builds offline once and binds the
   executable, source/diff, toolchain, profile and lockfile. `run` rechecks that
   binary and executes it directly with isolated profile/cache/temp directories.
   Build time is separate; failure, timeout, raw logs and work tables are retained.
   Timed audits reject dirty-source or development-profile receipts.
+  Workload identity distinguishes legacy nine-fixture receipts from boundary
+  runs; exact Criterion case IDs must agree with the observation content hashes.
 - `GENTLE_DNA_CACHE_DIAGNOSTICS=1` exposes an opt-in DNA-viewer diagnostics pane.
   It is observation-only, reads renderer counters without waiting on its lock,
   contains no sequence/feature names, and writes nothing to project state.
@@ -341,8 +351,8 @@ replace engine-backed window/report hydration or real annotations.
 
 **Pending audit and exit criteria (Glen):**
 
-1. Resolve the owner admission decisions above and add the exact selected
-   boundary where the current ladder lacks it. Freeze a clean SHA and run two
+1. Resolve the owner admission decisions above; if a different envelope is
+   selected, add its exact boundary before acceptance. Freeze a clean SHA and run two
    prebuilt `bench-audit` repeats on a stable host. Retain the per-fixture,
    per-interaction tables, raw distributions and
    counter deltas; assess repeatability rather than treating two successful

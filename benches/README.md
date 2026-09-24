@@ -119,7 +119,9 @@ project/report hashes beside Criterion's results.
 The `.12` measurement foundation adds `dna_feature_latency` over the real
 `MainAreaDna` presentation path. It separates length from feature density: all
 nine combinations of 20,000 / 250,000 / 2,000,000 bp and 100 / 1,000 / 10,000
-features. The large cases are stress probes, not promised interactive limits.
+features, plus the exact proposed 250,000-bp / 5,000-feature interactive boundary.
+The large cases are stress probes, not promised interactive limits. The boundary
+is available for measurement; its inclusion is not owner approval or acceptance.
 
 **Fixture provenance and recreation:**
 `src/main_area_dna/latency_benchmark.rs::feature_density_fixture` generates exact
@@ -130,13 +132,29 @@ biological claims, private inputs, downloaded annotations or RNG state. Running
 the target recreates the fixtures and hashes the exact sequence/feature JSON.
 The helper and view-only controls compile only with `benchmark-support`.
 
-The 117 cases comprise constructor, hydration, first frame (deferred/loaded
+`feature_density_boundary_fixture` preserves that annotation geometry, and
+inserts the artificial string `GAATTCGATCCCAGGATG` + 120 `GCC` codons + `TAA`
+at position 100 and every 9,973 bp thereafter (zero-based). It configures one
+synthetic `GAATTC` cutter (cut 1, overlap 4), both Dam/Dcm motif scans and visible
+restriction/GC/ORF/methylation layers. This creates a nonempty derived workload
+without changing the original nine fixtures or claiming real biology. The new
+fixture digest additionally binds the enzyme definition and methylation mode.
+One synthetic enzyme is not a full-catalog performance test: retain authentic
+TP73/PATZ1 cases and their configured layer/catalog counts as separate evidence.
+
+The 130 cases comprise constructor, hydration, first frame (deferred/loaded
 tree), steady, one-base pan, zoom, mRNA toggle, selection, hover, and resize from
 1200x800 to 820x520, 1600x1000 and 1920x1080. Each interaction also emits untimed
-before/after cache counters, for 81 observations. Sequence/feature hashes must
+before/after cache counters, for 90 observations. Sequence/feature hashes must
 remain unchanged. The synthetic run has no engine, locus-report hydration,
 native window, actual X11 click, GPU, or compositor. Use `gui_operations` above
 for engine-backed TP73/PATZ1 window cases and native acceptance for the rest.
+Each observation also includes current before/after layer inventories: total
+and viewport-eligible restriction groups, GC bins, ORFs and methylation sites,
+their enabled flags, bin size and viewport. These are shared-toolbar counts,
+not pixel visibility or readiness claims. Reading them does not populate a
+cache or alter the measured counters. Missing/stale inventories fail the run;
+empty or disabled derived layers invalidate the new boundary case.
 
 Build **once**, separately from runtime, with no network access:
 
@@ -169,11 +187,22 @@ bytes/hash, `work.tsv` deltas and,
 for an audit, raw Criterion artifacts and estimate hashes. The runner isolates
 HOME/XDG/temp/cache paths, removes inherited `GENTLE_*` options, disables the
 optional diagnostics pane/profiler, and records host/locale/thread settings.
-It verifies all nine fixtures and all nine interaction records; missing,
-duplicate, wrong-revision or inconsistent-fixture records fail. Timeouts and
+It verifies all ten fixtures and all nine interactions per fixture; missing,
+duplicate, wrong-revision or inconsistent-fixture records fail. Audit estimates
+must match all 130 content-bound Criterion case IDs, not just a file count.
+`work.tsv` includes viewport-eligible layer counts; full inventories remain in
+`run.json`. Timeouts and
 child failures retain their receipt and are never successes. Build or source
 identity changes require a new build receipt. Do not edit the tree during
 preparation. Native input-to-content latency is explicitly **not measured**.
+
+The binary, build receipt and observations declare `density_boundary_v1`.
+Older binaries/receipts without that field retain their `density_ladder_v1`
+identity (117 cases, 81 observations). The runner can replay them, but records
+`interactive_boundary_exercised=false`; they cannot certify the boundary by
+interpolation. A receipt/binary workload mismatch fails before execution. Even
+`interactive_boundary_exercised=true` is only a completed workload, not a timing
+pass; the run mode distinguishes smoke from an audit.
 
 The diagnostics pane and Puffin scopes are described in `docs/gui.md`;
 `docs/dna_feature_rendering_latency_plan.md` retains the conditional optimization
