@@ -1,0 +1,44 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "tss_regulatory_view_gui",
+  "title": "Inspect TFBS scores and regulatory evidence at one annotated TSS",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
+      "caption": "Native TSS / Regulatory view before profile attachment: annotation, structure and signal remain distinct from a complete score trace.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-24"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
+      "caption": "The lower part of the same viewer after attaching its hash-bound profile report; the report-provided MA0004.1 lane is present without rescoring or a database query, and this tiny fixture's negative scores are explicitly clipped to a flat zero display trace.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-24"
+    }
+  ],
+  "catalog": {
+    "order": 94,
+    "path": "docs/tutorial/08-16_tss_regulatory_view_gui.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "agent_users",
+      "regulatory_analysis",
+      "wet_lab_biologists"
+    ],
+    "notes": "Offline synthetic native TSS-view walkthrough. Opens an annotated minus-strand TSS, distinguishes structure, CUT&RUN-style signal and stored motif peaks, then attaches a hash-bound TFBS score report through the same GUI-hosted Agent Assistant/inner-agent route. Headless and sequence-local shells retain an unapplied typed UI intent. No rescoring, database query, binding claim or biological TSS preference.",
+    "estimated_minutes": 10,
+    "difficulty": "intermediate",
+    "network": "offline",
+    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI intent receipt"],
+    "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
+    "produces": ["interactive native TSS evidence view"],
+    "group": "08",
+    "group_position": 16
+  }
+}

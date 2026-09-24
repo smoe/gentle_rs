@@ -100,6 +100,12 @@ impl Window {
         }
     }
 
+    pub(crate) fn queue_tss_profile(&mut self, path: std::path::PathBuf) -> Result<(), String> {
+        match self {
+            Self::Dna(window) => window.queue_tss_profile(path),
+        }
+    }
+
     pub(crate) fn focus_tata_boxes(&mut self) {
         match self {
             Self::Dna(window) => window.focus_tata_boxes(),

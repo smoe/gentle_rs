@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-24 - TSS Tutorial Integration Portability
+
+- Merge Glen's `09c4196f`, retaining native display evidence bound to `99563576`
+  rather than claiming it verifies the merged revision.
+- Pin the two hash-bound TSS semantic snapshots to LF as well as the retained
+  report inputs. Add a checkout regression covering all eight evidence hashes
+  in LF/CRLF modes and a missing-rule control for the snapshots. Existing
+  evidence bytes and hashes are unchanged; a file-scoped whitespace exception
+  preserves the receipt-bound GenBank export's padded ORIGIN line.
+- No local builds or tests run at the owner's request; merged-revision CI and
+  native GUI verification remain pending.
+
 ## 2026-09-24 - Packaged-Profile Latency Acceptance
 
 - Define native "release-like" acceptance as the packaged `--release` GUI;
@@ -55,6 +67,20 @@
 - On macOS, nine focused GC/layer/cache Rust tests, twelve audit-runner Python
   tests, locked offline `cargo check`, formatting and whitespace checks pass.
   Native GUI, Windows and timed auditor acceptance were not run.
+
+## 2026-09-23 - Native TSS Evidence Tutorial And Report-Attachment Parity
+
+- Split the regulatory teaching path by question: tutorial 08.13 now focuses on
+  PWM/PSSM score interpretation, 08.15 retains collection derivation/lifecycle,
+  and new 08.16 teaches native per-TSS inspection with public synthetic inputs.
+- Add `ui open|focus tss-view --report REPORT_JSON` so GUI Shell and reviewed
+  inner-agent suggestions use the same bounded, hash/geometry-validating report
+  attachment as **Load TSS profile report...**. It targets only the active
+  annotated TSS viewer and performs no rescoring or evidence query.
+- Retain separate screenshots before/after profile attachment and distinguish
+  annotation, CUT&RUN/chromatin signal, stored motif peaks, score curves and
+  unavailable evidence. The native viewer remains a per-TSS peer; integrated
+  whole-locus PDF composition remains a separate publication path.
 
 ## 2026-09-23 - CLI Service Parity Registry Isolation
 

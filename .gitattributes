@@ -20,6 +20,7 @@ docs/tutorial/manifest.json text eol=lf
 # Public GUI evidence records exact hashes for these LF-authored text artifacts.
 docs/screenshots/gene_assay_study_gui/*.snapshot.json text eol=lf
 docs/screenshots/gene_assay_study_gui/*.context.svg text eol=lf
+docs/screenshots/tss_regulatory_view_gui/*.snapshot.json text eol=lf
 
 test_files/fixtures/transcript_assay_panel/patz1_reference/* text eol=lf
 # Preserve the exact hash-bound NCBI response, including its final blank line.
@@ -40,6 +41,11 @@ test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.b
 
 # TSS manifests and context receipts bind these exact fixture bytes.
 test_files/fixtures/tss_profiles/** text eol=lf
+
+# The native TSS-view tutorial retains hash-bound JSON and annotated GenBank inputs.
+docs/tutorial/reproducibility/tss_regulatory_view_gui/** text eol=lf
+# Keep the hash-bound export's padded GenBank ORIGIN line byte-identical.
+docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb whitespace=-blank-at-eol
 
 # This retained adapter output is compared byte-for-byte with LF serialization.
 test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation/* text eol=lf

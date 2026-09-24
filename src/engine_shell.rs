@@ -1735,6 +1735,10 @@ pub enum ShellCommand {
         action: UiIntentAction,
         collection_id: String,
     },
+    UiTssProfile {
+        action: UiIntentAction,
+        report_path: String,
+    },
     UiSequenceSelection {
         seq_id: String,
         start_0based: Option<usize>,
@@ -9346,6 +9350,14 @@ impl ShellCommand {
                 "request GUI {} for TSS collection '{}'",
                 action.as_str(),
                 collection_id
+            ),
+            Self::UiTssProfile {
+                action,
+                report_path,
+            } => format!(
+                "request GUI {} for active TSS view with profile report '{}'",
+                action.as_str(),
+                report_path
             ),
             Self::UiSequenceWindow { action, seq_id } => {
                 format!(
@@ -40739,11 +40751,24 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     .is_some_and(|s| UiIntentTarget::parse(s) == Some(UiIntentTarget::TssView))
                 && tokens.len() > 3 =>
         {
-            if tokens.len() != 5 || tokens[3] != "--collection" || tokens[4].trim().is_empty() {
-                return Err("ui open|focus|close tss-view --collection COLLECTION_ID".into());
+            if tokens.len() != 5 || tokens[4].trim().is_empty() {
+                return Err("ui open|focus|close tss-view --collection COLLECTION_ID, or ui open|focus tss-view --report REPORT_JSON".into());
+            }
+            let action = UiIntentAction::parse(action_raw).unwrap();
+            if tokens[3] == "--report" {
+                if matches!(action, UiIntentAction::Close) {
+                    return Err("ui close tss-view --report is not supported; use ui close tss-view to return to the Standard map".into());
+                }
+                return Ok(ShellCommand::UiTssProfile {
+                    action,
+                    report_path: tokens[4].clone(),
+                });
+            }
+            if tokens[3] != "--collection" {
+                return Err("ui open|focus|close tss-view --collection COLLECTION_ID, or ui open|focus tss-view --report REPORT_JSON".into());
             }
             Ok(ShellCommand::UiTssCollection {
-                action: UiIntentAction::parse(action_raw).unwrap(),
+                action,
                 collection_id: tokens[4].clone(),
             })
         }
@@ -67100,6 +67125,7 @@ fn execute_ui_command(
                         "ui open sequence-window SEQ_ID",
                         "ui open|focus|close splicing-expert SEQ_ID FEATURE_ID",
                         "ui open|focus|close tss-view --collection COLLECTION_ID",
+                        "ui open|focus tss-view --report REPORT_JSON",
                         "ui focus sequence-window SEQ_ID",
                         "ui close sequence-window SEQ_ID",
                         "ui selection sequence-window SEQ_ID [--range START..END]",
@@ -67222,6 +67248,22 @@ fn execute_ui_command(
                 }),
             })
         }
+        ShellCommand::UiTssProfile {
+            action,
+            report_path,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tss_profile_intent.v1",
+                "applied": false,
+                "ui_intent": {
+                    "target": "tss-view",
+                    "action": action.as_str(),
+                    "report_path": report_path
+                },
+                "message": "UI intent recorded; the active annotated TSS viewer must validate and attach this report. No scoring or database query is performed."
+            }),
+        }),
         ShellCommand::UiSplicingExpert {
             action,
             seq_id,
@@ -68189,6 +68231,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::UiSequenceWindow { .. }
             | ShellCommand::UiSplicingExpert { .. }
             | ShellCommand::UiTssCollection { .. }
+            | ShellCommand::UiTssProfile { .. }
             | ShellCommand::UiSequenceSelection { .. }
             | ShellCommand::UiPreparedGenomes { .. }
             | ShellCommand::UiLatestPrepared { .. }
@@ -68896,6 +68939,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UiSequenceWindow { .. }
         | ShellCommand::UiSplicingExpert { .. }
         | ShellCommand::UiTssCollection { .. }
+        | ShellCommand::UiTssProfile { .. }
         | ShellCommand::UiSequenceSelection { .. }
         | ShellCommand::UiPreparedGenomes { .. }
         | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,

@@ -141,6 +141,51 @@ class TutorialCheckoutTests(unittest.TestCase):
                     self.assertEqual(checked_out, payload)
                     self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
 
+    def test_tss_regulatory_gui_evidence_hashes_survive_both_checkout_modes(self):
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        evidence = json.loads((checker.ROOT /
+            "docs/screenshots/tss_regulatory_view_gui/evidence.json").read_bytes())
+        records = list(evidence["inputs"].values())
+        records.append(evidence["agent_assistant"]["checkpoint"])
+        for capture in evidence["captures"]:
+            records.extend(capture[field] for field in ("raw_png", "semantic_snapshot"))
+        expected = {}
+        for record in records:
+            relative = Path(record["path"])
+            payload = (checker.ROOT / relative).read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), record["sha256"])
+            expected[relative] = (payload, record["sha256"])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        self.assertEqual(len(expected), 8)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained synthetic TSS GUI evidence")
+
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if b"docs/screenshots/tss_regulatory_view_gui/" not in line
+        )
+        broken = Path(self.tmp.name) / "tss-evidence-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertEqual(
+            sorted(relative for relative, (payload, _) in expected.items()
+                   if (broken / relative).read_bytes() != payload),
+            sorted(Path(capture["semantic_snapshot"]["path"])
+                   for capture in evidence["captures"]),
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"tss-evidence-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload,
+                                     f"{relative} needs a scoped .gitattributes LF rule")
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
     def test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes(self):
         relative = "docs/gui_cli_mcp_parity.md"
         payload = (checker.ROOT / relative).read_bytes()

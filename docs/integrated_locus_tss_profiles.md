@@ -39,6 +39,21 @@ similarity. CUT&RUN context beside JASPAR traces is supported on the latter when
 the context manifest is supplied; shading a window in the overview alone does
 not populate context or rescore its DNA.
 
+## Interactive GUI peer
+
+The native DNA-window **TSS / Regulatory** mode is the interactive peer for
+inspecting **one selected annotated TSS**. It renders the bound exon/CDS,
+CUT&RUN/chromatin, stored motif and other annotation lanes, then can attach the
+matching `report.json` to add complete score curves and imported sparse motif
+evidence. Use **Load TSS profile report...** or the same host operation through
+`ui open tss-view --report REPORT_JSON`. Attachment validates the exact
+reference, TSS geometry and sequence hash and performs no rescoring or database
+query. See [tutorial 08.16](tutorial/08-16_tss_regulatory_view_gui.md).
+
+This is not a hidden whole-gene compositor. The complete-locus page, deterministic
+selected-TSS page ordering, multipage PDF, selected FASTA and publication
+receipt remain responsibilities of the export/composition path documented here.
+
 The composer also writes one selected-TSS FASTA per gene. It contains exactly
 the transcript-oriented -500/+200 records shown on the detailed pages, in the
 same order and with their original bound headers. It is a filtered projection of

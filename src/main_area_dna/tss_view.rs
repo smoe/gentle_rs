@@ -20,6 +20,7 @@ pub(super) struct TssUiState {
     document: Option<LoadedView>,
     annotations: Option<Arc<TssSequenceView>>,
     profile_load: Option<ProfileLoad>,
+    requested_profile_path: Option<std::path::PathBuf>,
     profile_error: Option<String>,
     structures: bool,
     signals: bool,
@@ -40,6 +41,7 @@ impl Default for TssUiState {
             document: None,
             annotations: None,
             profile_load: None,
+            requested_profile_path: None,
             profile_error: None,
             structures: true,
             signals: true,
@@ -105,6 +107,19 @@ impl MainAreaDna {
             PrimaryMapMode::Standard
         };
         self.save_engine_ops_state();
+        Ok(())
+    }
+
+    /// Queue the same profile attachment used by the native file-picker path.
+    ///
+    /// Validation remains inside `TssSequenceView::load_profile`; this adapter
+    /// neither scores motifs nor queries external evidence.
+    pub(crate) fn queue_tss_profile(&mut self, path: std::path::PathBuf) -> Result<(), String> {
+        if path.as_os_str().is_empty() {
+            return Err("TSS profile report path must not be empty".into());
+        }
+        self.set_tss_view(true)?;
+        self.tss_ui.requested_profile_path = Some(path);
         Ok(())
     }
 
@@ -204,8 +219,26 @@ impl MainAreaDna {
     }
 
     pub(super) fn render_primary_tss_map_ui(&mut self, ui: &mut egui::Ui) {
+        // The primary-map host may use a horizontal layout for its other map
+        // implementations.  The TSS evidence view is a document-like stack;
+        // establish that layout explicitly so controls and lanes cannot be
+        // pushed beyond the right edge of the native viewport.
+        ui.vertical(|ui| self.render_primary_tss_map_contents(ui));
+    }
+
+    fn render_primary_tss_map_contents(&mut self, ui: &mut egui::Ui) {
         self.poll_tss_view(ui.ctx());
         self.poll_tss_profile(ui.ctx());
+        if self.tss_ui.profile_load.is_none()
+            && self
+                .tss_ui
+                .document
+                .as_ref()
+                .is_some_and(|document| document.is_ok())
+            && let Some(path) = self.tss_ui.requested_profile_path.take()
+        {
+            self.load_tss_profile(path, ui.ctx());
+        }
         let Some(document) = self.tss_ui.document.clone() else {
             ui.spinner();
             ui.label("Checking TSS sequence binding and grouping evidence...");
@@ -988,6 +1021,60 @@ mod tests {
     }
 
     #[test]
+    fn shared_profile_intent_uses_the_native_attachment_path() {
+        let (dna, report) = crate::tss_sequence_view::profile_fixture(false);
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("report.json");
+        std::fs::write(&path, serde_json::to_vec(&report).unwrap()).unwrap();
+        let mut area = MainAreaDna::new(dna.clone(), None, None);
+        area.tss_view_available();
+        area.tss_ui.document = Some(Ok(Arc::new(TssSequenceView::from_dna(&dna).unwrap())));
+        area.queue_tss_profile(path).unwrap();
+        assert_eq!(area.primary_map_mode, PrimaryMapMode::Tss);
+
+        let ctx = egui::Context::default();
+        let deadline = Instant::now() + std::time::Duration::from_secs(5);
+        while area
+            .tss_ui
+            .document
+            .as_ref()
+            .and_then(|document| document.as_ref().ok())
+            .is_none_or(|document| document.profile.is_none())
+            && Instant::now() < deadline
+        {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1000.0, 900.0),
+                )),
+                ..Default::default()
+            });
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| area.render_primary_tss_map_ui(ui),
+            );
+            let _ = crate::egui_compat::end_test_pass(&ctx);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(area.tss_ui.requested_profile_path.is_none());
+        assert!(area.tss_ui.profile_load.is_none());
+        assert!(area.tss_ui.profile_error.is_none());
+        assert!(
+            area.tss_ui
+                .document
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .profile
+                .is_some()
+        );
+        assert!(area.cached_tfbs_score_tracks.is_none());
+        assert!(area.cached_genomic_motif_evidence.is_none());
+    }
+
+    #[test]
     fn tss_profile_worker_failure_or_stale_result_keeps_current_document() {
         let (dna, report) = crate::tss_sequence_view::profile_fixture(false);
         let base = Arc::new(TssSequenceView::from_dna(&dna).unwrap());
@@ -1070,5 +1157,38 @@ mod tests {
                 assert!(area.tss_ui.pending.is_none());
             }
         }
+    }
+
+    #[test]
+    fn tss_view_establishes_a_vertical_document_layout_inside_horizontal_host() {
+        let dna = crate::tss_sequence_view::tests::fixture(false);
+        let mut area = MainAreaDna::new(dna.clone(), None, None);
+        area.tss_view_available();
+        area.tss_ui.document = Some(Ok(Arc::new(TssSequenceView::from_dna(&dna).unwrap())));
+        let ctx = egui::Context::default();
+        let mut used = egui::Rect::NOTHING;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(900.0, 700.0),
+            )),
+            ..Default::default()
+        });
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                ui.horizontal(|ui| {
+                    area.render_primary_tss_map_ui(ui);
+                    used = ui.min_rect();
+                });
+            },
+        );
+        let _ = crate::egui_compat::end_test_pass(&ctx);
+        assert!(used.height() > 250.0, "TSS document collapsed to {used:?}");
+        assert!(
+            used.width() <= 900.0,
+            "TSS document escaped viewport: {used:?}"
+        );
     }
 }

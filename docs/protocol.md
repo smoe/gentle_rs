@@ -13593,6 +13593,16 @@ only a GUI host applies the intent. The shared catalog exposes the destination
 to the inner agent and other adapters. See [display semantics and current
 scope](gui.md#tss--regulatory-dna-display).
 
+`ui open|focus tss-view --report REPORT_JSON` returns
+`gentle.ui_tss_profile_intent.v1`. In a GUI host it targets only the active
+annotated TSS DNA viewer, queues the native bounded report loader and focuses
+that viewport. The loader validates report structure, reference identity, exact
+TSS/window geometry, sequence digest, matrix/imported-report hashes and score
+array bounds before replacing the displayed attachment. It does not score,
+query evidence or mutate project sequence data. A missing/unsupported active
+viewer or failed report leaves existing evidence unchanged. Headless execution
+retains `applied=false`; `ui close tss-view --report` is deliberately invalid.
+
 ### Prepared Transcript Index Availability
 
 Whole prepared-genome transcript inventories (`GenomeCatalog::list_all_transcript_records`)

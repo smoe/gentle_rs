@@ -163,6 +163,7 @@ mod command_tests {
             "helpers blast-list",
             "genomes blast-status blast-job-1",
             "genomes blast-cancel blast-job-1",
+            "ui open tss-view --report report.json",
         ] {
             assert_eq!(
                 GENtleApp::agent_prompt_direct_shell_command(command),
@@ -286,6 +287,9 @@ impl GENtleApp {
     pub(super) fn open_agent_assistant_dialog(&mut self) {
         self.refresh_agent_system_catalog();
         let was_open = self.show_agent_assistant_dialog;
+        if !was_open {
+            self.agent_assistant_subject = Some(self.capture_palette_subject());
+        }
         self.show_agent_assistant_dialog = true;
         self.mark_window_open_or_focus(Self::agent_assistant_viewport_id(), was_open);
     }
@@ -2100,6 +2104,7 @@ impl GENtleApp {
         } else if trimmed.len() <= 1024 * 1024
             && parse_shell_line(trimmed).is_ok_and(|command| {
                 crate::command_execution::CommandExecutionService::manages(&command)
+                    || Self::shell_command_is_hosted_ui_intent(&command)
                     || command.is_blast_job_command()
             })
         {
@@ -2107,6 +2112,22 @@ impl GENtleApp {
         } else {
             None
         }
+    }
+
+    fn shell_command_is_hosted_ui_intent(command: &ShellCommand) -> bool {
+        matches!(
+            command,
+            ShellCommand::UiSplicingExpert { .. }
+                | ShellCommand::UiTssCollection { .. }
+                | ShellCommand::UiTssProfile { .. }
+                | ShellCommand::UiRecentProject { .. }
+                | ShellCommand::UiTutorialProject { .. }
+                | ShellCommand::UiTutorialGuide { .. }
+                | ShellCommand::UiConfiguration { .. }
+                | ShellCommand::UiSequenceWindow { .. }
+                | ShellCommand::UiSequenceSelection { .. }
+                | ShellCommand::UiIntent { .. }
+        )
     }
 
     fn agent_prompt_bare_absolute_path_hint(prompt: &str) -> Option<String> {
@@ -3504,6 +3525,13 @@ impl GENtleApp {
         {
             return Some(self.start_tss_collection_intent(*action, collection_id));
         }
+        if let ShellCommand::UiTssProfile {
+            action: _,
+            report_path,
+        } = command
+        {
+            return Some(self.apply_tss_profile_intent(report_path));
+        }
         if let ShellCommand::UiRecentProject { item_id } = command {
             return Some(self.apply_recent_project_intent(item_id));
         }
@@ -4110,6 +4138,31 @@ impl GENtleApp {
                 )
             }
             Err(error) => format!("TSS view not changed: {error}"),
+        }
+    }
+
+    fn apply_tss_profile_intent(&mut self, report_path: &str) -> String {
+        let Some((seq_id, _)) = self.active_dna_window_context() else {
+            return "TSS profile not attached: activate the intended annotated TSS DNA viewer first (ui focus sequence-window SEQ_ID). No sequence is selected implicitly.".into();
+        };
+        let Some(viewport) = self.find_open_sequence_viewport_id(&seq_id) else {
+            return "TSS profile not attached: active DNA window is unavailable".into();
+        };
+        let path = std::path::PathBuf::from(report_path);
+        let result = self
+            .windows
+            .get(&viewport)
+            .and_then(|window| window.write().ok())
+            .ok_or_else(|| "Could not access DNA window".to_string())
+            .and_then(|mut window| window.queue_tss_profile(path));
+        match result {
+            Ok(()) => {
+                self.queue_focus_viewport(viewport);
+                format!(
+                    "Queued TSS profile report for '{seq_id}'; the viewer will validate reference, TSS geometry and sequence hash before display. No scoring or database query was started"
+                )
+            }
+            Err(error) => format!("TSS profile not attached: {error}"),
         }
     }
 

@@ -1494,7 +1494,7 @@ fn agent_ensembl_fetch_no_open_flag_suppresses_auto_open_only_for_gene_fetch() {
 }
 
 #[test]
-fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
+fn agent_prompt_direct_shell_command_detects_control_and_hosted_ui_commands_only() {
     assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("  /list  "),
         Some("/list")
@@ -1520,6 +1520,12 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
         Some("/undo")
     );
     assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command(
+            "ui open tss-view --report docs/tutorial/profile-report.json"
+        ),
+        Some("ui open tss-view --report docs/tutorial/profile-report.json")
+    );
+    assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("help me retrieve FUS"),
         None
     );
@@ -1535,6 +1541,12 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
     );
     assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("Please explain /list"),
+        None
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command(
+            "Please run ui open tss-view --report docs/tutorial/profile-report.json"
+        ),
         None
     );
     let document_path = std::env::temp_dir().join("roadmap.md");
@@ -17968,6 +17980,47 @@ fn tss_view_ui_intent_targets_active_dna_and_fails_without_context() {
             .state()
             .sequences
             .contains_key("toy_tss")
+    );
+}
+
+#[test]
+fn tss_profile_ui_intent_targets_only_the_active_annotated_tss_window() {
+    let command = parse_shell_line("ui open tss-view --report report.json").unwrap();
+    let mut app = GENtleApp::default();
+    assert!(
+        app.try_apply_shell_ui_intent(&command)
+            .unwrap()
+            .contains("activate")
+    );
+
+    let dna = crate::tss_sequence_view::tests::fixture(false);
+    let viewport = egui::ViewportId::from_hash_of("tss_profile_intent_test");
+    let key = GENtleApp::native_menu_key_for_viewport(viewport);
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .insert("toy_tss".into(), dna.clone());
+    app.windows.insert(
+        viewport,
+        Arc::new(RwLock::new(Window::new_dna(
+            dna,
+            "toy_tss".into(),
+            app.engine.clone(),
+        ))),
+    );
+    app.native_window_key_to_viewport.insert(key, viewport);
+    app.active_window_menu_key = Some(key);
+    app.open_agent_assistant_dialog();
+    app.active_window_menu_key = Some(GENtleApp::native_menu_key_for_viewport(
+        GENtleApp::agent_assistant_viewport_id(),
+    ));
+    let message = app.try_apply_shell_ui_intent(&command).unwrap();
+    assert!(message.contains("Queued TSS profile report"), "{message}");
+    assert!(
+        message.contains("No scoring or database query"),
+        "{message}"
     );
 }
 

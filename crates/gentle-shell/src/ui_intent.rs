@@ -223,7 +223,7 @@ const UI_INTENT_ARGUMENT_CONFIGURATION_SECTION: UiIntentArgument = UiIntentArgum
 };
 const UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT: [&str; 1] = ["genome_id"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_NONE: [&str; 0] = [];
-const UI_INTENT_OPTIONAL_ARGUMENTS_TSS: [&str; 1] = ["collection_id"];
+const UI_INTENT_OPTIONAL_ARGUMENTS_TSS: [&str; 2] = ["collection_id", "report_path"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION: [&str; 1] = ["section"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "genome_id",
@@ -248,11 +248,18 @@ const UI_INTENT_ARGUMENTS_SPLICING: [UiIntentArgument; 2] = [
         detail: "Zero-based feature id from features query; selects the same splicing group as inspect-feature-expert SEQ_ID splicing FEATURE_ID.",
     },
 ];
-const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 1] = [UiIntentArgument {
-    name: "collection_id",
-    required: false,
-    detail: "Use --collection COLLECTION_ID for a materialized TSS collection; opens/focuses/closes up to 32 explicit member windows instead of using the active viewer.",
-}];
+const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 2] = [
+    UiIntentArgument {
+        name: "collection_id",
+        required: false,
+        detail: "Use --collection COLLECTION_ID for a materialized TSS collection; opens/focuses/closes up to 32 explicit member windows instead of using the active viewer.",
+    },
+    UiIntentArgument {
+        name: "report_path",
+        required: false,
+        detail: "Use --report REPORT_JSON with open/focus to attach the same bound TSS profile report as the GUI file-picker path. The active annotated TSS viewer validates reference, geometry and sequence hash; no rescoring or database query is performed.",
+    },
+];
 const UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID: [UiIntentArgument; 1] =
     [UI_INTENT_ARGUMENT_RECENT_OR_CHAPTER_ID];
 const UI_INTENT_ARGUMENTS_TUTORIAL_ID: [UiIntentArgument; 1] = [UI_INTENT_ARGUMENT_TUTORIAL_ID];
@@ -436,7 +443,7 @@ impl UiIntentTarget {
                 "Mark imported gel lanes and bands, confirm ladder sizes, and export measured results."
             }
             Self::TssView => {
-                "Inspect the active annotated TSS DNA window, or use --collection ID to open/focus/close up to 32 materialized TSS windows without active-viewer dependence. Argument-free close returns to Standard map; collection-close retains sequence records; no rescoring."
+                "Inspect the active annotated TSS DNA window, use --report REPORT_JSON to attach its bound score/evidence profile, or use --collection ID to open/focus/close up to 32 materialized TSS windows without active-viewer dependence. Argument-free close returns to Standard map; collection-close retains sequence records; report attachment does no rescoring."
             }
             Self::OpenSequence => "Open a FASTA, GenBank, EMBL, SnapGene, or XML sequence file.",
             Self::RecentProject => {
@@ -486,7 +493,7 @@ impl UiIntentTarget {
             }
             Self::GelImageEditor => "gel image agarose western SDS ladder band sizing bp kDa",
             Self::TssView => {
-                "tss transcript starts collection promoter regulatory cutrun chromatin motif annotated sequence viewer Transkriptionsstartstellen"
+                "tss transcript starts collection promoter regulatory cutrun chromatin motif profile report annotated sequence viewer Transkriptionsstartstellen"
             }
             Self::OpenSequence => "open sequence import file fasta genbank snapgene embl xml",
             Self::RecentProject => "open recent previous saved project continue",
@@ -901,9 +908,11 @@ mod tests {
                 // A display-mode transition lives in the DNA toolbar, not a new global menu.
                 assert_eq!(row.menu_path, "DNA viewer");
                 assert_eq!(row.actions, ["open", "focus", "close"]);
-                assert_eq!(row.arguments.len(), 1);
+                assert_eq!(row.arguments.len(), 2);
                 assert_eq!(row.arguments[0].name, "collection_id");
                 assert!(!row.arguments[0].required);
+                assert_eq!(row.arguments[1].name, "report_path");
+                assert!(!row.arguments[1].required);
             } else {
                 assert!(
                     known_menus.contains(row.menu_path),
