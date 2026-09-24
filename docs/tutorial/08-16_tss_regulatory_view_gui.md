@@ -115,7 +115,12 @@ you want the project GUI host to attach the report to its active viewer.
 > and command before execution, and report the binding validation result. Do
 > not rescore motifs or query DuckDB.
 
-![Native TSS view after attaching the bound profile report](../screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png)
+![Lower native TSS view after attaching the bound profile report](../screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png)
+
+The retained screenshot is scrolled to the report-provided `MA0004.1` lane.
+This deliberately tiny fixture yields a flat zero display trace because its
+negative model scores are clipped for display; the viewer states that result
+explicitly rather than mistaking the flat trace for a missing report.
 
 ## 4. Read the lanes without merging their meanings
 

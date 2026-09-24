@@ -8,14 +8,14 @@
       "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
       "caption": "Native TSS / Regulatory view before profile attachment: annotation, structure and signal remain distinct from a complete score trace.",
       "illustrates_step": 2,
-      "capture_date": "2026-09-23"
+      "capture_date": "2026-09-24"
     },
     {
       "kind": "screenshot",
       "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
-      "caption": "The same viewer after attaching its hash-bound profile report; score curves are added without rescoring or a database query.",
+      "caption": "The lower part of the same viewer after attaching its hash-bound profile report; the report-provided MA0004.1 lane is present without rescoring or a database query, and this tiny fixture's negative scores are explicitly clipped to a flat zero display trace.",
       "illustrates_step": 3,
-      "capture_date": "2026-09-23"
+      "capture_date": "2026-09-24"
     }
   ],
   "catalog": {

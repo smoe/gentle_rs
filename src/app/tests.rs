@@ -1494,7 +1494,7 @@ fn agent_ensembl_fetch_no_open_flag_suppresses_auto_open_only_for_gene_fetch() {
 }
 
 #[test]
-fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
+fn agent_prompt_direct_shell_command_detects_control_and_hosted_ui_commands_only() {
     assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("  /list  "),
         Some("/list")
@@ -1520,6 +1520,12 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
         Some("/undo")
     );
     assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command(
+            "ui open tss-view --report docs/tutorial/profile-report.json"
+        ),
+        Some("ui open tss-view --report docs/tutorial/profile-report.json")
+    );
+    assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("help me retrieve FUS"),
         None
     );
@@ -1535,6 +1541,12 @@ fn agent_prompt_direct_shell_command_detects_agent_control_commands_only() {
     );
     assert_eq!(
         GENtleApp::agent_prompt_direct_shell_command("Please explain /list"),
+        None
+    );
+    assert_eq!(
+        GENtleApp::agent_prompt_direct_shell_command(
+            "Please run ui open tss-view --report docs/tutorial/profile-report.json"
+        ),
         None
     );
     let document_path = std::env::temp_dir().join("roadmap.md");

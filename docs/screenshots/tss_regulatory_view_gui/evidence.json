@@ -1,0 +1,76 @@
+{
+  "schema": "gentle.manual_tss_regulatory_gui_evidence.v1",
+  "status": "manual_hybrid_pass",
+  "automated_gui_acceptance": false,
+  "input_policy": "publication_safe_synthetic_only",
+  "capture_date": "2026-09-24",
+  "capture_backend": "ImageMagick import -window on the native X11 DNA-viewer window",
+  "display": {
+    "revision": "99563576153769f5c86654f082f74482a73f64a7",
+    "gentle_gui_sha256": "34c795e4e276284c65c4fc197417421877e350426960a004cdd1b50cff097028",
+    "viewport_pixels": [1900, 1180]
+  },
+  "profile_producer": {
+    "revision": "0.1.0-internal.11+git.e4c94bf36ac9d2b8e9f4791579bc6c1865210e50",
+    "executable_sha256": "7bba7954a272f81f571ff7aa35e1599b7257a090de16c2865aa96fb2b6fb97e8"
+  },
+  "inputs": {
+    "annotated_tss": {
+      "path": "docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb",
+      "sha256": "8acf0b32a52d8f6f16cbdce57cefb52372fab9cee57e6e276b2fc63e8c197692"
+    },
+    "profile_report": {
+      "path": "docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json",
+      "sha256": "4478630c0ec4dded1605618e4d37bc45a4ac38547ec60aaf1827aa4769ca134f"
+    },
+    "profile_receipt": {
+      "path": "docs/tutorial/reproducibility/tss_regulatory_view_gui/profile-receipt.json",
+      "sha256": "27e4bdc082f28cbf577ac35c8aa3907c41f77349dfb124bca69aa3ae24d96e23"
+    }
+  },
+  "agent_assistant": {
+    "launch_subject": "synthetic_minus_tss",
+    "command": "ui open tss-view --report docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json",
+    "host_result": "Queued TSS profile report for 'synthetic_minus_tss'; the viewer will validate reference, TSS geometry and sequence hash before display. No scoring or database query was started",
+    "direct_shared_command": true,
+    "external_agent_transport_invoked": false,
+    "checkpoint": {
+      "path": "docs/screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png",
+      "sha256": "f96bafe243f7288a4435d9dd61befa9018f3d23359229c992df69f4892b14c5a",
+      "size_bytes": 438622
+    }
+  },
+  "captures": [
+    {
+      "id": "annotated_context",
+      "raw_png": {
+        "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
+        "sha256": "8a155b21289319ea10819fc625f5300b0ce8246176617ed8b3ea4cf1844c1584",
+        "size_bytes": 1135441
+      },
+      "semantic_snapshot": {
+        "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.snapshot.json",
+        "sha256": "9b56a3f214c76433c2bf534d1aa076c5d4b34371579b74f25c023c7c80eddb44",
+        "size_bytes": 12351
+      },
+      "profile_attached": false
+    },
+    {
+      "id": "attached_profile",
+      "raw_png": {
+        "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
+        "sha256": "14838a6f784f83daddc27b09f75065b424194078776c7068dfb5596e71e8f12a",
+        "size_bytes": 1141719
+      },
+      "semantic_snapshot": {
+        "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.snapshot.json",
+        "sha256": "d54ddd3d7198a69ee073547a3d4049909ee864c2d236790103b8f9369b04bace",
+        "size_bytes": 13936
+      },
+      "profile_attached": true,
+      "visible_report_lane": "MA0004.1",
+      "display_note": "12/12 valid strand-windows; displayed values are zero because negative scores are clipped for display"
+    }
+  ],
+  "interpretation": "The captures demonstrate the native per-TSS viewer and a report attached through the GUI-hosted Agent Assistant direct-command path. They do not constitute biological evidence, automated GUI acceptance, motif rescoring, or a database query."
+}
