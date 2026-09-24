@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-09-24 - Exact DNA Latency Boundary Workload
+
+- Add the proposed 250 kbp / 5,000-feature boundary to the existing independent
+  length/density ladder, preserving the original nine fixture identities. The
+  synthetic boundary includes explicit cut sites, ORFs and methylation motifs;
+  130 cases and 90 counter observations cover deferred/loaded trees and the same
+  interactions. It is not a full restriction-catalog or real-project workload.
+- Record current derived-layer totals, enabled flags and viewport-eligible
+  counts without rebuilding caches or changing the measured counters. Reject
+  unavailable inventories and empty/disabled boundary layers, not as biological
+  absence but as incomplete audit preparation.
+- Bind workload identity across the binary, receipt and observations; retain
+  legacy 117-case replay without treating it as boundary coverage. Match every
+  Criterion estimate to its content-bound case ID rather than only counting
+  files. Add deterministic fixture, stale-cache, legacy, malformed-evidence and
+  LF/CRLF log tests. No runtime optimization, numerical acceptance, release
+  scope confirmation or native macOS performance verdict is claimed.
+
 ## 2026-09-24 - Packaged-Profile Latency Acceptance
 
 - Define native "release-like" acceptance as the packaged `--release` GUI;

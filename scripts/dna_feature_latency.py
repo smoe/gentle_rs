@@ -19,6 +19,20 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = "GENTLE_DNA_LATENCY_DIAGNOSTICS="
+LEGACY_WORKLOAD = "density_ladder_v1"
+BOUNDARY_WORKLOAD = "density_boundary_v1"
+INTERACTIVE_BOUNDARY = (250_000, 5_000)
+INTERACTIONS = ("steady", "pan_1bp", "zoom", "toggle_mrna", "select", "hover",
+                "resize_compact", "resize_desktop", "resize_fullhd")
+CASES = ("constructor", "hydration", "first_frame_tree_deferred", "first_frame_tree_loaded", *INTERACTIONS)
+
+
+def workload_fixtures(workload: str) -> list[tuple[int, int]]:
+    if workload not in (LEGACY_WORKLOAD, BOUNDARY_WORKLOAD):
+        raise ValueError(f"Unsupported DNA latency workload: {workload}")
+    fixtures = [(length, count) for length in (20_000, 250_000, 2_000_000)
+                for count in (100, 1_000, 10_000)]
+    return fixtures + ([INTERACTIVE_BOUNDARY] if workload == BOUNDARY_WORKLOAD else [])
 
 
 def sha256(path: Path) -> str:
@@ -63,6 +77,7 @@ def binary_identity(binary: Path) -> dict:
     identity = json.loads(result.stdout)
     if identity.get("schema") != "gentle.dna_feature_latency_binary.v1":
         raise ValueError("Not a DNA feature latency benchmark binary")
+    workload_fixtures(identity.get("workload", LEGACY_WORKLOAD))
     return identity
 
 
@@ -92,6 +107,7 @@ def prepare(root: Path, output: Path, profile: str, timeout: int) -> dict:
         raise ValueError("Compiled revision differs from source revision")
     record = {
         "schema": "gentle.dna_feature_latency_build.v1", "source": source,
+        "workload": identity.get("workload", LEGACY_WORKLOAD),
         "binary": str(binary), "binary_sha256": sha256(binary),
         "profile": profile, "rustc": command_text(["rustc", "-Vv"], root),
         "cargo": command_text(["cargo", "-V"], root), "build_command": argv,
@@ -114,12 +130,42 @@ def load_build(receipt: Path, mode: str) -> tuple[dict, Path]:
     binary = Path(build["binary"])
     if sha256(binary) != build["binary_sha256"]:
         raise ValueError("Benchmark binary changed since preparation")
-    if binary_identity(binary).get("revision") != build["source"]["revision"]:
+    identity = binary_identity(binary)
+    if identity.get("revision") != build["source"]["revision"]:
         raise ValueError("Binary identity does not match the build receipt")
+    workload = build.get("workload", LEGACY_WORKLOAD)
+    workload_fixtures(workload)
+    if identity.get("workload", LEGACY_WORKLOAD) != workload:
+        raise ValueError("Binary workload does not match the build receipt")
     return build, binary
 
 
-def collect_observations(log: Path, revision: str) -> list[dict]:
+def validate_layers(row: dict) -> None:
+    boundary = (row["length_bp"], row["feature_count"]) == INTERACTIVE_BOUNDARY
+    if row.get("derived_layers") is not boundary:
+        raise ValueError("Wrong derived-layer configuration")
+    for side in ("layers_before", "layers_after"):
+        layers = row.get(side)
+        if not isinstance(layers, dict) or layers.get("annotation_features") != row["feature_count"]:
+            raise ValueError("Missing or inconsistent layer inventory")
+        viewport = layers.get("viewport")
+        if (not isinstance(viewport, list) or len(viewport) != 2
+                or any(type(value) is not int for value in viewport)
+                or not 0 <= viewport[0] < viewport[1] <= row["length_bp"]):
+            raise ValueError("Invalid layer inventory viewport")
+        if type(layers.get("gc_bin_size_bp")) is not int or layers["gc_bin_size_bp"] <= 0:
+            raise ValueError("Invalid GC-bin configuration")
+        for name in ("restriction_groups", "gc_bins", "orfs", "methylation_sites"):
+            layer = layers.get(name)
+            if (not isinstance(layer, dict) or type(layer.get("enabled")) is not bool
+                    or any(type(layer.get(key)) is not int for key in ("total", "viewport_eligible"))
+                    or not 0 <= layer["viewport_eligible"] <= layer["total"]):
+                raise ValueError(f"Invalid derived-layer inventory: {name}")
+            if boundary and (not layer["enabled"] or layer["viewport_eligible"] == 0):
+                raise ValueError(f"Boundary derived layer unavailable: {name}")
+
+
+def collect_observations(log: Path, revision: str, workload: str = LEGACY_WORKLOAD) -> list[dict]:
     rows = []
     fixtures = {}
     for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -133,19 +179,45 @@ def collect_observations(log: Path, revision: str) -> list[dict]:
             fixture = (row["length_bp"], row["feature_count"])
             if fixtures.setdefault(fixture, digest) != digest:
                 raise ValueError("Fixture content changed between interactions")
+            if workload == BOUNDARY_WORKLOAD:
+                if row.get("workload") != workload:
+                    raise ValueError("Observation workload does not match the build receipt")
+                validate_layers(row)
             rows.append(row)
     keys = {(row["length_bp"], row["feature_count"], row["interaction"]) for row in rows}
-    expected = {(length, count, interaction) for length in (20_000, 250_000, 2_000_000)
-                for count in (100, 1_000, 10_000)
-                for interaction in ("steady", "pan_1bp", "zoom", "toggle_mrna", "select", "hover",
-                                    "resize_compact", "resize_desktop", "resize_fullhd")}
+    expected = {(length, count, interaction) for length, count in workload_fixtures(workload)
+                for interaction in INTERACTIONS}
     if len(keys) != len(rows) or keys != expected:
         raise ValueError("Missing or duplicated density/interaction observations")
     return rows
 
 
+def collect_statistics(directory: Path, rows: list[dict]) -> list[dict]:
+    expected = {
+        f"dna_feature_latency/{row['length_bp']}bp_{row['feature_count']}features_{row['fixture_sha256'][:12]}/{case}"
+        for row in rows for case in CASES
+    }
+    statistics = []
+    for path in sorted(directory.rglob("new/estimates.json")):
+        identity_path = path.with_name("benchmark.json")
+        if not identity_path.is_file():
+            raise ValueError("Missing Criterion case identity")
+        identity = json.loads(identity_path.read_bytes())
+        if not isinstance(identity.get("full_id"), str):
+            raise ValueError("Invalid Criterion case identity")
+        statistics.append({
+            "case": identity.get("full_id"), "benchmark_sha256": sha256(identity_path),
+            "estimates": json.loads(path.read_bytes()), "sha256": sha256(path),
+        })
+    actual = {row["case"] for row in statistics}
+    if len(statistics) != len(actual) or actual != expected:
+        raise ValueError(f"Timed audit did not produce all {len(expected)} Criterion estimates with matching case identities")
+    return statistics
+
+
 def run(receipt: Path, output: Path, mode: str, timeout: int) -> dict:
     build, binary = load_build(receipt, mode)
+    workload = build.get("workload", LEGACY_WORKLOAD)
     output.mkdir(parents=True, exist_ok=False)
     output = output.resolve()
     env = os.environ.copy()
@@ -180,6 +252,7 @@ def run(receipt: Path, output: Path, mode: str, timeout: int) -> dict:
         failure = f"launch failed: {error}"
     record = {
         "schema": "gentle.dna_feature_latency_run.v1", "build": build,
+        "workload": workload, "interactive_boundary_exercised": False,
         "build_receipt_sha256": sha256(receipt), "mode": mode,
         "runner_sha256": sha256(Path(__file__)),
         "host": {"system": platform.system(), "release": platform.release(),
@@ -195,25 +268,24 @@ def run(receipt: Path, output: Path, mode: str, timeout: int) -> dict:
     try:
         if exit_code != 0:
             raise ValueError(f"Benchmark did not complete: {failure or exit_code}")
-        record["observations"] = collect_observations(log, build["source"]["revision"])
-        for path in sorted((output / "criterion").rglob("new/estimates.json")):
-            record["statistics"].append({
-                "case": str(path.parent.parent.relative_to(output / "criterion")),
-                "estimates": json.loads(path.read_bytes()), "sha256": sha256(path),
-            })
-        if mode == "audit" and len(record["statistics"]) != 117:
-            raise ValueError("Timed audit did not produce all 117 Criterion estimates")
+        record["observations"] = collect_observations(log, build["source"]["revision"], workload)
+        if mode == "audit":
+            record["statistics"] = collect_statistics(output / "criterion", record["observations"])
+        record["interactive_boundary_exercised"] = workload == BOUNDARY_WORKLOAD
     except (ValueError, KeyError) as error:
         record["failure"] = str(error)
     write_json(output / "run.json", record)
     columns = ["length_bp", "feature_count", "interaction", "tree_builds", "layer_builds", "layer_gc_bases", "layouts"]
+    layer_names = ("restriction_groups", "gc_bins", "orfs", "methylation_sites")
     with (output / "work.tsv").open("w", encoding="utf-8", newline="\n") as stream:
-        stream.write("\t".join(columns) + "\n")
+        stream.write("\t".join([*columns, *(f"{name}_viewport_eligible" for name in layer_names)]) + "\n")
         for row in record["observations"]:
             before, after = row["before"], row["after"]
             values = [row[key] for key in columns[:3]]
             values.extend(after[key] - before[key] for key in columns[3:6])
             values.append(after["linear"]["layouts"] - before["linear"]["layouts"])
+            layers = row.get("layers_after", {})
+            values.extend(layers.get(name, {}).get("viewport_eligible", "") for name in layer_names)
             stream.write("\t".join(map(str, values)) + "\n")
     if record["failure"]:
         raise ValueError(f"{record['failure']}; receipt retained in {output}")

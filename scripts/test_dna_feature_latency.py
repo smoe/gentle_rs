@@ -14,18 +14,32 @@ from unittest.mock import patch
 from scripts import dna_feature_latency as audit
 
 
-def observations(revision):
-    for length in (20_000, 250_000, 2_000_000):
-        for count in (100, 1_000, 10_000):
-            for interaction in ("steady", "pan_1bp", "zoom", "toggle_mrna", "select", "hover",
-                                "resize_compact", "resize_desktop", "resize_fullhd"):
-                yield {
-                    "schema": "gentle.dna_feature_latency_observation.v1", "revision": revision,
-                    "fixture_sha256": "f" * 64, "length_bp": length, "feature_count": count,
-                    "interaction": interaction,
-                    "before": {"tree_builds": 1, "layer_builds": 1, "layer_gc_bases": length, "linear": {"layouts": 1}},
-                    "after": {"tree_builds": 2, "layer_builds": 2, "layer_gc_bases": 2 * length, "linear": {"layouts": 2}},
-                }
+def observations(revision, workload=audit.LEGACY_WORKLOAD):
+    fixtures = [(length, count) for length in (20_000, 250_000, 2_000_000)
+                for count in (100, 1_000, 10_000)]
+    if workload == audit.BOUNDARY_WORKLOAD:
+        fixtures.append((250_000, 5_000))
+    for length, count in fixtures:
+        for interaction in ("steady", "pan_1bp", "zoom", "toggle_mrna", "select", "hover",
+                            "resize_compact", "resize_desktop", "resize_fullhd"):
+            row = {
+                "schema": "gentle.dna_feature_latency_observation.v1", "revision": revision,
+                "fixture_sha256": "f" * 64, "length_bp": length, "feature_count": count,
+                "interaction": interaction,
+                "before": {"tree_builds": 1, "layer_builds": 1, "layer_gc_bases": length, "linear": {"layouts": 1}},
+                "after": {"tree_builds": 2, "layer_builds": 2, "layer_gc_bases": 2 * length, "linear": {"layouts": 2}},
+            }
+            if workload == audit.BOUNDARY_WORKLOAD:
+                row["workload"] = workload
+                row["derived_layers"] = (length, count) == (250_000, 5_000)
+                for side in ("layers_before", "layers_after"):
+                    row[side] = {
+                        "annotation_features": count, "viewport": [0, 5_000],
+                        "gc_bin_size_bp": 100,
+                        **{name: {"total": 2, "viewport_eligible": 1, "enabled": True}
+                           for name in ("restriction_groups", "gc_bins", "orfs", "methylation_sites")},
+                    }
+            yield row
 
 
 class DnaFeatureLatencyTests(unittest.TestCase):
@@ -54,7 +68,7 @@ class DnaFeatureLatencyTests(unittest.TestCase):
         self.assertEqual(kwargs["env"]["RUST_MIN_STACK"], "16777216")
         self.assertTrue(Path(kwargs["env"]["HOME"]).is_dir())
         self.assertTrue(str(kwargs["cwd"]) in kwargs["env"]["CRITERION_HOME"])
-        for row in observations(self.revision):
+        for row in observations(self.revision, self.identity.get("workload", audit.LEGACY_WORKLOAD)):
             kwargs["stdout"].write((audit.PREFIX + json.dumps(row) + "\n").encode())
         return subprocess.CompletedProcess(argv, 0)
 
@@ -64,6 +78,7 @@ class DnaFeatureLatencyTests(unittest.TestCase):
         self.assertEqual(run.call_count, 2)
         self.assertIsNone(result["failure"])
         self.assertFalse(result["native_gui_measured"])
+        self.assertFalse(result["interactive_boundary_exercised"])
         self.assertEqual(len(result["observations"]), 81)
         self.assertEqual(result["log_sha256"], audit.sha256(self.root / "run/run.log"))
         self.assertEqual(result["runner_sha256"], audit.sha256(Path(audit.__file__)))
@@ -177,6 +192,98 @@ class DnaFeatureLatencyTests(unittest.TestCase):
         with patch.object(audit.subprocess, "run", side_effect=self.fake_run) as run, self.assertRaises(FileExistsError):
             audit.run(self.receipt, output, "smoke", 10)
         self.assertEqual(run.call_count, 1)  # Identity probe only, no benchmark.
+
+    def enable_boundary(self):
+        self.identity["workload"] = audit.BOUNDARY_WORKLOAD
+        build = json.loads(self.receipt.read_bytes())
+        build["workload"] = audit.BOUNDARY_WORKLOAD
+        audit.write_json(self.receipt, build)
+
+    def write_observations(self, rows, ending="\n"):
+        log = self.root / "synthetic.log"
+        log.write_bytes(ending.join(audit.PREFIX + json.dumps(row) for row in rows).encode())
+        return log
+
+    def test_boundary_smoke_retains_exact_case_layers_and_legacy_rows(self):
+        self.enable_boundary()
+        with patch.object(audit.subprocess, "run", side_effect=self.fake_run):
+            result = audit.run(self.receipt, self.root / "boundary", "smoke", 10)
+        self.assertTrue(result["interactive_boundary_exercised"])
+        self.assertEqual(result["workload"], audit.BOUNDARY_WORKLOAD)
+        self.assertFalse(result["native_gui_measured"])
+        self.assertEqual(len(result["observations"]), 90)
+        boundary = [row for row in result["observations"] if (row["length_bp"], row["feature_count"]) == (250_000, 5_000)]
+        self.assertEqual(len(boundary), 9)
+        for old, new in zip(observations(self.revision), result["observations"][:81]):
+            self.assertEqual(old, {key: new[key] for key in old})
+        self.assertEqual(len((self.root / "boundary/work.tsv").read_text().splitlines()), 91)
+
+    def test_boundary_cannot_be_omitted_duplicated_or_claimed_by_legacy_binary(self):
+        self.enable_boundary()
+        rows = list(observations(self.revision, audit.BOUNDARY_WORKLOAD))
+        for invalid in (rows[:81], rows[:-1] + [rows[0]]):
+            with self.subTest(count=len(invalid)), self.assertRaisesRegex(ValueError, "Missing or duplicated"):
+                audit.collect_observations(self.write_observations(invalid), self.revision, audit.BOUNDARY_WORKLOAD)
+        self.identity.pop("workload")
+        with patch.object(audit.subprocess, "run", side_effect=self.fake_run), self.assertRaisesRegex(ValueError, "Binary workload"):
+            audit.run(self.receipt, self.root / "not-launched", "smoke", 10)
+        self.assertFalse((self.root / "not-launched").exists())
+
+    def test_unknown_workload_is_rejected(self):
+        self.identity["workload"] = "future_unknown"
+        with patch.object(audit.subprocess, "run", side_effect=self.fake_run), self.assertRaisesRegex(ValueError, "Unsupported DNA latency workload"):
+            audit.load_build(self.receipt, "smoke")
+
+    def test_boundary_layers_are_required_and_not_invented_zeros(self):
+        for mutation in ("missing", "disabled", "empty", "negative", "wrong_feature_count", "stale_workload"):
+            rows = list(observations(self.revision, audit.BOUNDARY_WORKLOAD))
+            row = rows[-1]
+            if mutation == "missing":
+                row["layers_after"] = None
+            elif mutation == "disabled":
+                row["layers_after"]["orfs"]["enabled"] = False
+            elif mutation == "empty":
+                row["layers_after"]["restriction_groups"]["viewport_eligible"] = 0
+            elif mutation == "negative":
+                row["layers_before"]["gc_bins"]["total"] = -1
+            elif mutation == "wrong_feature_count":
+                row["layers_before"]["annotation_features"] = 4_999
+            else:
+                row["workload"] = audit.LEGACY_WORKLOAD
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                audit.collect_observations(self.write_observations(rows), self.revision, audit.BOUNDARY_WORKLOAD)
+
+    def test_boundary_observations_accept_lf_and_crlf_without_changing_raw_hashes(self):
+        rows = list(observations(self.revision, audit.BOUNDARY_WORKLOAD))
+        lf = self.write_observations(rows)
+        lf_hash = audit.sha256(lf)
+        self.assertEqual(audit.collect_observations(lf, self.revision, audit.BOUNDARY_WORKLOAD), rows)
+        crlf = self.write_observations(rows, "\r\n")
+        self.assertNotEqual(audit.sha256(crlf), lf_hash)
+        self.assertEqual(audit.collect_observations(crlf, self.revision, audit.BOUNDARY_WORKLOAD), rows)
+
+    def test_statistics_bind_every_case_not_only_the_total_count(self):
+        rows = list(observations(self.revision, audit.BOUNDARY_WORKLOAD))
+        cases = {
+            f"dna_feature_latency/{row['length_bp']}bp_{row['feature_count']}features_{row['fixture_sha256'][:12]}/{case}"
+            for row in rows for case in audit.CASES
+        }
+        self.assertEqual(len(cases), 130)
+        for index, case in enumerate(sorted(cases)):
+            path = self.root / "criterion" / str(index) / "new"
+            path.mkdir(parents=True)
+            audit.write_json(path / "benchmark.json", {"full_id": case})
+            audit.write_json(path / "estimates.json", {"mean": {"point_estimate": 1}})
+        statistics = audit.collect_statistics(self.root / "criterion", rows)
+        self.assertEqual(len(statistics), 130)
+        path = self.root / "criterion/0/new/benchmark.json"
+        for invalid in (sorted(cases)[1], "dna_feature_latency/wrong_fixture/constructor"):
+            audit.write_json(path, {"full_id": invalid})
+            with self.assertRaisesRegex(ValueError, "130 Criterion estimates"):
+                audit.collect_statistics(self.root / "criterion", rows)
+        path.unlink()
+        with self.assertRaisesRegex(ValueError, "Missing Criterion case identity"):
+            audit.collect_statistics(self.root / "criterion", rows)
 
 
 if __name__ == "__main__":
