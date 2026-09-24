@@ -113,6 +113,22 @@
   native packages at a new candidate SHA; this is a mitigation, not a confirmed
   root-cause repair. No tags, publication, paid runners or cache policy changed.
 
+## 2026-09-24 - Exact-Revision GUI Latency Audit Handoff
+
+- Prepare Glen's bounded comparison of `ad0338a7` and `ee9eb483`, with separate
+  clean worktrees/targets, serial offline builds, build wall-time/RSS records,
+  prebuilt smoke runs and paired CPU replays. Keep the existing runner,
+  fixtures and runtime code unchanged.
+- Specify remaining native startup attribution and honest unavailable/lost
+  evidence. Work counters, quick CPU samples and native responsiveness remain
+  distinct; workload admission and release acceptance are not silently granted.
+- Align the handoff with `main`'s `0e3fd09a` measurement contract: identify the
+  packaged-release candidate separately from the fixed GC comparison and retain
+  a same-SHA native profile comparison as a third experiment. Bind effective
+  profile settings without assuming a runtime penalty from disabling LTO.
+- This is a handoff document, not a dispatched audit, published commit or new
+  performance result. Glen must have both exact source objects before running it.
+
 ## 2026-09-24 - Avoid GC Scans For DNA Layer Counts
 
 - Count visible GC bins from sequence length, bin size and half-open viewport
