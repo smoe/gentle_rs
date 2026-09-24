@@ -1079,6 +1079,9 @@ Feature tree grouping:
   sequence or feature names. They count work, not milliseconds. See the
   [latency plan](dna_feature_rendering_latency_plan.md) and
   [prebuilt audit runbook](../benches/README.md#dna-feature-density-latency).
+  GC layer counts use bin geometry without rescanning sequence bases on pan;
+  `layer_gc_bases` therefore stays zero on that path. This does not suppress
+  the separate GC-value computation needed for the actual GC track.
   For startup attribution, set `GENTLE_GUI_STARTUP_TRACE` to a new JSON output
   path before launching the desktop binary. The bounded, name-free CPU trace is
   written only on exit, not on the paint path; no screenshots, database queries

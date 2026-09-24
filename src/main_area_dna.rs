@@ -3923,20 +3923,11 @@ impl MainAreaDna {
                     counts.restriction_site_count = counts.restriction_site_count.saturating_add(1);
                 }
             }
-            self.layer_visibility_gc_bases = self
-                .layer_visibility_gc_bases
-                .saturating_add(dna.len() as u64);
-            counts.gc_region_count = GcContents::new_from_sequence_with_bin_size(
-                dna.forward_bytes(),
+            counts.gc_region_count = GcContents::region_count_for_viewport(
+                sequence_length,
                 gc_content_bin_size_bp,
-            )
-            .regions()
-            .iter()
-            .filter(|region| match viewport {
-                Some((start, end)) => Self::ranges_overlap(region.from(), region.to(), start, end),
-                None => true,
-            })
-            .count();
+                viewport,
+            );
             counts.orf_count = dna
                 .open_reading_frames()
                 .iter()

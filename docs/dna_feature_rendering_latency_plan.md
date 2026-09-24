@@ -15,7 +15,10 @@ Implementation update: S0's density tools landed in `5893aa35` and are
 smoke-tested. Opt-in startup phase checkpoints now cover app initialization,
 project loading and first root/DNA CPU frames; they do not confirm native
 presentation. Exact owner-selected boundary cases and the macOS cross-check
-remain pending, as do Glen's timed/native audit and runtime slices S1-S6.
+remain pending, as do Glen's timed/native audit and the broader runtime slices.
+A bounded S2 simplification counts GC bins arithmetically instead of computing
+GC values just to discard them. It preserves half-open counts and does not
+claim a measured GUI speedup or completion of S2.
 B0 separates build feedback from runtime performance. The consolidated
 hypothesis ledger and S0 section below retain both updates. This plan does not
 change the `.11` candidate; counts of work are not timing evidence or performance
@@ -173,13 +176,16 @@ rebuilding the interval index; the density-dependent runtime share is unmeasured
 `FeatureTreeCacheKey` (`src/main_area_dna/feature_tree_ui.rs`) and
 `LayerVisibilityCacheKey` (`src/main_area_dna.rs`) both contain the viewport,
 and `active_linear_viewport_range` returns `Some` for every linear sequence. A
-one-base pan invalidates both caches. Layer-count misses also call
-`GcContents::new_from_sequence_with_bin_size` across the full sequence, so this
-is O(all features + bases), not merely O(visible features). Tree/count
-hits/builds, feature visits and `layer_gc_bases` record the work separately.
-The deterministic pan regression observes tree builds 1 -> 2 and GC bases
-1,200 -> 2,400 without a project mutation; dominance at 2 Mbp remains a timing
-hypothesis. Static grouping and viewport counts must be separated carefully:
+one-base pan invalidates both caches. At `ad0338a7`, layer-count misses also
+computed GC values across the full sequence just to count overlapping bins:
+O(all features + bases), not merely O(visible features). The bounded S2 repair
+uses length/bin/viewport arithmetic for that count; GC values used for drawing
+and scientific output are unchanged. The pan regression still requires tree
+builds 1 -> 2, but now requires zero `layer_gc_bases` and exact counts before
+and after crossing a bin boundary, without a project mutation. Historical
+1,200 -> 2,400 GC-base counters belong to the pre-fix implementation.
+Whole-view timing and the remaining tree/feature-count work still need Glen's
+audit. Static grouping and viewport counts must be separated carefully:
 the tree uses exact exon-piece overlap, whereas the existing feature interval
 index uses transcript bounding spans, including introns. They are not
 interchangeable visibility oracles.
@@ -328,12 +334,19 @@ a resize frame reported.
 
 ### S2 - Decouple tree and layer counts from the viewport (H2)
 
+Bounded count-only repair: `GcContents::region_count_for_viewport` replaces the
+full-sequence scan previously used solely for the GC layer's bin count. Oracle
+tests compare it with materialized bins, including partial/zero-sized bins,
+half-open boundaries and density-ladder lengths. This removes unnecessary work
+without a new cache, worker, density policy or scientific change. It is not a
+timed acceptance result; the broader S2 work below remains conditional.
+
 Split both models into a viewport-independent part (grouping, filtering,
 ordering, labels - keyed by feature generation and display revision) and a cheap
 viewport pass that only marks visibility and recounts. Reuse an index only with
 exact exon-piece and half-open overlap semantics, not transcript bounding spans
 that include introns. Collapsed/offscreen models may defer work but must expose
-correct counts when queried. Investigate arithmetic GC-bin counts separately
+correct counts when queried. Retain the arithmetic GC-bin count separately
 from GC-value computation. Do not simply remove the viewport from existing keys.
 
 Evidence required first: H2 confirmed, including the rebuild cost at 10^3 and

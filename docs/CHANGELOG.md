@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-09-24 - Avoid GC Scans For DNA Layer Counts
+
+- Count visible GC bins from sequence length, bin size and half-open viewport
+  geometry instead of computing whole-sequence GC values only to discard them.
+  Preserve partial final bins, zero-bin clamping and full-sequence counts for
+  circular views. GC values, annotation visibility and biological outputs are
+  unchanged; no cache or background-worker policy is added.
+- Add exhaustive small-geometry and density-ladder count oracles plus integer
+  edge cases. The live layer-count/pan regression requires correct boundary
+  counts, zero count-path GC-base scans and unchanged project state while still
+  exposing the remaining tree rebuilds.
+- Keep broader S2 work and Glen's timed/native acceptance open. The removed
+  sequence scan is an algorithmic work reduction, not a claim that startup,
+  panning or the full `.12` workload has met a responsiveness budget.
+- On macOS, nine focused GC/layer/cache Rust tests, twelve audit-runner Python
+  tests, locked offline `cargo check`, formatting and whitespace checks pass.
+  Native GUI, Windows and timed auditor acceptance were not run.
+
 ## 2026-09-23 - CLI Service Parity Registry Isolation
 
 - Windows job `107075366344` at `e4c94bf3` built successfully but failed one
