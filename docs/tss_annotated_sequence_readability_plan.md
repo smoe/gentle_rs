@@ -4,8 +4,12 @@ Status: export/SnapGene work remains a proposal, not Claude-reviewed. The first
 native annotated-window consumer from section 3 is implemented separately:
 see [GUI usage and boundaries](gui.md#tss--regulatory-dna-display). The reviewed
 report-attachment slice now adds validated full TFBS curves and imported motif
-hits. Explicit dynamic scoring/querying, reporter rows and native export remain
-separate follow-ups; locus TSS selection uses the [TSS workspace](tss_workspace.md).
+hits. Native-view SVG now exports the selected span/lanes with source binding,
+gap-aware curves and hover details. Approved Slice B adds explicit local scoring
+as independent, provenance-bound, gap-aware lanes using the shared engine and
+validated inline DNA; see [local scoring](gui.md#compute-local-tss-scores).
+New dynamic database querying and reporter rows remain follow-ups; locus TSS
+selection uses the [TSS workspace](tss_workspace.md).
 Source review: `6bc7c5fc37b178b972dc19a272c0fed9df2a2c73`, 2026-09-14.
 Evidence: the user-supplied `CD44_selected_TSS_annotated (1).embl` and two
 SnapGene screenshots. The supplied file and screenshots are not copied into

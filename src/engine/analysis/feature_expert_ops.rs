@@ -13297,6 +13297,7 @@ impl GentleEngine {
             request.motif_clip_negative,
             false,
         )?;
+        Self::require_evaluated_tfbs_tracks(&score_report)?;
         let top_hit_count = request.motif_top_hit_count.min(50);
         Ok(score_report
             .tracks
@@ -13682,6 +13683,7 @@ impl GentleEngine {
             request.clip_negative,
             false,
         )?;
+        Self::require_evaluated_tfbs_tracks(&report)?;
         let calibration_state =
             if request.calibration_state == GeneLocusRegulatoryCalibrationState::Unspecified {
                 GeneLocusRegulatoryCalibrationState::MatrixSpecific

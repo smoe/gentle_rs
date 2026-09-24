@@ -1232,6 +1232,7 @@ impl GentleEngine {
                 score_kind,
                 clip_negative,
             )?;
+            Self::require_evaluated_tfbs_tracks(&tfbs_score_tracks)?;
             if let Some(anchor) = window.anchor_1based {
                 let position_0based = if window.strand.as_deref() == Some("-") {
                     end.saturating_sub(anchor)

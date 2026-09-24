@@ -1852,6 +1852,7 @@ impl GentleEngine {
                 score_kind,
                 clip_negative,
             )?;
+            Self::require_evaluated_tfbs_tracks(&report)?;
             report.tss_markers = vec![TfbsScoreTrackTssMarker {
                 feature_id: usize::MAX,
                 feature_kind: "ortholog_promoter_slice".to_string(),

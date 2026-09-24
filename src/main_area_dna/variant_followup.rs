@@ -3816,7 +3816,7 @@ impl MainAreaDna {
     fn promoter_design_track_peak_summary(
         track: &crate::engine::TfbsScoreTrackRow,
     ) -> Option<String> {
-        if track.top_peaks.is_empty() {
+        if track.top_peaks.is_empty() || track.evaluated_strand_windows() == 0 {
             return None;
         }
         Some(format!(
@@ -3842,6 +3842,10 @@ impl MainAreaDna {
         correlation_metric: Option<&mut TfbsScoreTrackCorrelationMetric>,
         correlation_signal_source: Option<&mut TfbsScoreTrackCorrelationSignalSource>,
     ) {
+        if report.tracks.iter().any(|track| !track.fully_evaluated()) {
+            ui.label("Correlation unavailable: incomplete or legacy-unassessed tracks; no zero imputation.");
+            return;
+        }
         ui.add_space(8.0);
         ui.group(|ui| {
             ui.label(egui::RichText::new("TFBS track correlation").strong());
@@ -4134,34 +4138,33 @@ impl MainAreaDna {
             );
         }
 
-        let forward_points = track
-            .forward_scores
-            .iter()
-            .enumerate()
-            .map(|(idx, score)| egui::pos2(to_x(idx), to_y(*score)))
-            .collect::<Vec<_>>();
-        if forward_points.len() > 1 {
-            painter.add(egui::Shape::line(
-                forward_points,
-                egui::Stroke::new(1.8_f32, egui::Color32::from_rgb(14, 116, 144)),
-            ));
-        }
-        let reverse_points = track
-            .reverse_scores
-            .iter()
-            .enumerate()
-            .map(|(idx, score)| egui::pos2(to_x(idx), to_y(*score)))
-            .collect::<Vec<_>>();
-        if reverse_points.len() > 1 {
-            painter.add(egui::Shape::line(
-                reverse_points,
-                egui::Stroke::new(1.6_f32, egui::Color32::from_rgb(180, 83, 9)),
-            ));
+        for (reverse, color) in [
+            (false, egui::Color32::from_rgb(14, 116, 144)),
+            (true, egui::Color32::from_rgb(180, 83, 9)),
+        ] {
+            let mut previous = None;
+            for i in 0..track.scored_window_count {
+                if let Some(score) = track.score_at(i, reverse) {
+                    let point = egui::pos2(to_x(i), to_y(score));
+                    if let Some(prior) = previous {
+                        painter.line_segment([prior, point], egui::Stroke::new(1.6, color));
+                    } else {
+                        painter.circle_filled(point, 1.0, color);
+                    }
+                    previous = Some(point);
+                } else {
+                    previous = None;
+                }
+            }
         }
         painter.text(
             egui::pos2(plot_rect.right() - 4.0, plot_rect.top() + 2.0),
             egui::Align2::RIGHT_TOP,
-            format!("0 .. {:.2}", report.global_max_score),
+            if track.fully_evaluated() {
+                format!("0 .. {:.2}", report.global_max_score)
+            } else {
+                "Unavailable / unassessed windows: gaps, not zero".into()
+            },
             egui::FontId::monospace(10.0),
             egui::Color32::from_rgb(71, 85, 105),
         );
@@ -4328,17 +4331,18 @@ impl MainAreaDna {
                                     );
                                 }
                             });
+                            let evaluated = track.evaluated_strand_windows();
                             ui.small(format!(
-                                "{} bp motif | {} windows | max {:.2}{}",
+                                "{} bp motif | {}/{} assessed strand-windows | max {}",
                                 track.motif_length_bp,
-                                track.scored_window_count,
-                                track.max_score,
-                                track
+                                evaluated,
+                                track.scored_window_count * 2,
+                                if evaluated > 0 { format!("{:.2}{}", track.max_score, track
                                     .max_position_0based
                                     .map(|pos| format!(" @ {}", pos))
-                                    .unwrap_or_default()
+                                    .unwrap_or_default()) } else { "unavailable".into() }
                             ));
-                            if let Some(normalization) = track.normalization_reference.as_ref() {
+                            if let Some(normalization) = track.normalization_reference.as_ref().filter(|_| evaluated > 0) {
                                 ui.small(
                                     egui::RichText::new(
                                         Self::promoter_design_track_normalization_summary(

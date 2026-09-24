@@ -46,6 +46,14 @@ at distinct loci is retained with a warning. Saved score JSON must round-trip
 floating-point bits exactly so export-only replay does not change results. See the
 [portable contract and explicit limits](tss_tfbs_profiles.md).
 
+Explicit local rescoring of an annotated TSS window is a separate lane class,
+not a refresh of attached report or imported evidence. Use the validated bases
+as an `InlineSequence`, retain the actual matrix-count hashes and score kind,
+and own settings/jobs/cache independently of other TFBS panels. Valid zero and
+unevaluable windows remain distinct; legacy absence of evaluability/provenance
+cannot authorize local lanes. Cancellation and source/request changes must not
+publish partial or stale results. Navigation never silently triggers rescoring.
+
 Presentation-size reductions must not discard scores, change sampling or weaken
 receipt checks. Raster-backed PDF image compression is lossless; encoding and
 output hashes are recorded. The separate `vector_pdf` representation preserves

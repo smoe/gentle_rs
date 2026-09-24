@@ -1,7 +1,8 @@
 //! Read-only, headless presentation of GENtle's annotated TSS sequence exports.
 //!
 //! This decodes the existing export grammar, not arbitrary annotation prose.
-//! It does not infer TSSs, fetch evidence, score motifs, or alter source records.
+//! Decoding/rendering never infers TSSs, fetches evidence or alters source records.
+//! Explicit local scoring delegates to the shared engine on validated inline DNA.
 
 use std::collections::BTreeMap;
 
@@ -11,10 +12,14 @@ use serde::Serialize;
 
 use crate::{digest_utils::sha256_hex_bytes, dna_sequence::DNAsequence};
 
+mod local_scoring;
 mod profile;
+mod svg;
+pub use local_scoring::{TssLocalScoreAttachment, TssLocalScoreRequest};
 #[cfg(test)]
 pub(crate) use profile::tests::fixture as profile_fixture;
 pub use profile::{TssProfileAttachment, TssViewTrace};
+pub use svg::{TssViewSvgOptions, render_tss_view_svg, write_tss_view_svg};
 
 /// Evidence classes remain separate even when their genomic intervals overlap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -23,6 +28,7 @@ pub enum TssLaneKind {
     Signal,
     Motif,
     ScoreTrace,
+    LocalScoreTrace,
     ImportedMotif,
     Other,
 }
@@ -71,6 +77,7 @@ pub struct TssSequenceView {
     pub provenance: String,
     pub warnings: Vec<String>,
     pub profile: Option<TssProfileAttachment>,
+    pub local_scoring: Option<TssLocalScoreAttachment>,
 }
 
 // Each exported field has an explicit key; never classify by arbitrary filenames.
@@ -426,6 +433,7 @@ impl TssSequenceView {
             provenance,
             warnings,
             profile: None,
+            local_scoring: None,
         })
     }
 

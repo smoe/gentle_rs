@@ -54922,6 +54922,136 @@ fn summarize_tfbs_score_tracks_supports_inline_sequence_targets() {
 }
 
 #[test]
+fn summarize_tfbs_score_tracks_validity_distinguishes_ambiguity_zero_and_legacy() {
+    // Synthetic promoter fragments; generated here, no experimental sequence.
+    let engine = GentleEngine::new();
+    let score = |sequence_text: String, topology| {
+        engine
+            .summarize_tfbs_score_tracks(
+                SequenceScanTarget::InlineSequence {
+                    sequence_text,
+                    topology,
+                    id_hint: Some("synthetic-validity".into()),
+                    span_start_0based: None,
+                    span_end_0based_exclusive: None,
+                },
+                &["SP1".into(), "TP53".into()],
+                TfbsScoreTrackValueKind::LlrBits,
+                true,
+            )
+            .unwrap()
+    };
+    for topology in [
+        InlineSequenceTopology::Linear,
+        InlineSequenceTopology::Circular,
+    ] {
+        let report = score(format!("{}N{}", "A".repeat(40), "A".repeat(40)), topology);
+        for track in &report.tracks {
+            assert!(!track.fully_evaluated());
+            assert_eq!(track.score_at(40, false), None);
+            assert_eq!(track.score_at(40, true), None);
+            assert_eq!(track.score_at(0, false), Some(0.0));
+            assert!(track.directional_summary.is_none());
+            assert!(
+                track
+                    .top_peaks
+                    .iter()
+                    .all(|p| track.score_at(p.start_0based, p.is_reverse).is_some())
+            );
+        }
+        assert_eq!(
+            GentleEngine::require_evaluated_tfbs_tracks(&report)
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidInput
+        );
+        assert!(
+            report
+                .correlation_summary
+                .as_ref()
+                .is_none_or(|s| s.rows.is_empty())
+        );
+        let svg = crate::render_tfbs_score_tracks::render_tfbs_score_tracks_svg(&report);
+        assert!(svg.contains("gaps, not zero"));
+        let mut legacy = serde_json::to_value(&report).unwrap();
+        for row in legacy["tracks"].as_array_mut().unwrap() {
+            row.as_object_mut().unwrap().remove("score_validity");
+        }
+        let legacy: TfbsScoreTrackReport = serde_json::from_value(legacy).unwrap();
+        assert_eq!(legacy.tracks[0].evaluated_strand_windows(), 0);
+        assert_eq!(legacy.tracks[0].score_at(0, false), None);
+        assert!(
+            crate::render_tfbs_score_tracks::render_tfbs_score_tracks_svg(&legacy)
+                .contains("max unavailable")
+        );
+        let mut malformed = report.clone();
+        malformed.tracks[0]
+            .score_validity
+            .as_mut()
+            .unwrap()
+            .forward
+            .pop();
+        assert_eq!(malformed.tracks[0].score_at(0, false), None);
+    }
+    let absent = score("N".repeat(60), InlineSequenceTopology::Linear);
+    for track in &absent.tracks {
+        assert_eq!(track.evaluated_strand_windows(), 0);
+        assert!(track.max_position_0based.is_none());
+        assert!(track.normalization_reference.is_none());
+        assert!(track.top_peaks.is_empty());
+    }
+    let canonical = score("A".repeat(60), InlineSequenceTopology::Linear);
+    assert!(canonical.tracks.iter().all(|t| t.fully_evaluated()));
+    GentleEngine::require_evaluated_tfbs_tracks(&canonical).unwrap();
+    for track in &canonical.tracks {
+        assert_eq!(track.max_score, 0.0);
+        assert!(track.max_position_0based.is_none());
+        assert!(track.normalization_reference.is_some());
+        // Evaluated zero tracks must not become shared/cohort-specific peaks.
+        let rows = ["synthetic-a", "synthetic-b"].map(|gene| MultiGenePromoterTfbsSummaryRow {
+            gene_label: gene.into(),
+            tf_id: track.tf_id.clone(),
+            max_score: track.max_score,
+            peak_position_0based: track.max_position_0based,
+            ..Default::default()
+        });
+        let (shared, specific) = GentleEngine::summarize_promoter_cohort_peak_sets(&rows, 2);
+        assert!(shared.is_empty());
+        assert!(specific.is_empty());
+    }
+}
+
+#[test]
+fn summarize_tfbs_similarity_refuses_incomplete_numeric_tracks_without_output() {
+    let temp = tempdir().unwrap();
+    let path = temp.path().join("not-produced.json");
+    let mut engine = GentleEngine::new();
+    let result = engine.apply(Operation::SummarizeTfbsTrackSimilarity {
+        target: SequenceScanTarget::InlineSequence {
+            sequence_text: "ACGTN".repeat(20),
+            topology: InlineSequenceTopology::Linear,
+            id_hint: None,
+            span_start_0based: None,
+            span_end_0based_exclusive: None,
+        },
+        anchor_motif: "SP1".into(),
+        candidate_motifs: vec!["TP53".into()],
+        ranking_metric: TfbsTrackSimilarityRankingMetric::SmoothedSpearman,
+        score_kind: TfbsScoreTrackValueKind::LlrBits,
+        clip_negative: true,
+        species_filters: vec![],
+        include_remote_metadata: false,
+        limit: Some(1),
+        path: Some(path.to_string_lossy().into_owned()),
+    });
+    let error = result.unwrap_err();
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+    assert!(error.message.contains("unavailable or unassessed"));
+    assert!(!path.exists());
+    assert!(engine.state().sequences.is_empty());
+}
+
+#[test]
 fn summarize_tfbs_score_tracks_expands_builtin_tf_groups() {
     let engine = GentleEngine::new();
     let report = engine

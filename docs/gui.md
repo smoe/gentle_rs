@@ -6825,7 +6825,8 @@ array geometry and the ten-million-score-cell limit). Genome ID, assembly,
 annotation release, promoter ID, exact window/TSS geometry and sequence digest
 must match. Equal bases at another locus are not sufficient. Failed attachment
 leaves the previous view intact; replacing/editing the sequence discards the
-attachment. **Detach report** restores the original annotation-only view.
+attachment. **Detach report** removes report-only lanes, retaining annotations
+and any independently computed local curves.
 
 - **Report TFBS curves** shows complete stored forward/reverse arrays at motif
   window starts. Local `+` is solid blue; local `-` is dashed rose. Both use the
@@ -6852,13 +6853,63 @@ reference authentication. Display preparation is cached; visible curve drawing
 is limited to 10,000 window starts per row. Above that budget the view asks for
 zooming rather than silently downsampling away narrow peaks or gaps.
 
+### Compute Local TSS Scores
+
+Open **Local scoring**, enter exact matrix accessions (comma/space-separated),
+choose `score_kind` and clipping, then **Compute local scores**. These settings,
+worker, cancellation and cached result belong to this TSS view, not the separate
+TFBS panel. Scoring uses the shared engine's linear `InlineSequence` target,
+bound to the displayed, transcript-oriented DNA. It never fetches sequence,
+queries DuckDB, reconstructs an old report, or modifies sequence annotations.
+
+**Locally computed curves** is a separate lane class and visibility toggle.
+Each lane shows its actual score kind, exact matrix hash and evaluability count;
+its own range does not normalize imported/report scores. Zero is a scored
+value, while ambiguous/unscorable windows remain gaps via the engine validity
+masks. These are model predictions, not experimental binding or a prediction
+that a mutation will reduce luciferase activity. Stored report curves retain
+their original settings even when the local settings change.
+
+Admission requires 1..32 unique full-PFM IDs, at most 64 columns per matrix,
+50,000 window bases and 1,000,000 matrix/base combinations. Aliases, `ALL` and
+consensus fallback are refused here; existing headless routes remain available.
+Resolution/calibration/scoring run on a background worker with stage/matrix
+progress, not an ETA. **Cancel scoring** keeps the last complete result.
+Replaced documents or changed requests cannot accept late results. Panning
+does not recompute; changing settings leaves previous curves explicitly labelled
+until an explicit new run. Clearing local scores preserves attached reports,
+and detaching reports preserves local scores. Jobs never share a result cache.
+The cache receipt binds reference/geometry/sequence, effective local request,
+actual matrix hashes, background policy and scorer; a fresh run always resolves
+the current registry anew. A matrix mismatch between admission and scoring
+rejects the result.
+
+### Export the Native TSS View
+
+**Export View SVG** exports the current horizontal span and enabled/filter-matched
+TSS lanes, including lanes vertically scrolled out of sight. It exports the
+TSS evidence plot, not a pixel screenshot or the separate sequence-text panel.
+Wide-context and A3 variants use the existing expanded-span/print profiles.
+Rendering and atomic file publication run in a separate worker on the selected
+immutable presentation; later navigation does not alter that export.
+
+The headless renderer preserves local/genomic/TSS coordinates on both strands,
+separate source scales, stored peak footprints, missing-window gaps, terminal
+unavailable regions, hover provenance and coverage/truncation warnings. SVG
+metadata binds the presentation digest, sequence, reference, attached report
+file hash, local-scoring provenance/report hash and exact span/lane options.
+This is not a fresh scientific analysis or a full receipt audit. It never
+substitutes the standard map. A loading or
+stale presentation cannot be exported; excessive work is refused (10,000 items
+per lane, 100,000 overall, 128 lanes and 32 MiB), with a request to narrow the
+span or lane selection, rather than silently dropping evidence.
+
 GENtle's annotated TSS export grammar is still required, including existing
 hashed record names. FASTA alone, arbitrary locus features and generic prose
-labels cannot establish its TSS geometry. Explicit dynamic rescoring, new DuckDB
-queries from imported windows, reporter rows, and native-view SVG export remain
-follow-ups. **Export View SVG** explains the export limitation instead of
-silently exporting a different map; existing receipt-bound TSS report exports
-remain the quantitative publication path.
+labels cannot establish its TSS geometry. New DuckDB
+queries from imported windows and reporter rows remain
+follow-ups. Existing receipt-bound TSS report exports remain the quantitative
+publication path; a native-view SVG records the selected presentation instead.
 The existing single-sequence file loader selects the last EMBL/GenBank record;
 multi-record import/selection is a separate follow-up, not provided by this view.
 

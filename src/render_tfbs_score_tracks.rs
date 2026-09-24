@@ -354,18 +354,14 @@ fn cross_strand_lookup_cell(
 
 fn global_score_bounds(report: &TfbsScoreTrackReport) -> (f64, f64) {
     let mut min_score = 0.0_f64;
-    let mut max_score = report.global_max_score.max(0.0);
+    let mut max_score = 0.0_f64;
     for track in &report.tracks {
-        for score in track
-            .forward_scores
-            .iter()
-            .chain(track.reverse_scores.iter())
+        for score in (0..track.scored_window_count)
+            .flat_map(|i| [track.score_at(i, false), track.score_at(i, true)])
+            .flatten()
         {
-            if !score.is_finite() {
-                continue;
-            }
-            min_score = min_score.min(*score);
-            max_score = max_score.max(*score);
+            min_score = min_score.min(score);
+            max_score = max_score.max(score);
         }
     }
     if (max_score - min_score).abs() < f64::EPSILON {
@@ -386,29 +382,37 @@ fn score_to_y(score: f64, min_score: f64, max_score: f64, top: f64, bottom: f64)
     bottom - fraction * (bottom - top)
 }
 
-fn polyline_points(
-    scores: &[f64],
-    left: f64,
-    right: f64,
-    top: f64,
-    bottom: f64,
-    min_score: f64,
-    max_score: f64,
+/// Bounded display sampling, never drawing across an unavailable window (even
+/// one between sampled positions). Coordinates retain the original indices.
+pub(crate) fn score_path(
+    track: &crate::engine::TfbsScoreTrackRow,
+    reverse: bool,
+    x: impl Fn(usize) -> f64,
+    y: impl Fn(f64) -> f64,
+    max_points: usize,
 ) -> String {
-    if scores.is_empty() {
-        return String::new();
+    let mut path = String::new();
+    let mut previous = None;
+    for i in sampled_point_indices(track.scored_window_count, max_points.max(2)) {
+        if let Some(score) = track.score_at(i, reverse) {
+            let continuous =
+                previous.is_some_and(|p| (p..i).all(|j| track.score_at(j, reverse).is_some()));
+            path.push_str(&format!(
+                "{} {:.2},{:.2} ",
+                if continuous { "L" } else { "M" },
+                x(i),
+                y(score)
+            ));
+            // A singleton valid window remains visible with round line caps.
+            if !continuous {
+                path.push_str("l 0,0 ");
+            }
+            previous = Some(i);
+        } else {
+            previous = None;
+        }
     }
-    let indices = sampled_point_indices(scores.len(), SVG_MAX_POINTS_PER_POLYLINE);
-    let denom = scores.len().saturating_sub(1).max(1) as f64;
-    indices
-        .into_iter()
-        .map(|idx| {
-            let x = left + (idx as f64 / denom) * (right - left);
-            let y = score_to_y(scores[idx], min_score, max_score, top, bottom);
-            format!("{x:.2},{y:.2}")
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    path
 }
 
 fn summarize_tss_label(raw: &str) -> String {
@@ -703,13 +707,26 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
         let logo_y = row_top + 30.0;
         let logo_width = tf_track_logo_width(&track.motif_logo_columns);
         let meta_x = logo_x + logo_width + 12.0;
+        let evaluated = track.evaluated_strand_windows();
+        let maximum = if evaluated > 0 {
+            format!("{:.2}{max_position}", track.max_score)
+        } else {
+            "unavailable".into()
+        };
         let meta = format!(
-            "{} bp motif | {} windows | max {:.2}{}",
-            track.motif_length_bp, track.scored_window_count, track.max_score, max_position
+            "{} bp motif | {}/{} assessed strand-windows | max {}",
+            track.motif_length_bp,
+            evaluated,
+            track.scored_window_count * 2,
+            maximum
         );
-        let normalization_meta = track.normalization_reference.as_ref().map(|normalization| {
-            format_track_normalization_summary(report.score_kind, normalization)
-        });
+        let normalization_meta = track
+            .normalization_reference
+            .as_ref()
+            .filter(|_| evaluated > 0)
+            .map(|normalization| {
+                format_track_normalization_summary(report.score_kind, normalization)
+            });
         let row_fill = if row_idx % 2 == 0 {
             "#fffaf0"
         } else {
@@ -737,9 +754,9 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             escape_svg_text(&label)
         ));
         svg.push_str(&format!(
-            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\">{}</text>\n",
-            meta_x,
-            row_top + 46.0,
+            "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"10\" fill=\"#64748b\" data-role=\"tfbs-track-evaluability\">{}</text>\n",
+            title_x,
+            row_top + 98.0,
             escape_svg_text(&meta)
         ));
         if let Some(normalization_meta) = normalization_meta {
@@ -798,33 +815,35 @@ pub fn render_tfbs_score_tracks_svg(report: &TfbsScoreTrackReport) -> String {
             continue;
         }
 
-        let forward_points = polyline_points(
-            &track.forward_scores,
-            plot_left + SVG_TRACK_PADDING_X,
-            plot_right - SVG_TRACK_PADDING_X,
-            plot_top + 4.0,
-            plot_bottom - 4.0,
-            min_score,
-            max_score,
-        );
-        let reverse_points = polyline_points(
-            &track.reverse_scores,
-            plot_left + SVG_TRACK_PADDING_X,
-            plot_right - SVG_TRACK_PADDING_X,
-            plot_top + 4.0,
-            plot_bottom - 4.0,
-            min_score,
-            max_score,
-        );
+        if !track.fully_evaluated() {
+            svg.push_str(&format!("<text x=\"{plot_left:.1}\" y=\"{plot_top:.1}\" font-size=\"10\" fill=\"#92400e\">Unavailable / unassessed windows are gaps, not zero</text>"));
+        }
+        let x = |i| {
+            plot_left
+                + SVG_TRACK_PADDING_X
+                + i as f64 / track.scored_window_count.saturating_sub(1).max(1) as f64
+                    * (plot_right - plot_left - 2.0 * SVG_TRACK_PADDING_X)
+        };
+        let y = |score| {
+            score_to_y(
+                score,
+                min_score,
+                max_score,
+                plot_top + 4.0,
+                plot_bottom - 4.0,
+            )
+        };
+        let forward_points = score_path(track, false, x, y, SVG_MAX_POINTS_PER_POLYLINE);
+        let reverse_points = score_path(track, true, x, y, SVG_MAX_POINTS_PER_POLYLINE);
         if !forward_points.is_empty() {
             svg.push_str(&format!(
-                "<polyline fill=\"none\" stroke=\"#0e7490\" stroke-width=\"1.8\" stroke-linejoin=\"round\" stroke-linecap=\"round\" points=\"{}\"/>\n",
+                "<path fill=\"none\" stroke=\"#0e7490\" stroke-width=\"1.8\" stroke-linejoin=\"round\" stroke-linecap=\"round\" d=\"{}\"/>\n",
                 forward_points
             ));
         }
         if !reverse_points.is_empty() {
             svg.push_str(&format!(
-                "<polyline fill=\"none\" stroke=\"#b45309\" stroke-width=\"1.6\" stroke-linejoin=\"round\" stroke-linecap=\"round\" points=\"{}\"/>\n",
+                "<path fill=\"none\" stroke=\"#b45309\" stroke-width=\"1.6\" stroke-linejoin=\"round\" stroke-linecap=\"round\" d=\"{}\"/>\n",
                 reverse_points
             ));
         }
@@ -969,6 +988,9 @@ pub fn render_tfbs_score_track_correlation_svg(
     metric: crate::engine::TfbsScoreTrackCorrelationMetric,
     signal_source: crate::engine::TfbsScoreTrackCorrelationSignalSource,
 ) -> String {
+    if report.tracks.iter().any(|track| !track.fully_evaluated()) {
+        return "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"900\" height=\"80\"><text x=\"20\" y=\"40\">Correlation unavailable: incomplete or legacy-unassessed score tracks; no zero imputation.</text></svg>".into();
+    }
     let cross_strand_correlation = report
         .cross_strand_correlation_summary
         .as_ref()
@@ -1546,6 +1568,24 @@ pub fn render_tfbs_score_track_correlation_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn score_path_never_bridges_an_unsampled_gap() {
+        let track = crate::engine::TfbsScoreTrackRow {
+            scored_window_count: 5,
+            forward_scores: vec![0.0, 1.0, 0.0, 2.0, 3.0],
+            reverse_scores: vec![0.0; 5],
+            score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                forward: vec![true, true, false, true, true],
+                reverse: vec![true; 5],
+            }),
+            ..Default::default()
+        };
+        let path = score_path(&track, false, |i| i as f64, |s| s, 2);
+        assert!(path.starts_with("M 0.00,0.00"));
+        assert!(path.contains("M 3.00,2.00"));
+        assert!(!path.contains("L 3.00,2.00"));
+    }
     use crate::engine::{
         JasparExpertColumn, TfbsScoreTrackNormalizationReference, TfbsScoreTrackOverlayInterval,
         TfbsScoreTrackOverlayTrack, TfbsScoreTrackReport, TfbsScoreTrackRow,
@@ -1597,6 +1637,7 @@ mod tests {
     #[test]
     fn render_tfbs_score_tracks_svg_contains_track_labels_and_axes() {
         let report = TfbsScoreTrackReport {
+            scoring_provenance: None,
             schema: "gentle.tfbs_score_tracks.v1".to_string(),
             target_kind: "seq_id".to_string(),
             target_label: "tp73_upstream".to_string(),
@@ -1682,6 +1723,10 @@ mod tests {
                     top_peaks: vec![],
                     forward_scores: vec![0.0, 3.0, 8.5, 2.0],
                     reverse_scores: vec![0.0, 1.0, 2.0, 0.5],
+                    score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                        forward: vec![true; 4],
+                        reverse: vec![true; 4],
+                    }),
                 },
                 TfbsScoreTrackRow {
                     tf_id: "MA0079.3".to_string(),
@@ -1716,6 +1761,10 @@ mod tests {
                     top_peaks: vec![],
                     forward_scores: vec![0.5, 4.0, 1.0, 0.0],
                     reverse_scores: vec![0.0, 0.8, 2.0, 0.3],
+                    score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                        forward: vec![true; 4],
+                        reverse: vec![true; 4],
+                    }),
                 },
             ],
         };
@@ -1726,6 +1775,14 @@ mod tests {
         assert!(svg.contains("tp73_upstream"));
         assert!(svg.contains("p73 (MA0828.2)"));
         assert!(svg.contains("SP1 (MA0079.3)"));
+        let evaluability_labels: Vec<_> = svg
+            .lines()
+            .filter(|line| line.contains("data-role=\"tfbs-track-evaluability\""))
+            .collect();
+        assert_eq!(evaluability_labels.len(), 2);
+        assert!(evaluability_labels.iter().all(|line| {
+            line.starts_with("<text x=\"44.0\"") && line.contains("8/8 assessed strand-windows")
+        }));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-logo\""));
         assert!(svg.contains("data-gentle-role=\"tfbs-score-track-logo-letter\""));
         assert!(!svg.contains("fill=\"#cbd5e1\" fill-opacity"));
@@ -1750,6 +1807,7 @@ mod tests {
     #[test]
     fn render_tfbs_score_tracks_svg_supports_negative_ranges() {
         let report = TfbsScoreTrackReport {
+            scoring_provenance: None,
             schema: "gentle.tfbs_score_tracks.v1".to_string(),
             target_kind: "seq_id".to_string(),
             target_label: "tp73_context".to_string(),
@@ -1804,6 +1862,10 @@ mod tests {
                 top_peaks: vec![],
                 forward_scores: vec![-2.0, -1.0, 2.0, 4.0],
                 reverse_scores: vec![-1.5, 0.0, 1.5, 2.5],
+                score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                    forward: vec![true; 4],
+                    reverse: vec![true; 4],
+                }),
             }],
         };
 
@@ -1817,6 +1879,7 @@ mod tests {
     #[test]
     fn render_tfbs_score_track_correlation_svg_contains_dual_heatmaps() {
         let report = TfbsScoreTrackReport {
+            scoring_provenance: None,
             schema: "gentle.tfbs_score_tracks.v1".to_string(),
             target_kind: "seq_id".to_string(),
             target_label: "tert_promoter".to_string(),
@@ -2110,6 +2173,10 @@ mod tests {
                     scored_window_count: 8,
                     max_score: 4.0,
                     max_position_0based: Some(220),
+                    score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                        forward: vec![true; 8],
+                        reverse: vec![true; 8],
+                    }),
                     normalization_reference: None,
                     directional_summary: None,
                     top_peaks: vec![],
@@ -2125,6 +2192,10 @@ mod tests {
                     scored_window_count: 8,
                     max_score: 4.0,
                     max_position_0based: Some(300),
+                    score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                        forward: vec![true; 8],
+                        reverse: vec![true; 8],
+                    }),
                     normalization_reference: None,
                     directional_summary: None,
                     top_peaks: vec![],
@@ -2140,6 +2211,10 @@ mod tests {
                     scored_window_count: 8,
                     max_score: 4.0,
                     max_position_0based: Some(148),
+                    score_validity: Some(crate::engine::TfbsScoreTrackValidity {
+                        forward: vec![true; 8],
+                        reverse: vec![true; 8],
+                    }),
                     normalization_reference: None,
                     directional_summary: None,
                     top_peaks: vec![],

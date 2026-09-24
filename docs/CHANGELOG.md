@@ -1,5 +1,40 @@
 # GENtle Changelog
 
+## 2026-09-24 - Independent Local TSS Scoring
+
+- Add explicit, bounded local TSS scoring through the shared InlineSequence
+  scorer, with independent settings, background progress/cancellation and cache.
+  Locally computed curves retain their score kind and exact matrix provenance;
+  attached report curves and imported peaks keep their own values and scales.
+- Bind shared score reports to the actual scanned bases and resolved matrices,
+  with additive provenance available to every adapter. Local lanes require
+  validity masks, preserving genuine zero versus unavailable windows. Stale,
+  cancelled or registry-changed work is not published. Native SVG retains the
+  separate local receipt. No network queries, annotations or private reports
+  are produced; live GUI acceptance remains with Glen.
+- Refresh only the two affected synthetic cohort JSON reports and generation
+  checksums for additive scoring provenance; their scores remain unchanged.
+
+## 2026-09-24 - Explicit TFBS Evaluability And Native TSS SVG
+
+- Add per-strand validity masks to shared TFBS score tracks without changing
+  numeric array types. Missing/ambiguous windows and legacy unknown validity
+  are not zero scores; valid clipped zeros remain scores. Peaks exclude gaps,
+  correlations omit incomplete tracks, and numeric-only consumers reject them.
+  Shared SVG and native plots preserve gaps without joining across them.
+- Export the native TSS evidence plot through a headless renderer, preserving
+  the selected span/lanes, source scales, both coordinate orientations, attached
+  report curves, sparse peaks, missingness and hover provenance. Bind SVG
+  metadata to view/sequence/report hashes and presentation options. Background
+  atomic publication never falls back to the standard map or silently truncates
+  excessive work. This is a view projection, not rescoring or a receipt audit.
+- Add synthetic evaluability, legacy, strand, gap, selection, provenance and
+  export-failure regressions. Live TSS GUI acceptance and native Windows file
+  publication remain separate; no private reports were regenerated.
+- Refresh the two dependent synthetic cohort reports, score-track teaching SVG
+  and tutorial checksums. Preserve existing positive-peak classifications;
+  evaluated zeros must not acquire shared/cohort-conserved peak status.
+
 ## 2026-09-24 - Exact DNA Latency Boundary Workload
 
 - Add the proposed 250 kbp / 5,000-feature boundary to the existing independent
