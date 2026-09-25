@@ -566,6 +566,12 @@ prioritize S6 ahead of S1-S5 rather than leaving it until the end.
 - Compare empty-profile startup and explicit public-project opening, with
   cold/warm conditions documented. Do not change project restoration, skip
   validation or discard annotations merely to make startup look faster.
+- Use the [offline startup reader](../benches/README.md#read-a-saved-startup-trace)
+  on the recorded checkpoints to inspect per-subject inclusive spans and
+  scheduling/hydration/content boundaries. It retains raw bytes and flags loss,
+  failed work and unavailable endpoints; it does not sum overlapping work or
+  establish a native result. Compare runs only after Glen binds their external
+  binary/profile/host/input evidence; the reader does not certify comparability.
 - Fix only the confirmed blocking phase. Where that phase is the existing
   constructor/hydration path, implement S3 once and report its contribution to
   both open-window and process-to-content totals. Preserve cancellation,

@@ -1093,7 +1093,10 @@ Feature tree grouping:
   or project writes are introduced. Failed loads and loading placeholders do
   not become content checkpoints. See the [startup runbook](../benches/README.md#startup-phase-checkpoints)
   for missing-event handling and the distinction from native presentation and
-  performance acceptance. This diagnostic is off by default.
+  performance acceptance. The offline `scripts/gui_startup_summary.py` reader
+  produces per-subject CPU tables and retains the exact trace without relaunching
+  GENtle; missing durations stay unavailable, not zero. This diagnostic is off
+  by default.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)

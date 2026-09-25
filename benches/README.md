@@ -285,6 +285,47 @@ external native audit. This file alone cannot certify an interaction budget,
 and enabling tracing adds some overhead. The existing Criterion replay remains
 unchanged and clears inherited `GENTLE_*` options.
 
+#### Read a saved startup trace
+
+Summarize one existing trace without launching GENtle, Cargo, a GUI or a timed
+benchmark. From the repository root:
+
+```bash
+python3 scripts/gui_startup_summary.py /tmp/gentle-startup-project-01.json \
+  --output-dir /tmp/gentle-startup-project-01-summary
+python3 -m unittest scripts.test_gui_startup_summary -v
+```
+
+The output directory must be new. It contains the untouched `trace.json`, a
+machine-readable `summary.json` (`gentle.gui_startup_summary.v1`) and
+`summary.md`. The report hashes the exact input bytes and reader script; LF and
+CRLF inputs remain distinct byte evidence. This is not a redaction tool: the
+raw input is retained verbatim, including any extra fields a producer supplied.
+Review it before sharing. Invalid/oversized input is rejected before output is
+created; prior output is never replaced. The input limit is 1 MiB / 512 events.
+
+Read the CPU markers first, then the inclusive spans for each process-local
+subject. Project decoding/installation, lock acquisition, cloning and hydration
+remain separate. Same-subject boundaries show worker scheduling to lock attempt,
+worker result to hydration, and construction/hydration to native or embedded
+content markers. There is no inferred link from an open dispatcher to a DNA
+subject, and no matching of subject ordinals across runs. Eager windows may
+legitimately lack worker/hydration measurements.
+
+Missing, ambiguous, unsuccessfully completed or inverted boundary endpoints
+produce `null` / `unavailable`, never zero. Any recorded loss suppresses all
+derived durations because losses cannot be localized; the observed timestamps
+remain available for inspection. Failed/interrupted spans retain their outcome
+and, when both endpoints exist without loss, their elapsed duration. Do not sum
+inclusive/nested/concurrent spans. `native_run` includes the entire session until
+exit, not just startup. `no_recorded_loss` is trace integrity, not successful
+startup; the performance verdict always remains `not_assessed`.
+
+The tool does not combine runs, pick a bottleneck automatically or verify binary,
+profile or subject identity. Glen still binds the external evidence described
+above and owns attribution and native acceptance. CI exercises synthetic parser
+and real CLI/file-boundary regressions only, not GUI timings.
+
 ## Specificity finalization
 
 Run the deterministic primer-specificity benchmark with:

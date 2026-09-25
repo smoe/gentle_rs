@@ -76,6 +76,20 @@
   package acceptance remain pending. Existing tagged workflows do not acquire
   these changes just by being rerun.
 
+## 2026-09-25 - Offline Startup Trace Attribution Reader
+
+- Add a dependency-free reader for existing `gentle.gui_startup_trace.v1`
+  diagnostics. Retain exact input bytes and hashes alongside JSON/Markdown
+  per-subject CPU markers, inclusive spans and scheduling/hydration boundaries.
+  Do not sum nested/parallel work or label the native-loop lifetime as startup.
+- Keep failed/interrupted work explicit, reject malformed identities and
+  ordering, and leave missing/ambiguous durations unavailable. Recorded losses
+  suppress derived durations; prior evidence directories are never overwritten.
+- Add synthetic phase-contract, loss/failure, multiple-window and real CLI
+  LF/CRLF/hash regressions to lightweight CI. The reader does not launch the GUI,
+  benchmark or build; source identity is producer-reported, not independent
+  binary verification. No runtime/profile change or native acceptance claim.
+
 ## 2026-09-25 - Motif Tutorial Discovery Metadata Repair
 
 - Restore tutorial 08.13's no-project prerequisite and TFBS, tail-probability
