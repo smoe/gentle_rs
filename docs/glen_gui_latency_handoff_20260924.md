@@ -41,9 +41,11 @@ result, not a failed experiment to conceal.
 
 - The nine fixtures at the fixed comparison revisions cover 20 kbp / 250 kbp / 2 Mbp crossed with
   100 / 1,000 / 10,000 features. Do not modify them for this comparison.
-- The proposed interactive target of 250 kbp / 5,000 features and linear-first
-  optimization is still awaiting explicit owner confirmation. These runs may
-  diagnose costs now, but cannot certify that target. The exact 5,000-feature
+- The owner confirmed the interactive target of linear loci up to 250 kbp /
+  5,000 features on 2026-09-24. The 2 Mbp and 10,000-feature cases remain stress
+  cases. Circular maps require correctness and native interaction regressions,
+  but `.12` sets no circular timing budget. The fixed-revision runs below may
+  diagnose costs, but cannot certify the agreed target. The exact 5,000-feature
   boundary is absent from this historical ladder and must not be inferred by
   interpolation. Current `main` adds it in `d035912e`, with derived-layer
   inventories, 130 cases and 90 counter observations. Use that workload for a
@@ -206,7 +208,8 @@ Please return:
 2. Separate build wall time/RSS, smoke completeness and per-interaction CPU
    comparisons, including uncertainty, regressions and unchanged cases.
 3. Confirmation or rejection of the GC work reduction; distinguish it from
-   any measured responsiveness improvement.
+   any measured responsiveness improvement. Do not promote historical
+   2 Mbp/10,000-feature stress results into the agreed interactive envelope.
 4. Packaged-native startup/interaction attribution and separately labelled
    same-SHA profile results, or explicitly why either is not yet available.
    Classify product defects, environment/build limits and harness

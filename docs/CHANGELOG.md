@@ -90,6 +90,17 @@
 - No local builds or tests run at the owner's request; CI verification remains
   pending.
 
+## 2026-09-25 - Internal.12 Latency Audit Scope
+
+- Record the owner's 2026-09-24 interactive envelope as linear loci through
+  250 kbp with 5,000 loaded features; retain 2 Mbp and 10,000-feature cases as
+  stress tests rather than release-target timing cases.
+- Optimize linear views first. Circular maps retain correctness and native
+  interaction regression requirements, but `.12` has no circular timing budget.
+- Keep startup and interaction numbers open until Glen proposes host-bound
+  baselines and the owner agrees them before optimization. These scope choices
+  are not performance acceptance.
+
 ## 2026-09-24 - TSS Scoring And Hosted Attachment Integration
 
 - Merge `gentle_rs_3` at `a2271076`, preserving Glen's vertical native viewer,
