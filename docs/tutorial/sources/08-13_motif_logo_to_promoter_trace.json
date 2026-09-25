@@ -1,7 +1,7 @@
 {
   "schema": "gentle.tutorial_source.v4",
   "id": "motif_logo_to_promoter_trace",
-  "title": "Understand PWM/PSSM scores before reading promoter traces",
+  "title": "Explain a PWM/PSSM score versus binding affinity: TP73 and TSS promoter traces",
   "catalog": {
     "order": 55,
     "path": "docs/tutorial/08-13_motif_logo_to_promoter_trace.md",

@@ -1,4 +1,4 @@
-# Understand PWM/PSSM scores before reading promoter traces
+# Explain a PWM/PSSM score versus binding affinity: TP73 and TSS promoter traces
 
 From a motif logo to a promoter trace: what does the score mean?
 

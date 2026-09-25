@@ -60,6 +60,12 @@ class MotifScoreTutorialSourceTests(unittest.TestCase):
         entry, = [row for row in catalog["entries"] if row["id"] == source["id"]]
         self.assertEqual(entry["notes"], source["catalog"]["notes"])
         self.assertEqual(entry["title"], source["title"])
+        # The lexical ranker weights title matches above summary matches. The
+        # summary-only guard missed a rename that demoted "Explain PWM" below
+        # a reporter-panel project; retain the explanatory title in the fast CI gate.
+        for term in ["Explain", "PWM/PSSM", "binding affinity", "TP73", "TSS"]:
+            with self.subTest(discovery_title_term=term):
+                self.assertIn(term, entry["title"])
         for term in ["PWM/PSSM", "JASPAR", "TFBS", "pseudocounts", "tail probability",
                      "binding affinity", "TP73", "300", "shared",
                      "no loaded project required"]:

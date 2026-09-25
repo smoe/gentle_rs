@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-25 - Restore Motif Guide Ranking Metadata
+
+- Complete the tutorial 08.13 discovery repair: its renamed title removed
+  `Explain`, so the shared lexical ranker gave `Explain PWM` only 19 points
+  while the promoter-reporter panel scored 26 through use cases and learning
+  objectives. The earlier summary repair did not address that ranking change;
+  this failure is platform-independent and unrelated to installer profiles.
+- Restore the original explanatory title in source, catalog and chapter,
+  matching the existing tutorial index. Keep the 08.16 native-viewer split,
+  ranking algorithm and Rust rank-one assertions unchanged. Extend the existing
+  early Python metadata guard to cover the title as well as the summary.
+- No local builds or tests run at the owner's request; CI verification remains
+  pending.
+
 ## 2026-09-25 - Unoptimized Internal Installers
 
 - Select Cargo `dev` for every `vX.Y.Z-internal.N` native installer, including
