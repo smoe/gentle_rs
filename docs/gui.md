@@ -955,9 +955,11 @@ Feature tree grouping:
   on the lightweight placeholder until `Load feature tree/details` is clicked,
   while the DNA map remains usable.
 - Once the feature tree is visible, its derived grouping/filter/visibility
-  model is cached across frames and only rebuilt when the sequence, feature
-  visibility settings, viewport span, or filter/grouping inputs change,
-  reducing idle CPU load for feature-dense windows.
+  model is cached across frames. Pan/zoom updates only exon-aware visibility
+  and group counts, retaining labels and group membership. Sequence/annotation,
+  topology, feature visibility settings or filter/grouping changes still rebuild
+  the model. An intron-only viewport does not make a transcript visible merely
+  because it overlaps that transcript's bounding span.
 - Feature detail text remains below the feature tree in the left pane and uses
   the configurable feature-detail font size.
 - The feature tree/details pane is top-aligned with the map and stretched to
@@ -1079,6 +1081,9 @@ Feature tree grouping:
   sequence or feature names. They count work, not milliseconds. See the
   [latency plan](dna_feature_rendering_latency_plan.md) and
   [prebuilt audit runbook](../benches/README.md#dna-feature-density-latency).
+  `tree_viewport_updates` counts in-place visibility recounts separately from
+  `tree_builds`; these reuse hits are also included in `tree_hits`. Older logs
+  without this counter do not establish a zero recount cost.
   GC layer counts use bin geometry without rescanning sequence bases on pan;
   `layer_gc_bases` therefore stays zero on that path. This does not suppress
   the separate GC-value computation needed for the actual GC track.

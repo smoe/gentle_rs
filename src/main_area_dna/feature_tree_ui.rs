@@ -241,7 +241,7 @@ pub(super) struct FeatureTreeCacheKey {
     pub(super) seq_len: usize,
     pub(super) feature_count: usize,
     pub(super) feature_generation: u64,
-    pub(super) viewport: Option<(usize, usize)>,
+    pub(super) is_circular: bool,
     pub(super) grouping_mode: FeatureTreeGroupingMode,
     pub(super) feature_filter_text: String,
     pub(super) show_cds_features: bool,
@@ -266,7 +266,47 @@ pub(super) struct FeatureTreeComputedModel {
 #[derive(Clone, Debug)]
 pub(super) struct FeatureTreeCache {
     pub(super) key: FeatureTreeCacheKey,
+    pub(super) viewport: Option<(usize, usize)>,
     pub(super) model: FeatureTreeComputedModel,
+}
+
+impl FeatureTreeComputedModel {
+    /// Recount existing membership without rebuilding labels, filters or groups.
+    fn refresh_viewport(&mut self, dna: &DNAsequence, viewport: Option<(usize, usize)>) {
+        crate::gentle_gui_profile_scope!("FeatureTree::refresh_viewport");
+        for group in &mut self.groups {
+            for entry in &mut group.entries {
+                entry.visible_in_view = match viewport {
+                    Some((start, end)) => dna.features().get(entry.id).is_some_and(|feature| {
+                        MainAreaDna::feature_overlaps_linear_viewport(
+                            feature,
+                            dna.len(),
+                            start,
+                            end,
+                        )
+                    }),
+                    None => true,
+                };
+            }
+            let entries = &group.entries;
+            let count = |indices: &[usize]| {
+                indices
+                    .iter()
+                    .filter(|index| entries[**index].visible_in_view)
+                    .count()
+            };
+            group.visible_count = entries.iter().filter(|entry| entry.visible_in_view).count();
+            for subgroup in &mut group.grouped_entries {
+                subgroup.visible_count = count(&subgroup.entry_indices);
+            }
+            for primary in &mut group.regulatory_primary_groups {
+                primary.visible_count = count(&primary.entry_indices);
+                for secondary in &mut primary.secondary_groups {
+                    secondary.visible_count = count(&secondary.entry_indices);
+                }
+            }
+        }
+    }
 }
 
 impl MainAreaDna {
@@ -1452,15 +1492,19 @@ impl MainAreaDna {
         self.save_engine_ops_state();
     }
 
-    pub(super) fn current_feature_tree_cache_key(
-        &self,
-        viewport: Option<(usize, usize)>,
-    ) -> FeatureTreeCacheKey {
-        let (seq_len, feature_count, feature_generation) = self
+    pub(super) fn current_feature_tree_cache_key(&self) -> FeatureTreeCacheKey {
+        let (seq_len, feature_count, feature_generation, is_circular) = self
             .dna
             .read()
-            .map(|dna| (dna.len(), dna.features().len(), dna.feature_generation()))
-            .unwrap_or((0, 0, 0));
+            .map(|dna| {
+                (
+                    dna.len(),
+                    dna.features().len(),
+                    dna.feature_generation(),
+                    dna.is_circular(),
+                )
+            })
+            .unwrap_or((0, 0, 0, false));
         let (
             show_cds_features,
             show_gene_features,
@@ -1491,7 +1535,7 @@ impl MainAreaDna {
             seq_len,
             feature_count,
             feature_generation,
-            viewport,
+            is_circular,
             grouping_mode: self.feature_tree_grouping_mode,
             feature_filter_text: self.feature_tree_filter.trim().to_string(),
             show_cds_features,
@@ -1510,6 +1554,7 @@ impl MainAreaDna {
     pub(super) fn build_feature_tree_model(
         &self,
         key: &FeatureTreeCacheKey,
+        viewport: Option<(usize, usize)>,
     ) -> FeatureTreeComputedModel {
         crate::gentle_gui_profile_scope!("FeatureTree::build_model");
         let filter_active = !key.feature_filter_text.is_empty();
@@ -1573,7 +1618,7 @@ impl MainAreaDna {
                     if from < 0 || to < 0 {
                         return None;
                     }
-                    let visible_in_view = match key.viewport {
+                    let visible_in_view = match viewport {
                         Some((start, end)) => Self::feature_overlaps_linear_viewport(
                             feature,
                             sequence_length,
@@ -1891,20 +1936,27 @@ impl MainAreaDna {
 
     pub(super) fn ensure_feature_tree_cache_current(&mut self, viewport: Option<(usize, usize)>) {
         crate::gentle_gui_profile_scope!("FeatureTree::ensure_cache_current");
-        let next_key = self.current_feature_tree_cache_key(viewport);
-        let is_current = self
+        let next_key = self.current_feature_tree_cache_key();
+        if let Some(cache) = self
             .feature_tree_cache
-            .as_ref()
-            .map(|cache| cache.key == next_key)
-            .unwrap_or(false);
-        if is_current {
+            .as_mut()
+            .filter(|cache| cache.key == next_key)
+        {
+            if cache.viewport != viewport {
+                let dna = self.dna.read().expect("DNA lock poisoned");
+                cache.model.refresh_viewport(&dna, viewport);
+                cache.viewport = viewport;
+                self.feature_tree_viewport_updates =
+                    self.feature_tree_viewport_updates.saturating_add(1);
+            }
             self.feature_tree_cache_hits = self.feature_tree_cache_hits.saturating_add(1);
             return;
         }
         self.feature_tree_cache_misses = self.feature_tree_cache_misses.saturating_add(1);
-        let model = self.build_feature_tree_model(&next_key);
+        let model = self.build_feature_tree_model(&next_key, viewport);
         self.feature_tree_cache = Some(FeatureTreeCache {
             key: next_key,
+            viewport,
             model,
         });
     }

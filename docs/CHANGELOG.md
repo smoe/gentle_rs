@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-25 - Reuse Feature-Tree Structure During Pan And Zoom
+
+- Separate the tree's annotation/settings identity from viewport visibility.
+  Pan and zoom reuse labels, filters and nested membership while updating all
+  visible counts with the same exon-aware, half-open overlap rules. Keep both
+  strands' intron-only views invisible and invalidate on annotation, topology,
+  filter, grouping and relevant display changes. No biological output changes.
+- Add a separate recount counter, full-rebuild equivalence/invalidation tests
+  and a 5,000-feature boundary regression. An opt-in developer CPU diagnostic
+  isolates 50 continuous pans at three densities without a timing threshold;
+  it does not establish native responsiveness or release acceptance.
+- Keep toolbar feature traversal, first-window/startup work and Glen's
+  compatible optimized/native comparisons open. No worker migration, new
+  interval index, culling, release/version change or private-data regeneration.
+
 ## 2026-09-24 - TSS Scoring And Hosted Attachment Integration
 
 - Merge `gentle_rs_3` at `a2271076`, preserving Glen's vertical native viewer,
