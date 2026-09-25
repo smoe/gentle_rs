@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-09-25 - Unoptimized Internal Installers
+
+- Select Cargo `dev` for every `vX.Y.Z-internal.N` native installer, including
+  published prereleases; other version labels retain `release`. Compile,
+  macOS bundle, entrypoint smokes and staging share that selection, without a
+  second optimized GENtle build. Keep one build job, five binaries, immutable
+  candidate checks and explicit publication approval; containers are unchanged.
+- Mark internal archives with `-dev` and bind the actual profile in candidate,
+  platform and aggregate receipts. Reject mixed or consistently wrong profiles
+  and old candidate helpers that cannot declare the selected output directory.
+- Add synthetic profile-selection, workflow-command and receipt regressions
+  for CI. Keep development-package GUI evidence separate from optimized latency
+  and historical `bench-audit` results. This is a build-cost mitigation, not a
+  diagnosis or confirmed fix for compiler kills and runner shutdowns.
+- No local builds or tests run at the owner's request; native CI and actual
+  package acceptance remain pending. Existing tagged workflows do not acquire
+  these changes just by being rerun.
+
 ## 2026-09-25 - Motif Tutorial Discovery Metadata Repair
 
 - Restore tutorial 08.13's no-project prerequisite and TFBS, tail-probability

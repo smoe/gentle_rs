@@ -259,6 +259,8 @@ class WorkflowWiringTests(unittest.TestCase):
         repo = Path(__file__).resolve().parents[1]
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
         profiles = manifest["profile"]
+        self.assertEqual(profiles["dev"].get("opt-level", 0), 0,
+                         "Internal installers must remain unoptimized")
         self.assertEqual(profiles["release"], {"lto": "off"},
                          "Disable all native LTO; retain other Cargo defaults")
         self.assertEqual(profiles["release-fast"], {
@@ -277,27 +279,44 @@ class WorkflowWiringTests(unittest.TestCase):
         ))
         repo = Path(__file__).resolve().parents[1]
         workflow = (repo / ".github/workflows/release.yml").read_text()
-        build = workflow.split("- name: Build locked release binaries\n", 1)[1].split("\n      - name:", 1)[0]
+        build = workflow.split("- name: Build locked native binaries\n", 1)[1].split("\n      - name:", 1)[0]
         tokens = shlex.split(build.split("build=(", 1)[1].split(")", 1)[0])
         self.assertEqual(tokens[:2], ["cargo", "build"])
         self.assertIn("--locked", tokens)
-        self.assertIn("--release", tokens)
+        self.assertEqual(tokens[tokens.index("--profile") + 1], "$NATIVE_PROFILE")
+        self.assertNotIn("--release", tokens)
         self.assertIn("-j1", tokens)
         self.assertEqual([tokens[i + 1] for i, token in enumerate(tokens) if token == "--bin"],
                          list(package.BINARIES))
         for flag in ("--bins", "--all-targets", "--workspace", "--features", "--all-features", "--no-default-features"):
             self.assertNotIn(flag, tokens)
-        self.assertIn("run: cargo bundle --release --bin gentle --format", workflow)
+        self.assertIn('run: cargo bundle --profile "$NATIVE_PROFILE" --bin gentle --format', workflow)
+        self.assertIn('CARGO_BUILD_JOBS: "1"', workflow)
+        self.assertIn("NATIVE_PROFILE: ${{ needs.candidate.outputs.native_profile }}", workflow)
+        self.assertIn("NATIVE_TARGET_SUBDIR: ${{ needs.candidate.outputs.native_target_subdir }}", workflow)
+        resolver = (repo / ".github/workflows/release-candidate.yml").read_text()
+        for key in ("native_profile", "native_target_subdir"):
+            self.assertIn(f"value: ${{{{ jobs.resolve.outputs.{key} }}}}", resolver)
+            self.assertIn(f"{key}: ${{{{ steps.identity.outputs.{key} }}}}", resolver)
+        self.assertIn('case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in', workflow)
+        self.assertIn("dev:debug|release:release)", workflow)
         self.assertNotIn("script-interfaces", workflow)
         self.assertNotIn("CARGO_PROFILE_RELEASE_", workflow)
         self.assertNotIn("RUSTFLAGS:", workflow)
         self.assertIn('"features": []', workflow)
         self.assertIn('"default_features": True, "binaries": list(BINARIES)', workflow)
+        self.assertIn('"profile": os.environ["NATIVE_PROFILE"]', workflow)
         self.assertIn("from scripts.package_desktop import BINARIES", workflow)
         for name in package.BINARIES:
-            self.assertIn(f'/release/{name}${{suffix}}"', workflow)
+            self.assertIn(f'/${{NATIVE_TARGET_SUBDIR}}/{name}${{suffix}}"', workflow)
         for name in ("gentle_js", "gentle_lua"):
-            self.assertNotIn(f'/release/{name}${{suffix}}"', workflow)
+            self.assertNotIn(f'/${{NATIVE_TARGET_SUBDIR}}/{name}${{suffix}}"', workflow)
+        self.assertNotIn("--release", workflow)
+        self.assertNotIn("CARGO_TARGET_DIR}/release", workflow)
+        self.assertNotIn("CARGO_TARGET_DIR/release", workflow)
+        self.assertEqual(workflow.count('--binaries "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}"'), 3)
+        self.assertIn('$env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR/gentle.exe', workflow)
+        self.assertIn('profile_suffix="-dev"', workflow)
 
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
         self.assertEqual(set(manifest["features"]["default"]), {"desktop-gui", "screenshot-capture"})
@@ -309,7 +328,7 @@ class WorkflowWiringTests(unittest.TestCase):
     def test_release_build_retains_diagnostics_even_on_failure(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         workflow = (repo / ".github/workflows/release.yml").read_text()
-        build = workflow.split("- name: Build locked release binaries\n", 1)[1].split("\n      - name:", 1)[0]
+        build = workflow.split("- name: Build locked native binaries\n", 1)[1].split("\n      - name:", 1)[0]
         self.assertIn("shell: bash", build)
         self.assertIn("set -euo pipefail", build)
         self.assertIn('build=(/usr/bin/time -v "${build[@]}")', build)
@@ -327,7 +346,7 @@ class WorkflowWiringTests(unittest.TestCase):
     def test_release_build_logging_preserves_cargo_exit_status(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         workflow = (repo / ".github/workflows/release.yml").read_text()
-        build = workflow.split("- name: Build locked release binaries\n", 1)[1].split("\n      - name:", 1)[0]
+        build = workflow.split("- name: Build locked native binaries\n", 1)[1].split("\n      - name:", 1)[0]
         script = textwrap.dedent(build.split("run: |\n", 1)[1])
         with tempfile.TemporaryDirectory(prefix="synthetic release log ") as directory:
             root = Path(directory)
@@ -336,19 +355,22 @@ class WorkflowWiringTests(unittest.TestCase):
             (root / "cargo").write_text(
                 "#!/bin/sh\n"
                 "if [ \"$1\" = --version ]; then printf 'synthetic cargo\\n'; exit 0; fi\n"
+                "printf 'arg:%s\\n' \"$@\"\n"
                 "printf 'synthetic build stdout\\n'\n"
                 "printf 'synthetic compiler stderr\\n' >&2\n"
                 "exit \"$SYNTHETIC_CARGO_EXIT\"\n"
             )
             for name in ("cargo", "rustc"):
                 (root / name).chmod(0o755)
-            for code in (0, 101, 143):
-                with self.subTest(exit_code=code):
+            for profile, code in ((profile, code) for profile in ("dev", "release")
+                                  for code in (0, 101, 143)):
+                with self.subTest(profile=profile, exit_code=code):
                     result = subprocess.run(
                         [shutil.which("bash"), "-c", script], cwd=root,
                         env={**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
                              "RUNNER_TEMP": str(root), "RUNNER_OS": "Windows",
                              "EXPECTED_REVISION": "synthetic-revision",
+                             "NATIVE_PROFILE": profile,
                              "SYNTHETIC_CARGO_EXIT": str(code)},
                         capture_output=True, text=True, timeout=30,
                     )
@@ -356,8 +378,33 @@ class WorkflowWiringTests(unittest.TestCase):
                     log = (root / "gentle-release-build.log").read_text()
                     self.assertIn("synthetic build stdout", log)
                     self.assertIn("synthetic compiler stderr", log)
-                    self.assertIn("revision=synthetic-revision platform=Windows", log)
+                    self.assertIn(f"revision=synthetic-revision platform=Windows profile={profile}", log)
+                    self.assertIn(f"arg:--profile\narg:{profile}\n", log)
+                    self.assertNotIn("arg:--release\n", log)
                     self.assertEqual(result.stdout, log)
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"),
+                         "Synthetic executable stand-ins require a POSIX host and Bash")
+    def test_macos_bundle_uses_the_selected_profile_without_release_fallback(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        workflow = (repo / ".github/workflows/release.yml").read_text()
+        step = workflow.split("- name: Build macOS bundle\n", 1)[1].split("\n      - name:", 1)[0]
+        script = step.split("run: ", 1)[1].strip().replace("${{ matrix.bundle_format }}", "osx")
+        with tempfile.TemporaryDirectory(prefix="synthetic bundle profile ") as directory:
+            root = Path(directory)
+            cargo = root / "cargo"
+            cargo.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
+            cargo.chmod(0o755)
+            for profile in ("dev", "release"):
+                with self.subTest(profile=profile):
+                    result = subprocess.run(
+                        [shutil.which("bash"), "-c", script], cwd=root,
+                        env={**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
+                             "NATIVE_PROFILE": profile},
+                        capture_output=True, text=True, check=True, timeout=30,
+                    )
+                    self.assertEqual(result.stdout.splitlines(),
+                                     ["bundle", "--profile", profile, "--bin", "gentle", "--format", "osx"])
 
     def test_release_stages_and_checks_each_platform_after_extraction(self) -> None:
         repo = Path(__file__).resolve().parents[1]

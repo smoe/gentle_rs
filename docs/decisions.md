@@ -912,8 +912,13 @@ comparable only when profile, host, toolchain, fixture hash, and GENtle revision
 match; retained metadata and baseline labels must identify the effective profile
 explicitly.
 
-Native latency acceptance uses the packaged `--release` GUI and its effective
+Native latency acceptance uses the actual packaged GUI and its effective
 build recipe, not a Criterion harness, even if that harness inherits `release`.
+Since 2026-09-25, internal installers use `dev`; final releases use `release`.
+Keep those verdicts separate: an optimized measurement cannot certify an
+unoptimized internal package, nor can that package certify final-release
+latency. Historical "release-like" measurements still mean the release profile;
+do not relabel them or silently relax budgets for development-profile packages.
 Retain extracted-package identity separately from local counterpart builds and
 instrumented diagnostics. Keep `bench-audit` for historical ladder continuity.
 A controlled same-SHA, same-host native profile comparison may quantify the

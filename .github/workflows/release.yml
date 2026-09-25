@@ -72,7 +72,10 @@ jobs:
       EXPECTED_LOCK_SHA256: ${{ needs.candidate.outputs.cargo_lock_sha256 }}
       WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
       CANDIDATE_MODE: ${{ needs.candidate.outputs.mode }}
+      NATIVE_PROFILE: ${{ needs.candidate.outputs.native_profile }}
+      NATIVE_TARGET_SUBDIR: ${{ needs.candidate.outputs.native_target_subdir }}
       CARGO_TARGET_DIR: target
+      CARGO_BUILD_JOBS: "1"
       RUST_MIN_STACK: 67108864
 
     steps:
@@ -96,6 +99,10 @@ jobs:
         run: |
           python3 scripts/release_candidate.py verify
           test -f scripts/package_desktop.py
+          case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in
+            dev:debug|release:release) ;;
+            *) echo "Missing or invalid native build profile; candidate must contain the profile-aware packaging helpers"; exit 1 ;;
+          esac
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
@@ -137,13 +144,13 @@ jobs:
         if: runner.os == 'macOS'
         run: cargo install cargo-bundle --locked
 
-      - name: Build locked release binaries
+      - name: Build locked native binaries
         shell: bash
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/gentle-release-build.log"
           {
-            echo "revision=$EXPECTED_REVISION platform=$RUNNER_OS"
+            echo "revision=$EXPECTED_REVISION platform=$RUNNER_OS profile=$NATIVE_PROFILE"
             rustc --version --verbose
             cargo --version
             if [[ "$RUNNER_OS" == "Linux" ]]; then
@@ -155,7 +162,7 @@ jobs:
               df -h .
             fi
           } 2>&1 | tee "$log"
-          build=(cargo build --locked --release -j1
+          build=(cargo build --locked --profile "$NATIVE_PROFILE" -j1
             --bin gentle --bin gentle_cli --bin gentle_mcp
             --bin gentle_examples_docs --bin gentle_publication_report)
           if [[ "$RUNNER_OS" == "Linux" ]]; then
@@ -180,16 +187,16 @@ jobs:
           set -euo pipefail
           suffix=""
           if [[ "${{ runner.os }}" == "Windows" ]]; then suffix=".exe"; fi
-          "${CARGO_TARGET_DIR}/release/gentle${suffix}" --version
-          "${CARGO_TARGET_DIR}/release/gentle_cli${suffix}" --help
-          "${CARGO_TARGET_DIR}/release/gentle_mcp${suffix}" --help
-          "${CARGO_TARGET_DIR}/release/gentle_examples_docs${suffix}" --help
-          "${CARGO_TARGET_DIR}/release/gentle_publication_report${suffix}" --help
+          "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle${suffix}" --version
+          "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle_cli${suffix}" --help
+          "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle_mcp${suffix}" --help
+          "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle_examples_docs${suffix}" --help
+          "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle_publication_report${suffix}" --help
           git diff --exit-code -- Cargo.lock Cargo.toml
 
       - name: Build macOS bundle
         if: runner.os == 'macOS'
-        run: cargo bundle --release --bin gentle --format ${{ matrix.bundle_format }}
+        run: cargo bundle --profile "$NATIVE_PROFILE" --bin gentle --format ${{ matrix.bundle_format }}
 
       - name: Inspect macOS bundle outputs
         if: runner.os == 'macOS'
@@ -197,12 +204,12 @@ jobs:
         run: |
           set -euo pipefail
           echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
-          echo "${CARGO_TARGET_DIR}/release contents:"
-          ls -la "${CARGO_TARGET_DIR}/release"
-          echo "${CARGO_TARGET_DIR}/release/bundle tree:"
-          find "${CARGO_TARGET_DIR}/release/bundle" -maxdepth 4 -print || true
-          if [[ ! -d "${CARGO_TARGET_DIR}/release/bundle/osx" ]]; then
-            echo "Expected bundle directory ${CARGO_TARGET_DIR}/release/bundle/osx after cargo bundle"
+          echo "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR} contents:"
+          ls -la "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}"
+          echo "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle tree:"
+          find "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle" -maxdepth 4 -print || true
+          if [[ ! -d "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/osx" ]]; then
+            echo "Expected bundle directory ${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/osx after cargo bundle"
             exit 1
           fi
 
@@ -211,13 +218,13 @@ jobs:
         shell: powershell
         run: |
           Write-Host "CARGO_TARGET_DIR=$env:CARGO_TARGET_DIR"
-          if (!(Test-Path "$env:CARGO_TARGET_DIR/release")) {
-            throw "$env:CARGO_TARGET_DIR/release directory was not created"
+          if (!(Test-Path "$env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR")) {
+            throw "$env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR directory was not created"
           }
-          Write-Host "$env:CARGO_TARGET_DIR/release contents:"
-          Get-ChildItem -Force "$env:CARGO_TARGET_DIR/release"
-          if (!(Test-Path "$env:CARGO_TARGET_DIR/release/gentle.exe")) {
-            throw "Expected Windows binary $env:CARGO_TARGET_DIR/release/gentle.exe after cargo build"
+          Write-Host "$env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR contents:"
+          Get-ChildItem -Force "$env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR"
+          if (!(Test-Path "$env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR/gentle.exe")) {
+            throw "Expected Windows binary $env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR/gentle.exe after cargo build"
           }
 
       - name: Collect installer path
@@ -226,7 +233,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${{ runner.os }}" == "macOS" ]]; then
-            bundle_dir="${CARGO_TARGET_DIR}/release/bundle/osx"
+            bundle_dir="${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/osx"
             echo "runner.os=${{ runner.os }}"
             echo "RELEASE_TAG=${RELEASE_TAG}"
             echo "CARGO_TARGET_DIR=${CARGO_TARGET_DIR}"
@@ -251,9 +258,9 @@ jobs:
             stage_dir="$(mktemp -d "$RUNNER_TEMP/gentle-dmg.XXXXXX")"
             echo "stage_dir=${stage_dir}"
             python3 scripts/package_desktop.py stage --platform macos --repo . \
-              --binaries "${CARGO_TARGET_DIR}/release" --tag "${RELEASE_TAG#refs/tags/}" \
+              --binaries "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}" --tag "${RELEASE_TAG#refs/tags/}" \
               --app-bundle "$app_bundle" --destination "$stage_dir/$(basename "$app_bundle")"
-            installer="${CARGO_TARGET_DIR}/release/bundle/osx/gentle-${RELEASE_TAG#refs/tags/}.dmg"
+            installer="${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/osx/gentle-${RELEASE_TAG#refs/tags/}.dmg"
             echo "installer=${installer}"
             hdiutil create \
               -volname "GENtle" \
@@ -269,8 +276,8 @@ jobs:
             stage_parent="$(mktemp -d "$RUNNER_TEMP/gentle-linux.XXXXXX")"
             stage="$stage_parent/$package"
             python3 scripts/package_desktop.py stage --platform linux --repo . \
-              --binaries "${CARGO_TARGET_DIR}/release" --tag "$tag" --destination "$stage"
-            out_dir="${CARGO_TARGET_DIR}/release/bundle/tar"
+              --binaries "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}" --tag "$tag" --destination "$stage"
+            out_dir="${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/tar"
             mkdir -p "$out_dir"
             installer="$out_dir/${package}.tar.gz"
             tar -czf "$installer" -C "$stage_parent" "$package"
@@ -279,9 +286,9 @@ jobs:
             package="gentle-${tag}"
             stage_parent="$(mktemp -d "$RUNNER_TEMP/gentle-windows.XXXXXX")"
             python3 scripts/package_desktop.py stage --platform windows --repo . \
-              --binaries "${CARGO_TARGET_DIR}/release" --tag "$tag" \
+              --binaries "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}" --tag "$tag" \
               --destination "$stage_parent/$package"
-            out_dir="${CARGO_TARGET_DIR}/release/bundle/zip"
+            out_dir="${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/zip"
             mkdir -p "$out_dir"
             installer="$out_dir/gentle-${RELEASE_TAG#refs/tags/}.zip"
             echo "installer=${installer}"
@@ -361,9 +368,11 @@ jobs:
           set -euo pipefail
           tag="${RELEASE_TAG#refs/tags/}"
           arch="$(echo "${{ runner.arch }}" | tr '[:upper:]' '[:lower:]')"
+          profile_suffix=""
+          if [[ "$NATIVE_PROFILE" == "dev" ]]; then profile_suffix="-dev"; fi
           out_dir="dist"
           mkdir -p "$out_dir"
-          out_path="$out_dir/gentle-${tag}-${{ matrix.platform }}-${arch}.${{ matrix.extension }}"
+          out_path="$out_dir/gentle-${tag}-${{ matrix.platform }}-${arch}${profile_suffix}.${{ matrix.extension }}"
           cp "${{ steps.collect.outputs.installer_path }}" "$out_path"
           echo "output_path=$out_path" >> "$GITHUB_OUTPUT"
           python3 scripts/release_candidate.py verify
@@ -378,7 +387,7 @@ jobs:
               "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "platform": platform, "arch": arch, "features": [],
               "default_features": True, "binaries": list(BINARIES),
-              "profile": "release",
+              "profile": os.environ["NATIVE_PROFILE"],
               "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
               "cargo": subprocess.check_output(["cargo", "--version"], text=True).strip(),
               "cargo_lock_sha256": hashlib.sha256(pathlib.Path("Cargo.lock").read_bytes()).hexdigest(),

@@ -26,6 +26,23 @@ from scripts import release_candidate as policy
 from scripts import check_tutorial_checkouts as checkouts
 
 
+class NativeBuildSettingsTests(unittest.TestCase):
+    def test_only_internal_version_labels_select_unoptimized_installers(self) -> None:
+        for tag in ("v0.1.0-internal.11", "v0.1.0-internal.12", "v2.3.4-internal.1+build.7"):
+            with self.subTest(tag=tag):
+                self.assertEqual(policy.native_build_settings(tag), {
+                    "native_profile": "dev", "native_target_subdir": "debug",
+                })
+        for tag in ("v0.1.0", "v2.3.4+internal.11", "v0.1.0-rc.1", "v0.1.0-notinternal.11"):
+            with self.subTest(tag=tag):
+                self.assertEqual(policy.native_build_settings(tag), {
+                    "native_profile": "release", "native_target_subdir": "release",
+                })
+        for tag in ("main", "v0.1.0-internal.11\n", "../v0.1.0-internal.11"):
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                policy.native_build_settings(tag)
+
+
 class ReleaseCandidateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()
@@ -90,6 +107,19 @@ class ReleaseCandidateTests(unittest.TestCase):
         record = policy.prepare(self.root, {**self.env, "PUBLISH_REQUESTED": "true"})
         self.assertTrue(record["publish"])
         self.assertEqual(record["mode"], "publish")
+
+    def test_internal_profile_does_not_depend_on_publication_mode(self) -> None:
+        self.git("tag", self.tag)
+        for event, action, publish in (("workflow_dispatch", "", "false"),
+                                       ("workflow_dispatch", "", "true"),
+                                       ("release", "published", "false")):
+            with self.subTest(event=event, publish=publish):
+                record = policy.prepare(self.root, {
+                    **self.env, "CANDIDATE_EVENT": event,
+                    "CANDIDATE_ACTION": action, "PUBLISH_REQUESTED": publish,
+                })
+                self.assertEqual(record["native_profile"], "dev")
+                self.assertEqual(record["native_target_subdir"], "debug")
 
     def test_publication_requires_an_existing_tag(self) -> None:
         with self.assertRaises(subprocess.CalledProcessError):
@@ -179,6 +209,9 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.assertEqual(values["publish"], "false")
         self.assertEqual(values["revision"], self.sha)
         self.assertEqual(values["mode"], "validate_only")
+        self.assertEqual(values["native_profile"], "dev")
+        self.assertEqual(values["native_target_subdir"], "debug")
+        self.assertEqual(record["native_profile"], values["native_profile"])
         verify_env = {
             **env, "EXPECTED_REVISION": self.sha, "EXPECTED_LOCK_SHA256": record["cargo_lock_sha256"],
             "CANDIDATE_MODE": "validate_only",
@@ -213,12 +246,13 @@ class ReleaseCandidateTests(unittest.TestCase):
         receipts = []
         for platform, extension in (("linux", "tar.gz"), ("macos", "dmg"), ("windows", "zip")):
             name = f"gentle-{self.tag}-{platform}-x64"
-            artifact = folder / f"{name}.{extension}"
+            suffix = "-dev" if candidate["native_profile"] == "dev" else ""
+            artifact = folder / f"{name}{suffix}.{extension}"
             artifact.write_bytes(b"synthetic installer, not executable")
             receipt = {
                 **{k: candidate[k] for k in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode")},
                 "schema": "gentle.release_build.v1", "platform": platform, "arch": "x64",
-                "features": [], "default_features": True, "profile": "release",
+                "features": [], "default_features": True, "profile": candidate["native_profile"],
                 "binaries": ["gentle", "gentle_cli", "gentle_mcp",
                              "gentle_examples_docs", "gentle_publication_report"],
                 "rustc": "synthetic rustc", "cargo": "synthetic cargo",
@@ -234,8 +268,49 @@ class ReleaseCandidateTests(unittest.TestCase):
         result = policy.collect_installers(folder, candidate)
         self.assertEqual(result["revision"], self.sha)
         self.assertEqual(result["mode"], "validate_only")
+        self.assertEqual(result["profile"], "dev")
         self.assertEqual(len(result["artifacts"]), 3)
         self.assertTrue(all(row["bytes"] > 0 for row in result["artifacts"]))
+
+    def test_final_release_collection_requires_optimized_receipts(self) -> None:
+        (self.root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n')
+        self.git("add", "Cargo.toml")
+        self.git("commit", "-qm", "synthetic final release")
+        self.sha = self.git("rev-parse", "HEAD")
+        self.tag = "v0.1.0"
+        self.env.update(CANDIDATE_SHA=self.sha, CANDIDATE_EVENT_SHA=self.sha,
+                        RELEASE_TAG=self.tag, WORKFLOW_REVISION=self.sha)
+        folder, candidate, paths = self.installers()
+        self.assertEqual(candidate["native_profile"], "release")
+        result = policy.collect_installers(folder, candidate)
+        self.assertEqual(result["profile"], "release")
+        self.assertTrue(all("-dev." not in item["name"] for item in result["artifacts"]))
+        for path in paths:
+            receipt = json.loads(path.read_text())
+            receipt["profile"] = "dev"
+            path.write_text(json.dumps(receipt))
+        with self.assertRaisesRegex(ValueError, "profile"):
+            policy.collect_installers(folder, candidate)
+
+    def test_internal_collection_rejects_mixed_and_consistently_wrong_profiles(self) -> None:
+        folder, candidate, paths = self.installers()
+        for path in paths:
+            receipt = json.loads(path.read_text())
+            receipt["profile"] = "release"
+            path.write_text(json.dumps(receipt))
+            with self.assertRaisesRegex(ValueError, "profile"):
+                policy.collect_installers(folder, candidate)
+        for key, value in (("native_profile", "release"), ("native_target_subdir", "release")):
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
+                policy.collect_installers(folder, {**candidate, key: value})
+
+    def test_internal_archive_name_exposes_unoptimized_profile(self) -> None:
+        folder, candidate, _ = self.installers()
+        path = next(folder.glob("*.zip"))
+        self.assertTrue(path.name.endswith("-dev.zip"))
+        path.rename(path.with_name(path.name.replace("-dev.zip", ".zip")))
+        with self.assertRaisesRegex(ValueError, "named"):
+            policy.collect_installers(folder, candidate)
 
     def test_standalone_collector_uses_the_desktop_binary_contract(self) -> None:
         folder, candidate, _ = self.installers()

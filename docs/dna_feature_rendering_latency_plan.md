@@ -105,8 +105,13 @@ held to the interactive timing table.
 
 ### Measurement Profiles
 
-For native acceptance, **release-like means the packaged `--release` GUI**, not
-the `bench-audit` harness. Prefer the extracted candidate package and retain its
+For native acceptance, **measure the actual packaged GUI and declare its profile**,
+not the `bench-audit` harness. Since 2026-09-25, internal installers use `dev`;
+final releases use `release`. The historical "release-like" label still means
+the optimized release profile, not an unoptimized interim package. Keep those
+evidence classes and their agreed budgets separate; neither certifies the
+other and slower development binaries do not silently relax latency gates.
+Prefer the extracted candidate package and retain its
 artifact and binary hashes, source SHA, lockfile, toolchain, features and
 effective profile settings. A locally rebuilt counterpart must match the
 packaging recipe and be identified as such; it is not extracted-package evidence.
@@ -120,7 +125,7 @@ and event/rendering environment differ from the packaged desktop application.
 Neither harness can satisfy native acceptance, even when its CPU timings pass.
 
 Glen should additionally measure a controlled **same-SHA native profile pair**:
-the packaged-release GUI and a native GUI built with `bench-audit`, keeping
+the packaged GUI (explicitly `dev` or `release`) and a native GUI built with `bench-audit`, keeping
 features and all other build inputs identical. Prebuild both outside timing;
 use the same host, toolchain, public PATZ1 project/report, window sizes, tracing
 settings and equivalent isolated application settings/cache state. Repeat open
@@ -360,7 +365,7 @@ replace engine-backed window/report hydration or real annotations.
    toolchain, fixture and binary hashes.
 2. Capture native input-to-content traces at 820x520, 1200x800, 1600x1000 and
    1920x1080. Separate process startup, open, clone/hydration, first paint,
-   event delivery, repaint and compositor delays. Use the packaged-release GUI
+   event delivery, repaint and compositor delays. Use the actual packaged GUI
    under [Measurement Profiles](#measurement-profiles), without the semantic
    snapshot writer; capture locally, not on per-frame
    network storage. Retain project/report hashes, tool/environment identity and
@@ -370,7 +375,7 @@ replace engine-backed window/report hydration or real annotations.
    resulting product fixes, not a faster harness checkpoint.
 3. Before a general S5 scheduling change, obtain a short local macOS native
    resize/open trace on the same source and public fixture, with its own binary,
-   packaged-release profile, window sizes and environment recorded and no
+   packaged profile, window sizes and environment recorded and no
    semantic snapshot writer. This is a diagnostic cross-check, not a macOS performance verdict.
    Do not pool Linux and macOS timings or attribute differences to an OS from
    unlike profiles. Windows native acceptance remains separate for Windows claims.
@@ -531,7 +536,7 @@ prioritize S6 ahead of S1-S5 rather than leaving it until the end.
    hold effective profile settings, host, toolchain and fixture identity
    constant, spanning no profile redefinition. Do not pool
    different profiles or treat a build-speed improvement as a runtime result.
-3. Native acceptance uses the packaged-release GUI and covers open, pan, zoom,
+3. Native acceptance uses the actual packaged GUI and covers open, pan, zoom,
    live resize, layer toggles and selection on PATZ1 and TP73 plus the exact agreed envelope boundary. Record
    startup/S6 targets, the macOS cross-check and circular regression checks;
    retain the largest ladder fixture as a separate stress outcome. Record the

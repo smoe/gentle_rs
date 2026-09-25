@@ -35,6 +35,18 @@ def release_tag(value: str) -> str:
     return value
 
 
+def native_build_settings(tag: str) -> dict[str, str]:
+    """Keep interim installers unoptimized; never infer this from publish mode."""
+    internal = re.fullmatch(
+        r"v[0-9]+\.[0-9]+\.[0-9]+-internal\.[0-9]+(?:\+[0-9A-Za-z.-]+)?",
+        release_tag(tag),
+    ) is not None
+    return {
+        "native_profile": "dev" if internal else "release",
+        "native_target_subdir": "debug" if internal else "release",
+    }
+
+
 def publication_allowed(event: str, action: str, requested: str) -> bool:
     if requested not in ("true", "false"):
         raise ValueError("publish must be explicitly true or false")
@@ -76,7 +88,8 @@ def validate_checkout(
         raise ValueError("Cargo.lock no longer matches the candidate receipt")
     if git(root, "status", "--porcelain", "--untracked-files=no", "--", "Cargo.toml", "Cargo.lock"):
         raise ValueError("Candidate Cargo metadata has uncommitted changes")
-    return {"tag": tag, "revision": revision, "cargo_lock_sha256": lock_digest}
+    return {"tag": tag, "revision": revision, "cargo_lock_sha256": lock_digest,
+            **native_build_settings(tag)}
 
 
 def prepare(root: Path, env: dict[str, str]) -> dict:
@@ -106,6 +119,11 @@ def collect_installers(root: Path, candidate: dict) -> dict:
     """Reject missing/mixed candidate receipts before retaining or publishing."""
     release_tag(candidate["tag"])
     full_sha(candidate["revision"])
+    settings = native_build_settings(candidate["tag"])
+    for key, expected in settings.items():
+        if candidate.get(key) != expected:
+            raise ValueError(f"Candidate {key} does not match the tag's build policy")
+    profile = settings["native_profile"]
     receipts = [json.loads(path.read_text()) for path in root.rglob("*.build.json")]
     platforms = {"linux": "tar.gz", "macos": "dmg", "windows": "zip"}
     if len(receipts) != 3 or {r.get("platform") for r in receipts} != set(platforms):
@@ -116,7 +134,9 @@ def collect_installers(root: Path, candidate: dict) -> dict:
         for key in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode"):
             if receipt.get(key) != candidate[key]:
                 raise ValueError(f"Build receipt {key} does not match the selected candidate")
-        if (receipt.get("profile") != "release" or receipt.get("features") != []
+        if receipt.get("profile") != profile:
+            raise ValueError("Build receipt profile does not match the selected candidate")
+        if (receipt.get("features") != []
                 or receipt.get("default_features") is not True
                 or receipt.get("binaries") != list(BINARIES)):
             raise ValueError("Build receipt does not describe the five-binary desktop bundle")
@@ -125,7 +145,8 @@ def collect_installers(root: Path, candidate: dict) -> dict:
     artifacts = []
     for receipt in receipts:
         extension = platforms[receipt["platform"]]
-        name = f"gentle-{candidate['tag']}-{receipt['platform']}-{receipt['arch']}.{extension}"
+        profile_suffix = "-dev" if profile == "dev" else ""
+        name = f"gentle-{candidate['tag']}-{receipt['platform']}-{receipt['arch']}{profile_suffix}.{extension}"
         paths = list(root.rglob(f"*.{extension}"))
         if len(paths) != 1 or paths[0].name != name or paths[0].stat().st_size == 0:
             raise ValueError(f"Expected one non-empty candidate artifact named {name}")
@@ -139,6 +160,7 @@ def collect_installers(root: Path, candidate: dict) -> dict:
         "schema": "gentle.release_attributes.v1",
         **{key: candidate[key] for key in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode")},
         "linux_distribution": "tarball",
+        "profile": profile,
         "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "artifacts": sorted(artifacts, key=lambda item: item["name"]),
     }
@@ -173,7 +195,8 @@ def main() -> None:
         args.output.write_text(encoded)
     if args.command == "prepare" and os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-            for key in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode", "publish"):
+            for key in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode", "publish",
+                        "native_profile", "native_target_subdir"):
                 value = record[key]
                 output.write(f"{key}={str(value).lower() if isinstance(value, bool) else value}\n")
     print(encoded, end="")

@@ -633,10 +633,14 @@ Rules:
 - feature-gating adapters must never be used to fork engine behavior or create
   adapter-only business logic
 
-Native release compilation disables all LTO with `lto="off"` in the Cargo
-release profile, retaining other defaults rather than forcing a single codegen
-unit. Do not substitute `lto=false`, which permits within-crate thin LTO.
-The explicit `release-fast` container and
+Native installers use the unoptimized Cargo `dev` profile for validated
+`vX.Y.Z-internal.N` version labels, including published prereleases; other labels
+use `release`. Compile, bundle, smoke and staging paths must agree on that
+selection (`target/debug` versus `target/release`). Internal archives carry a
+`-dev` suffix; receipt collection rejects profiles inconsistent with the label.
+The release profile disables all LTO with `lto="off"`, retaining other defaults
+rather than forcing a single codegen unit. Do not substitute `lto=false`, which
+permits within-crate thin LTO. The explicit `release-fast` container and
 `bench-audit` profiles retain their separate settings. Package receipts bind
 the profile, default-feature selection, additional features and binary list;
 changing that recipe requires fresh exact-candidate package acceptance.

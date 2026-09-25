@@ -15,14 +15,27 @@ The five native binaries are `gentle`, `gentle_cli`, `gentle_mcp`,
 and the two GUI reproduction binaries are not built or packaged by this
 workflow. JS/Lua remain optional source builds with separate CI checks.
 
-Native builds use `lto="off"` in `Cargo.toml`, retaining other Cargo release
-defaults: optimization level 3, 16 codegen units, unwind panics and no explicit
-symbol stripping. Unlike `lto=false`, `"off"` also disables within-crate thin
-LTO. One Cargo build job (`-j1`) remains in the installer workflow; JS/Lua stay
-excluded. This is a resource-reduction measure, not proof of the cause of a
-compiler kill. New builds and runtime acceptance are still required. The
-container's `release-fast` and auditor's `bench-audit` profiles explicitly keep
-their existing thin-LTO settings.
+Native installer profiles are selected from the validated version label, not
+from whether publication is requested:
+
+- `vX.Y.Z-internal.N` (also with `+build.metadata`) uses `--profile dev`, with
+  binaries and bundles under `target/debug`. This includes published internal
+  prereleases. GENtle is unoptimized, with development debug assertions and
+  overflow checks; packages may be larger and runtime work slower.
+- Other versions, including final releases, use `--profile release` and
+  `target/release`. That profile sets `lto="off"` in `Cargo.toml`, retaining
+  other Cargo release defaults: optimization level 3, 16 codegen units, unwind
+  panics and no explicit symbol stripping. Unlike `lto=false`, `"off"` also
+  disables within-crate thin LTO.
+
+Compilation and macOS bundling use the same selected profile and one Cargo
+build job; JS/Lua stay excluded. This reduces optimization work for interim
+installers, not proof of the cause or resolution of a compiler kill or runner
+shutdown. Fresh native builds and acceptance remain required. The container's
+`release-fast` and auditor's `bench-audit` profiles are unchanged; neither is a
+substitute for testing the actual packaged binary. There is no extra optimized
+GENtle build in the internal-installer workflow. Installing the macOS packaging
+tool `cargo-bundle` still uses Cargo's normal tool-install profile.
 
 Installer builds stream combined compiler output into
 `gentle-release-build.log`, including revision/toolchain, initial Unix memory
@@ -114,9 +127,11 @@ After the tutorial fix and candidate changes are merged, record one clean
 candidate commit and use it for both workflows. Run these commands only after
 explicit push/dispatch approval and when that commit is available on GitHub.
 The pushed `--ref` must contain workflow definitions with `candidate_sha` inputs
-and the desktop-packaging helper (`62c07b68` or a descendant retaining those
-files). The current installer workflow rejects candidate sources without its
-packaging helper before compilation. `--ref` selects the workflow definition;
+and profile-aware packaging helpers. The selected source must also include
+`native_profile` and `native_target_subdir` outputs in `release_candidate.py`;
+the current installer workflow rejects older helpers before compilation.
+Rerunning an old tagged workflow does not import these changes from `main`.
+`--ref` selects the workflow definition;
 `candidate_sha` selects the exact source to build. Keep the selected ref frozen
 at the candidate while dispatching the acceptance runs.
 
@@ -157,14 +172,15 @@ remain with the Actions run; container validation does not upload images to GHCR
 These are packaging/entrypoint checks, not graphical or scientific acceptance.
 
 The shared `gentle.release_candidate.v1` receipt records candidate SHA, lockfile
-hash, workflow revision, version label and `validate_only`/`publish` mode.
-Installer receipts also bind the actual archive digest, toolchain, release
-profile, `default_features: true`, `features: []` (no additional features), and
+hash, workflow revision, version label, `validate_only`/`publish` mode and the
+selected native profile/output subdirectory. Installer receipts also bind the
+actual archive digest, toolchain, actual `dev` or `release` profile,
+`default_features: true`, `features: []` (no additional features), and
 the five-binary inventory. Collection compares every receipt with the selected
-candidate, not merely with the other receipts; missing, stale, mixed-mode or
-modified packages fail closed. Docker retains its existing `release-fast`
-profile and Debian `forky` build arguments, distinct from the installers'
-`release` profile. Its receipt records `default_features: false`, `features: []`
+candidate, not merely with the other receipts; missing, stale, mixed-mode,
+wrong-profile or modified packages fail closed. Docker retains its existing
+`release-fast` profile and Debian `forky` build arguments, independently of the
+native profile policy. Its receipt records `default_features: false`, `features: []`
 and the explicit CLI/MCP/docs binary list; the build checks that desktop and
 embedded scripting dependencies are absent. Native installers use the default
 desktop features without opting into scripting.
@@ -239,13 +255,13 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
     from a fresh per-run local `target/` tree rather than restoring a cached
     `target/` directory, so stale tag-build outputs cannot masquerade as a
     successful package build.
-  - Logs the immediate `${CARGO_TARGET_DIR}/release` output layout after each
+  - Logs the selected `${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}` layout after each
     platform build so missing bundle/binary regressions fail close to the build
     step rather than only during later packaging collection.
   - Also publishes a release-attributes JSON file:
     - `gentle-<tag>-release-attributes.json`
     - schema marker: `gentle.release_attributes.v1`
-    - includes actual `linux_distribution`, common revision and lockfile hash,
+    - includes actual `linux_distribution`, profile, common revision and lockfile hash,
       plus artifact names, sizes and SHA-256 digests.
   - Checks tag/package identity and builds only the five locked native binaries
     before packaging. Per-platform build receipts bind tag, full revision,
@@ -257,7 +273,7 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
 
 ## Artifact Naming
 
-Release assets are normalized to:
+Optimized release assets are normalized to:
 
 - `gentle-<tag>-macos-<arch>.dmg`
 - `gentle-<tag>-windows-<arch>.zip`
@@ -272,6 +288,14 @@ Example:
 - `gentle-v0.1.0-linux-x64.tar.gz`
 - `gentle-v0.1.0-release-attributes.json`
 
+Internal installer archives append `-dev` before the extension, for example
+`gentle-v0.1.0-internal.11-linux-x64-dev.tar.gz`,
+`gentle-v0.1.0-internal.11-macos-arm64-dev.dmg` and
+`gentle-v0.1.0-internal.11-windows-x64-dev.zip`. Receipt filenames and inner
+package layouts stay unchanged; both per-platform and aggregate receipts
+declare `profile: dev`. The collector rejects a missing suffix or a receipt
+claiming the wrong profile, even when all three platforms agree on that error.
+
 ## Local Pre-Tag Smoke Checklist
 
 Before pushing an internal or public release tag, run a release-shaped local
@@ -281,19 +305,22 @@ binary inventory.
 Required local matrix:
 
 ```bash
+TAG=v0.1.0-internal.11 # must match the candidate's Cargo version
+PROFILE=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_profile"])' "$TAG")
+TARGET_SUBDIR=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_target_subdir"])' "$TAG")
 cargo check -q --locked
 cargo test --locked --workspace
 cargo test --locked -q --test release_version_consistency
-cargo build --locked --release -j1 --bin gentle --bin gentle_cli --bin gentle_mcp \
+cargo build --locked --profile "$PROFILE" -j1 --bin gentle --bin gentle_cli --bin gentle_mcp \
   --bin gentle_examples_docs --bin gentle_publication_report
-target/release/gentle --version
-target/release/gentle_cli capabilities
-target/release/gentle_examples_docs --check
-target/release/gentle_examples_docs tutorial-check
-target/release/gentle_examples_docs tutorial-manifest-check
-target/release/gentle_examples_docs tutorial-catalog-check
-target/release/gentle_mcp --help
-target/release/gentle_publication_report --help
+"target/$TARGET_SUBDIR/gentle" --version
+"target/$TARGET_SUBDIR/gentle_cli" capabilities
+"target/$TARGET_SUBDIR/gentle_examples_docs" --check
+"target/$TARGET_SUBDIR/gentle_examples_docs" tutorial-check
+"target/$TARGET_SUBDIR/gentle_examples_docs" tutorial-manifest-check
+"target/$TARGET_SUBDIR/gentle_examples_docs" tutorial-catalog-check
+"target/$TARGET_SUBDIR/gentle_mcp" --help
+"target/$TARGET_SUBDIR/gentle_publication_report" --help
 ```
 
 Record the full candidate SHA, clean-tree status, lockfile hash, toolchain and

@@ -27,6 +27,10 @@ on:
         value: ${{ jobs.resolve.outputs.mode }}
       publish:
         value: ${{ jobs.resolve.outputs.publish }}
+      native_profile:
+        value: ${{ jobs.resolve.outputs.native_profile }}
+      native_target_subdir:
+        value: ${{ jobs.resolve.outputs.native_target_subdir }}
 
 permissions:
   contents: read
@@ -41,6 +45,8 @@ jobs:
       workflow_revision: ${{ steps.identity.outputs.workflow_revision }}
       mode: ${{ steps.identity.outputs.mode }}
       publish: ${{ steps.identity.outputs.publish }}
+      native_profile: ${{ steps.identity.outputs.native_profile }}
+      native_target_subdir: ${{ steps.identity.outputs.native_target_subdir }}
     steps:
       - uses: actions/checkout@v5
         with:
