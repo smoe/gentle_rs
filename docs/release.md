@@ -21,7 +21,10 @@ from whether publication is requested:
 - `vX.Y.Z-internal.N` (also with `+build.metadata`) uses `--profile dev`, with
   binaries and bundles under `target/debug`. This includes published internal
   prereleases. GENtle is unoptimized, with development debug assertions and
-  overflow checks; packages may be larger and runtime work slower.
+  overflow checks; packages may be larger and runtime work slower. The release
+  workflow overrides this cold build to `incremental=false` and `debug=0`:
+  assertions remain, but incremental state and line-table debug information do
+  not enter the package build.
 - Other versions, including final releases, use `--profile release` and
   `target/release`. That profile sets `lto="off"` in `Cargo.toml`, retaining
   other Cargo release defaults: optimization level 3, 16 codegen units, unwind
@@ -36,6 +39,9 @@ shutdown. Fresh native builds and acceptance remain required. The container's
 substitute for testing the actual packaged binary. There is no extra optimized
 GENtle build in the internal-installer workflow. Installing the macOS packaging
 tool `cargo-bundle` still uses Cargo's normal tool-install profile.
+Platform receipts bind `incremental=false` and `debug=0` as well as the Cargo
+profile. Missing or different values fail collection rather than silently
+combining package recipes.
 
 Installer builds stream combined compiler output into
 `gentle-release-build.log`, including revision/toolchain, initial Unix memory

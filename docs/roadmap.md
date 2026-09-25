@@ -64,7 +64,7 @@ Release acceptance:
   external resources; CI uses tiny local fixtures without restricting the
   engine or GUI contracts to those fixture sizes.
 - Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes; rerun gates on candidate changes, never combine nearby revisions' passes.
-- CI must prove all native packages at one SHA under the [version-selected profile](release.md): unoptimized `dev` for all internal installers, `release` with `lto="off"` otherwise; one build job, five binaries (no JS/Lua), fresh profile-bound receipts and extracted-package smokes. Investigate macOS compiler SIGKILL and Ubuntu runner shutdown using retained diagnostics; neither proves OOM. Historical builds do not certify this recipe; Glen's runtime acceptance must name the actual packaged profile.
+- CI must prove all native packages at one SHA under the [version-selected profile](release.md): unoptimized `dev` for all internal installers, `release` with `lto="off"` otherwise; cold packaging uses `incremental=false`, `debug=0`, one build job and five binaries (no JS/Lua), with fresh recipe-bound receipts and extracted-package smokes. Investigate macOS compiler SIGKILL and Ubuntu runner shutdown using retained diagnostics; neither proves OOM. Historical builds do not certify this recipe; Glen's runtime acceptance must name the actual packaged profile.
 - Re-run headless `runtime-cli` container validation (no GUI/JS/Lua) after the `rnapkin` font-library repair: run `35717368172` at `a10715cb` compiled GENtle but failed installing the helper; final-image linking and SVG/PNG rendering remain unverified.
 
 Release cut line:

@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-25 - First Measured Root-Crate Build Boundary
+
+- Move the root-independent RNA target-rescue, allele-aware read screen, UCSC
+  RepeatMasker and UniProt modules into `gentle-engine`, preserving the
+  established `gentle::*` module paths through compatibility re-exports. Keep
+  ordinary static workspace linking; no Rust dynamic-library ABI or loader
+  contract is introduced.
+- Make cold native package builds disable incremental compilation and debug
+  information while retaining internal `dev` debug assertions and overflow
+  checks. Bind both effective settings in each platform receipt and reject
+  missing or incompatible recipes during collection.
+- This is bounded B0 build-boundary work, not a claimed memory improvement.
+  Cold compiler/linker RSS and package-size comparison remain required before
+  deciding whether the next extraction should include the large root engine or
+  shell dispatchers.
+
 ## 2026-09-25 - Unoptimized Internal Installers
 
 - Select Cargo `dev` for every `vX.Y.Z-internal.N` native installer, including

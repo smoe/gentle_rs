@@ -77,6 +77,13 @@ These are build-configuration changes with their own acceptance evidence, still
 under release validation. Their runtime effects remain unmeasured; neither
 establishes a speedup or regression of the runtime hypotheses below.
 
+The 2026-09-25 cold native-package recipe additionally disables incremental
+compilation and line-table debug information while retaining internal `dev`
+debug assertions. This is a third measurement-profile boundary. It is intended
+to remove non-reusable build state and debug payload, not to claim lower peak
+RSS; compare compiler and linker peaks independently before accepting that
+effect.
+
 ## Audit Admission Decisions
 
 These two owner decisions were requested on 2026-09-21 and remain pending.
@@ -408,6 +415,13 @@ extraction is eligible without proving a runtime hotspot. Follow DEC-006/007,
 preserve production profiles and benchmark semantics, and remeasure build cost
 at named revisions. Root source size alone does not prove which extraction
 helps, and no broad engine/GUI split is authorized by this plan.
+
+The first bounded extraction moves the root-independent target-rescue,
+allele-aware read screen, UCSC RepeatMasker and UniProt modules into
+`gentle-engine`, retaining their root API paths through compatibility
+re-exports. It deliberately remains statically linked; its acceptance evidence
+is a cold before/after compiler/linker RSS and package-size comparison, not the
+number of moved source lines.
 
 This is distinct from a single-root **GUI workspace** (replacing native child
 windows with one application workspace), which remains a conditional UX/runtime

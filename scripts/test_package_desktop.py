@@ -292,6 +292,8 @@ class WorkflowWiringTests(unittest.TestCase):
             self.assertNotIn(flag, tokens)
         self.assertIn('run: cargo bundle --profile "$NATIVE_PROFILE" --bin gentle --format', workflow)
         self.assertIn('CARGO_BUILD_JOBS: "1"', workflow)
+        self.assertIn('CARGO_INCREMENTAL: "0"', workflow)
+        self.assertIn('CARGO_PROFILE_DEV_DEBUG: "0"', workflow)
         self.assertIn("NATIVE_PROFILE: ${{ needs.candidate.outputs.native_profile }}", workflow)
         self.assertIn("NATIVE_TARGET_SUBDIR: ${{ needs.candidate.outputs.native_target_subdir }}", workflow)
         resolver = (repo / ".github/workflows/release-candidate.yml").read_text()
@@ -306,6 +308,8 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn('"features": []', workflow)
         self.assertIn('"default_features": True, "binaries": list(BINARIES)', workflow)
         self.assertIn('"profile": os.environ["NATIVE_PROFILE"]', workflow)
+        self.assertIn('"incremental": os.environ["CARGO_INCREMENTAL"] != "0"', workflow)
+        self.assertIn('"debug": int(os.environ["CARGO_PROFILE_DEV_DEBUG"])', workflow)
         self.assertIn("from scripts.package_desktop import BINARIES", workflow)
         for name in package.BINARIES:
             self.assertIn(f'/${{NATIVE_TARGET_SUBDIR}}/{name}${{suffix}}"', workflow)
@@ -371,6 +375,7 @@ class WorkflowWiringTests(unittest.TestCase):
                              "RUNNER_TEMP": str(root), "RUNNER_OS": "Windows",
                              "EXPECTED_REVISION": "synthetic-revision",
                              "NATIVE_PROFILE": profile,
+                             "CARGO_INCREMENTAL": "0", "CARGO_PROFILE_DEV_DEBUG": "0",
                              "SYNTHETIC_CARGO_EXIT": str(code)},
                         capture_output=True, text=True, timeout=30,
                     )
@@ -379,6 +384,7 @@ class WorkflowWiringTests(unittest.TestCase):
                     self.assertIn("synthetic build stdout", log)
                     self.assertIn("synthetic compiler stderr", log)
                     self.assertIn(f"revision=synthetic-revision platform=Windows profile={profile}", log)
+                    self.assertIn("incremental=0 dev_debug=0", log)
                     self.assertIn(f"arg:--profile\narg:{profile}\n", log)
                     self.assertNotIn("arg:--release\n", log)
                     self.assertEqual(result.stdout, log)

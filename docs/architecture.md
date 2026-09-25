@@ -638,12 +638,22 @@ Native installers use the unoptimized Cargo `dev` profile for validated
 use `release`. Compile, bundle, smoke and staging paths must agree on that
 selection (`target/debug` versus `target/release`). Internal archives carry a
 `-dev` suffix; receipt collection rejects profiles inconsistent with the label.
+Native packaging is a cold build and therefore forces `incremental=false` for
+both profile classes. It also forces `debug=0`: internal packages retain dev
+debug assertions and overflow checks, but do not carry line-table debug data in
+each of the five staged binaries. Receipts bind both effective values.
 The release profile disables all LTO with `lto="off"`, retaining other defaults
 rather than forcing a single codegen unit. Do not substitute `lto=false`, which
 permits within-crate thin LTO. The explicit `release-fast` container and
 `bench-audit` profiles retain their separate settings. Package receipts bind
 the profile, default-feature selection, additional features and binary list;
 changing that recipe requires fresh exact-candidate package acceptance.
+
+Workspace extraction follows DEC-006/007 and does not imply dynamic linking.
+Root-independent engine modules compile as ordinary Rust library crates and are
+statically linked into the packaged binaries; the root crate may preserve their
+public paths through compatibility re-exports. Rust `dylib` ABI coupling and
+cross-platform loader policy are not accepted merely as build-memory tactics.
 
 ### Container/distribution policy
 
