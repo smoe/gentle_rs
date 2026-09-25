@@ -90,6 +90,21 @@
 - No local builds or tests run at the owner's request; CI verification remains
   pending.
 
+## 2026-09-25 - Unix Release-Build Resource Diagnostics
+
+- Add a dependency-free release-build monitor that streams two-second process
+  tree and direct `rustc` RSS samples while preserving Cargo exit codes and
+  forwarding termination signals. Record Linux memory pressure, cgroup events
+  and swap plus macOS available-memory and swap estimates in both the retained
+  log and the live Actions stream, so runner loss need not erase the last sample.
+- Keep the native release recipe, five-binary/default-feature request, one build
+  job and 360-minute allowance unchanged. Rank a root-package profile experiment
+  ahead of Ubuntu-only swap and broad B0 extraction, but implement none without
+  a sampled build-only replay. The two `.11` Unix failures still do not prove OOM.
+- Guard the monitor's process-tree accounting and 0/101/143 exit propagation,
+  and keep existing packaging/logging policy tests. No native package build,
+  workflow dispatch, paid runner, tag, release or publication is performed.
+
 ## 2026-09-25 - Internal.12 Latency Audit Scope
 
 - Record the owner's 2026-09-24 interactive envelope as linear loci through

@@ -435,6 +435,15 @@ combined improvement, not causal attribution or hosted-runner acceptance. The
 next B0 candidate should therefore be a narrow GUI boundary, not dynamic
 linking or an indiscriminate root split.
 
+The historical `.11` Unix package failures alone do not establish their cause.
+The next approved hosted build-only replay records the selected profile's root compiler
+RSS plus host pressure/swap state, including `dev` for internal installers.
+Glen's diagnostics remain in that workflow; they do not restore the optimized
+internal recipe. Any further root-profile override needs compiler evidence and
+a new Build Profile Context / DEC-039 measurement identity. Ubuntu swap cannot
+address macOS. Retain the version-selected profile until new evidence warrants
+another change; the bounded B0 result above is not yet a hosted release-build repair.
+
 This is distinct from a single-root **GUI workspace** (replacing native child
 windows with one application workspace), which remains a conditional UX/runtime
 change. Neither faster linking nor a different audit profile establishes a
