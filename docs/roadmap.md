@@ -1,7 +1,7 @@
 # GENtle Roadmap
 
-Last session: 2026-09-20 - Select a version-synchronized `.11` SHA for [release acceptance](release_notes/release_notes_v0.1.0-internal.11.md#acceptance-status): native CI/container/packages, then Glen's receipts. The existing tag predates the version repair; tagging remains owner-managed. The selected [`.12` aim](#12-priorities) is [DNA-feature rendering latency](dna_feature_rendering_latency_plan.md), measurement-led with Glen; follow the [post-release version rollover](release.md#post-release-development-version).
-`.10` is published at `84f34a9e` without recorded exact-candidate acceptance; its ledger remains pending.
+Last session: 2026-09-24 - `.11` is published at `ffe5c637` without attached packages: Windows packages built, both Unix native builds failed, and headless container publication plus the RNAPKIN smoke passed. Exact-candidate package/scientific/GUI acceptance remains pending. Keep the [`.12` DNA-feature latency aim](#12-priorities) separate and do not roll the package version yet.
+`.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
 readable in under two minutes. Completed work belongs in
@@ -20,8 +20,8 @@ Maintenance invariant:
 
 ## Release Gate
 
-Published baseline: `v0.1.0-internal.10` at `84f34a9e479d0dee5d8476aba29c379d370f57e1`.
-Current candidate: `v0.1.0-internal.11`; final version-synchronized SHA and exact-candidate acceptance remain pending.
+Published baseline: `v0.1.0-internal.11` at `ffe5c637d5dddaf2f48daa3fa529d6e9bafd4c7b`, without attached packages or recorded exact-candidate acceptance. The `.10` ledger remains pending at `84f34a9e`.
+Current package version remains `v0.1.0-internal.11`; the route to Unix packages and the `.12` rollover date are owner decisions.
 Active aim: gene-informed primer-PAIR studies, source-aware isoform inspection and TSS workflows, with portable evidence and package acceptance; discovery is not experimental validation.
 
 Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,
@@ -65,12 +65,12 @@ Release acceptance:
   engine or GUI contracts to those fixture sizes.
 - Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes; rerun gates on candidate changes, never combine nearby revisions' passes.
 - CI must prove all native packages at one SHA under the [version-selected profile](release.md): unoptimized `dev` for all internal installers, `release` with `lto="off"` otherwise; cold packaging uses `incremental=false`, `debug=0`, one build job and five binaries (no JS/Lua), with fresh recipe-bound receipts and extracted-package smokes. Investigate macOS compiler SIGKILL and Ubuntu runner shutdown using retained diagnostics; neither proves OOM. Historical builds do not certify this recipe; Glen's runtime acceptance must name the actual packaged profile.
-- Re-run headless `runtime-cli` container validation (no GUI/JS/Lua) after the `rnapkin` font-library repair: run `35717368172` at `a10715cb` compiled GENtle but failed installing the helper; final-image linking and SVG/PNG rendering remain unverified.
+- Headless `runtime-cli` container validation is closed for `.11`: tag-push run `35995175749` at `ffe5c637` passed final-image linking and the no-network RNAPKIN SVG/PNG smoke. Release-event runs `35968255639` and `36010984241` published GHCR images. This does not close native package or GUI acceptance.
 
 Release cut line:
 
 - Carry the unrecorded `.10` acceptance forward without erasing its historical ledger; bind each new verdict to the selected `.11` SHA.
-- Packaging needs native CI proof; retain the published tag and require Glen's readiness verdict and owner approval before a subsequent release.
+- Packaging still needs Unix native CI proof. Retain the published `.11` tag; carry Glen's scientific/GUI acceptance items forward and require his readiness verdict plus owner approval for any later package publication.
 
 Outstanding acceptance scope (including [native Windows repairs and the expanded input audit](testing.md#september-2026-failure-analysis), and [independent anchor-to-assembly authority](architecture.md#source-coherent-locus-transcript-presentation)):
 - Glen reports five-gene export QC at `d978b0c4` with LOCUS-column fix `d37bd427`; recheck the [selected annotated downloads](integrated_locus_tss_profiles.md), receipts and raw signal/motif provenance at the final candidate. Before offering EMBL, re-export into fresh directories and independently compare GenBank/EMBL/FASTA sequences and annotations. [Synthetic format-parity coverage](sequence_format_parity.md) does not replace his September 13 real-data acceptance.

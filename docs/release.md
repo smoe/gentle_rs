@@ -124,6 +124,19 @@ cache keys, build profiles, candidate checks and publication approval remain
 unchanged. The offline workflow-wiring test guards these reviewed references;
 actual execution and package validation remain GitHub's responsibility.
 
+The two `.11` release-event installer runs establish the current native-build
+state. Run `35968255595` at `ad0338a7` had Windows job `107531770703` pass in
+2h12m53s, macOS job `107531770716` fail after the root-library compiler received
+SIGKILL (Cargo 101), and Ubuntu job `107531770722` end when the runner shut down
+(143). Run `36010984447` at `ffe5c637` repeated the Unix failures in the
+**Build locked release binaries** step: macOS job `107671438533` failed with
+SIGKILL/Cargo 101 and Ubuntu job `107671438797` ended with 143, while Windows
+job `107671439337` passed in 1h32m45s. Both runs skipped package collection and
+release publication, so neither produced attached Unix packages. The second
+macOS diagnostic reports 1394 s elapsed and parent-process maximum RSS of
+3,174,760,448 bytes; that parent statistic may omit the killed compiler's peak
+and does not prove OOM. The second Ubuntu job retained no build-log artifact.
+
 ## Candidate Approval
 
 `v0.1.0-internal.10` was published as a prerelease on 2026-09-18 at
@@ -132,11 +145,19 @@ exact-candidate acceptance**. Its [gate ledger](release_notes/release_notes_v0.1
 remains Pending. Publication, a successful build or an individual passing test
 is not scientific or installed-package sign-off.
 
-Keep the published tag unchanged. `.11` development includes later fixes and
-the merged tutorial/vector-PDF integration; it needs a separately named
-candidate and receipts. Packaging builds the selected revision: rerunning the
-`.10` tag cannot incorporate later container or installer fixes. No tag change,
-version bump or publication is authorized by this document.
+`v0.1.0-internal.11` was first published as a prerelease on 2026-09-24 at
+07:11:06 UTC while its tag pointed to `ad0338a7e5bd14442ca50722a16eb1677cb82790`.
+The owner then moved the tag to
+`ffe5c637d5dddaf2f48daa3fa529d6e9bafd4c7b` and republished at 14:11:29 UTC.
+It remains published there with no release assets. Its two installer runs are
+recorded above; the successful headless container publications do not supply
+the missing native packages or exact-candidate acceptance.
+
+Keep the published tags unchanged. Later `.11` fixes need a separately named
+candidate and receipts; the owner will decide whether repaired `.11` Unix
+packages justify a tag decision or packages first ship with `.12`. No tag
+change, version bump, workflow dispatch or publication is authorized by this
+document.
 
 ## Build-Only Candidate Verification
 

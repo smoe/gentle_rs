@@ -1,7 +1,8 @@
 # GENtle `v0.1.0-internal.11` Release Notes
 
-Status: alpha candidate, prepared 2026-09-20. Final candidate SHA, package
-acceptance and release-owner publication approval remain pending.
+Status: published prerelease on 2026-09-24 at
+`ffe5c637d5dddaf2f48daa3fa529d6e9bafd4c7b`, with no attached packages.
+Exact-candidate package, scientific and GUI acceptance remain pending.
 
 This release centers on **gene-informed primer-pair studies**: inspect a gene's
 transcript models and supporting evidence, design and compare assay panels, and
@@ -118,19 +119,21 @@ the explicit boundary between building and publishing.
 
 ## Acceptance Status
 
-The existing `.11` tag points to `e1c7dfb2`, which still declares `.10` in
-Cargo metadata. [Container run 35507064138](https://github.com/smoe/gentle_rs/actions/runs/35507064138)
-correctly rejected that mismatch before compilation. The version repair is a
-later source change: rerunning that old tag cannot pick it up. Tag selection
-and any tag correction remain owner-managed; these notes do not authorize them.
+The `.11` GitHub prerelease was first published at 07:11:06 UTC on 2026-09-24
+while the tag pointed to `ad0338a7e5bd14442ca50722a16eb1677cb82790`.
+The owner subsequently moved the tag to
+`ffe5c637d5dddaf2f48daa3fa529d6e9bafd4c7b`, whose native release profile sets
+`lto="off"`, and republished the prerelease at 14:11:29 UTC. The tag remains at
+`ffe5c637`; this history is recorded as fact, not as authorization to move or
+re-create it. The current GitHub Release is a published prerelease with no
+assets.
 
 | Evidence | Status and scope |
 | --- | --- |
-| Merged source | `gentle_rs_2_main` and `main` both resolve to `e1c7dfb2` before the version/notes repair; no additional branch changes are missing. |
-| Previous push CI | [35500645373](https://github.com/smoe/gentle_rs/actions/runs/35500645373) succeeded at `e1c7dfb2`: macOS full suite/all-feature checks, Linux headless check and release-policy tests. Windows and Linux desktop jobs were skipped. This is not all-platform acceptance of the new candidate. |
-| Local version/notes repair | macOS, `e1c7dfb2` plus this update: four release-version tests, 48 release/package/container policy tests, locked offline Cargo check/metadata and formatting passed. The rebuilt GUI reports `.11`; debug linking produced a nonfatal large-unwind-table warning. No full-suite or native-package acceptance is inferred. |
-| Corrected candidate | Final SHA and fresh native Windows/macOS/Linux verdicts pending. Record each actual SHA/run, not a nearby revision's pass. |
-| Desktop packages / container | Exact-candidate extracted-package checks, headless container build and receipts pending. Failed, cancelled, skipped or absent artifacts are not available downloads. |
+| Original installer publication run | [Run 35968255595](https://github.com/smoe/gentle_rs/actions/runs/35968255595) built `ad0338a7`. Windows job `107531770703` passed in 2h12m53s. macOS job `107531770716` ended after the root-library `rustc` received SIGKILL and Cargo returned 101. Ubuntu job `107531770722` ended with runner shutdown/exit 143. Package validation and publication jobs were skipped. The retained Windows artifact is not a package for the final tag revision. |
+| Final-tag installer publication run | [Run 36010984447](https://github.com/smoe/gentle_rs/actions/runs/36010984447) built `ffe5c637`. Windows job `107671439337` passed in 1h32m45s. macOS job `107671438533` again failed while compiling the root GENtle library (SIGKILL/Cargo 101); Ubuntu job `107671438797` again ended with exit 143. Package validation and publication jobs were skipped, so no native package was attached. Neither Unix result establishes OOM. |
+| Headless container | Tag-push [run 35995175749](https://github.com/smoe/gentle_rs/actions/runs/35995175749) passed at `ffe5c637`, including the no-network RNAPKIN SVG/PNG smoke. Release-event runs [35968255639](https://github.com/smoe/gentle_rs/actions/runs/35968255639) at `ad0338a7` and [36010984241](https://github.com/smoe/gentle_rs/actions/runs/36010984241) at `ffe5c637` both published the headless image to GHCR. Container publication is not native-package or GUI acceptance. |
+| Push CI | [Run 35982007068](https://github.com/smoe/gentle_rs/actions/runs/35982007068) passed at `ffe5c637`; [run 35994722502](https://github.com/smoe/gentle_rs/actions/runs/35994722502) passed at `0e3fd09a`. These runs do not replace failed Unix package builds. |
 | Glen's scientific/GUI checks | Exact-candidate PATZ1 primer-panel, TP73/DeltaNp73, annotated export, introductory tutorials and inner-agent handoff acceptance pending. Historical synthetic runs do not replace them. |
 
 For historical test counts and their platform/SHA boundaries, see the
