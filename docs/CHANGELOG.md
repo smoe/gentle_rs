@@ -131,6 +131,20 @@
   compatible optimized/native comparisons open. No worker migration, new
   interval index, culling, release/version change or private-data regeneration.
 
+## 2026-09-25 - Glen's Fixed-Pair GC Audit And Boundary Follow-Up
+
+- Record the owner's relay of Glen's `ad0338a7 -> ee9eb483` audit: two complete
+  smokes, four complete ABBA runs, eliminated count-path GC scans and measured
+  CPU benefit. Preserve the reproducible +5.0% mRNA-toggle regression at
+  250 kbp / 10,000 features rather than claiming a general GUI repair.
+- Retain the external report location and supplied manifest digest in the
+  handoff; raw evidence was not retrieved or independently reanalysed here.
+- Reconcile the handoff, latency plan and roadmap around the existing exact
+  250 kbp / 5,000-feature workload before selecting another performance patch.
+  Native/profile comparisons remain deferred, not waived; disk headroom is a
+  prerequisite for Glen's next build. No runtime change, audit dispatch, file
+  cleanup or release acceptance is made by this documentation update.
+
 ## 2026-09-24 - TSS Scoring And Hosted Attachment Integration
 
 - Merge `gentle_rs_3` at `a2271076`, preserving Glen's vertical native viewer,

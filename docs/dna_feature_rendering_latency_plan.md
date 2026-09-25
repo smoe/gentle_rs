@@ -16,14 +16,17 @@ smoke-tested. Opt-in startup phase checkpoints (`d24c3fa7`) cover app
 initialization, project loading and first root/DNA CPU frames; they do not
 confirm native presentation. The agreed 250 kbp / 5,000-feature boundary now
 includes explicit derived layers and content-bound workload checks. The macOS
-cross-check and Glen's current-boundary timed/native audit remain pending. A
-bounded S2 simplification (`ee9eb483`) counts GC bins arithmetically
-instead of computing GC values just to discard them. It preserves half-open
-counts and does not claim a measured GUI speedup or completion of S2; broader
-runtime slices remain pending.
-The subsequent bounded S2 tree change retains grouping/filter labels on pan and
-refreshes exon-aware visibility/counts in place. Developer CPU attribution and
-full-rebuild equivalence tests support that change, not a native latency verdict.
+cross-check and Glen's current-boundary timed/native audit remain pending.
+Glen's [reported fixed-pair audit](glen_gui_latency_handoff_20260924.md#reported-audit-result-received-2026-09-25)
+finds measurable CPU benefit from the arithmetic GC counts (`ee9eb483`), while
+retaining a reproducible 5% regression for the 250 kbp / 10,000-feature mRNA
+toggle. His raw evidence is external and has not been reanalysed here. Next is
+the exact 250 kbp / 5,000-feature workload, not a further performance patch or a
+general GUI-performance claim; broader runtime slices remain pending.
+The separately merged S2 tree change (`e99c1fb8`) retains grouping/filter labels
+on pan and refreshes exon-aware visibility/counts in place. Developer CPU
+attribution and full-rebuild equivalence tests support that change; Glen's GC
+audit does not certify it. Its optimized/native comparison remains pending.
 B0 separates build feedback from runtime performance. The consolidated
 hypothesis ledger and S0 section below retain both updates. This plan does not
 change the `.11` candidate; counts of work are not timing evidence or performance
@@ -131,7 +134,10 @@ release-profile Criterion harness also remains a harness: its target, features
 and event/rendering environment differ from the packaged desktop application.
 Neither harness can satisfy native acceptance, even when its CPU timings pass.
 
-Glen should additionally measure a controlled **same-SHA native profile pair**:
+Glen has deferred native comparison while his identified `.11` package is
+unavailable; this does not block the next headless boundary diagnosis or waive
+native acceptance. Once a suitable package is available, retain a controlled
+**same-SHA native profile pair**:
 the packaged GUI (explicitly `dev` or `release`) and a native GUI built with `bench-audit`, keeping
 features and all other build inputs identical. Prebuild both outside timing;
 use the same host, toolchain, public PATZ1 project/report, window sizes, tracing
@@ -276,8 +282,12 @@ The bounded tree repair now requires builds to stay at one while
 `tree_viewport_updates` advances, with the same full-rebuild model and exact
 counts before/after exon and bin boundaries, without a project mutation.
 Historical 1,200 -> 2,400 GC-base counters and tree builds 1 -> 2 belong to the
-respective pre-fix implementations. Whole-view timing and remaining toolbar
-feature-count work still need Glen's audit. Visibility semantics remain binding:
+respective pre-fix implementations.
+Glen reports the fixed-pair CPU benefit and the dense-toggle regression in the
+linked handoff; that audit does not cover the later tree repair. Whole-view/native
+timing and attribution of the remaining toolbar feature-count work remain open.
+Run the exact 5,000-feature boundary before selecting another patch. Visibility
+semantics remain binding:
 the tree uses exact exon-piece overlap, whereas the existing feature interval
 index uses transcript bounding spans, including introns. They are not
 interchangeable visibility oracles.
@@ -474,8 +484,10 @@ Bounded count-only repair: `GcContents::region_count_for_viewport` replaces the
 full-sequence scan previously used solely for the GC layer's bin count. Oracle
 tests compare it with materialized bins, including partial/zero-sized bins,
 half-open boundaries and density-ladder lengths. This removes unnecessary work
-without a new cache, worker, density policy or scientific change. It is not a
-timed acceptance result; toolbar decomposition and native acceptance remain open.
+without a new cache, worker, density policy or scientific change. Glen reports
+a measured CPU benefit for this fix, not native acceptance or acceptance of
+the later tree change. Toolbar decomposition remains conditional on the exact
+boundary run and attribution.
 
 The feature tree now separates its content/settings key from the viewport.
 Same-key pans reuse labels, filters, ordering and nested membership, refreshing
