@@ -146,7 +146,11 @@ impl TssSequenceView {
                     id: format!("imported/{}/{}", evidence.report_id, coverage.motif_id),
                     label: format!("{} | DuckDB {}", coverage.motif_id, if evidence.regulatory_subset.is_some() { "regulatory/TSS subset" } else { "retained hits" }),
                     details: format!("Provider {}; run {}; manifest SHA-256 {}; source floor {:?}; density limited {:?}; query complete {}; truncated {}. Scale fixed per source/report/matrix, NOT calibrated to local PWM scores. Missing hits are not evidence of absence. {} {}", provider.provider_kind, provider.run_id, provider.manifest_sha256, coverage.source_minimum_score, coverage.density_limited, evidence.query_complete, evidence.truncated, subset_scope, evidence.warnings.join("; ")),
-                    units: provider.score_mode.clone(),
+                    units: if provider.score_mode.is_empty() {
+                        "score units unavailable".into()
+                    } else {
+                        provider.score_mode.clone()
+                    },
                     state: format!("{}; {}; {}", coverage.status.as_str(), if tss_motif_evidence::covers_window(evidence, &self.geometry) { "whole window queried" } else { "PARTIAL query coverage" }, if evidence.truncated { "TRUNCATED" } else if !evidence.query_complete { "query incomplete" } else { "query complete" }),
                     features,
                     trace: None,

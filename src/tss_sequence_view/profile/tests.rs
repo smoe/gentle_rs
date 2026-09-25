@@ -322,6 +322,54 @@ fn regulatory_subset_scope_survives_saved_report_gui_and_svg_without_warning_tex
                 .all(|p| p.svg.contains("Regulatory/TSS intersection only"))
         );
         assert!(pages.iter().all(|p| p.svg.contains("fixture-regulation")));
+
+        // A known-empty subset may legitimately omit score configuration.
+        let mut empty_report = report.clone();
+        let source = &mut empty_report.imported_motif_evidence[0];
+        let e = &mut source.report;
+        e.provider.as_mut().unwrap().score_mode.clear();
+        e.hits.clear();
+        e.matched_hit_count = 0;
+        e.returned_hit_count = 0;
+        e.query_complete = true;
+        e.truncated = false;
+        let coverage = &mut e.motif_coverage[0];
+        coverage.returned_hit_count = 0;
+        coverage.source_minimum_score = None;
+        coverage.density_limited = None;
+        coverage.status = GenomicMotifEvidenceCoverageStatus::CompleteForPackageRetention;
+        let subset = e.regulatory_subset.as_mut().unwrap();
+        subset.hit_annotations.clear();
+        subset.coverage[0].state = RegulatoryMotifCoverageState::KnownEmptyIntersection;
+        let digest = sha256_hex_bytes(&serde_json::to_vec(e).unwrap());
+        source.report_sha256 = digest.clone();
+        source.source.sha256 = digest;
+        let before = serde_json::to_vec(&empty_report).unwrap();
+        let empty_view = TssSequenceView::from_dna(&dna)
+            .unwrap()
+            .with_profile(&empty_report)
+            .unwrap();
+        let index = empty_view
+            .lanes
+            .iter()
+            .position(|l| l.kind == TssLaneKind::ImportedMotif)
+            .unwrap();
+        assert_eq!(empty_view.lanes[index].units, "score units unavailable");
+        assert!(empty_view.lanes[index].features.is_empty());
+        let svg = render_tss_view_svg(
+            &empty_view,
+            &TssViewSvgOptions {
+                start_0based: 0,
+                end_0based_exclusive: 5,
+                lane_indices: vec![index],
+                width_px: 1360,
+                print_size_mm: None,
+            },
+        )
+        .unwrap();
+        assert!(svg.contains("score units unavailable"));
+        assert!(svg.contains("No displayed intervals; not a measured zero"));
+        assert_eq!(serde_json::to_vec(&empty_report).unwrap(), before);
     }
 }
 

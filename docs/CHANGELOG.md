@@ -15,6 +15,21 @@
   changes. No local builds or tests run at the owner's request; native CI
   verification remains pending.
 
+## 2026-09-25 - TSS Evidence Legends And Span Navigation
+
+- Distinguish locally computed forward curves (violet), report curves (blue)
+  and stored peaks (green), with a shared native/SVG legend. Label local strands
+  explicitly and preserve upper-plus/lower-minus unavailable bands in SVG;
+  missing scores remain gaps, not zeros. Scoring and source records are unchanged.
+- Show an explicit unavailable-units label for valid empty DuckDB subsets.
+  Report-only hits and curve footprints offer DNA-span navigation, not an
+  implied stored annotation. Navigation selects the exact span, clears stale
+  feature highlights and creates no annotations; stored features retain their
+  original annotation action. Remove the unused annotation-view copy.
+- Extend synthetic plus/minus regressions for units, palette/legend parity,
+  unavailable halves and navigation without mutation. Live visual acceptance
+  remains separate from these focused tests.
+
 ## 2026-09-25 - Restore Motif Guide Ranking Metadata
 
 - Complete the tutorial 08.13 discovery repair: its renamed title removed

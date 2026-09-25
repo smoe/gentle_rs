@@ -6804,7 +6804,9 @@ genomic strand decreases genomic coordinates without reversing the local DNA.
 Side summaries show interval counts and displayed coordinate envelopes (not
 continuous coverage). Hover retains original feature/source notes. Click a
 feature to select its exact local DNA span, then **Inspect in standard DNA map**
-to see that annotation and sequence. Wrapped/clipped original spans remain in
+to see that annotation and sequence. For report-only hits or curve footprints,
+**Show DNA span in standard map** selects the bases and clears any previous
+annotation highlight; it does not create an annotation. Wrapped/clipped original spans remain in
 details; unsupported compound locations are explicitly reported, not flattened.
 
 Signal intervals preserve gaps and supplied source scale; no-interval and
@@ -6844,7 +6846,9 @@ and any independently computed local curves.
 - Each curve has numeric Y ticks and its own explicit score kind. Scaling and
   negative-score clipping follow the saved panel policy, not current TFBS-panel
   settings or an export-only scale override. A background-tail score is not
-  relabelled LLR bits. Amber areas and line gaps mean unavailable windows;
+  relabelled LLR bits. Amber areas and line gaps mean unavailable windows:
+  the upper half represents local `+`, the lower half local `-`, relative to
+  the displayed DNA, including on negative genomic strands. The
   grey terminal areas cannot hold a full motif window. A genuine zero remains
   an evaluable value. An empty/all-zero range uses a labelled display fallback.
 - **DuckDB peaks** shows the report's attached sparse-query results, not a live
@@ -6852,6 +6856,8 @@ and any independently computed local curves.
   original source/report/matrix score range, including signed raw values, never
   the local-curve scale. Side summaries retain coverage and truncation states;
   hover includes original genomic spans, retention/density policy and hashes.
+  A valid empty subset with no declared score mode says **score units unavailable**,
+  rather than inventing units or displaying an empty label.
   Missing or partially queried evidence does not establish absence of binding.
 
 The original annotated structure, CUT&RUN/chromatin and stored-peak lanes stay
@@ -6871,6 +6877,9 @@ bound to the displayed, transcript-oriented DNA. It never fetches sequence,
 queries DuckDB, reconstructs an old report, or modifies sequence annotations.
 
 **Locally computed curves** is a separate lane class and visibility toggle.
+Local `+` curves are solid violet, distinct from blue report curves and green
+stored peaks; local `-` curves remain dashed rose. The native view and its SVG
+export share the colour and local-strand legend, including unavailable halves.
 Each lane shows its actual score kind, exact matrix hash and evaluability count;
 its own range does not normalize imported/report scores. Zero is a scored
 value, while ambiguous/unscorable windows remain gaps via the engine validity

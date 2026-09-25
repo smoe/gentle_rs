@@ -33,6 +33,21 @@ pub enum TssLaneKind {
     Other,
 }
 
+pub(crate) const TSS_TRACE_LEGEND: &str = "Local strands: + solid (report blue / computed violet); - dashed rose. Strands are relative to displayed DNA.";
+pub(crate) const TSS_UNAVAILABLE_LEGEND: &str =
+    "Amber: unavailable (upper half local +, lower half local -); grey: no full motif window.";
+
+impl TssLaneKind {
+    /// Curve palette shared by the native view and its SVG export.
+    pub(crate) fn trace_rgb(self, reverse: bool) -> [u8; 3] {
+        match (self, reverse) {
+            (_, true) => [170, 70, 105],
+            (Self::LocalScoreTrace, false) => [115, 68, 162],
+            _ => [30, 105, 185],
+        }
+    }
+}
+
 /// One original feature, in local zero-based, end-exclusive coordinates.
 #[derive(Clone, Debug, Serialize)]
 pub struct TssViewFeature {
