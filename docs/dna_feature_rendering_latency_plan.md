@@ -79,10 +79,10 @@ establishes a speedup or regression of the runtime hypotheses below.
 
 The 2026-09-25 cold native-package recipe additionally disables incremental
 compilation and line-table debug information while retaining internal `dev`
-debug assertions. This is a third measurement-profile boundary. It is intended
-to remove non-reusable build state and debug payload, not to claim lower peak
-RSS; compare compiler and linker peaks independently before accepting that
-effect.
+debug assertions. This is a third measurement-profile boundary. It removes
+non-reusable build state and debug payload. A same-host cold comparison measured
+this recipe together with the first bounded B0 extraction; therefore its
+observed RSS reduction cannot be assigned to the recipe alone.
 
 ## Audit Admission Decisions
 
@@ -422,6 +422,20 @@ allele-aware read screen, UCSC RepeatMasker and UniProt modules into
 re-exports. It deliberately remains statically linked; its acceptance evidence
 is a cold before/after compiler/linker RSS and package-size comparison, not the
 number of moved source lines.
+
+The 2026-09-25 same-host Linux comparison used cold targets, one Cargo job and
+the same five binaries. The `b7448898` baseline used the former internal `dev`
+recipe (`incremental=true`, `debug=1`); `6f39e1c9` combined the extraction with
+the package recipe (`incremental=false`, `debug=0`). Peak `rustc` RSS changed
+from 9,317,412 to 8,716,432 KiB (-6.45%), peak process-tree RSS from 9,491,584
+to 8,890,908 KiB (-6.33%), and wall time from 18:58.18 to 16:51.23 (-11.15%).
+The archive changed from 668,226,000 to 466,594,311 bytes (-30.17%) and passed
+all five extracted-package entrypoint smokes plus the tutorial-manifest check.
+The dominant compiler unit remained `gentle-gui` at about 8.6 GiB RSS, while a
+sampled final GNU `ld` process used about 3.9 GiB. This establishes a modest
+combined improvement, not causal attribution or hosted-runner acceptance. The
+next B0 candidate should therefore be a narrow GUI boundary, not dynamic
+linking or an indiscriminate root split.
 
 This is distinct from a single-root **GUI workspace** (replacing native child
 windows with one application workspace), which remains a conditional UX/runtime

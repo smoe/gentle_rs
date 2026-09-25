@@ -51,6 +51,17 @@ retains the log for 14 days when the runner is still available. Runner shutdown
 can prevent both final statistics and upload, so retain the Actions log too.
 These logs are diagnostics, not package acceptance receipts.
 
+A controlled external Linux cold build on 2026-09-25 provides the first
+measurement of the revised internal recipe and bounded B0 extraction. Against
+the same-host `b7448898` baseline, `6f39e1c9` reduced peak `rustc` RSS from
+9,317,412 to 8,716,432 KiB and peak process-tree RSS from 9,491,584 to
+8,890,908 KiB. The build completed in 16:51.23 without swap or memory pressure;
+the 466,594,311-byte `-dev` archive passed all extracted-package smokes. This is
+Linux diagnostic evidence only, not a GitHub-runner, macOS, Windows, package or
+release-acceptance verdict. It also combines a source-boundary change with the
+new incremental/debug settings and therefore cannot attribute the reduction to
+either factor alone.
+
 At `ad0338a7`, run `35968255595` recorded macOS job `107531770716`'s library
 compiler ending in `signal: 9, SIGKILL`, followed by Cargo exit 101. Memory
 pressure is plausible, not established by that signal alone. Ubuntu job

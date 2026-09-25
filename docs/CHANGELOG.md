@@ -11,10 +11,17 @@
   information while retaining internal `dev` debug assertions and overflow
   checks. Bind both effective settings in each platform receipt and reject
   missing or incompatible recipes during collection.
-- This is bounded B0 build-boundary work, not a claimed memory improvement.
-  Cold compiler/linker RSS and package-size comparison remain required before
-  deciding whether the next extraction should include the large root engine or
-  shell dispatchers.
+- A same-host cold Linux comparison against `b7448898` measured the combined
+  extraction and package-recipe change at `6f39e1c9`: peak `rustc` RSS fell
+  from 9,317,412 to 8,716,432 KiB (-6.45%), peak build-tree RSS from 9,491,584
+  to 8,890,908 KiB (-6.33%), wall time from 18:58.18 to 16:51.23 (-11.15%),
+  and the extracted-smoke-tested archive from 668,226,000 to 466,594,311 bytes
+  (-30.17%). The dominant sampled compiler unit was still `gentle-gui`, at
+  about 8.6 GiB RSS; a sampled final GNU `ld` process was about 3.9 GiB.
+  Because source boundaries and the cold profile recipe changed together, this
+  comparison does not assign either reduction to one change. It supports the
+  bounded static-crate direction but does not yet make small hosted runners a
+  demonstrated fit.
 
 ## 2026-09-25 - Unoptimized Internal Installers
 
