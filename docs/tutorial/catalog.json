@@ -1363,7 +1363,7 @@
         "regulatory_analysis",
         "contributors"
       ],
-      "notes": "Score-interpretation guide for PWM/PSSM matrices, PFM counts, motif logos, JASPAR match scores, pseudocounts, log odds, raw LLR bits, relative scores, quantiles and inclusive background tails. Distinguishes sequence preference from binding affinity, occupancy and reporter activity; explains the corrected TP73 MA0861.2 tail score and shared-scale traces. Hands-on native TSS inspection is deliberately split into tutorial 08.16; TSS collection derivation remains 08.15.",
+      "notes": "Score-interpretation guide for PWM/PSSM matrices, PFM counts, motif logos, JASPAR TFBS match scores, pseudocounts, log odds, raw LLR bits, relative scores, quantiles and inclusive background tail probability. Distinguishes sequence preference from binding affinity, occupancy and reporter activity; explains why the TP73 MA0861.2 score 300 was wrong, the corrected tail score and shared-scale traces. Offline teaching guide: no loaded project required; replay needs a built GENtle CLI, with the independent scanner optional. Hands-on native TSS inspection is deliberately split into tutorial 08.16; TSS collection derivation remains 08.15.",
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-12"
     },

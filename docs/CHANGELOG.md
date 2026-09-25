@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-25 - Motif Tutorial Discovery Metadata Repair
+
+- Restore tutorial 08.13's no-project prerequisite and TFBS, tail-probability
+  and TP73 score-300 search context in its authoring source and discovery
+  catalog. The native-viewer tutorial split remains intact. The rewrite in
+  `fa9277eb` removed metadata consumed by the inner agent, causing the same
+  platform-independent GUI-context assertion on current `main`; this is
+  separate from the tagged release's installer failures.
+- Keep the existing Rust recommendation regression unchanged. Extend the
+  lightweight source/catalog guard with `300` and `shared`, and run that guard
+  in the early CI policy job without compiling Rust or replaying the CLI.
+- No local builds or tests run at the owner's request; CI verification remains
+  pending.
+
 ## 2026-09-24 - TSS Scoring And Hosted Attachment Integration
 
 - Merge `gentle_rs_3` at `a2271076`, preserving Glen's vertical native viewer,

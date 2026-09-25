@@ -61,8 +61,10 @@ class MotifScoreTutorialSourceTests(unittest.TestCase):
         self.assertEqual(entry["notes"], source["catalog"]["notes"])
         self.assertEqual(entry["title"], source["title"])
         for term in ["PWM/PSSM", "JASPAR", "TFBS", "pseudocounts", "tail probability",
-                     "binding affinity", "TP73", "no loaded project required"]:
-            self.assertIn(term, entry["notes"])
+                     "binding affinity", "TP73", "300", "shared",
+                     "no loaded project required"]:
+            with self.subTest(discovery_term=term):
+                self.assertIn(term, entry["notes"])
         text = TUTORIAL.read_text(encoding="utf-8")
         self.assertEqual(text.splitlines()[0], f'# {source["title"]}')
         for target in re.findall(r"\]\(([^)]+)\)", text):

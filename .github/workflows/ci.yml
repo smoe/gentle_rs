@@ -32,6 +32,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Tutorial discovery metadata regression
+        run: python3 -m unittest scripts.test_motif_score_tutorial.MotifScoreTutorialSourceTests.test_catalog_source_and_local_links -v
       - run: python3 -m unittest scripts.test_release_candidate -v
       - run: python3 -m unittest scripts.test_package_desktop -v
       - run: python3 -m unittest scripts.test_container -v
