@@ -42,6 +42,8 @@ pub struct LinearCacheDiagnostics {
 pub struct DnaCacheDiagnostics {
     pub tree_hits: u64,
     pub tree_builds: u64,
+    /// In-place visibility recounts; included in tree hits, not model builds.
+    pub tree_viewport_updates: u64,
     pub layer_hits: u64,
     pub layer_builds: u64,
     pub layer_feature_visits: u64,

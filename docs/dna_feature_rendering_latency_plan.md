@@ -21,6 +21,9 @@ bounded S2 simplification (`ee9eb483`) counts GC bins arithmetically
 instead of computing GC values just to discard them. It preserves half-open
 counts and does not claim a measured GUI speedup or completion of S2; broader
 runtime slices remain pending.
+The subsequent bounded S2 tree change retains grouping/filter labels on pan and
+refreshes exon-aware visibility/counts in place. Developer CPU attribution and
+full-rebuild equivalence tests support that change, not a native latency verdict.
 B0 separates build feedback from runtime performance. The consolidated
 hypothesis ledger and S0 section below retain both updates. This plan does not
 change the `.11` candidate; counts of work are not timing evidence or performance
@@ -258,19 +261,23 @@ costs. The renderer regression confirms resize increments layouts without
 rebuilding the interval index; the density-dependent runtime share is unmeasured.
 
 **H2 - Viewport-keyed model rebuilds.**
-`FeatureTreeCacheKey` (`src/main_area_dna/feature_tree_ui.rs`) and
-`LayerVisibilityCacheKey` (`src/main_area_dna.rs`) both contain the viewport,
-and `active_linear_viewport_range` returns `Some` for every linear sequence. A
-one-base pan invalidates both caches. At `ad0338a7`, layer-count misses also
+At `3cee4334`, `FeatureTreeCacheKey` (`src/main_area_dna/feature_tree_ui.rs`) and
+`LayerVisibilityCacheKey` (`src/main_area_dna.rs`) both contained the viewport;
+`active_linear_viewport_range` returns `Some` for every linear sequence. A
+one-base pan therefore rebuilt both models. At `ad0338a7`, layer-count misses also
 computed GC values across the full sequence just to count overlapping bins:
 O(all features + bases), not merely O(visible features). The bounded S2 repair
 uses length/bin/viewport arithmetic for that count; GC values used for drawing
-and scientific output are unchanged. The pan regression still requires tree
-builds 1 -> 2, but now requires zero `layer_gc_bases` and exact counts before
-and after crossing a bin boundary, without a project mutation. Historical
-1,200 -> 2,400 GC-base counters belong to the pre-fix implementation.
-Whole-view timing and the remaining tree/feature-count work still need Glen's
-audit. Static grouping and viewport counts must be separated carefully:
+and scientific output are unchanged. At `3cee4334`, a developer-only debug CPU
+diagnostic isolated the tree path: 50 successive one-base pans caused 50 full
+model rebuilds at each of 1,000, 5,000 and 10,000 features on 250 kbp. This is
+attribution, not an optimized/native timing baseline or release acceptance.
+The bounded tree repair now requires builds to stay at one while
+`tree_viewport_updates` advances, with the same full-rebuild model and exact
+counts before/after exon and bin boundaries, without a project mutation.
+Historical 1,200 -> 2,400 GC-base counters and tree builds 1 -> 2 belong to the
+respective pre-fix implementations. Whole-view timing and remaining toolbar
+feature-count work still need Glen's audit. Visibility semantics remain binding:
 the tree uses exact exon-piece overlap, whereas the existing feature interval
 index uses transcript bounding spans, including introns. They are not
 interchangeable visibility oracles.
@@ -468,18 +475,28 @@ full-sequence scan previously used solely for the GC layer's bin count. Oracle
 tests compare it with materialized bins, including partial/zero-sized bins,
 half-open boundaries and density-ladder lengths. This removes unnecessary work
 without a new cache, worker, density policy or scientific change. It is not a
-timed acceptance result; the broader S2 work below remains conditional.
+timed acceptance result; toolbar decomposition and native acceptance remain open.
 
-Split both models into a viewport-independent part (grouping, filtering,
-ordering, labels - keyed by feature generation and display revision) and a cheap
-viewport pass that only marks visibility and recounts. Reuse an index only with
+The feature tree now separates its content/settings key from the viewport.
+Same-key pans reuse labels, filters, ordering and nested membership, refreshing
+visibility and every group count from the original exact-overlap helper. The
+pass remains linear in retained entries/location pieces; it introduces no
+interval index, culling or background worker. Annotation generation, length,
+topology and every tree/filter/display dependency still invalidate the model.
+The existing full builder remains the deterministic oracle, including both
+strands, intron gaps, nested groups, filtering and the 5,000-feature boundary.
+
+Remaining: profile toolbar feature-count traversal and split its static work
+from viewport visibility only if attributable. Reuse an index only with
 exact exon-piece and half-open overlap semantics, not transcript bounding spans
 that include introns. Collapsed/offscreen models may defer work but must expose
 correct counts when queried. Retain the arithmetic GC-bin count separately
 from GC-value computation. Do not simply remove the viewport from existing keys.
 
-Evidence required first: H2 confirmed, including the rebuild cost at 10^3 and
-10^4 features during a continuous pan.
+The opt-in continuous-pan diagnostic in the benchmark runbook retains raw CPU
+samples and counters for the tree path. Glen must still compare compatible
+optimized/native revisions; local debug samples do not establish responsiveness
+or authorize the remaining S2 changes without attribution.
 
 ### S3 - Take one-shot work off the first frames (H3/H4)
 

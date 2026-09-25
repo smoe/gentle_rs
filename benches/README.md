@@ -208,6 +208,26 @@ The diagnostics pane and Puffin scopes are described in `docs/gui.md`;
 `docs/dna_feature_rendering_latency_plan.md` retains the conditional optimization
 sequence. Developers smoke-test; Glen provides timed and native acceptance.
 
+For isolated tree-path attribution (not the Criterion ladder or native
+acceptance), run the opt-in synthetic continuous-pan diagnostic:
+
+```bash
+cargo test --locked --offline --lib --no-default-features \
+  --features desktop-gui,benchmark-support feature_tree_continuous_pan_diagnostic \
+  -- --ignored --nocapture --test-threads=1
+```
+
+It reuses `feature_density_fixture` at 250 kbp with 1,000/5,000/10,000 features,
+warms the tree, then records 50 one-base pan refreshes (without drawing). Raw
+microsecond samples, debug-assertion mode, revision and work counters go to
+stdout. Retain the exact source/diff, binary hash, command/toolchain and host
+alongside the log; its revision alone does not bind an uncommitted experiment.
+Construction, compilation and native display are outside those samples. There
+is no timing assertion. `tree_viewport_updates` in current diagnostics separates
+recounts from full `tree_builds`; older logs without it are unavailable on that
+axis. These observations cannot certify a release budget or be pooled with
+optimized ladder measurements.
+
 ### Startup phase checkpoints
 
 The desktop binary can retain a small CPU timeline without `gui-test-support`,
