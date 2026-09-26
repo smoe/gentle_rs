@@ -8,6 +8,7 @@ impl MainAreaDna {
         crate::gui_profiler::DnaCacheDiagnostics {
             tree_hits: self.feature_tree_cache_hits,
             tree_builds: self.feature_tree_cache_misses,
+            tree_viewport_updates: self.feature_tree_viewport_updates,
             layer_hits: self.layer_visibility_cache_hits,
             layer_builds: self.layer_visibility_cache_misses,
             layer_feature_visits: self.layer_visibility_feature_visits,
@@ -40,7 +41,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cache_diagnostics_observe_pan_rebuilds_without_gc_scan_or_state_mutation() {
+    fn cache_diagnostics_observe_pan_recounts_without_tree_rebuild_or_gc_scan() {
         let mut area = MainAreaDna::new(
             DNAsequence::from_sequence(&"ACGT".repeat(300)).unwrap(),
             None,
@@ -52,6 +53,7 @@ mod tests {
         let first = area.cache_diagnostics();
         assert_eq!(first.layer_gc_bases, 0);
         assert_eq!(first.tree_builds, 1);
+        assert_eq!(first.tree_viewport_updates, 0);
         let before = serde_json::to_value(&*area.dna.read().unwrap()).unwrap();
         assert_eq!(first, area.cache_diagnostics());
         area.compute_layer_visibility_counts();
@@ -64,7 +66,8 @@ mod tests {
         let panned = area.cache_diagnostics();
         assert_eq!(panned.layer_gc_bases, 0);
         assert_eq!(panned.layer_builds, first.layer_builds + 1);
-        assert_eq!(panned.tree_builds, 2);
+        assert_eq!(panned.tree_builds, 1);
+        assert_eq!(panned.tree_viewport_updates, 1);
         assert_eq!(
             before,
             serde_json::to_value(&*area.dna.read().unwrap()).unwrap()

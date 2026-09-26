@@ -208,6 +208,26 @@ The diagnostics pane and Puffin scopes are described in `docs/gui.md`;
 `docs/dna_feature_rendering_latency_plan.md` retains the conditional optimization
 sequence. Developers smoke-test; Glen provides timed and native acceptance.
 
+For isolated tree-path attribution (not the Criterion ladder or native
+acceptance), run the opt-in synthetic continuous-pan diagnostic:
+
+```bash
+cargo test --locked --offline --lib --no-default-features \
+  --features desktop-gui,benchmark-support feature_tree_continuous_pan_diagnostic \
+  -- --ignored --nocapture --test-threads=1
+```
+
+It reuses `feature_density_fixture` at 250 kbp with 1,000/5,000/10,000 features,
+warms the tree, then records 50 one-base pan refreshes (without drawing). Raw
+microsecond samples, debug-assertion mode, revision and work counters go to
+stdout. Retain the exact source/diff, binary hash, command/toolchain and host
+alongside the log; its revision alone does not bind an uncommitted experiment.
+Construction, compilation and native display are outside those samples. There
+is no timing assertion. `tree_viewport_updates` in current diagnostics separates
+recounts from full `tree_builds`; older logs without it are unavailable on that
+axis. These observations cannot certify a release budget or be pooled with
+optimized ladder measurements.
+
 ### Startup phase checkpoints
 
 The desktop binary can retain a small CPU timeline without `gui-test-support`,
@@ -264,6 +284,47 @@ evidence classes; record process-launch and visibly confirmed content with the
 external native audit. This file alone cannot certify an interaction budget,
 and enabling tracing adds some overhead. The existing Criterion replay remains
 unchanged and clears inherited `GENTLE_*` options.
+
+#### Read a saved startup trace
+
+Summarize one existing trace without launching GENtle, Cargo, a GUI or a timed
+benchmark. From the repository root:
+
+```bash
+python3 scripts/gui_startup_summary.py /tmp/gentle-startup-project-01.json \
+  --output-dir /tmp/gentle-startup-project-01-summary
+python3 -m unittest scripts.test_gui_startup_summary -v
+```
+
+The output directory must be new. It contains the untouched `trace.json`, a
+machine-readable `summary.json` (`gentle.gui_startup_summary.v1`) and
+`summary.md`. The report hashes the exact input bytes and reader script; LF and
+CRLF inputs remain distinct byte evidence. This is not a redaction tool: the
+raw input is retained verbatim, including any extra fields a producer supplied.
+Review it before sharing. Invalid/oversized input is rejected before output is
+created; prior output is never replaced. The input limit is 1 MiB / 512 events.
+
+Read the CPU markers first, then the inclusive spans for each process-local
+subject. Project decoding/installation, lock acquisition, cloning and hydration
+remain separate. Same-subject boundaries show worker scheduling to lock attempt,
+worker result to hydration, and construction/hydration to native or embedded
+content markers. There is no inferred link from an open dispatcher to a DNA
+subject, and no matching of subject ordinals across runs. Eager windows may
+legitimately lack worker/hydration measurements.
+
+Missing, ambiguous, unsuccessfully completed or inverted boundary endpoints
+produce `null` / `unavailable`, never zero. Any recorded loss suppresses all
+derived durations because losses cannot be localized; the observed timestamps
+remain available for inspection. Failed/interrupted spans retain their outcome
+and, when both endpoints exist without loss, their elapsed duration. Do not sum
+inclusive/nested/concurrent spans. `native_run` includes the entire session until
+exit, not just startup. `no_recorded_loss` is trace integrity, not successful
+startup; the performance verdict always remains `not_assessed`.
+
+The tool does not combine runs, pick a bottleneck automatically or verify binary,
+profile or subject identity. Glen still binds the external evidence described
+above and owns attribution and native acceptance. CI exercises synthetic parser
+and real CLI/file-boundary regressions only, not GUI timings.
 
 ## Specificity finalization
 

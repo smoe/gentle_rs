@@ -97,6 +97,8 @@ pub fn render_tss_view_svg(
     let mut notes = vec![
         "Native TSS presentation; export performs no rescoring or retrieval. All selected lanes, not a screenshot. Unavailable is not zero; stored peaks are not full curves.".into(),
         "Report content/sequence binding is not a full receipt audit. Local model scores and imported raw scores have separate scales.".into(),
+        TSS_TRACE_LEGEND.into(),
+        TSS_UNAVAILABLE_LEGEND.into(),
         view.provenance.clone(),
     ];
     notes.extend(view.warnings.clone());
@@ -250,18 +252,9 @@ pub fn render_tss_view_svg(
                     right - x(visible_end.max(start))
                 );
             }
-            for (reverse, scores, color) in [
-                (
-                    false,
-                    &trace.forward,
-                    if lane.kind == TssLaneKind::LocalScoreTrace {
-                        "#008264"
-                    } else {
-                        "#1e69b9"
-                    },
-                ),
-                (true, &trace.reverse, "#aa4669"),
-            ] {
+            for (reverse, scores) in [(false, &trace.forward), (true, &trace.reverse)] {
+                let [r, g, b] = lane.kind.trace_rgb(reverse);
+                let color = format!("#{r:02x}{g:02x}{b:02x}");
                 let mut path = String::new();
                 let mut hovers = String::new();
                 let mut connected = false;
@@ -308,11 +301,13 @@ pub fn render_tss_view_svg(
                         );
                     } else {
                         connected = false;
+                        let gap_top = if reverse { top + 60.0 } else { top };
                         let _ = write!(
                             svg,
-                            "<rect data-role=\"unavailable-score\" x=\"{:.2}\" y=\"{top}\" width=\"{:.2}\" height=\"120\" fill=\"#f5c878\" fill-opacity=\"0.3\"><title>Unavailable window, not zero</title></rect>",
+                            "<rect data-role=\"unavailable-score\" data-reverse=\"{reverse}\" x=\"{:.2}\" y=\"{gap_top}\" width=\"{:.2}\" height=\"60\" fill=\"#f5c878\" fill-opacity=\"0.3\"><title>Unavailable window, not zero; local strand {}</title></rect>",
                             x(p),
-                            (x(p + 1) - x(p)).max(0.5)
+                            (x(p + 1) - x(p)).max(0.5),
+                            if reverse { "-" } else { "+" }
                         );
                     }
                 }
@@ -556,6 +551,35 @@ mod tests {
                 .unwrap()
                 .contains("<g data-lane-id=")
         );
+    }
+
+    #[test]
+    fn tss_svg_unavailable_halves_follow_local_strands_not_genomic_strand() {
+        for minus in [false, true] {
+            let (mut view, mut options) = fixture(minus);
+            let index = view.lanes.iter().position(|l| l.trace.is_some()).unwrap();
+            options.lane_indices = vec![index];
+            let trace = view.lanes[index].trace.as_mut().unwrap();
+            trace.forward = vec![Some(0.0), None, Some(1.0)];
+            trace.reverse = vec![Some(0.0), None, Some(1.0)];
+            let svg = render_tss_view_svg(&view, &options).unwrap();
+            let gaps: Vec<_> = svg
+                .split("<rect data-role=\"unavailable-score\"")
+                .skip(1)
+                .map(|s| s.split("</rect>").next().unwrap())
+                .collect();
+            assert_eq!(gaps.len(), 2, "only None windows get amber, never zero");
+            for (gap, reverse, y, strand) in [(gaps[0], false, 130, "+"), (gaps[1], true, 190, "-")]
+            {
+                assert!(gap.contains(&format!("data-reverse=\"{reverse}\"")));
+                assert!(gap.contains(&format!("y=\"{y}\"")));
+                assert!(gap.contains("height=\"60\""));
+                assert!(gap.contains(&format!("not zero; local strand {strand}")));
+            }
+            assert!(svg.contains("stroke=\"#1e69b9\""));
+            assert!(svg.contains("stroke=\"#aa4669\""));
+            assert!(svg.contains("upper half local +, lower half local -"));
+        }
     }
 
     #[test]

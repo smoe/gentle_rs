@@ -317,6 +317,10 @@ mod tests {
             };
             let svg = render_tss_view_svg(&rendered, &options).unwrap();
             assert!(svg.contains("Locally computed"));
+            assert!(svg.contains("stroke=\"#7344a2\""));
+            assert!(svg.contains("report blue / computed violet"));
+            assert!(svg.contains("- dashed rose"));
+            assert!(svg.contains("upper half local +, lower half local -"));
             assert!(svg.contains(&rendered.local_scoring.as_ref().unwrap().report_sha256));
             assert!(svg.contains(&p.matrices[0].matrix_sha256));
             assert!(svg.contains("local_scoring"));

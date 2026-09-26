@@ -1,7 +1,10 @@
 //! Native TSS lanes over the shared annotated-window presentation model.
 
 use super::*;
-use crate::tss_sequence_view::{TssLaneKind, TssSequenceView, TssViewFeature, TssViewLane};
+use crate::tss_sequence_view::{
+    TSS_TRACE_LEGEND, TSS_UNAVAILABLE_LEGEND, TssLaneKind, TssSequenceView, TssViewFeature,
+    TssViewLane,
+};
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 mod local_scoring;
@@ -22,7 +25,6 @@ pub(super) struct TssUiState {
     detected: bool,
     pending: Option<Arc<std::sync::Mutex<Receiver<LoadedView>>>>,
     document: Option<LoadedView>,
-    annotations: Option<Arc<TssSequenceView>>,
     profile_load: Option<ProfileLoad>,
     requested_profile_path: Option<std::path::PathBuf>,
     profile_error: Option<String>,
@@ -45,7 +47,6 @@ impl Default for TssUiState {
             detected: false,
             pending: None,
             document: None,
-            annotations: None,
             profile_load: None,
             requested_profile_path: None,
             profile_error: None,
@@ -94,14 +95,40 @@ fn color(kind: TssLaneKind) -> egui::Color32 {
         TssLaneKind::Structure => egui::Color32::from_rgb(55, 130, 170),
         TssLaneKind::Signal => egui::Color32::from_rgb(165, 65, 100),
         TssLaneKind::Motif => egui::Color32::from_rgb(0, 140, 115),
-        TssLaneKind::ScoreTrace => egui::Color32::from_rgb(30, 105, 185),
-        TssLaneKind::LocalScoreTrace => egui::Color32::from_rgb(0, 130, 100),
+        TssLaneKind::ScoreTrace | TssLaneKind::LocalScoreTrace => {
+            let [r, g, b] = kind.trace_rgb(false);
+            egui::Color32::from_rgb(r, g, b)
+        }
         TssLaneKind::ImportedMotif => egui::Color32::from_rgb(180, 100, 25),
         TssLaneKind::Other => egui::Color32::from_rgb(180, 125, 30),
     }
 }
 
+fn standard_map_action(feature: &TssViewFeature) -> (&'static str, &'static str) {
+    if feature.feature_id.is_some() {
+        (
+            "Inspect in standard DNA map",
+            "Show the original DNA annotation and its selected span.",
+        )
+    } else {
+        (
+            "Show DNA span in standard map",
+            "Show only the selected DNA span. This evidence has no stored DNA annotation; none will be created.",
+        )
+    }
+}
+
 impl MainAreaDna {
+    fn inspect_tss_span(&mut self, feature: &TssViewFeature) -> Result<(), String> {
+        self.inspect_sequence_span_0based(feature.start, feature.end, &feature.label)?;
+        self.primary_map_mode = PrimaryMapMode::Standard;
+        self.show_sequence = true;
+        // Report/curve selections clear any old feature highlight, not their DNA span.
+        self.map_dna.select_feature(feature.feature_id);
+        self.save_engine_ops_state();
+        Ok(())
+    }
+
     fn tss_svg_snapshot(
         &mut self,
         profile: ViewSvgExportProfile,
@@ -290,7 +317,6 @@ impl MainAreaDna {
                 .and_then(|r| r.try_recv());
             match result {
                 Ok(document) => {
-                    self.tss_ui.annotations = document.as_ref().ok().cloned();
                     self.tss_ui.document = Some(document);
                     self.tss_ui.pending = None;
                 }
@@ -438,7 +464,8 @@ impl MainAreaDna {
             ui.label("Filter lanes");
             ui.add(egui::TextEdit::singleline(&mut self.tss_ui.filter).desired_width(150.0));
         });
-        ui.small("Rose: supplied signal; green: stored peaks (negative values hidden); blue curves: report scores (+ solid / - dashed); amber triangles: imported raw scores (+ up / - down). Local and imported scores use separate scales. Click evidence to select its DNA span.");
+        ui.small("Rose: supplied signal; green: stored peaks (negative values hidden); amber triangles: imported raw scores (local + up / local - down). Report, locally computed and imported scores keep separate scales. Click evidence to select its DNA span.");
+        ui.small(TSS_TRACE_LEGEND);
         ui.collapsing("Provenance, limitations and missing data", |ui| {
             for warning in &view.warnings {
                 ui.label(warning);
@@ -556,13 +583,13 @@ impl MainAreaDna {
                 if f.clipped { " | clipped" } else { "" }
             ));
             ui.horizontal(|ui| {
-                if ui.button("Inspect in standard DNA map").clicked() {
-                    self.primary_map_mode = PrimaryMapMode::Standard;
-                    self.show_sequence = true;
-                    self.map_dna.select_feature(f.feature_id);
-                    self.save_engine_ops_state();
+                let (label, tooltip) = standard_map_action(&f);
+                if ui.button(label).on_hover_text(tooltip).clicked()
+                    && let Err(error) = self.inspect_tss_span(&f)
+                {
+                    self.op_status = error;
                 }
-                ui.label("Full annotation").on_hover_text(&f.details);
+                ui.label("Evidence details").on_hover_text(&f.details);
             });
         }
     }
@@ -882,14 +909,8 @@ fn paint_trace(
     let mut valid = 0;
     if bounded {
         for (reverse, scores) in [(false, &trace.forward), (true, &trace.reverse)] {
-            let stroke = egui::Stroke::new(
-                1.2,
-                if reverse {
-                    egui::Color32::from_rgb(170, 70, 105)
-                } else {
-                    color(lane.kind)
-                },
-            );
+            let [r, g, b] = lane.kind.trace_rgb(reverse);
+            let stroke = egui::Stroke::new(1.2, egui::Color32::from_rgb(r, g, b));
             let mut path = Vec::new();
             let flush = |path: &mut Vec<egui::Pos2>| {
                 if path.len() == 1 {
@@ -952,7 +973,7 @@ fn paint_trace(
         format!("{valid} valid strand-windows here")
     };
     let summary = format!(
-        "{}\n{status}{}\n+ solid / - dashed\nAmber: unavailable; grey: no full motif window\n{}",
+        "{}\n{status}{}\nLocal + solid / - dashed\n{TSS_UNAVAILABLE_LEGEND}\n{}",
         lane.units,
         if trace.range_is_fallback {
             "; axis 0..1 is a display fallback"
@@ -1046,6 +1067,96 @@ mod tests {
     use super::*;
 
     #[test]
+    fn tss_standard_map_action_selects_spans_without_inventing_annotations() {
+        for minus in [false, true] {
+            let (mut dna, report) = crate::tss_sequence_view::profile_fixture(minus);
+            // The report fixture has only its axis marker, not a selectable exon.
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "exon".into(),
+                location: gb_io::seq::Location::simple_range(2, 4),
+                qualifiers: vec![("label".into(), Some("synthetic exon".into()))],
+            });
+            let view = TssSequenceView::from_dna(&dna)
+                .unwrap()
+                .with_profile(&report)
+                .unwrap();
+            let mut area = MainAreaDna::new(dna, None, None);
+            let before = area.dna.read().unwrap().clone_seq_record();
+            let stored = view
+                .lanes
+                .iter()
+                .flat_map(|l| &l.features)
+                .find(|f| f.feature_id.is_some())
+                .unwrap();
+            let imported = &view
+                .lanes
+                .iter()
+                .find(|l| l.kind == TssLaneKind::ImportedMotif)
+                .unwrap()
+                .features[0];
+            let curve = view
+                .lanes
+                .iter()
+                .find(|l| l.kind == TssLaneKind::ScoreTrace)
+                .unwrap();
+            let footprint = trace_selection(&view, curve, 0).unwrap();
+            for feature in [stored, imported, &footprint] {
+                area.primary_map_mode = PrimaryMapMode::Tss;
+                area.map_dna.select_feature(stored.feature_id);
+                let (label, tooltip) = standard_map_action(feature);
+                if feature.feature_id.is_some() {
+                    assert_eq!(label, "Inspect in standard DNA map");
+                } else {
+                    assert_eq!(label, "Show DNA span in standard map");
+                    assert!(tooltip.contains("none will be created"));
+                }
+                area.inspect_tss_span(feature).unwrap();
+                assert_eq!(area.primary_map_mode, PrimaryMapMode::Standard);
+                assert!(area.show_sequence);
+                assert_eq!(
+                    area.selection_range_0based(),
+                    Some((feature.start, feature.end))
+                );
+                assert_eq!(area.get_selected_feature_id(), feature.feature_id);
+                assert_eq!(area.dna.read().unwrap().clone_seq_record(), before);
+                assert!(area.tfbs_task.is_none());
+            }
+            let mut invalid = footprint;
+            invalid.end = before.seq.len() + 1;
+            area.primary_map_mode = PrimaryMapMode::Tss;
+            let selection = area.selection_range_0based();
+            assert!(area.inspect_tss_span(&invalid).is_err());
+            assert_eq!(area.primary_map_mode, PrimaryMapMode::Tss);
+            assert_eq!(area.selection_range_0based(), selection);
+        }
+    }
+
+    #[test]
+    fn tss_trace_palette_and_legends_distinguish_sources_and_local_strands() {
+        assert_eq!(
+            color(TssLaneKind::LocalScoreTrace),
+            egui::Color32::from_rgb(115, 68, 162)
+        );
+        assert_ne!(
+            color(TssLaneKind::LocalScoreTrace),
+            color(TssLaneKind::Motif)
+        );
+        assert_ne!(
+            color(TssLaneKind::LocalScoreTrace),
+            color(TssLaneKind::ScoreTrace)
+        );
+        for kind in [TssLaneKind::ScoreTrace, TssLaneKind::LocalScoreTrace] {
+            let [r, g, b] = kind.trace_rgb(false);
+            assert_eq!(color(kind), egui::Color32::from_rgb(r, g, b));
+            assert_eq!(kind.trace_rgb(true), [170, 70, 105]);
+        }
+        assert!(TSS_TRACE_LEGEND.contains("report blue / computed violet"));
+        assert!(TSS_TRACE_LEGEND.contains("- dashed rose"));
+        assert!(TSS_TRACE_LEGEND.contains("relative to displayed DNA"));
+        assert!(TSS_UNAVAILABLE_LEGEND.contains("upper half local +, lower half local -"));
+    }
+
+    #[test]
     fn tss_svg_snapshot_matches_lane_filters_and_refuses_stale_or_loading_views() {
         let (dna, report) = crate::tss_sequence_view::profile_fixture(true);
         let mut area = MainAreaDna::new(dna.clone(), None, None);
@@ -1096,7 +1207,6 @@ mod tests {
             let document = Arc::new(base.with_profile(&report).unwrap());
             let mut area = MainAreaDna::new(dna, None, None);
             area.tss_view_available();
-            area.tss_ui.annotations = Some(base);
             area.tss_ui.document = Some(Ok(document.clone()));
             let curve = document
                 .lanes
@@ -1279,7 +1389,6 @@ mod tests {
         area.replace_loaded_sequence(crate::tss_sequence_view::tests::fixture(true));
         assert!(area.tss_ui.document.is_none());
         assert!(area.tss_ui.profile_load.is_none());
-        assert!(area.tss_ui.annotations.is_none());
     }
 
     #[test]

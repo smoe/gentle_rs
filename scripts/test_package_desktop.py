@@ -347,7 +347,13 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn("set -euo pipefail", build)
         self.assertIn('build=(/usr/bin/time -v "${build[@]}")', build)
         self.assertIn('build=(/usr/bin/time -l "${build[@]}")', build)
+        self.assertIn("python3 scripts/release_build_monitor.py", build)
+        self.assertIn('--log "$log" --sample-seconds 2 -- "${build[@]}"', build)
         self.assertIn('"${build[@]}" 2>&1 | tee -a "$log"', build)
+        self.assertIn("cat /proc/pressure/memory", build)
+        self.assertIn("sysctl vm.swapusage", build)
+        self.assertIn("memory_pressure -Q", build)
+        self.assertNotIn('python3 scripts/release_build_monitor.py \\\n+              --log "$log" --sample-seconds 2 -- "${build[@]}" || true', build)
         upload = workflow.split("- name: Retain release build diagnostics\n", 1)[1].split("\n      - name:", 1)[0]
         self.assertIn("if: ${{ always() }}", upload)
         self.assertIn("uses: actions/upload-artifact@v6", upload)

@@ -219,6 +219,56 @@ impl MainAreaDna {
 mod tests {
     use super::*;
 
+    /// Synthetic CPU attribution only; no timing threshold or native-GUI verdict.
+    #[test]
+    #[ignore = "opt-in continuous-pan attribution; not performance acceptance"]
+    fn feature_tree_continuous_pan_diagnostic() {
+        for count in [1_000, 5_000, 10_000] {
+            let mut area = MainAreaDna::new(feature_density_fixture(250_000, count), None, None);
+            area.prepare_latency_benchmark(true);
+            area.ensure_feature_tree_cache_current(Some((0, 5_000)));
+            let before = area.cache_diagnostics();
+            let mut samples_us = Vec::new();
+            for start in 1..=50 {
+                let started = std::time::Instant::now();
+                area.ensure_feature_tree_cache_current(Some((start, start + 5_000)));
+                samples_us.push(started.elapsed().as_micros());
+                std::hint::black_box(&area.feature_tree_cache);
+            }
+            println!(
+                "GENTLE_FEATURE_TREE_PAN_DIAGNOSTIC={}",
+                serde_json::json!({
+                    "revision": crate::about::GENTLE_GIT_COMMIT,
+                    "source_revision": crate::about::GENTLE_SOURCE_REVISION,
+                    "debug_assertions": cfg!(debug_assertions),
+                    "length_bp": 250_000, "feature_count": count,
+                    "samples_us": samples_us,
+                    "before": before, "after": area.cache_diagnostics(),
+                    "native_acceptance": false,
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn feature_tree_boundary_pan_reuses_structure_and_matches_rebuild() {
+        let mut area = MainAreaDna::new(feature_density_boundary_fixture(), None, None);
+        area.prepare_latency_benchmark(true);
+        let before = serde_json::to_value(&*area.dna.read().unwrap()).unwrap();
+        for start in 0..=50 {
+            area.ensure_feature_tree_cache_current(Some((start, start + 5_000)));
+        }
+        assert_eq!(area.cache_diagnostics().tree_builds, 1);
+        assert_eq!(area.cache_diagnostics().tree_viewport_updates, 50);
+        let expected = area
+            .build_feature_tree_model(&area.current_feature_tree_cache_key(), Some((50, 5_050)));
+        assert_eq!(area.feature_tree_cache.as_ref().unwrap().model, expected);
+        assert_eq!(
+            serde_json::to_value(&*area.dna.read().unwrap()).unwrap(),
+            before
+        );
+    }
+
     #[test]
     fn density_fixture_is_reproducible_with_exact_geometry_and_counts() {
         let first = feature_density_fixture(20_000, 100);

@@ -156,14 +156,25 @@ jobs:
           log="$RUNNER_TEMP/gentle-release-build.log"
           {
             echo "revision=$EXPECTED_REVISION platform=$RUNNER_OS profile=$NATIVE_PROFILE incremental=$CARGO_INCREMENTAL dev_debug=$CARGO_PROFILE_DEV_DEBUG"
+            echo "runner_name=${RUNNER_NAME:-unknown} runner_arch=${RUNNER_ARCH:-unknown} image_os=${ImageOS:-unknown} image_version=${ImageVersion:-unknown}"
+            uname -a || true
             rustc --version --verbose
             cargo --version
             if [[ "$RUNNER_OS" == "Linux" ]]; then
               free -h
+              swapon --show || true
+              cat /proc/pressure/memory || true
+              for state in memory.current memory.max memory.events; do
+                if [[ -r "/sys/fs/cgroup/$state" ]]; then
+                  echo "cgroup_${state}=$(tr '\n' ',' < "/sys/fs/cgroup/$state")"
+                fi
+              done
               df -h .
             elif [[ "$RUNNER_OS" == "macOS" ]]; then
-              sysctl hw.memsize
+              sysctl hw.memsize hw.ncpu
               vm_stat
+              sysctl vm.swapusage
+              memory_pressure -Q || true
               df -h .
             fi
           } 2>&1 | tee "$log"
@@ -175,7 +186,12 @@ jobs:
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
             build=(/usr/bin/time -l "${build[@]}")
           fi
-          "${build[@]}" 2>&1 | tee -a "$log"
+          if [[ "$RUNNER_OS" == "Linux" || "$RUNNER_OS" == "macOS" ]]; then
+            python3 scripts/release_build_monitor.py \
+              --log "$log" --sample-seconds 2 -- "${build[@]}"
+          else
+            "${build[@]}" 2>&1 | tee -a "$log"
+          fi
 
       - name: Retain release build diagnostics
         if: ${{ always() }}

@@ -52,11 +52,15 @@ This policy does not automatically change at version 1.0. See the
 
 Installer builds stream combined compiler output into
 `gentle-release-build.log`, including revision/toolchain, initial Unix memory
-and disk information, and `/usr/bin/time` resource statistics on macOS/Linux.
-The pipeline preserves build failure through `pipefail`; an `always()` upload
-retains the log for 14 days when the runner is still available. Runner shutdown
-can prevent both final statistics and upload, so retain the Actions log too.
-These logs are diagnostics, not package acceptance receipts.
+and disk information, `/usr/bin/time` resource statistics, and two-second
+process-tree samples on macOS/Linux. The samples report the root tree and
+`rustc` RSS separately plus Linux pressure/cgroup/swap or macOS available/swap
+state. They are written to both the file and the live Actions stream; an abrupt
+runner shutdown can therefore leave the last sample even when neither final
+statistics nor the `always()` artifact upload executes. Sampling is approximate,
+not a kernel OOM verdict. The monitor preserves Cargo's exit status and forwards
+termination signals; it does not mask failures. These logs are diagnostics, not
+package acceptance receipts.
 
 A controlled external Linux cold build on 2026-09-25 provides the first
 measurement of the revised internal recipe and bounded B0 extraction. Against
@@ -131,6 +135,62 @@ cache keys, build profiles, candidate checks and publication approval remain
 unchanged. The offline workflow-wiring test guards these reviewed references;
 actual execution and package validation remain GitHub's responsibility.
 
+The two `.11` release-event installer runs establish the current native-build
+state. Run `35968255595` at `ad0338a7` had Windows job `107531770703` pass in
+2h12m53s, macOS job `107531770716` fail after the root-library compiler received
+SIGKILL (Cargo 101), and Ubuntu job `107531770722` end when the runner shut down
+(143). Run `36010984447` at `ffe5c637` repeated the Unix failures in the
+**Build locked release binaries** step: macOS job `107671438533` failed with
+SIGKILL/Cargo 101 and Ubuntu job `107671438797` ended with 143, while Windows
+job `107671439337` passed in 1h32m45s. Both runs skipped package collection and
+release publication, so neither produced attached Unix packages. The second
+macOS diagnostic reports 1394 s elapsed and parent-process maximum RSS of
+3,174,760,448 bytes; that parent statistic may omit the killed compiler's peak
+and does not prove OOM. The second Ubuntu job retained no build-log artifact.
+
+The failure boundary is narrower than “GENtle does not compile on Unix”:
+
+- Push-CI macOS job `107616866117` at `0e3fd09a` passed, but it exercised
+  development/test builds rather than the optimized native-release recipe.
+- Container job `107618359047` at `ffe5c637` passed a Linux `release-fast`
+  build with thin LTO, optimization level 2 and no default/desktop features.
+  It compiled the headless CLI/MCP/docs targets, not the desktop root library.
+- Windows package job `107671439337` passed the same `lto="off"`, default
+  desktop-feature, five-binary native-release recipe that failed on both Unix
+  runners. Target and runner resources differ, so this is not proof that the
+  Unix failures are source-independent, but it rules out an unconditional
+  failure of that exact source/profile/feature request.
+- macOS job `107671438533` had already compiled dependency crates before the
+  optimized root GENtle library was killed. Its logged parent-process rusage
+  may not contain the compiler peak. Ubuntu job `107671438797` has no retained
+  build log, so its last crate and memory state are unavailable.
+
+Glen's original response to these historical failures was diagnostics-only.
+The integrated workflow retains those diagnostics with the temporary
+`dev` installer recipe described above; it does not restore the old optimized
+internal build. Features, targets, parallelism and the 360-minute allowance
+remain unchanged. Consider further repairs only after an approved build-only
+replay supplies samples for the actual selected profile:
+
+1. If `rustc` RSS or pressure coincides with the kill, test the smallest
+   root-package-only profile override (for example codegen units or optimization
+   level) on all three native targets. This creates another build recipe and
+   invalidates direct comparison with Glen's current packaged-release timings;
+   record it in the latency plan and DEC-039 before using its binaries.
+2. Consider Ubuntu swap only if Linux samples show memory pressure and the
+   hosted environment permits it. It cannot explain or repair macOS by itself
+   and must not convert a compiler failure into silent thrashing.
+3. Pursue latency-plan B0 build-boundary work only if compiler attribution shows
+   the root desktop crate is the material build-feedback/resource boundary.
+   This is higher-cost architecture work, not a first response to two
+   undiagnosed terminations.
+
+Larger or paid runners remain an unapproved option, not an implemented fix.
+The public Actions API confirms job/run outcomes and runner labels, but the
+current local GitHub credential could not download the protected Set-up-job
+logs or artifacts; exact image versions and hardware lines therefore remain
+unavailable in this review rather than being inferred from `*-latest` labels.
+
 ## Candidate Approval
 
 `v0.1.0-internal.10` was published as a prerelease on 2026-09-18 at
@@ -139,11 +199,20 @@ exact-candidate acceptance**. Its [gate ledger](release_notes/release_notes_v0.1
 remains Pending. Publication, a successful build or an individual passing test
 is not scientific or installed-package sign-off.
 
-Keep the published tag unchanged. `.11` development includes later fixes and
-the merged tutorial/vector-PDF integration; it needs a separately named
-candidate and receipts. Packaging builds the selected revision: rerunning the
-`.10` tag cannot incorporate later container or installer fixes. No tag change,
-version bump or publication is authorized by this document.
+`v0.1.0-internal.11` was first published as a prerelease on 2026-09-24 at
+07:11:06 UTC while its tag pointed to `ad0338a7e5bd14442ca50722a16eb1677cb82790`.
+The owner then moved the tag to
+`ffe5c637d5dddaf2f48daa3fa529d6e9bafd4c7b` and republished at 14:11:29 UTC.
+The September 24 review recorded no release assets. Its two installer runs are
+recorded above as history, not as a claim about the current remote tag or asset
+inventory; recheck both before dispatch. Successful headless container
+publications do not supply native packages or acceptance for later candidates.
+
+Keep the published tags unchanged. Later `.11` fixes need a separately named
+candidate and receipts; the owner will decide whether repaired `.11` Unix
+packages justify a tag decision or packages first ship with `.12`. No tag
+change, version bump, workflow dispatch or publication is authorized by this
+document.
 
 ## Build-Only Candidate Verification
 

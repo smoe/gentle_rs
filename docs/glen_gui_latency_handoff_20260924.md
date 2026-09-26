@@ -5,7 +5,79 @@ Prepared: 2026-09-24. This is an exact-revision diagnostic assignment under
 not a new implementation plan or release approval. The
 [latency plan](dna_feature_rendering_latency_plan.md) owns scope and ordering.
 
-## Request To Glen
+## Reported Audit Result (Received 2026-09-25)
+
+Glen's verdict, relayed by the owner: the fixed `ad0338a7 -> ee9eb483`
+comparison is correct and has measurable CPU-side benefit, but is not a general
+GUI-performance repair. This section records his summary, not an independent
+reanalysis. The full report and raw data have not been inspected in this checkout.
+
+- Two complete smokes: 81/81 observations each.
+- Four complete ABBA audits: 117/117 Criterion estimates and 81/81 observations
+  each, with identical fixtures across the pair.
+- All 27 pan/zoom/mRNA-toggle recomputations scanned the entire sequence before
+  the change; the corresponding after runs scanned zero GC bases in that path.
+
+Reported elapsed-time changes (negative means less time, not a native GUI verdict):
+
+| Workload | Reported elapsed-time change |
+| --- | --- |
+| 2 Mbp / 100 features | Pan -37.9%; zoom -32.9%; mRNA toggle -43.0% |
+| 2 Mbp / 1,000 features | Approximately -9.4% to -10.9% across the three interactions |
+| 250 kbp / 100 features | Approximately -5.7% to -9.5% across the three interactions |
+| 250 kbp / 10,000 features | mRNA toggle **+5.0%**, reproducibly slower; other deltas not supplied in the summary |
+
+Keep the regression visible; do not dismiss it as noise or assign a cause from
+this summary. Glen reports other work dominating at 10,000 features, but that
+does not yet identify the next implementation target. No absolute-time budget,
+confidence interval, native response time or release acceptance is inferred here.
+
+External evidence retained by Glen:
+
+- Report: `/home/clawbio/.openclaw/workspace/artifacts/gentle-gui-latency-audit-20260924/VERDICT.md`.
+- Reported manifest SHA-256: `4c40caa9b04c2e618c6495e6cc4b2ab04bebabf4acdf9ad33c4ca0e1f35e74a0`.
+- No repository edits, push or merge; the dirty primary checkout was untouched.
+  Glen reports removing 5.6 GiB of audit targets, with approximately 5.6 GiB
+  still free on a 99%-full root filesystem. These are host-specific observations,
+  not a safe-space guarantee for another build.
+
+### Next Audit, Not Another Performance Patch
+
+Use the existing `density_boundary_v1` workload on a clean, frozen revision.
+`3cee43346d61eeeada2d8645b1bcb5a72a85d245` is the pre-tree-reuse baseline for
+this follow-up. The owner subsequently requested integration of `e99c1fb8`'s
+tree reuse; any comparison with that merged change needs its own candidate
+receipt and matching profile/fixture inputs. The completed GC audit cannot
+certify this later optimization. Follow the
+[build-once runbook](../benches/README.md#dna-feature-density-latency), with one
+`bench-audit` preparation, a smoke and two audit repeats. The current runner has
+no boundary-only filter: retain all 130 estimates and 90 observations per audit,
+then inspect the exact 250 kbp / 5,000-feature case with its derived-layer
+inventories, absolute timings, variability and cache/work counters. Keep the
+10,000-feature toggle regression in the follow-up report as well. This is a new
+baseline, not a repeat of the historical 117-case comparison or interpolation
+from 1,000 and 10,000 features.
+
+Before building, check available space on the actual target and evidence
+filesystems; arrange sufficient space or another volume rather than starting
+on the reported nearly full root. Build serially and once, retain receipts/raw
+results, and do not automatically delete prior evidence. No audit or cleanup
+has been launched by this documentation update.
+
+Glen deferred native attribution and the native profile pair: his `.11`
+candidate `ffe5c637` does not contain the GC change and its Linux/macOS
+packaging failed. Keep those experiments pending until a suitable identified
+package is available, not waived and not prerequisites for this headless
+boundary diagnosis. A profile comparison measures the whole recipe, not the
+GC implementation. Select no further performance patch until the exact boundary
+run supports attribution. Workload scope is now owner-confirmed through Glen's
+`c686b38e`; numerical release budgets and performance acceptance remain open.
+
+## Original Request To Glen (Retained For Reproduction)
+
+The fixed-pair runs below have been reported complete. Do not repeat them as
+the next assignment; the next audit is specified above. Native/profile sections
+retain their contracts but are deferred as described in the received verdict.
 
 Please compare these two clean revisions without changing the development
 checkout, publishing, tagging or merging:
@@ -41,9 +113,11 @@ result, not a failed experiment to conceal.
 
 - The nine fixtures at the fixed comparison revisions cover 20 kbp / 250 kbp / 2 Mbp crossed with
   100 / 1,000 / 10,000 features. Do not modify them for this comparison.
-- The proposed interactive target of 250 kbp / 5,000 features and linear-first
-  optimization is still awaiting explicit owner confirmation. These runs may
-  diagnose costs now, but cannot certify that target. The exact 5,000-feature
+- The owner confirmed the interactive target of linear loci up to 250 kbp /
+  5,000 features on 2026-09-24. The 2 Mbp and 10,000-feature cases remain stress
+  cases. Circular maps require correctness and native interaction regressions,
+  but `.12` sets no circular timing budget. The fixed-revision runs below may
+  diagnose costs, but cannot certify the agreed target. The exact 5,000-feature
   boundary is absent from this historical ladder and must not be inferred by
   interpolation. Current `main` adds it in `d035912e`, with derived-layer
   inventories, 130 cases and 90 counter observations. Use that workload for a
@@ -206,7 +280,8 @@ Please return:
 2. Separate build wall time/RSS, smoke completeness and per-interaction CPU
    comparisons, including uncertainty, regressions and unchanged cases.
 3. Confirmation or rejection of the GC work reduction; distinguish it from
-   any measured responsiveness improvement.
+   any measured responsiveness improvement. Do not promote historical
+   2 Mbp/10,000-feature stress results into the agreed interactive envelope.
 4. Packaged-native startup/interaction attribution and separately labelled
    same-SHA profile results, or explicitly why either is not yet available.
    Classify product defects, environment/build limits and harness

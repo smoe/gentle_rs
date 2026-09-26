@@ -298,8 +298,10 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 ## Project Status
 
-- Current package version: `0.1.0-internal.11`. This alpha candidate awaits
-  exact-revision package checks, Glen's readiness verdict and owner approval.
+- Current package version: `0.1.0-internal.11`. The September 24 prerelease
+  ledger records `ffe5c637` without attached packages; it does not certify later
+  tag revisions. Exact-candidate package acceptance and Glen's readiness verdict
+  remain pending.
 - Active release story: gene-informed primer-pair studies, source-aware isoform
   comparison, TSS collection workflows and auditable annotated/vector exports.
 - Default builds include GUI, CLI, MCP, and documentation paths.

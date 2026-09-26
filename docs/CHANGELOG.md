@@ -49,6 +49,21 @@
   changes. No local builds or tests run at the owner's request; native CI
   verification remains pending.
 
+## 2026-09-25 - TSS Evidence Legends And Span Navigation
+
+- Distinguish locally computed forward curves (violet), report curves (blue)
+  and stored peaks (green), with a shared native/SVG legend. Label local strands
+  explicitly and preserve upper-plus/lower-minus unavailable bands in SVG;
+  missing scores remain gaps, not zeros. Scoring and source records are unchanged.
+- Show an explicit unavailable-units label for valid empty DuckDB subsets.
+  Report-only hits and curve footprints offer DNA-span navigation, not an
+  implied stored annotation. Navigation selects the exact span, clears stale
+  feature highlights and creates no annotations; stored features retain their
+  original annotation action. Remove the unused annotation-view copy.
+- Extend synthetic plus/minus regressions for units, palette/legend parity,
+  unavailable halves and navigation without mutation. Live visual acceptance
+  remains separate from these focused tests.
+
 ## 2026-09-25 - Restore Motif Guide Ranking Metadata
 
 - Complete the tutorial 08.13 discovery repair: its renamed title removed
@@ -110,6 +125,20 @@
   package acceptance remain pending. Existing tagged workflows do not acquire
   these changes just by being rerun.
 
+## 2026-09-25 - Offline Startup Trace Attribution Reader
+
+- Add a dependency-free reader for existing `gentle.gui_startup_trace.v1`
+  diagnostics. Retain exact input bytes and hashes alongside JSON/Markdown
+  per-subject CPU markers, inclusive spans and scheduling/hydration boundaries.
+  Do not sum nested/parallel work or label the native-loop lifetime as startup.
+- Keep failed/interrupted work explicit, reject malformed identities and
+  ordering, and leave missing/ambiguous durations unavailable. Recorded losses
+  suppress derived durations; prior evidence directories are never overwritten.
+- Add synthetic phase-contract, loss/failure, multiple-window and real CLI
+  LF/CRLF/hash regressions to lightweight CI. The reader does not launch the GUI,
+  benchmark or build; source identity is producer-reported, not independent
+  binary verification. No runtime/profile change or native acceptance claim.
+
 ## 2026-09-25 - Motif Tutorial Discovery Metadata Repair
 
 - Restore tutorial 08.13's no-project prerequisite and TFBS, tail-probability
@@ -123,6 +152,61 @@
   in the early CI policy job without compiling Rust or replaying the CLI.
 - No local builds or tests run at the owner's request; CI verification remains
   pending.
+
+## 2026-09-25 - Unix Release-Build Resource Diagnostics
+
+- Add a dependency-free release-build monitor that streams two-second process
+  tree and direct `rustc` RSS samples while preserving Cargo exit codes and
+  forwarding termination signals. Record Linux memory pressure, cgroup events
+  and swap plus macOS available-memory and swap estimates in both the retained
+  log and the live Actions stream, so runner loss need not erase the last sample.
+- Keep the native release recipe, five-binary/default-feature request, one build
+  job and 360-minute allowance unchanged. Rank a root-package profile experiment
+  ahead of Ubuntu-only swap and broad B0 extraction, but implement none without
+  a sampled build-only replay. The two `.11` Unix failures still do not prove OOM.
+- Guard the monitor's process-tree accounting and 0/101/143 exit propagation,
+  and keep existing packaging/logging policy tests. No native package build,
+  workflow dispatch, paid runner, tag, release or publication is performed.
+
+## 2026-09-25 - Internal.12 Latency Audit Scope
+
+- Record the owner's 2026-09-24 interactive envelope as linear loci through
+  250 kbp with 5,000 loaded features; retain 2 Mbp and 10,000-feature cases as
+  stress tests rather than release-target timing cases.
+- Optimize linear views first. Circular maps retain correctness and native
+  interaction regression requirements, but `.12` has no circular timing budget.
+- Keep startup and interaction numbers open until Glen proposes host-bound
+  baselines and the owner agrees them before optimization. These scope choices
+  are not performance acceptance.
+
+## 2026-09-25 - Reuse Feature-Tree Structure During Pan And Zoom
+
+- Separate the tree's annotation/settings identity from viewport visibility.
+  Pan and zoom reuse labels, filters and nested membership while updating all
+  visible counts with the same exon-aware, half-open overlap rules. Keep both
+  strands' intron-only views invisible and invalidate on annotation, topology,
+  filter, grouping and relevant display changes. No biological output changes.
+- Add a separate recount counter, full-rebuild equivalence/invalidation tests
+  and a 5,000-feature boundary regression. An opt-in developer CPU diagnostic
+  isolates 50 continuous pans at three densities without a timing threshold;
+  it does not establish native responsiveness or release acceptance.
+- Keep toolbar feature traversal, first-window/startup work and Glen's
+  compatible optimized/native comparisons open. No worker migration, new
+  interval index, culling, release/version change or private-data regeneration.
+
+## 2026-09-25 - Glen's Fixed-Pair GC Audit And Boundary Follow-Up
+
+- Record the owner's relay of Glen's `ad0338a7 -> ee9eb483` audit: two complete
+  smokes, four complete ABBA runs, eliminated count-path GC scans and measured
+  CPU benefit. Preserve the reproducible +5.0% mRNA-toggle regression at
+  250 kbp / 10,000 features rather than claiming a general GUI repair.
+- Retain the external report location and supplied manifest digest in the
+  handoff; raw evidence was not retrieved or independently reanalysed here.
+- Reconcile the handoff, latency plan and roadmap around the existing exact
+  250 kbp / 5,000-feature workload before selecting another performance patch.
+  Native/profile comparisons remain deferred, not waived; disk headroom is a
+  prerequisite for Glen's next build. No runtime change, audit dispatch, file
+  cleanup or release acceptance is made by this documentation update.
 
 ## 2026-09-24 - TSS Scoring And Hosted Attachment Integration
 

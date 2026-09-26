@@ -7861,8 +7861,8 @@ fn feature_tree_model_keeps_gene_rows_splicing_action_capable() {
     let mut area = MainAreaDna::new(dna, Some("seq_gene".to_string()), None);
     area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
 
-    let key = area.current_feature_tree_cache_key(None);
-    let model = area.build_feature_tree_model(&key);
+    let key = area.current_feature_tree_cache_key();
+    let model = area.build_feature_tree_model(&key, None);
     let gene_group = model
         .groups
         .iter()
@@ -7953,8 +7953,8 @@ fn feature_tree_model_groups_dense_regulatory_repeat_track_and_array_surfaces() 
     let mut area = MainAreaDna::new(dna, Some("dense_tree".to_string()), None);
     area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
 
-    let key = area.current_feature_tree_cache_key(None);
-    let model = area.build_feature_tree_model(&key);
+    let key = area.current_feature_tree_cache_key();
+    let model = area.build_feature_tree_model(&key, None);
 
     let regulatory_group = model
         .groups
@@ -8037,8 +8037,8 @@ fn feature_tree_layer_summary_labels_count_current_model_categories() {
         ],
     ));
     let area = MainAreaDna::new(dna, Some("summary_tree".to_string()), None);
-    let key = area.current_feature_tree_cache_key(None);
-    let model = area.build_feature_tree_model(&key);
+    let key = area.current_feature_tree_cache_key();
+    let model = area.build_feature_tree_model(&key, None);
 
     let labels = MainAreaDna::feature_tree_layer_summary_labels(&model, false);
 
@@ -8722,6 +8722,247 @@ fn feature_tree_cache_rebuilds_when_filter_changes() {
     assert_eq!(cache.model.filter_total_count, 2);
     assert_eq!(cache.model.filter_matched_count, 0);
     assert!(cache.model.groups.is_empty());
+}
+
+// Hand-crafted synthetic geometry; no external annotation or biological claim.
+fn feature_tree_pan_fixture() -> MainAreaDna {
+    let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).unwrap();
+    dna.features_mut().push(make_feature("source", vec![]));
+    for reverse in [false, true] {
+        let mut transcript =
+            make_feature("mRNA", vec![("gene", "synthetic"), ("label", "isoform")]);
+        let exons = Location::Join(vec![
+            Location::simple_range(10, 20),
+            Location::simple_range(80, 100),
+        ]);
+        transcript.location = if reverse {
+            Location::Complement(Box::new(exons))
+        } else {
+            exons
+        };
+        dna.features_mut().push(transcript);
+    }
+    for start in [10, 80] {
+        for (kind, qualifiers) in [
+            (
+                "regulatory",
+                vec![
+                    ("regulatory_class", "enhancer"),
+                    ("note", "H3K4me1 active enhancer"),
+                ],
+            ),
+            (
+                "regulatory",
+                vec![("regulatory_class", "silencer"), ("label", "silencer")],
+            ),
+            (
+                "repeat_region",
+                vec![("repClass", "LINE"), ("repFamily", "L1")],
+            ),
+            (
+                "track",
+                vec![
+                    ("gentle_generated", "genome_bed_track"),
+                    ("gentle_track_name", "synthetic"),
+                ],
+            ),
+            (
+                "track",
+                vec![
+                    ("gentle_generated", "microarray_track_projection"),
+                    ("gentle_track_source", "Array"),
+                ],
+            ),
+            ("CDS", vec![("label", "coding")]),
+            ("gene", vec![("gene", "synthetic")]),
+            ("TFBS", vec![("label", "synthetic motif")]),
+        ] {
+            let mut feature = make_feature(kind, qualifiers);
+            feature.location = Location::simple_range(start, start + 10);
+            dna.features_mut().push(feature);
+        }
+    }
+    let area = MainAreaDna::new(dna, None, None);
+    {
+        let mut display = area.dna_display.write().unwrap();
+        display.set_show_mrna_features(true);
+        display.set_show_cds_features(true);
+        display.set_show_gene_features(true);
+        display.set_show_contextual_transcript_features(true);
+        display.set_show_repeat_features(true);
+        display.set_show_array_features(true);
+        display.set_show_tfbs(true);
+    }
+    area
+}
+
+fn assert_feature_tree_matches_full_rebuild(area: &MainAreaDna, viewport: Option<(usize, usize)>) {
+    let expected = area.build_feature_tree_model(&area.current_feature_tree_cache_key(), viewport);
+    let cache = area.feature_tree_cache.as_ref().unwrap();
+    assert_eq!(cache.viewport, viewport);
+    assert_eq!(cache.model, expected);
+    assert_eq!(
+        MainAreaDna::feature_tree_layer_summary(&cache.model),
+        MainAreaDna::feature_tree_layer_summary(&expected),
+    );
+}
+
+#[test]
+fn feature_tree_pan_recounts_every_group_like_full_rebuild_without_changing_content() {
+    let mut area = feature_tree_pan_fixture();
+    let before = serde_json::to_value(&*area.dna.read().unwrap()).unwrap();
+    for grouping in [
+        super::FeatureTreeGroupingMode::Off,
+        super::FeatureTreeGroupingMode::Auto,
+        super::FeatureTreeGroupingMode::Always,
+    ] {
+        area.feature_tree_grouping_mode = grouping;
+        for filter in ["", "kind:mrna", "regulatory", "track", "label:absent"] {
+            area.feature_tree_filter = filter.to_string();
+            area.ensure_feature_tree_cache_current(None);
+            let builds = area.feature_tree_cache_misses;
+            for viewport in [
+                Some((0, 10)),
+                Some((10, 11)),
+                Some((20, 80)),
+                Some((80, 81)),
+                Some((100, 200)),
+                None,
+            ] {
+                area.ensure_feature_tree_cache_current(viewport);
+                assert_feature_tree_matches_full_rebuild(&area, viewport);
+                assert_eq!(area.feature_tree_cache_misses, builds);
+                let updates = area.feature_tree_viewport_updates;
+                area.ensure_feature_tree_cache_current(viewport);
+                assert_eq!(area.feature_tree_viewport_updates, updates);
+            }
+        }
+    }
+    assert_eq!(
+        serde_json::to_value(&*area.dna.read().unwrap()).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn feature_tree_pan_keeps_both_strand_introns_and_half_open_edges_invisible() {
+    let mut area = feature_tree_pan_fixture();
+    area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always;
+    area.feature_tree_filter = "kind:mrna".to_string();
+    for (viewport, expected) in [
+        (None, 2),
+        (Some((20, 80)), 0),
+        (Some((19, 20)), 2),
+        (Some((80, 81)), 2),
+        (Some((100, 110)), 0),
+        (None, 2),
+    ] {
+        area.ensure_feature_tree_cache_current(viewport);
+        let model = &area.feature_tree_cache.as_ref().unwrap().model;
+        let group = model
+            .groups
+            .iter()
+            .find(|group| group.kind.eq_ignore_ascii_case("mrna"))
+            .unwrap();
+        assert_eq!(group.entries.len(), 2);
+        assert_eq!(group.visible_count, expected);
+        assert_eq!(group.grouped_entries[0].visible_count, expected);
+        assert_eq!(
+            group
+                .entries
+                .iter()
+                .filter(|entry| entry.visible_in_view)
+                .count(),
+            expected
+        );
+    }
+    assert_eq!(area.feature_tree_cache_misses, 1);
+}
+
+#[test]
+fn feature_tree_pan_rebuilds_on_annotation_settings_and_topology_changes() {
+    let mut area = feature_tree_pan_fixture();
+    let viewport = Some((10, 20));
+    area.ensure_feature_tree_cache_current(viewport);
+    let changes: &[fn(&mut MainAreaDna)] = &[
+        |area| {
+            area.dna.write().unwrap().features_mut()[1].location = Location::simple_range(110, 130)
+        },
+        |area| {
+            area.dna.write().unwrap().features_mut()[2]
+                .qualifiers
+                .push(("transcript_id".into(), Some("synthetic-renamed".into())))
+        },
+        |area| area.dna.write().unwrap().features_mut().swap(1, 2),
+        |area| area.dna.write().unwrap().set_circular(true),
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_mrna_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_cds_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_gene_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_repeat_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_array_features(false)
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_show_contextual_transcript_features(false)
+        },
+        |area| area.dna_display.write().unwrap().set_show_tfbs(false),
+        |area| {
+            let mut display = area.dna_display.write().unwrap();
+            let mut criteria = display.tfbs_display_criteria();
+            criteria.min_llr_bits += 1.0;
+            display.set_tfbs_display_criteria(criteria);
+        },
+        |area| {
+            let mut display = area.dna_display.write().unwrap();
+            let mut criteria = display.vcf_display_criteria();
+            criteria.pass_only = !criteria.pass_only;
+            display.set_vcf_display_criteria(criteria);
+        },
+        |area| {
+            area.dna_display
+                .write()
+                .unwrap()
+                .set_feature_kind_visible("regulatory", false)
+        },
+        |area| area.feature_tree_grouping_mode = super::FeatureTreeGroupingMode::Always,
+        |area| area.feature_tree_filter = "kind:track".to_string(),
+    ];
+    for change in changes {
+        let builds = area.feature_tree_cache_misses;
+        change(&mut area);
+        area.ensure_feature_tree_cache_current(viewport);
+        assert_eq!(area.feature_tree_cache_misses, builds + 1);
+        assert_feature_tree_matches_full_rebuild(&area, viewport);
+        area.ensure_feature_tree_cache_current(Some((80, 81)));
+        assert_eq!(area.feature_tree_cache_misses, builds + 1);
+        assert_feature_tree_matches_full_rebuild(&area, Some((80, 81)));
+    }
 }
 
 #[test]

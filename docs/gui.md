@@ -956,9 +956,11 @@ Feature tree grouping:
   on the lightweight placeholder until `Load feature tree/details` is clicked,
   while the DNA map remains usable.
 - Once the feature tree is visible, its derived grouping/filter/visibility
-  model is cached across frames and only rebuilt when the sequence, feature
-  visibility settings, viewport span, or filter/grouping inputs change,
-  reducing idle CPU load for feature-dense windows.
+  model is cached across frames. Pan/zoom updates only exon-aware visibility
+  and group counts, retaining labels and group membership. Sequence/annotation,
+  topology, feature visibility settings or filter/grouping changes still rebuild
+  the model. An intron-only viewport does not make a transcript visible merely
+  because it overlaps that transcript's bounding span.
 - Feature detail text remains below the feature tree in the left pane and uses
   the configurable feature-detail font size.
 - The feature tree/details pane is top-aligned with the map and stretched to
@@ -1080,6 +1082,9 @@ Feature tree grouping:
   sequence or feature names. They count work, not milliseconds. See the
   [latency plan](dna_feature_rendering_latency_plan.md) and
   [prebuilt audit runbook](../benches/README.md#dna-feature-density-latency).
+  `tree_viewport_updates` counts in-place visibility recounts separately from
+  `tree_builds`; these reuse hits are also included in `tree_hits`. Older logs
+  without this counter do not establish a zero recount cost.
   GC layer counts use bin geometry without rescanning sequence bases on pan;
   `layer_gc_bases` therefore stays zero on that path. This does not suppress
   the separate GC-value computation needed for the actual GC track.
@@ -1089,7 +1094,10 @@ Feature tree grouping:
   or project writes are introduced. Failed loads and loading placeholders do
   not become content checkpoints. See the [startup runbook](../benches/README.md#startup-phase-checkpoints)
   for missing-event handling and the distinction from native presentation and
-  performance acceptance. This diagnostic is off by default.
+  performance acceptance. The offline `scripts/gui_startup_summary.py` reader
+  produces per-subject CPU tables and retains the exact trace without relaunching
+  GENtle; missing durations stay unavailable, not zero. This diagnostic is off
+  by default.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)
@@ -6798,7 +6806,9 @@ genomic strand decreases genomic coordinates without reversing the local DNA.
 Side summaries show interval counts and displayed coordinate envelopes (not
 continuous coverage). Hover retains original feature/source notes. Click a
 feature to select its exact local DNA span, then **Inspect in standard DNA map**
-to see that annotation and sequence. Wrapped/clipped original spans remain in
+to see that annotation and sequence. For report-only hits or curve footprints,
+**Show DNA span in standard map** selects the bases and clears any previous
+annotation highlight; it does not create an annotation. Wrapped/clipped original spans remain in
 details; unsupported compound locations are explicitly reported, not flattened.
 
 Signal intervals preserve gaps and supplied source scale; no-interval and
@@ -6838,7 +6848,9 @@ and any independently computed local curves.
 - Each curve has numeric Y ticks and its own explicit score kind. Scaling and
   negative-score clipping follow the saved panel policy, not current TFBS-panel
   settings or an export-only scale override. A background-tail score is not
-  relabelled LLR bits. Amber areas and line gaps mean unavailable windows;
+  relabelled LLR bits. Amber areas and line gaps mean unavailable windows:
+  the upper half represents local `+`, the lower half local `-`, relative to
+  the displayed DNA, including on negative genomic strands. The
   grey terminal areas cannot hold a full motif window. A genuine zero remains
   an evaluable value. An empty/all-zero range uses a labelled display fallback.
 - **DuckDB peaks** shows the report's attached sparse-query results, not a live
@@ -6846,6 +6858,8 @@ and any independently computed local curves.
   original source/report/matrix score range, including signed raw values, never
   the local-curve scale. Side summaries retain coverage and truncation states;
   hover includes original genomic spans, retention/density policy and hashes.
+  A valid empty subset with no declared score mode says **score units unavailable**,
+  rather than inventing units or displaying an empty label.
   Missing or partially queried evidence does not establish absence of binding.
 
 The original annotated structure, CUT&RUN/chromatin and stored-peak lanes stay
@@ -6865,6 +6879,9 @@ bound to the displayed, transcript-oriented DNA. It never fetches sequence,
 queries DuckDB, reconstructs an old report, or modifies sequence annotations.
 
 **Locally computed curves** is a separate lane class and visibility toggle.
+Local `+` curves are solid violet, distinct from blue report curves and green
+stored peaks; local `-` curves remain dashed rose. The native view and its SVG
+export share the colour and local-strand legend, including unavailable halves.
 Each lane shows its actual score kind, exact matrix hash and evaluability count;
 its own range does not normalize imported/report scores. Zero is a scored
 value, while ambiguous/unscorable windows remain gaps via the engine validity

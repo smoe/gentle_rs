@@ -14,13 +14,19 @@ strands and scientific outputs.
 Implementation update: S0's density tools landed in `5893aa35` and are
 smoke-tested. Opt-in startup phase checkpoints (`d24c3fa7`) cover app
 initialization, project loading and first root/DNA CPU frames; they do not
-confirm native presentation. The exact proposed 250 kbp / 5,000-feature
-boundary now includes explicit derived layers and content-bound workload checks.
-Owner scope choices, the macOS cross-check and Glen's timed/native audit remain
-pending. A bounded S2 simplification (`ee9eb483`) counts GC bins arithmetically
-instead of computing GC values just to discard them. It preserves half-open
-counts and does not claim a measured GUI speedup or completion of S2; broader
-runtime slices remain pending.
+confirm native presentation. The agreed 250 kbp / 5,000-feature boundary now
+includes explicit derived layers and content-bound workload checks. The macOS
+cross-check and Glen's current-boundary timed/native audit remain pending.
+Glen's [reported fixed-pair audit](glen_gui_latency_handoff_20260924.md#reported-audit-result-received-2026-09-25)
+finds measurable CPU benefit from the arithmetic GC counts (`ee9eb483`), while
+retaining a reproducible 5% regression for the 250 kbp / 10,000-feature mRNA
+toggle. His raw evidence is external and has not been reanalysed here. Next is
+the exact 250 kbp / 5,000-feature workload, not a further performance patch or a
+general GUI-performance claim; broader runtime slices remain pending.
+The separately merged S2 tree change (`e99c1fb8`) retains grouping/filter labels
+on pan and refreshes exon-aware visibility/counts in place. Developer CPU
+attribution and full-rebuild equivalence tests support that change; Glen's GC
+audit does not certify it. Its optimized/native comparison remains pending.
 B0 separates build feedback from runtime performance. The consolidated
 hypothesis ledger and S0 section below retain both updates. This plan does not
 change the `.11` candidate; counts of work are not timing evidence or performance
@@ -31,7 +37,8 @@ acceptance.
 The owner supplied Claude's read-only review; these revisions were checked
 against `4e858f3a66cec54f5bdc3eec76fb2f18683773e9`, with the same latency
 paths at `70a3b038`. They are Codex's revised proposal, not a second Claude
-review or owner approval of the open scope choices.
+review. The owner later settled the workload and circular-scope choices on
+2026-09-24 as recorded below.
 
 | Original plan | Claude feedback | Revised minimal plan |
 | --- | --- | --- |
@@ -86,24 +93,20 @@ observed RSS reduction cannot be assigned to the recipe alone.
 
 ## Audit Admission Decisions
 
-These two owner decisions were requested on 2026-09-21 and remain pending.
-Recommendations are not accepted performance promises:
+The owner made these release-scope decisions on 2026-09-24. They define what
+the `.12` audit admits; they are not accepted performance or numerical promises:
 
-- **Interactive envelope:** recommend linear loci up to 250 kbp and 5,000
-  loaded features; retain 2 Mbp and 10,000 features as stress cases. The exact
+- **Interactive envelope:** linear loci up to 250 kbp and 5,000 loaded features.
+  Retain 2 Mbp and 10,000 features as stress cases. The exact
   250 kbp / 5,000-feature boundary is now available with the same clustered
   annotation and deferred/loaded-tree modes, plus explicit synthetic restriction,
   GC, ORF and methylation layers and their counts. This closes the fixture gap,
-  not the scope decision or timing gate. The original nine cases remain
+  not the timing gate. The original nine cases remain
   comparable; their results alone cannot certify this boundary by interpolation.
-- **Circular scope:** recommend linear optimization first, with circular-map
-  correctness and native interaction regression checks still required. If the
-  owner instead requires circular optimization, agree its fixture envelope and
-  budgets before running a dedicated pass/fail audit; linear results do not
-  establish circular performance.
+- **Circular scope:** optimize linear views first. Circular-map correctness and
+  native interaction regression checks remain required, but `.12` sets no
+  circular timing budget. Linear results do not establish circular performance.
 
-Confirm these choices before Glen's release-target audit. Preparatory traces
-may still diagnose a problem, but cannot declare an undecided workload accepted.
 Glen proposes host-bound numerical budgets from the baseline; the owner agrees
 the release target before optimization. Do not relax it after seeing results
 without an explicit recorded scope decision. Stress cases must remain correct,
@@ -134,7 +137,10 @@ release-profile Criterion harness also remains a harness: its target, features
 and event/rendering environment differ from the packaged desktop application.
 Neither harness can satisfy native acceptance, even when its CPU timings pass.
 
-Glen should additionally measure a controlled **same-SHA native profile pair**:
+Glen has deferred native comparison while his identified `.11` package is
+unavailable; this does not block the next headless boundary diagnosis or waive
+native acceptance. Once a suitable package is available, retain a controlled
+**same-SHA native profile pair**:
 the packaged GUI (explicitly `dev` or `release`) and a native GUI built with `bench-audit`, keeping
 features and all other build inputs identical. Prebuild both outside timing;
 use the same host, toolchain, public PATZ1 project/report, window sizes, tracing
@@ -159,7 +165,7 @@ The slice numbers identify work, not a mandatory S1-through-S6 order. Codex
 provides instrumentation, smoke checks and bounded fixes; Glen owns timed and
 native acceptance; the owner decides release scope and any explicit deferral.
 
-1. Resolve audit admission, then finish S0 attribution. Reuse the prebuilt
+1. Use the admitted envelope above and finish S0 attribution. Reuse the prebuilt
    runner; pursue B0 only if build cost still impedes those audits.
 2. Compare startup/first-content and ongoing-interaction costs. Prioritize S6
    if the large startup observation is a product delay; otherwise document its
@@ -205,9 +211,10 @@ acceptance; feature-count scaling still awaits the auditor.
 
 In scope: process/project startup through first usable root and DNA windows,
 DNA-map feature presentation, the feature tree and layer-visibility panel,
-per-window hydration, and repaint/resize scheduling. The proposed linear-first
-optimization scope and circular regression floor await the owner decisions
-above. B0 is a separate, bounded build-feedback workstream, not GUI redesign.
+per-window hydration, and repaint/resize scheduling. The agreed scope is linear
+through 250 kbp / 5,000 features, with circular correctness and native
+interaction regression but no circular timing budget. B0 is a separate,
+bounded build-feedback workstream, not GUI redesign.
 
 Out of scope for `.12`: visual redesign, new feature classes, engine-side
 annotation work, sequence-text panel work beyond what the feature path forces,
@@ -219,8 +226,8 @@ this plan adds no new execution authority.
 
 ## Proposed interaction budgets
 
-These proposals assume the recommended envelope, pending owner confirmation.
-Glen establishes reproducible numerical targets before optimization; each is
+These proposals apply to the agreed envelope, but remain unaccepted numerical
+budgets. Glen establishes reproducible numerical targets before optimization; each is
 bound to a host, toolchain, profile, fixture hash and GENtle revision. First
 usable content means subject-correct selected feature content, not an empty
 window or progress placeholder. Record pending derived work separately.
@@ -263,19 +270,27 @@ costs. The renderer regression confirms resize increments layouts without
 rebuilding the interval index; the density-dependent runtime share is unmeasured.
 
 **H2 - Viewport-keyed model rebuilds.**
-`FeatureTreeCacheKey` (`src/main_area_dna/feature_tree_ui.rs`) and
-`LayerVisibilityCacheKey` (`src/main_area_dna.rs`) both contain the viewport,
-and `active_linear_viewport_range` returns `Some` for every linear sequence. A
-one-base pan invalidates both caches. At `ad0338a7`, layer-count misses also
+At `3cee4334`, `FeatureTreeCacheKey` (`src/main_area_dna/feature_tree_ui.rs`) and
+`LayerVisibilityCacheKey` (`src/main_area_dna.rs`) both contained the viewport;
+`active_linear_viewport_range` returns `Some` for every linear sequence. A
+one-base pan therefore rebuilt both models. At `ad0338a7`, layer-count misses also
 computed GC values across the full sequence just to count overlapping bins:
 O(all features + bases), not merely O(visible features). The bounded S2 repair
 uses length/bin/viewport arithmetic for that count; GC values used for drawing
-and scientific output are unchanged. The pan regression still requires tree
-builds 1 -> 2, but now requires zero `layer_gc_bases` and exact counts before
-and after crossing a bin boundary, without a project mutation. Historical
-1,200 -> 2,400 GC-base counters belong to the pre-fix implementation.
-Whole-view timing and the remaining tree/feature-count work still need Glen's
-audit. Static grouping and viewport counts must be separated carefully:
+and scientific output are unchanged. At `3cee4334`, a developer-only debug CPU
+diagnostic isolated the tree path: 50 successive one-base pans caused 50 full
+model rebuilds at each of 1,000, 5,000 and 10,000 features on 250 kbp. This is
+attribution, not an optimized/native timing baseline or release acceptance.
+The bounded tree repair now requires builds to stay at one while
+`tree_viewport_updates` advances, with the same full-rebuild model and exact
+counts before/after exon and bin boundaries, without a project mutation.
+Historical 1,200 -> 2,400 GC-base counters and tree builds 1 -> 2 belong to the
+respective pre-fix implementations.
+Glen reports the fixed-pair CPU benefit and the dense-toggle regression in the
+linked handoff; that audit does not cover the later tree repair. Whole-view/native
+timing and attribution of the remaining toolbar feature-count work remain open.
+Run the exact 5,000-feature boundary before selecting another patch. Visibility
+semantics remain binding:
 the tree uses exact exon-piece overlap, whereas the existing feature interval
 index uses transcript bounding spans, including introns. They are not
 interchangeable visibility oracles.
@@ -440,6 +455,15 @@ combined improvement, not causal attribution or hosted-runner acceptance. The
 next B0 candidate should therefore be a narrow GUI boundary, not dynamic
 linking or an indiscriminate root split.
 
+The historical `.11` Unix package failures alone do not establish their cause.
+The next approved hosted build-only replay records the selected profile's root compiler
+RSS plus host pressure/swap state, including `dev` for internal installers.
+Glen's diagnostics remain in that workflow; they do not restore the optimized
+internal recipe. Any further root-profile override needs compiler evidence and
+a new Build Profile Context / DEC-039 measurement identity. Ubuntu swap cannot
+address macOS. Retain the version-selected profile until new evidence warrants
+another change; the bounded B0 result above is not yet a hosted release-build repair.
+
 This is distinct from a single-root **GUI workspace** (replacing native child
 windows with one application workspace), which remains a conditional UX/runtime
 change. Neither faster linking nor a different audit profile establishes a
@@ -463,19 +487,31 @@ Bounded count-only repair: `GcContents::region_count_for_viewport` replaces the
 full-sequence scan previously used solely for the GC layer's bin count. Oracle
 tests compare it with materialized bins, including partial/zero-sized bins,
 half-open boundaries and density-ladder lengths. This removes unnecessary work
-without a new cache, worker, density policy or scientific change. It is not a
-timed acceptance result; the broader S2 work below remains conditional.
+without a new cache, worker, density policy or scientific change. Glen reports
+a measured CPU benefit for this fix, not native acceptance or acceptance of
+the later tree change. Toolbar decomposition remains conditional on the exact
+boundary run and attribution.
 
-Split both models into a viewport-independent part (grouping, filtering,
-ordering, labels - keyed by feature generation and display revision) and a cheap
-viewport pass that only marks visibility and recounts. Reuse an index only with
+The feature tree now separates its content/settings key from the viewport.
+Same-key pans reuse labels, filters, ordering and nested membership, refreshing
+visibility and every group count from the original exact-overlap helper. The
+pass remains linear in retained entries/location pieces; it introduces no
+interval index, culling or background worker. Annotation generation, length,
+topology and every tree/filter/display dependency still invalidate the model.
+The existing full builder remains the deterministic oracle, including both
+strands, intron gaps, nested groups, filtering and the 5,000-feature boundary.
+
+Remaining: profile toolbar feature-count traversal and split its static work
+from viewport visibility only if attributable. Reuse an index only with
 exact exon-piece and half-open overlap semantics, not transcript bounding spans
 that include introns. Collapsed/offscreen models may defer work but must expose
 correct counts when queried. Retain the arithmetic GC-bin count separately
 from GC-value computation. Do not simply remove the viewport from existing keys.
 
-Evidence required first: H2 confirmed, including the rebuild cost at 10^3 and
-10^4 features during a continuous pan.
+The opt-in continuous-pan diagnostic in the benchmark runbook retains raw CPU
+samples and counters for the tree path. Glen must still compare compatible
+optimized/native revisions; local debug samples do not establish responsiveness
+or authorize the remaining S2 changes without attribution.
 
 ### S3 - Take one-shot work off the first frames (H3/H4)
 
@@ -533,6 +569,12 @@ prioritize S6 ahead of S1-S5 rather than leaving it until the end.
 - Compare empty-profile startup and explicit public-project opening, with
   cold/warm conditions documented. Do not change project restoration, skip
   validation or discard annotations merely to make startup look faster.
+- Use the [offline startup reader](../benches/README.md#read-a-saved-startup-trace)
+  on the recorded checkpoints to inspect per-subject inclusive spans and
+  scheduling/hydration/content boundaries. It retains raw bytes and flags loss,
+  failed work and unavailable endpoints; it does not sum overlapping work or
+  establish a native result. Compare runs only after Glen binds their external
+  binary/profile/host/input evidence; the reader does not certify comparability.
 - Fix only the confirmed blocking phase. Where that phase is the existing
   constructor/hydration path, implement S3 once and report its contribution to
   both open-window and process-to-content totals. Preserve cancellation,
@@ -573,8 +615,8 @@ prioritize S6 ahead of S1-S5 rather than leaving it until the end.
    retain the largest ladder fixture as a separate stress outcome. Record the
    repeated same-SHA native profile comparison under Measurement Profiles;
    neither it nor the headless ladder replaces packaged-profile acceptance.
-4. The performance verdict is the auditor's. An unresolved owner scope choice
-   or unbudgeted startup cannot be a green `.12` result. Implementation-side
+4. The performance verdict is the auditor's. Unagreed numerical interaction or
+   startup budgets cannot produce a green `.12` result. Implementation-side
    numbers are evidence, not acceptance.
 
 ## Non-goals without evidence
@@ -587,8 +629,6 @@ runtime-performance claim nor approval for a broad root-crate rewrite.
 
 ## Open questions
 
-- Owner: confirm the interactive envelope and circular scope under Audit
-  Admission Decisions before the release-target audit.
 - Owner/Glen: freeze startup and interaction budgets after baseline attribution,
   before optimization; proposals above are not accepted measurements.
 - Is the native gap compositor-bound on all three platforms, or specific to the
