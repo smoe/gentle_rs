@@ -436,6 +436,24 @@ class WorkflowWiringTests(unittest.TestCase):
                       "Workflow example runtime tests", "Full test suite"):
             self.assertLess(windows.index(step), windows.index(f"- name: {later}\n"))
 
+    def test_native_jobs_check_tutorial_discovery_before_long_runtime_suites(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        step = "      - name: Agent tutorial discovery regressions\n"
+        for platform in ("macos", "linux", "windows"):
+            with self.subTest(platform=platform):
+                following = text.split(f"\n  {platform}:\n", 1)[1]
+                job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+                self.assertIn(step, job)
+                body = job.split(step, 1)[1].split("\n      - name:", 1)[0]
+                self.assertIn(
+                    "run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1", body)
+                self.assertNotIn("continue-on-error:", body)
+                self.assertNotIn("if:", body)
+                for later in ("Examples and tutorial schema/drift checks",
+                              "Workflow example runtime tests", "Full test suite"):
+                    self.assertLess(job.index(step), job.index(f"- name: {later}\n"))
+
     def test_sampled_platform_is_unix_and_manual_selection_is_preserved(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()

@@ -136,6 +136,9 @@ jobs:
       - name: Cargo check
         run: cargo check -q
 
+      - name: Agent tutorial discovery regressions
+        run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
+
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
 
@@ -309,6 +312,9 @@ jobs:
       - name: Cargo check
         run: cargo check -q
 
+      - name: Agent tutorial discovery regressions
+        run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
+
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
 
@@ -444,6 +450,9 @@ jobs:
 
       - name: Cargo check
         run: cargo check -q
+
+      - name: Agent tutorial discovery regressions
+        run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-25 - Complete Motif Guide Query Coverage
+
+- Restore tutorial 08.13's explicit use case, `Compare promoter/TSS traces
+  with shared scales`, in source and catalog. The shortened `shared-scale
+  traces` wording lost exact query terms and allowed general promoter projects
+  to outrank the guide. Title restoration alone did not repair this query.
+- Split all seven real-catalog query contracts into independent Rust tests,
+  preserving rank-one/top-three and command/payload assertions, with shortlist
+  scores and matching fields in ranking failures. Run them before long tutorial
+  replays on every selected native CI platform; guard that workflow ordering
+  and the restored metadata in the lightweight Python checks.
+- No production ranking algorithm, package profile or biological behavior
+  changes. No local builds or tests run at the owner's request; native CI
+  verification remains pending.
+
 ## 2026-09-25 - Restore Motif Guide Ranking Metadata
 
 - Complete the tutorial 08.13 discovery repair: its renamed title removed

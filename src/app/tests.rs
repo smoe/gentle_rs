@@ -8961,24 +8961,26 @@ fn agent_gui_context_ranks_relevant_tutorials_deterministically() {
     assert!(first.matched_fields.iter().any(|field| field == "title"));
 }
 
-#[test]
-fn agent_gui_context_recommends_motif_score_tutorial_from_catalog_metadata() {
-    for (query, expected_term) in [
-        ("Explain PWM", "pwm"),
-        ("Explain PSSM", "pssm"),
-        ("What do JASPAR TFBS match scores mean?", "jaspar"),
-        (
-            "Explain pseudocounts and inclusive background tail probability",
-            "pseudocounts",
-        ),
-        (
-            "Is TP73 binding affinity the same as a motif score?",
-            "affinity",
-        ),
-        ("Compare TSS promoter traces with shared scales", "shared"),
-        ("Why was the TP73 score 300 wrong?", "300"),
-    ] {
+mod agent_gui_context_recommends_motif_score_tutorial_from_catalog_metadata {
+    use super::*;
+
+    fn assert_guide_for_query(query: &str, expected_term: &str) {
         let context = GENtleApp::build_agent_gui_context_for_query(&[], None, query);
+        let ranked = context
+            .tutorial_recommendations
+            .iter()
+            .map(|entry| {
+                format!(
+                    "rank={} id={} score={} terms={:?} fields={:?}",
+                    entry.rank,
+                    entry.tutorial_id,
+                    entry.relevance_score,
+                    entry.matched_terms,
+                    entry.matched_fields
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         let guide = context
             .tutorial_guides
             .iter()
@@ -8994,9 +8996,9 @@ fn agent_gui_context_recommends_motif_score_tutorial_from_catalog_metadata() {
             .iter()
             .take(3)
             .find(|entry| entry.tutorial_id == guide.tutorial_id)
-            .unwrap_or_else(|| panic!("guide missing from top three for query: {query}"));
+            .unwrap_or_else(|| panic!("guide missing from top three for query: {query}\n{ranked}"));
         if matches!(expected_term, "pwm" | "pssm") {
-            assert_eq!(recommendation.rank, 1, "query: {query}");
+            assert_eq!(recommendation.rank, 1, "query: {query}\n{ranked}");
         }
         assert_eq!(
             recommendation.open_command,
@@ -9021,6 +9023,48 @@ fn agent_gui_context_recommends_motif_score_tutorial_from_catalog_metadata() {
             payload["tutorial_recommendations"][recommendation.rank - 1]["open_command"],
             recommendation.open_command
         );
+    }
+
+    // Separate cases keep one failed query from hiding the rest of the contract.
+    #[test]
+    fn explain_pwm() {
+        assert_guide_for_query("Explain PWM", "pwm");
+    }
+
+    #[test]
+    fn explain_pssm() {
+        assert_guide_for_query("Explain PSSM", "pssm");
+    }
+
+    #[test]
+    fn jaspar_scores() {
+        assert_guide_for_query("What do JASPAR TFBS match scores mean?", "jaspar");
+    }
+
+    #[test]
+    fn background_tail() {
+        assert_guide_for_query(
+            "Explain pseudocounts and inclusive background tail probability",
+            "pseudocounts",
+        );
+    }
+
+    #[test]
+    fn binding_affinity() {
+        assert_guide_for_query(
+            "Is TP73 binding affinity the same as a motif score?",
+            "affinity",
+        );
+    }
+
+    #[test]
+    fn shared_scales() {
+        assert_guide_for_query("Compare TSS promoter traces with shared scales", "shared");
+    }
+
+    #[test]
+    fn tp73_score_correction() {
+        assert_guide_for_query("Why was the TP73 score 300 wrong?", "300");
     }
 }
 

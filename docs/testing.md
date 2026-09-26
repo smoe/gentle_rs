@@ -28,6 +28,14 @@ cargo test engine::tests::
 
 ### Platform-Specific Coverage
 
+Native CI runs the real `app::tests::agent_gui_context_` discovery tests before
+the long tutorial runtime suites. Tutorial 08.13's seven query contracts are
+separate tests, so one failure cannot hide the remaining queries; ranking
+failures report the shortlist's IDs, scores and matched terms/fields. The early
+Python metadata gate checks the authored title and use-case wording, but is
+not a substitute for the Rust ranker over the complete catalog. Keep rank-one
+and top-three assertions intact when changing tutorial discovery metadata.
+
 Every push to `main` and every PR runs the full native Windows CI job plus one
 commit-selected Unix job (Linux or macOS), alongside the Linux headless and
 release-policy checks. The aggregate `CI / selected platform` status requires

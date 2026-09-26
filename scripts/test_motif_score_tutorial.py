@@ -68,6 +68,7 @@ class MotifScoreTutorialSourceTests(unittest.TestCase):
                 self.assertIn(term, entry["title"])
         for term in ["PWM/PSSM", "JASPAR", "TFBS", "pseudocounts", "tail probability",
                      "binding affinity", "TP73", "300", "shared",
+                     "Compare promoter/TSS traces with shared scales",
                      "no loaded project required"]:
             with self.subTest(discovery_term=term):
                 self.assertIn(term, entry["notes"])
