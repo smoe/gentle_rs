@@ -29,6 +29,35 @@
 - No local builds or tests run at the owner's request; CI verification remains
   pending.
 
+## 2026-09-25 - First Measured Root-Crate Build Boundary
+
+- Move the root-independent RNA target-rescue, allele-aware read screen, UCSC
+  RepeatMasker and UniProt modules into `gentle-engine`, preserving the
+  established `gentle::*` module paths through compatibility re-exports. Keep
+  ordinary static workspace linking; no Rust dynamic-library ABI or loader
+  contract is introduced.
+- Make cold native package builds disable incremental compilation and debug
+  information while retaining internal `dev` debug assertions and overflow
+  checks. Bind both effective settings in each platform receipt and reject
+  missing or incompatible recipes during collection.
+- A same-host cold Linux comparison against `b7448898` measured the combined
+  extraction and package-recipe change at `6f39e1c9`: peak `rustc` RSS fell
+  from 9,317,412 to 8,716,432 KiB (-6.45%), peak build-tree RSS from 9,491,584
+  to 8,890,908 KiB (-6.33%), wall time from 18:58.18 to 16:51.23 (-11.15%),
+  and the extracted-smoke-tested archive from 668,226,000 to 466,594,311 bytes
+  (-30.17%). The dominant sampled compiler unit was still `gentle-gui`, at
+  about 8.6 GiB RSS; a sampled final GNU `ld` process was about 3.9 GiB.
+  Because source boundaries and the cold profile recipe changed together, this
+  comparison does not assign either reduction to one change. It supports the
+  bounded static-crate direction but does not yet make small hosted runners a
+  demonstrated fit.
+- Integration on 2026-09-26 preserves the tutorial discovery fixes and repairs
+  a root-test call to the extracted crate's private FASTQ helper. The existing
+  report-sourced allele-screen regression now reads its unchanged fixture with
+  the existing `bio` reader; its assertions and the public engine API stay
+  unchanged. No local builds or tests were run during integration at the
+  owner's request; merged-SHA native CI remains pending.
+
 ## 2026-09-25 - Unoptimized Internal Installers
 
 - Select Cargo `dev` for every `vX.Y.Z-internal.N` native installer, including

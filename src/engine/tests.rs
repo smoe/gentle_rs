@@ -45895,36 +45895,33 @@ fn test_allele_hash_screen_sources_target_gene_reads_from_rna_report() {
     let fixture_dir = PathBuf::from("test_files/fixtures/allele_hash_screen");
     let read_path = fixture_dir.join("fus_reads.fastq");
     let mut hits = Vec::<RnaReadInterpretationHit>::new();
-    crate::target_rescue::visit_read_records(
-        read_path.to_str().expect("UTF-8 fixture path"),
-        |record| {
-            let record_index = hits.len();
-            hits.push(RnaReadInterpretationHit {
-                record_index,
-                header_id: record.id,
-                read_length_bp: record.source_length,
-                sequence: record.sequence,
-                passed_seed_filter: true,
-                best_mapping: Some(RnaReadMappingHit {
-                    transcript_feature_id: 0,
-                    transcript_id: "FUS_TX1".to_string(),
-                    transcript_label: "FUS_TX1".to_string(),
-                    strand: "+".to_string(),
-                    target_start_1based: 1,
-                    target_end_1based: record.source_length,
-                    target_start_offset_0based: 0,
-                    target_end_offset_0based_exclusive: record.source_length,
-                    score: 100,
-                    identity_fraction: 1.0,
-                    query_coverage_fraction: 1.0,
-                    ..RnaReadMappingHit::default()
-                }),
-                ..RnaReadInterpretationHit::default()
-            });
-            Ok(())
-        },
-    )
-    .expect("read FUS fixture");
+    let reader = bio::io::fastq::Reader::from_file(&read_path).expect("open FUS fixture");
+    for (record_index, record) in reader.records().enumerate() {
+        let record = record.expect("read FUS fixture");
+        let source_length = record.seq().len();
+        hits.push(RnaReadInterpretationHit {
+            record_index,
+            header_id: record.id().to_string(),
+            read_length_bp: source_length,
+            sequence: String::from_utf8(record.seq().to_vec()).expect("ASCII fixture sequence"),
+            passed_seed_filter: true,
+            best_mapping: Some(RnaReadMappingHit {
+                transcript_feature_id: 0,
+                transcript_id: "FUS_TX1".to_string(),
+                transcript_label: "FUS_TX1".to_string(),
+                strand: "+".to_string(),
+                target_start_1based: 1,
+                target_end_1based: source_length,
+                target_start_offset_0based: 0,
+                target_end_offset_0based_exclusive: source_length,
+                score: 100,
+                identity_fraction: 1.0,
+                query_coverage_fraction: 1.0,
+                ..RnaReadMappingHit::default()
+            }),
+            ..RnaReadInterpretationHit::default()
+        });
+    }
 
     let mut dna = DNAsequence::from_sequence(&"A".repeat(61)).expect("synthetic FUS anchor");
     dna.features_mut().push(gb_io::seq::Feature {

@@ -150,6 +150,11 @@ must expose stable contracts without forcing all callers through a one-shot
 import rewrite. Root modules may re-export extracted contracts during the
 transition.
 
+Extraction does not require runtime dynamic libraries. Ordinary workspace
+crates remain statically linked unless a separately reviewed plugin/FFI contract
+justifies loader, ABI and packaging complexity. Measure compiler and linker RSS
+separately before proposing dynamic linking as a memory repair.
+
 ## DEC-008: Shell Dispatch Split Pattern
 
 Status: active
@@ -915,6 +920,10 @@ explicitly.
 Native latency acceptance uses the actual packaged GUI and its effective
 build recipe, not a Criterion harness, even if that harness inherits `release`.
 Since 2026-09-25, internal installers use `dev`; final releases use `release`.
+Native packaging disables incremental compilation and debug information in both
+classes; internal `dev` packages still retain debug assertions and overflow
+checks. Receipts must record the effective incremental/debug values, and older
+profile-only measurements remain a distinct recipe.
 Keep those verdicts separate: an optimized measurement cannot certify an
 unoptimized internal package, nor can that package certify final-release
 latency. Historical "release-like" measurements still mean the release profile;

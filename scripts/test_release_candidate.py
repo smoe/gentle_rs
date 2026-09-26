@@ -253,6 +253,7 @@ class ReleaseCandidateTests(unittest.TestCase):
                 **{k: candidate[k] for k in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode")},
                 "schema": "gentle.release_build.v1", "platform": platform, "arch": "x64",
                 "features": [], "default_features": True, "profile": candidate["native_profile"],
+                "incremental": False, "debug": 0,
                 "binaries": ["gentle", "gentle_cli", "gentle_mcp",
                              "gentle_examples_docs", "gentle_publication_report"],
                 "rustc": "synthetic rustc", "cargo": "synthetic cargo",
@@ -341,6 +342,7 @@ class ReleaseCandidateTests(unittest.TestCase):
             ("schema", "unknown"), ("tag", "v0.1.0-internal.11"), ("revision", "0" * 40),
             ("cargo_lock_sha256", "0" * 64), ("workflow_revision", "0" * 40),
             ("mode", "publish"), ("profile", "release-fast"), ("features", ["script-interfaces"]),
+            ("incremental", True), ("incremental", None), ("debug", 1), ("debug", None),
             ("default_features", False), ("default_features", None),
             ("binaries", None), ("binaries", original["binaries"][:-1]),
             ("binaries", [*original["binaries"], "gentle_js", "gentle_lua"]),
@@ -351,7 +353,7 @@ class ReleaseCandidateTests(unittest.TestCase):
             paths[0].write_text(json.dumps(changed))
             with self.subTest(field=key), self.assertRaises(ValueError):
                 policy.collect_installers(folder, candidate)
-        for key in ("features", "default_features", "binaries"):
+        for key in ("features", "default_features", "binaries", "incremental", "debug"):
             changed = copy.deepcopy(original)
             del changed[key]
             paths[0].write_text(json.dumps(changed))

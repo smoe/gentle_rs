@@ -76,6 +76,11 @@ jobs:
       NATIVE_TARGET_SUBDIR: ${{ needs.candidate.outputs.native_target_subdir }}
       CARGO_TARGET_DIR: target
       CARGO_BUILD_JOBS: "1"
+      # Hosted release jobs are cold builds: incremental state cannot be reused.
+      # Keep debug assertions through the dev profile, but omit line tables from
+      # internal packages so the compiler and five staged binaries carry less data.
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
       RUST_MIN_STACK: 67108864
 
     steps:
@@ -150,7 +155,7 @@ jobs:
           set -euo pipefail
           log="$RUNNER_TEMP/gentle-release-build.log"
           {
-            echo "revision=$EXPECTED_REVISION platform=$RUNNER_OS profile=$NATIVE_PROFILE"
+            echo "revision=$EXPECTED_REVISION platform=$RUNNER_OS profile=$NATIVE_PROFILE incremental=$CARGO_INCREMENTAL dev_debug=$CARGO_PROFILE_DEV_DEBUG"
             rustc --version --verbose
             cargo --version
             if [[ "$RUNNER_OS" == "Linux" ]]; then
@@ -388,6 +393,8 @@ jobs:
               "platform": platform, "arch": arch, "features": [],
               "default_features": True, "binaries": list(BINARIES),
               "profile": os.environ["NATIVE_PROFILE"],
+              "incremental": os.environ["CARGO_INCREMENTAL"] != "0",
+              "debug": int(os.environ["CARGO_PROFILE_DEV_DEBUG"]),
               "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),
               "cargo": subprocess.check_output(["cargo", "--version"], text=True).strip(),
               "cargo_lock_sha256": hashlib.sha256(pathlib.Path("Cargo.lock").read_bytes()).hexdigest(),

@@ -2604,10 +2604,12 @@ dependencies = [
 name = "gentle-engine"
 version = "0.1.0-internal.11"
 dependencies = [
+ "flate2",
  "gentle-protocol",
  "ring",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

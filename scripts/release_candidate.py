@@ -136,6 +136,8 @@ def collect_installers(root: Path, candidate: dict) -> dict:
                 raise ValueError(f"Build receipt {key} does not match the selected candidate")
         if receipt.get("profile") != profile:
             raise ValueError("Build receipt profile does not match the selected candidate")
+        if receipt.get("incremental") is not False or receipt.get("debug") != 0:
+            raise ValueError("Build receipt does not describe the cold native package recipe")
         if (receipt.get("features") != []
                 or receipt.get("default_features") is not True
                 or receipt.get("binaries") != list(BINARIES)):

@@ -21,7 +21,10 @@ from whether publication is requested:
 - `vX.Y.Z-internal.N` (also with `+build.metadata`) uses `--profile dev`, with
   binaries and bundles under `target/debug`. This includes published internal
   prereleases. GENtle is unoptimized, with development debug assertions and
-  overflow checks; packages may be larger and runtime work slower.
+  overflow checks; packages may be larger and runtime work slower. The release
+  workflow overrides this cold build to `incremental=false` and `debug=0`:
+  assertions remain, but incremental state and line-table debug information do
+  not enter the package build.
 - Other versions, including final releases, use `--profile release` and
   `target/release`. That profile sets `lto="off"` in `Cargo.toml`, retaining
   other Cargo release defaults: optimization level 3, 16 codegen units, unwind
@@ -36,6 +39,9 @@ shutdown. Fresh native builds and acceptance remain required. The container's
 substitute for testing the actual packaged binary. There is no extra optimized
 GENtle build in the internal-installer workflow. Installing the macOS packaging
 tool `cargo-bundle` still uses Cargo's normal tool-install profile.
+Platform receipts bind `incremental=false` and `debug=0` as well as the Cargo
+profile. Missing or different values fail collection rather than silently
+combining package recipes.
 
 Installer builds stream combined compiler output into
 `gentle-release-build.log`, including revision/toolchain, initial Unix memory
@@ -44,6 +50,17 @@ The pipeline preserves build failure through `pipefail`; an `always()` upload
 retains the log for 14 days when the runner is still available. Runner shutdown
 can prevent both final statistics and upload, so retain the Actions log too.
 These logs are diagnostics, not package acceptance receipts.
+
+A controlled external Linux cold build on 2026-09-25 provides the first
+measurement of the revised internal recipe and bounded B0 extraction. Against
+the same-host `b7448898` baseline, `6f39e1c9` reduced peak `rustc` RSS from
+9,317,412 to 8,716,432 KiB and peak process-tree RSS from 9,491,584 to
+8,890,908 KiB. The build completed in 16:51.23 without swap or memory pressure;
+the 466,594,311-byte `-dev` archive passed all extracted-package smokes. This is
+Linux diagnostic evidence only, not a GitHub-runner, macOS, Windows, package or
+release-acceptance verdict. It also combines a source-boundary change with the
+new incremental/debug settings and therefore cannot attribute the reduction to
+either factor alone.
 
 At `ad0338a7`, run `35968255595` recorded macOS job `107531770716`'s library
 compiler ending in `signal: 9, SIGKILL`, followed by Cargo exit 101. Memory

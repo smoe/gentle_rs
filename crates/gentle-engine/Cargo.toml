@@ -10,7 +10,9 @@ name = "gentle_engine"
 path = "src/lib.rs"
 
 [dependencies]
+flate2 = "1.0"
 gentle-protocol = { path = "../gentle-protocol" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ring = "0.17.14"
+tempfile = { workspace = true }
