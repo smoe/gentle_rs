@@ -123,6 +123,11 @@ class ContainerContractTests(unittest.TestCase):
         command = next(line for line in docker.splitlines() if line.startswith("RUN cargo build "))
         tokens = shlex.split(command)
         self.assertIn("--locked", tokens)
+        self.assertEqual(tokens[tokens.index("--profile") + 1], "dev")
+        self.assertNotIn("--release", tokens)
+        self.assertNotIn("GENTLE_CARGO_PROFILE", docker)
+        self.assertIn("CARGO_INCREMENTAL=0", docker)
+        self.assertIn("CARGO_PROFILE_DEV_DEBUG=0", docker)
         self.assertIn("--no-default-features", tokens)
         self.assertIn("-j1", tokens)
         self.assertNotIn("--features", tokens)
@@ -138,6 +143,7 @@ class ContainerContractTests(unittest.TestCase):
         self.assertIn("integrations/python", docker)
         for binary in BINARIES:
             self.assertIn(f"/opt/gentle-dist-cli/bin/{binary}", docker)
+            self.assertIn(f'install -Dm755 "target/debug/{binary}"', docker)
 
     def test_dependency_guard_recognizes_desktop_and_scripting_packages(self) -> None:
         docker = (ROOT / "Dockerfile").read_text()
@@ -178,7 +184,7 @@ class ContainerContractTests(unittest.TestCase):
                     self.assertIn(package, shlex.split(install))
         command = next(line for line in builder.splitlines() if line.startswith("RUN cargo install "))
         self.assertEqual(shlex.split(command), [
-            "RUN", "cargo", "install", "--locked", "--version", "0.3.9",
+            "RUN", "cargo", "install", "--locked", "--debug", "--version", "0.3.9",
             "--root", "/opt/rnapkin", "rnapkin", "-j1",
         ])
         self.assertLess(builder.index(command), builder.index("COPY Cargo.toml"))
@@ -230,6 +236,9 @@ class ContainerContractTests(unittest.TestCase):
              patch.object(Path, "write_text", side_effect=lambda text: records.append(json.loads(text))):
             exec(compile(script, "container-receipt", "exec"), {})
         record, = records
+        self.assertEqual(record["profile"], "dev")
+        self.assertIs(record["incremental"], False)
+        self.assertEqual(record["debug"], 0)
         self.assertFalse(record["default_features"])
         self.assertEqual(record["features"], [])
         self.assertEqual(record["binaries"], BINARIES)

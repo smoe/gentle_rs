@@ -27,16 +27,12 @@ from scripts import check_tutorial_checkouts as checkouts
 
 
 class NativeBuildSettingsTests(unittest.TestCase):
-    def test_only_internal_version_labels_select_unoptimized_installers(self) -> None:
-        for tag in ("v0.1.0-internal.11", "v0.1.0-internal.12", "v2.3.4-internal.1+build.7"):
+    def test_all_version_labels_temporarily_select_unoptimized_installers(self) -> None:
+        for tag in ("v0.1.0-internal.11", "v0.1.0-internal.12", "v2.3.4-internal.1+build.7",
+                    "v0.1.0", "v2.3.4+internal.11", "v0.1.0-rc.1", "v0.1.0-notinternal.11"):
             with self.subTest(tag=tag):
                 self.assertEqual(policy.native_build_settings(tag), {
                     "native_profile": "dev", "native_target_subdir": "debug",
-                })
-        for tag in ("v0.1.0", "v2.3.4+internal.11", "v0.1.0-rc.1", "v0.1.0-notinternal.11"):
-            with self.subTest(tag=tag):
-                self.assertEqual(policy.native_build_settings(tag), {
-                    "native_profile": "release", "native_target_subdir": "release",
                 })
         for tag in ("main", "v0.1.0-internal.11\n", "../v0.1.0-internal.11"):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
@@ -273,7 +269,7 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.assertEqual(len(result["artifacts"]), 3)
         self.assertTrue(all(row["bytes"] > 0 for row in result["artifacts"]))
 
-    def test_final_release_collection_requires_optimized_receipts(self) -> None:
+    def test_final_version_label_cannot_bypass_unoptimized_packaging_policy(self) -> None:
         (self.root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n')
         self.git("add", "Cargo.toml")
         self.git("commit", "-qm", "synthetic final release")
@@ -282,13 +278,13 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.env.update(CANDIDATE_SHA=self.sha, CANDIDATE_EVENT_SHA=self.sha,
                         RELEASE_TAG=self.tag, WORKFLOW_REVISION=self.sha)
         folder, candidate, paths = self.installers()
-        self.assertEqual(candidate["native_profile"], "release")
+        self.assertEqual(candidate["native_profile"], "dev")
         result = policy.collect_installers(folder, candidate)
-        self.assertEqual(result["profile"], "release")
-        self.assertTrue(all("-dev." not in item["name"] for item in result["artifacts"]))
+        self.assertEqual(result["profile"], "dev")
+        self.assertTrue(all("-dev." in item["name"] for item in result["artifacts"]))
         for path in paths:
             receipt = json.loads(path.read_text())
-            receipt["profile"] = "dev"
+            receipt["profile"] = "release"
             path.write_text(json.dumps(receipt))
         with self.assertRaisesRegex(ValueError, "profile"):
             policy.collect_installers(folder, candidate)

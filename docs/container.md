@@ -16,7 +16,7 @@ docker build --target runtime-cli -t gentle:cli-local .
 The builder uses Debian `forky` and `rust-all`. It runs:
 
 ```sh
-cargo build --locked --profile release-fast --no-default-features \
+cargo build --locked --profile dev --no-default-features \
   --bin gentle_cli --bin gentle_mcp --bin gentle_examples_docs -j1
 ```
 
@@ -25,10 +25,14 @@ its shared builder still compiled GUI and scripting code. This build disables
 those features before compilation and rejects desktop/V8/Lua dependencies in
 the resolved normal/build dependency graph.
 
-Optional build arguments remain `DEBIAN_SUITE` (default `forky`) and
-`GENTLE_CARGO_PROFILE` (default `release-fast`). Selecting `release` increases
-optimization and can require more build memory. Serial Cargo compilation is
-not a guarantee that an individual compiler process fits the runner.
+The optional build argument is `DEBIAN_SUITE` (default `forky`). During the
+[temporary optimization pause](release.md), the builder fixes the profile to
+`dev`, stages `target/debug`, and disables incremental compilation and debug
+information. The former `GENTLE_CARGO_PROFILE` override is removed. Pinned
+`rnapkin` also installs with `--debug -j1`. Assertions and overflow checks remain;
+serial, unoptimized compilation is not a guarantee that an individual compiler
+process fits the runner. Optimized packaging returns only after the first
+successful artifact cycle, as a separately verified recipe change.
 
 After an owner-approved publication, these tags name the same headless image:
 

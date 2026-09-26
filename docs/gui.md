@@ -902,8 +902,9 @@ Linear map zoom detail:
   visible, the backbone line and bp tick marks are both suppressed.
 - `Reverse-strand letter opacity` controls reverse-strand emphasis in both the
   linear map and the sequence-panel reverse-complement row.
-- In debug builds, the top-right DNA diagnostics additionally show the active
-  tier thresholds (`standard/helical/condensed`) used by adaptive routing.
+- Normal DNA-map labels are independent of the Cargo build profile. Internal
+  `dev` packages do not add routing-tier debug text to the map or SVG exports;
+  explicit tracing/profiling remains opt-in.
 
 Feature tree grouping:
 
@@ -1608,10 +1609,9 @@ Feature tree grouping:
     (`.fa/.fasta`, optional gzip `.fa.gz/.fasta.gz`)
   - gzip FASTA input also accepts concatenated gzip members
   - progress updates are throttled to reduce UI overhead:
-    - debug builds: read-count updates approximately every `1000` reads
-    - release builds: read-count updates approximately every `10000` reads
-    - both build types additionally emit time-based updates approximately every
-      `2s` while processing continues
+    - all build profiles: read-count updates every `10000` reads, plus the
+      first three reads and the final result
+    - time-based updates approximately every `2s` while processing continues
     - phase-2 retained-read alignment now reports progress every selected
       retained row (`update stride: 1`) so long alignment passes visibly move
   - live RNA-read progress stays in the dedicated `RNA-read Mapping` workspace;
@@ -1808,8 +1808,9 @@ Feature tree grouping:
   - streaming progress includes `ETA:` (uppercase) estimate derived from
     compressed/plain input bytes consumed vs elapsed runtime; ETA refresh is
     synchronized with read-count progress updates
-  - running seed-confirmation histogram is updated every 1000 reads and shown as
-    genomic-position bars (`+` strand upward, `-` strand downward)
+  - running seed-confirmation histogram follows the shared read-count/time-based
+    progress policy and is shown as genomic-position bars (`+` strand upward,
+    `-` strand downward)
   - bar heights use a square-root scale so low-frequency bins remain visible
     while high-frequency bins are still comparable
   - red seed-anchor dots are overlaid on the histogram baseline (`+` above,
@@ -3126,7 +3127,8 @@ Controls:
        current linear viewport.
      - `print-a3`: print-oriented A3 landscape SVG with expanded context and
        physical-size metadata (`420mm x 297mm`) for direct print workflows.
-   - Debug builds include adaptive routing-tier diagnostics in the SVG header.
+   - SVG content and header layout do not depend on the Cargo build profile;
+     internal `dev` packages do not insert debugging text or an extra header row.
 22. Export RNA SVG (ssRNA only)
    - Exports RNA secondary-structure SVG via shared engine operation `RenderRnaStructureSvg`.
    - Shown only when active sequence is single-stranded RNA (`molecule_type` `RNA`/`ssRNA`).

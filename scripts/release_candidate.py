@@ -36,14 +36,11 @@ def release_tag(value: str) -> str:
 
 
 def native_build_settings(tag: str) -> dict[str, str]:
-    """Keep interim installers unoptimized; never infer this from publish mode."""
-    internal = re.fullmatch(
-        r"v[0-9]+\.[0-9]+\.[0-9]+-internal\.[0-9]+(?:\+[0-9A-Za-z.-]+)?",
-        release_tag(tag),
-    ) is not None
+    """Pause optimized packaging until the first successful artifact cycle."""
+    release_tag(tag)
     return {
-        "native_profile": "dev" if internal else "release",
-        "native_target_subdir": "debug" if internal else "release",
+        "native_profile": "dev",
+        "native_target_subdir": "debug",
     }
 
 
@@ -122,7 +119,7 @@ def collect_installers(root: Path, candidate: dict) -> dict:
     settings = native_build_settings(candidate["tag"])
     for key, expected in settings.items():
         if candidate.get(key) != expected:
-            raise ValueError(f"Candidate {key} does not match the tag's build policy")
+            raise ValueError(f"Candidate {key} does not match the current build policy")
     profile = settings["native_profile"]
     receipts = [json.loads(path.read_text()) for path in root.rglob("*.build.json")]
     platforms = {"linux": "tar.gz", "macos": "dmg", "windows": "zip"}

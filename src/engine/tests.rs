@@ -47913,9 +47913,12 @@ fn test_rna_read_progress_emit_policy_supports_read_and_timer_triggers() {
 }
 
 #[test]
-#[cfg(debug_assertions)]
-fn test_rna_read_progress_update_stride_default_debug() {
-    assert_eq!(RNA_READ_PROGRESS_UPDATE_EVERY_READS, 1_000);
+fn test_rna_read_progress_update_stride_is_profile_independent() {
+    assert_eq!(RNA_READ_PROGRESS_UPDATE_EVERY_READS, 10_000);
+    assert_eq!(
+        RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL,
+        Duration::from_secs(2)
+    );
 }
 
 #[test]
@@ -47955,7 +47958,8 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
     let td = tempdir().expect("tempdir");
     let input_path = td.path().join("reads_many.fa");
     let mut fasta = String::new();
-    for idx in 0..1001usize {
+    let read_count = RNA_READ_PROGRESS_UPDATE_EVERY_READS + 1;
+    for idx in 0..read_count {
         fasta.push_str(&format!(">read_{}\n{}\n", idx + 1, read_sequence));
     }
     fs::write(&input_path, fasta).expect("write reads");
@@ -47992,7 +47996,11 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
 
     assert!(!progress_events.is_empty());
     assert_eq!(progress_events.first().map(|p| p.reads_processed), Some(0));
-    assert!(progress_events.iter().any(|p| p.reads_processed >= 1000));
+    assert!(
+        progress_events
+            .iter()
+            .any(|p| p.reads_processed >= RNA_READ_PROGRESS_UPDATE_EVERY_READS)
+    );
     assert!(
         progress_events.iter().any(|p| {
             !p.done
@@ -48010,8 +48018,8 @@ fn test_interpret_rna_reads_progress_reports_histogram_updates() {
     );
     let last = progress_events.last().expect("last progress");
     assert!(last.done);
-    assert_eq!(last.reads_processed, 1001);
-    assert_eq!(last.reads_total, 1001);
+    assert_eq!(last.reads_processed, read_count);
+    assert_eq!(last.reads_total, read_count);
     assert!(last.input_bytes_total > 0);
     assert_eq!(last.input_bytes_processed, last.input_bytes_total);
     assert!(!last.bins.is_empty());

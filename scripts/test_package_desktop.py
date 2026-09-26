@@ -260,7 +260,7 @@ class WorkflowWiringTests(unittest.TestCase):
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
         profiles = manifest["profile"]
         self.assertEqual(profiles["dev"].get("opt-level", 0), 0,
-                         "Internal installers must remain unoptimized")
+                         "All installers must remain unoptimized during the packaging pause")
         self.assertEqual(profiles["release"], {"lto": "off"},
                          "Disable all native LTO; retain other Cargo defaults")
         self.assertEqual(profiles["release-fast"], {
@@ -271,6 +271,14 @@ class WorkflowWiringTests(unittest.TestCase):
             "inherits": "release", "lto": "thin", "codegen-units": 16,
             "panic": "unwind", "strip": True,
         })
+
+    def test_normal_display_export_and_progress_do_not_branch_on_build_profile(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        for relative in ("src/main_area_dna.rs", "src/render_dna_linear.rs", "src/engine.rs"):
+            with self.subTest(path=relative):
+                self.assertNotIn(
+                    "debug_assertions", (repo / relative).read_text(encoding="utf-8"),
+                    "Normal UI, exports and progress must not select behavior by Cargo profile")
 
     def test_native_release_builds_only_the_five_packaged_binaries(self) -> None:
         self.assertEqual(package.BINARIES, (
@@ -301,7 +309,9 @@ class WorkflowWiringTests(unittest.TestCase):
             self.assertIn(f"value: ${{{{ jobs.resolve.outputs.{key} }}}}", resolver)
             self.assertIn(f"{key}: ${{{{ steps.identity.outputs.{key} }}}}", resolver)
         self.assertIn('case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in', workflow)
-        self.assertIn("dev:debug|release:release)", workflow)
+        self.assertIn("dev:debug) ;;", workflow)
+        self.assertNotIn("release:release)", workflow)
+        self.assertIn("run: cargo install cargo-bundle --locked --debug -j1", workflow)
         self.assertNotIn("script-interfaces", workflow)
         self.assertNotIn("CARGO_PROFILE_RELEASE_", workflow)
         self.assertNotIn("RUSTFLAGS:", workflow)

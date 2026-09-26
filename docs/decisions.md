@@ -919,13 +919,15 @@ explicitly.
 
 Native latency acceptance uses the actual packaged GUI and its effective
 build recipe, not a Criterion harness, even if that harness inherits `release`.
-Since 2026-09-25, internal installers use `dev`; final releases use `release`.
-Native packaging disables incremental compilation and debug information in both
-classes; internal `dev` packages still retain debug assertions and overflow
+Since 2026-09-25, internal installers use `dev`. The owner's 2026-09-26
+[temporary optimization pause](release.md) extends this to every version label
+and the container until the first successful artifact cycle; final labels no
+longer select `release` automatically. Packaging disables incremental compilation
+and debug information; `dev` packages still retain debug assertions and overflow
 checks. Receipts must record the effective incremental/debug values, and older
 profile-only measurements remain a distinct recipe.
 Keep those verdicts separate: an optimized measurement cannot certify an
-unoptimized internal package, nor can that package certify final-release
+unoptimized package, nor can that package certify a future optimized release's
 latency. Historical "release-like" measurements still mean the release profile;
 do not relabel them or silently relax budgets for development-profile packages.
 Retain extracted-package identity separately from local counterpart builds and

@@ -1,10 +1,10 @@
 # Linux Tarball Quick Start
 
 The current release workflow builds a downloadable
-`gentle-<tag>-linux-x64-dev.tar.gz` for internal versions, or
-`gentle-<tag>-linux-x64.tar.gz` for other versions, on Ubuntu 24.04 x86-64.
-Internal packages use unoptimized Cargo `dev` binaries; their performance is
-not equivalent to the optimized final-release profile. This is a relocatable
+`gentle-<tag>-linux-x64-dev.tar.gz` on Ubuntu 24.04 x86-64. During the
+[temporary optimization pause](release.md), all version labels use unoptimized
+Cargo `dev` binaries; their performance does not certify a future optimized
+release. This is a relocatable
 directory, not a system installer, Debian package, AppImage or static binary.
 Availability is confirmed only when the tag's release workflow passes and
 publishes the archive.

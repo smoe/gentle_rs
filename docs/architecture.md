@@ -633,21 +633,33 @@ Rules:
 - feature-gating adapters must never be used to fork engine behavior or create
   adapter-only business logic
 
-Native installers use the unoptimized Cargo `dev` profile for validated
-`vX.Y.Z-internal.N` version labels, including published prereleases; other labels
-use `release`. Compile, bundle, smoke and staging paths must agree on that
-selection (`target/debug` versus `target/release`). Internal archives carry a
-`-dev` suffix; receipt collection rejects profiles inconsistent with the label.
-Native packaging is a cold build and therefore forces `incremental=false` for
-both profile classes. It also forces `debug=0`: internal packages retain dev
-debug assertions and overflow checks, but do not carry line-table debug data in
-each of the five staged binaries. Receipts bind both effective values.
-The release profile disables all LTO with `lto="off"`, retaining other defaults
-rather than forcing a single codegen unit. Do not substitute `lto=false`, which
-permits within-crate thin LTO. The explicit `release-fast` container and
-`bench-audit` profiles retain their separate settings. Package receipts bind
+Compile, bundle, smoke and staging paths must agree on the effective profile.
+During the owner's 2026-09-26 optimization pause, all native installers and the
+headless container use `dev` and `target/debug`, irrespective of version label
+or publication mode; optimized packaging returns only after the first successful
+artifact cycle, through a separately verified recipe change (see [release
+process](release.md)). Native archives carry a `-dev` suffix; receipt collection
+rejects profiles inconsistent with the current policy. Cold packaging forces
+`incremental=false` and `debug=0`, while retaining development assertions and
+overflow checks. Receipts bind both effective values. Rust-built package helpers
+also use unoptimized installation; distribution-provided dependencies are unchanged.
+The unused release profile still disables all LTO with `lto="off"`, retaining
+other defaults rather than forcing a single codegen unit. Do not substitute
+`lto=false`, which permits within-crate thin LTO. The explicit `release-fast`
+and `bench-audit` profiles retain their definitions but are not artifact-build
+profiles during the pause. Package receipts bind
 the profile, default-feature selection, additional features and binary list;
 changing that recipe requires fresh exact-candidate package acceptance.
+
+Cargo profiles must not select normal user-facing content or scientific export
+content. In particular, internal `dev` installers use the same DNA-map labels,
+SVG composition and RNA-read progress policy as `release`; `debug_assertions`
+is not a UI feature flag. This applies to pre-1.0 packages as well, with no
+automatic diagnostic-mode switch at 1.0. Explicitly requested tracing/profiling
+may record the actual build configuration. Keep invariant and overflow checks
+as development error detectors rather than disabling them for presentation
+parity; their failure behavior and optimization-dependent timing remain distinct
+from the ordinary UI/export contract.
 
 Workspace extraction follows DEC-006/007 and does not imply dynamic linking.
 Root-independent engine modules compile as ordinary Rust library crates and are

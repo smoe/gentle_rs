@@ -78,7 +78,7 @@ jobs:
       CARGO_BUILD_JOBS: "1"
       # Hosted release jobs are cold builds: incremental state cannot be reused.
       # Keep debug assertions through the dev profile, but omit line tables from
-      # internal packages so the compiler and five staged binaries carry less data.
+      # packages so the compiler and five staged binaries carry less data.
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
       RUST_MIN_STACK: 67108864
@@ -105,8 +105,8 @@ jobs:
           python3 scripts/release_candidate.py verify
           test -f scripts/package_desktop.py
           case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in
-            dev:debug|release:release) ;;
-            *) echo "Missing or invalid native build profile; candidate must contain the profile-aware packaging helpers"; exit 1 ;;
+            dev:debug) ;;
+            *) echo "Optimized packaging is paused; candidate must select dev:debug"; exit 1 ;;
           esac
 
       - name: Install Linux build dependencies
@@ -147,7 +147,7 @@ jobs:
 
       - name: Install cargo-bundle
         if: runner.os == 'macOS'
-        run: cargo install cargo-bundle --locked
+        run: cargo install cargo-bundle --locked --debug -j1
 
       - name: Build locked native binaries
         shell: bash

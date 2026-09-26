@@ -15,33 +15,40 @@ The five native binaries are `gentle`, `gentle_cli`, `gentle_mcp`,
 and the two GUI reproduction binaries are not built or packaged by this
 workflow. JS/Lua remain optional source builds with separate CI checks.
 
-Native installer profiles are selected from the validated version label, not
-from whether publication is requested:
+**Temporary optimization pause (owner decision, 2026-09-26):** all native
+installers and the headless Docker image use Cargo `dev`, regardless of version
+label or publication mode. The first priority is a successful release-artifact
+cycle; restore optimized packaging in a separate follow-up after the native
+artifacts and container pass their build and package-smoke gates at one candidate
+SHA. A green unit-test run alone is not that milestone. No automatic profile
+switch, tag move or publication is triggered by success.
 
-- `vX.Y.Z-internal.N` (also with `+build.metadata`) uses `--profile dev`, with
-  binaries and bundles under `target/debug`. This includes published internal
-  prereleases. GENtle is unoptimized, with development debug assertions and
-  overflow checks; packages may be larger and runtime work slower. The release
-  workflow overrides this cold build to `incremental=false` and `debug=0`:
-  assertions remain, but incremental state and line-table debug information do
-  not enter the package build.
-- Other versions, including final releases, use `--profile release` and
-  `target/release`. That profile sets `lto="off"` in `Cargo.toml`, retaining
-  other Cargo release defaults: optimization level 3, 16 codegen units, unwind
-  panics and no explicit symbol stripping. Unlike `lto=false`, `"off"` also
-  disables within-crate thin LTO.
+Compilation and macOS bundling use `--profile dev`, one Cargo build job and
+`target/debug`; JS/Lua stay excluded. Both native and container cold builds use
+`incremental=false` and `debug=0`, retaining development assertions and overflow
+checks. The Rust-built packaging/rendering helpers (`cargo-bundle` and pinned
+`rnapkin`) also use `cargo install --debug -j1`, not the default optimized tool
+profile. Distribution-provided runtime dependencies are unchanged.
 
-Compilation and macOS bundling use the same selected profile and one Cargo
-build job; JS/Lua stay excluded. This reduces optimization work for interim
-installers, not proof of the cause or resolution of a compiler kill or runner
-shutdown. Fresh native builds and acceptance remain required. The container's
-`release-fast` and auditor's `bench-audit` profiles are unchanged; neither is a
-substitute for testing the actual packaged binary. There is no extra optimized
-GENtle build in the internal-installer workflow. Installing the macOS packaging
-tool `cargo-bundle` still uses Cargo's normal tool-install profile.
+The optimized `release`, `release-fast` and `bench-audit` definitions remain in
+`Cargo.toml`, but artifact workflows do not select them. Glen's benchmark ladder
+is unchanged and is not run as part of packaging. Restoring optimization must
+update native/container commands, profile guards, paths, receipts and regression
+tests together, with fresh exact-candidate acceptance; historical optimized
+results do not certify the new recipe. Unoptimized builds can still exhaust a
+runner's memory, and runtime work may be slower. This pause does not establish
+the cause or resolution of a compiler kill or runner shutdown.
 Platform receipts bind `incremental=false` and `debug=0` as well as the Cargo
 profile. Missing or different values fail collection rather than silently
 combining package recipes.
+
+The unoptimized profile is not a separate user-interface mode: normal DNA-map
+labels, view SVG exports and RNA-read progress policy are profile-independent.
+Do not disable assertions or overflow checks to obtain that presentation parity.
+Internal `dev` packages can still detect invariant/overflow bugs differently and
+run more slowly; explicit profiler receipts continue to identify the real build.
+This policy does not automatically change at version 1.0. See the
+[profile/content invariant](architecture.md#optional-embedded-scripting-adapters).
 
 Installer builds stream combined compiler output into
 `gentle-release-build.log`, including revision/toolchain, initial Unix memory
@@ -146,7 +153,9 @@ explicit push/dispatch approval and when that commit is available on GitHub.
 The pushed `--ref` must contain workflow definitions with `candidate_sha` inputs
 and profile-aware packaging helpers. The selected source must also include
 `native_profile` and `native_target_subdir` outputs in `release_candidate.py`;
-the current installer workflow rejects older helpers before compilation.
+the current installer workflow rejects helpers that do not select `dev:debug`
+before compilation. The selected source must include the unoptimized Dockerfile
+too; using a newer workflow does not rewrite an older candidate's Dockerfile.
 Rerunning an old tagged workflow does not import these changes from `main`.
 `--ref` selects the workflow definition;
 `candidate_sha` selects the exact source to build. Keep the selected ref frozen
@@ -191,13 +200,13 @@ These are packaging/entrypoint checks, not graphical or scientific acceptance.
 The shared `gentle.release_candidate.v1` receipt records candidate SHA, lockfile
 hash, workflow revision, version label, `validate_only`/`publish` mode and the
 selected native profile/output subdirectory. Installer receipts also bind the
-actual archive digest, toolchain, actual `dev` or `release` profile,
+actual archive digest, toolchain, actual `dev` profile,
 `default_features: true`, `features: []` (no additional features), and
 the five-binary inventory. Collection compares every receipt with the selected
 candidate, not merely with the other receipts; missing, stale, mixed-mode,
-wrong-profile or modified packages fail closed. Docker retains its existing
-`release-fast` profile and Debian `forky` build arguments, independently of the
-native profile policy. Its receipt records `default_features: false`, `features: []`
+wrong-profile or modified packages fail closed. Docker uses `dev` with
+`incremental=false`, `debug=0` and the Debian `forky` build argument.
+Its receipt records `default_features: false`, `features: []`
 and the explicit CLI/MCP/docs binary list; the build checks that desktop and
 embedded scripting dependencies are absent. Native installers use the default
 desktop features without opting into scripting.
@@ -290,22 +299,22 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
 
 ## Artifact Naming
 
-Optimized release assets are normalized to:
+During the optimization pause, release assets are normalized to:
 
-- `gentle-<tag>-macos-<arch>.dmg`
-- `gentle-<tag>-windows-<arch>.zip`
-- `gentle-<tag>-linux-x64.tar.gz`
+- `gentle-<tag>-macos-<arch>-dev.dmg`
+- `gentle-<tag>-windows-<arch>-dev.zip`
+- `gentle-<tag>-linux-x64-dev.tar.gz`
 - `gentle-<tag>-<platform>-<arch>.build.json`
 - `gentle-<tag>-release-attributes.json`
 
 Example:
 
-- `gentle-v0.1.0-macos-arm64.dmg`
-- `gentle-v0.1.0-windows-x64.zip`
-- `gentle-v0.1.0-linux-x64.tar.gz`
+- `gentle-v0.1.0-macos-arm64-dev.dmg`
+- `gentle-v0.1.0-windows-x64-dev.zip`
+- `gentle-v0.1.0-linux-x64-dev.tar.gz`
 - `gentle-v0.1.0-release-attributes.json`
 
-Internal installer archives append `-dev` before the extension, for example
+All installer archives currently append `-dev` before the extension, for example
 `gentle-v0.1.0-internal.11-linux-x64-dev.tar.gz`,
 `gentle-v0.1.0-internal.11-macos-arm64-dev.dmg` and
 `gentle-v0.1.0-internal.11-windows-x64-dev.zip`. Receipt filenames and inner

@@ -69,6 +69,15 @@ platform's green job alone proves those paths on the other platform.
 Apply these rules to production code and its tests. A local pass does not make
 an OS-dependent assumption portable.
 
+- **Profile-independent presentation:** exercise the actual linear-map header,
+  screen/wide/print view-SVG composition, and RNA-read progress policy in the
+  ordinary debug-asserting test build. No `debug_assertions` branch may select
+  normal labels, export content/layout or progress cadence. The fast
+  `scripts.test_package_desktop` gate also guards the affected production files.
+  Keep runtime assertions and explicit profiler metadata separate from this
+  rule; timing can differ, and a dev test pass is not cross-profile/native
+  package acceptance. Do not introduce an optimized CI build solely for this
+  check.
 - **Byte-bound inputs:** trace every retained digest to the exact input bytes,
   not just the output fixture. Check `git check-attr text eol -- PATH` and add a
   scoped `text eol=lf` rule for LF-authored text whose raw bytes are contractual;

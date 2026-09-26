@@ -7,6 +7,8 @@ FROM debian:${DEBIAN_SUITE}-slim AS build
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/usr/local/cargo \
+    CARGO_INCREMENTAL=0 \
+    CARGO_PROFILE_DEV_DEBUG=0 \
     RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:/usr/local/rustup/bin:/usr/local/bin:/usr/bin:/bin
 
@@ -27,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # RNA rendering needs font libraries, not a desktop GUI. Fail before GENtle's
 # long build and keep this pinned helper layer independent of source changes.
-RUN cargo install --locked --version 0.3.9 --root /opt/rnapkin rnapkin -j1
+RUN cargo install --locked --debug --version 0.3.9 --root /opt/rnapkin rnapkin -j1
 
 WORKDIR /opt/gentle
 
@@ -44,20 +46,19 @@ COPY docs ./docs
 COPY integrations/python ./integrations/python
 COPY README.md CONTRIBUTING.md copyright ./
 
-ARG GENTLE_CARGO_PROFILE=release-fast
-
 # Guard the resolved Linux dependency graph, not just the selected binaries.
 RUN cargo tree --locked --no-default-features --edges normal,build --prefix none > /tmp/gentle-dependencies.txt \
     && if grep -E '^(arboard|eframe|egui|egui_commonmark|egui_extras|gentle-gui|rfd|winit|deno_core|deno_error|v8|mlua|mlua-sys|lua-src|luajit-src) v' /tmp/gentle-dependencies.txt; then \
         echo "Desktop or embedded scripting dependency leaked into the headless build" >&2; exit 1; \
     fi
-RUN cargo build --locked --profile "${GENTLE_CARGO_PROFILE}" --no-default-features \
+# Temporarily unoptimized, like native installers; see docs/release.md.
+RUN cargo build --locked --profile dev --no-default-features \
     --bin gentle_cli --bin gentle_mcp --bin gentle_examples_docs -j1
 
 RUN mkdir -p /opt/gentle-dist-cli/bin /opt/gentle-dist-cli/integrations \
-    && install -Dm755 "target/${GENTLE_CARGO_PROFILE}/gentle_cli" /opt/gentle-dist-cli/bin/gentle_cli \
-    && install -Dm755 "target/${GENTLE_CARGO_PROFILE}/gentle_mcp" /opt/gentle-dist-cli/bin/gentle_mcp \
-    && install -Dm755 "target/${GENTLE_CARGO_PROFILE}/gentle_examples_docs" /opt/gentle-dist-cli/bin/gentle_examples_docs \
+    && install -Dm755 "target/debug/gentle_cli" /opt/gentle-dist-cli/bin/gentle_cli \
+    && install -Dm755 "target/debug/gentle_mcp" /opt/gentle-dist-cli/bin/gentle_mcp \
+    && install -Dm755 "target/debug/gentle_examples_docs" /opt/gentle-dist-cli/bin/gentle_examples_docs \
     && cp -a assets /opt/gentle-dist-cli/assets \
     && cp -a docs /opt/gentle-dist-cli/docs \
     && cp -a integrations/python /opt/gentle-dist-cli/integrations/python \

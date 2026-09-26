@@ -6812,9 +6812,6 @@ impl MainAreaDna {
                 ui.small(
                     "Wide/print exports use larger canvases and expanded bp context for reporting and printing.",
                 );
-                if cfg!(debug_assertions) {
-                    ui.small("Debug builds include routing-tier diagnostics in the SVG header block.");
-                }
             });
             if self.is_single_stranded_rna()
                 && ui
@@ -23190,10 +23187,10 @@ impl MainAreaDna {
             self.op_status = "No active sequence to export".to_string();
             return;
         };
-        let Some(engine) = self.engine.clone() else {
+        if self.engine.is_none() {
             self.op_status = "No engine attached".to_string();
             return;
-        };
+        }
         let default_name = format!("{seq_id}.{}.svg", profile.file_stem_suffix());
         let path = rfd::FileDialog::new()
             .set_file_name(&default_name)
@@ -23204,6 +23201,37 @@ impl MainAreaDna {
             return;
         };
 
+        let svg = match self.compose_active_view_svg(profile) {
+            Ok(svg) => svg,
+            Err(err) => {
+                self.op_status = err;
+                return;
+            }
+        };
+        let path_text = path.display().to_string();
+        match fs::write(&path, svg) {
+            Ok(()) => {
+                self.op_status = format!(
+                    "Exported sequence window view SVG ({}) to '{}'",
+                    profile.label(),
+                    path_text
+                );
+            }
+            Err(e) => {
+                self.op_status = format!("Could not write view SVG '{}': {e}", path_text);
+            }
+        }
+    }
+
+    fn compose_active_view_svg(&mut self, profile: ViewSvgExportProfile) -> Result<String, String> {
+        let seq_id = self
+            .seq_id
+            .clone()
+            .ok_or_else(|| "No active sequence to export".to_string())?;
+        let engine = self
+            .engine
+            .clone()
+            .ok_or_else(|| "No engine attached".to_string())?;
         let primary_splicing_map_export =
             !self.is_circular() && matches!(self.primary_map_mode, PrimaryMapMode::Splicing);
         let splicing_export_view = if primary_splicing_map_export {
@@ -23215,10 +23243,10 @@ impl MainAreaDna {
         let (map_svg, map_mode_label) = {
             let guard = engine.read().expect("Engine lock poisoned");
             let state = guard.state();
-            let Some(dna) = state.sequences.get(&seq_id) else {
-                self.op_status = format!("Active sequence '{seq_id}' not found in engine state");
-                return;
-            };
+            let dna = state
+                .sequences
+                .get(&seq_id)
+                .ok_or_else(|| format!("Active sequence '{seq_id}' not found in engine state"))?;
             if self.is_circular() {
                 (
                     export_circular_svg(dna, &state.display),
@@ -23237,20 +23265,14 @@ impl MainAreaDna {
             }
         };
 
-        let dna_guard = match self.dna.read() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.op_status = "Could not read active DNA sequence for export".to_string();
-                return;
-            }
-        };
-        let display_guard = match self.dna_display.read() {
-            Ok(guard) => guard,
-            Err(_) => {
-                self.op_status = "Could not read display settings for export".to_string();
-                return;
-            }
-        };
+        let dna_guard = self
+            .dna
+            .read()
+            .map_err(|_| "Could not read active DNA sequence for export".to_string())?;
+        let display_guard = self
+            .dna_display
+            .read()
+            .map_err(|_| "Could not read display settings for export".to_string())?;
 
         let layout = Self::view_svg_export_layout(
             profile,
@@ -23370,21 +23392,6 @@ impl MainAreaDna {
             Self::xml_escape(&viewport_text)
         ));
         y += 18.0;
-        if cfg!(debug_assertions) && !self.is_circular() && !primary_splicing_map_export {
-            let threshold_text = format!(
-                "debug tiers: standard<= {:.2}, helical<= {:.2}, condensed<= {:.2}",
-                routing.tier_standard_max_density,
-                routing.tier_helical_max_density,
-                routing.tier_condensed_max_density
-            );
-            svg.push_str(&format!(
-                "<text x=\"{:.1}\" y=\"{:.1}\" font-family=\"monospace\" font-size=\"11\" fill=\"#666666\">{}</text>",
-                margin,
-                y,
-                Self::xml_escape(&threshold_text)
-            ));
-            y += 18.0;
-        }
 
         if self.show_map {
             let panel_w = width_px - 2.0 * margin;
@@ -23516,19 +23523,7 @@ impl MainAreaDna {
         ));
         svg.push_str("</svg>");
 
-        let path_text = path.display().to_string();
-        match fs::write(&path, svg) {
-            Ok(()) => {
-                self.op_status = format!(
-                    "Exported sequence window view SVG ({}) to '{}'",
-                    profile.label(),
-                    path_text
-                );
-            }
-            Err(e) => {
-                self.op_status = format!("Could not write view SVG '{}': {e}", path_text);
-            }
-        }
+        Ok(svg)
     }
 
     fn is_single_stranded_rna(&self) -> bool {

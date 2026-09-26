@@ -1079,9 +1079,6 @@ const CUTRUN_READ_REPORTS_SCHEMA: &str = "gentle.cutrun_read_reports.v1";
 const CUTRUN_READ_REPORT_SCHEMA: &str = "gentle.cutrun_read_report.v1";
 const CUTRUN_READ_COVERAGE_EXPORT_SCHEMA: &str = "gentle.cutrun_read_coverage_export.v1";
 const CUTRUN_REGULATORY_SUPPORT_SCHEMA: &str = "gentle.cutrun_regulatory_support.v1";
-#[cfg(debug_assertions)]
-const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 1_000;
-#[cfg(not(debug_assertions))]
 const RNA_READ_PROGRESS_UPDATE_EVERY_READS: usize = 10_000;
 const RNA_READ_ALIGNMENT_PROGRESS_UPDATE_EVERY_READS: usize = 1;
 const RNA_READ_PROGRESS_UPDATE_MAX_INTERVAL: Duration = Duration::from_secs(2);

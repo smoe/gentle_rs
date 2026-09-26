@@ -114,7 +114,10 @@ held to the interactive timing table.
 
 For native acceptance, **measure the actual packaged GUI and declare its profile**,
 not the `bench-audit` harness. Since 2026-09-25, internal installers use `dev`;
-final releases use `release`. The historical "release-like" label still means
+the owner's 2026-09-26 [optimization pause](release.md) extends this to all
+artifact builds until the first successful artifact cycle. Restoring optimized
+packaging is a separate recipe change, not a version-label side effect.
+The historical "release-like" label still means
 the optimized release profile, not an unoptimized interim package. Keep those
 evidence classes and their agreed budgets separate; neither certifies the
 other and slower development binaries do not silently relax latency gates.

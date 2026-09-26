@@ -8943,6 +8943,43 @@ fn linear_vertical_fit_delta_clamp_limits_extreme_pan() {
 }
 
 #[test]
+fn view_svg_exports_omit_build_diagnostics() {
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(50)).expect("synthetic sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("profile_parity".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("profile_parity".to_string()), Some(engine));
+    area.primary_map_mode = PrimaryMapMode::Standard;
+    area.show_map = true;
+    area.show_sequence = true;
+    area.last_linear_map_width_px = 1280.0;
+    area.set_linear_viewport(0, 200);
+
+    for profile in [
+        ViewSvgExportProfile::Screen,
+        ViewSvgExportProfile::WideContext,
+        ViewSvgExportProfile::PrintA3Landscape,
+    ] {
+        let svg = area
+            .compose_active_view_svg(profile)
+            .expect("compose view SVG");
+        assert!(svg.contains("profile_parity"));
+        assert!(svg.contains("map=linear"));
+        assert!(svg.contains("linear view 1..200"));
+        assert!(svg.contains("GENtle view export"));
+        assert!(!svg.contains("debug tiers"), "{}", profile.label());
+        assert!(!svg.contains("standard&lt;="), "{}", profile.label());
+        assert_eq!(
+            svg,
+            area.compose_active_view_svg(profile)
+                .expect("repeat export")
+        );
+    }
+}
+
+#[test]
 fn view_svg_export_profiles_scale_canvas_and_context() {
     let screen =
         MainAreaDna::view_svg_export_layout(ViewSvgExportProfile::Screen, 1280.0, true, true);

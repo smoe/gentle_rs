@@ -3067,23 +3067,6 @@ impl RenderDnaLinear {
             },
             Color32::from_gray(110),
         );
-        if cfg!(debug_assertions) {
-            painter.text(
-                Pos2::new(self.area.right() - 6.0, self.area.top() + 73.0),
-                Align2::RIGHT_TOP,
-                format!(
-                    "tiers: std<= {:.2} hel<= {:.2} cond<= {:.2}",
-                    status.routing.tier_standard_max_density,
-                    status.routing.tier_helical_max_density,
-                    status.routing.tier_condensed_max_density
-                ),
-                FontId {
-                    size: 9.0,
-                    family: FontFamily::Monospace,
-                },
-                Color32::from_gray(110),
-            );
-        }
     }
 
     fn draw_array_color_legend(&self, painter: &egui::Painter) {
@@ -5639,6 +5622,32 @@ mod tests {
         assert!(!status.bases_visible());
         assert!(status.decision_reason_text().contains("disabled"));
         assert!(renderer.should_draw_backbone(viewport));
+    }
+
+    #[test]
+    fn linear_map_header_omits_build_diagnostics() {
+        let renderer = test_renderer(200);
+        let ctx = egui::Context::default();
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(renderer.area),
+            ..Default::default()
+        });
+        renderer.draw_name_and_length(
+            &ctx.layer_painter(egui::LayerId::background()),
+            test_viewport(0, 200),
+        );
+        let output = crate::egui_compat::end_test_pass(&ctx);
+        let labels = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::Shape::Text(text) => Some(text.galley.job.text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(labels.iter().any(|label| label.contains("200 bp")));
+        assert!(labels.iter().any(|label| label.starts_with("DNA MODE:")));
+        assert!(labels.iter().all(|label| !label.contains("tiers:")));
     }
 
     #[test]

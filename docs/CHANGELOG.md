@@ -1,5 +1,39 @@
 # GENtle Changelog
 
+## 2026-09-26 - Pause Optimization Across Artifact Builds
+
+- Select unoptimized `dev` for every native installer version label, not only
+  internal prereleases. Keep build/bundle/staging paths, `-dev` archive names
+  and fail-closed receipts aligned; reject optimized candidate settings early.
+- Replace Docker's remaining `release-fast` build with `dev`, staging from
+  `target/debug`. Apply the cold `incremental=false`, `debug=0` recipe and record
+  it in the container receipt. Build `rnapkin` and `cargo-bundle` with
+  `cargo install --debug -j1` as well. GUI/JS/Lua exclusions remain unchanged.
+- Preserve optimized profile definitions and Glen's benchmark ladder. Record
+  restoration of release optimization as a separate follow-up after the first
+  successful native/container artifact cycle, not an automatic tag side effect.
+- Extend the existing early CI packaging-policy checks for all version labels,
+  helper commands, container output paths and receipts. No local builds or tests
+  run at the owner's request; native/container acceptance remains pending.
+
+## 2026-09-26 - Profile-Independent Normal Presentation
+
+- Remove debug-only routing-tier text from the live linear DNA map, view-SVG
+  menu and SVG header, including the extra exported header offset. Internal
+  `dev` packages now follow the normal release presentation instead of selecting
+  content from `debug_assertions`.
+- Use the same 10,000-read/two-second phase-1 RNA progress policy in every
+  profile, retaining initial/final events and phase-2 per-read alignment updates.
+  Keep assertions, overflow checks, explicit profiler metadata and the cheap
+  cold-package recipe unchanged; this is not a speed or failure-mode parity
+  claim and does not enable optimization.
+- Separate view-SVG composition from the save dialog to test real screen,
+  wide-context and print exports. Add a painted-header regression and a fast
+  package-policy guard; adapt the existing histogram integration test to cross
+  the shared read-count boundary without a profile-specific exception.
+- No local builds or tests run at the owner's request. Native CI and package
+  acceptance remain pending; no tag, dispatch or version rollover is included.
+
 ## 2026-09-25 - Complete Motif Guide Query Coverage
 
 - Restore tutorial 08.13's explicit use case, `Compare promoter/TSS traces
