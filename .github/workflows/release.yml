@@ -147,7 +147,22 @@ jobs:
 
       - name: Install cargo-bundle
         if: runner.os == 'macOS'
-        run: cargo install cargo-bundle --locked --debug -j1
+        run: cargo install cargo-bundle --version 0.12.0 --locked --debug -j1
+
+      - name: Preflight macOS bundle metadata without compiling GENtle
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo bundle --version
+          probe_target="$(mktemp -d "$RUNNER_TEMP/gentle-bundle-preflight.XXXXXX")"
+          trap 'rm -rf "$probe_target"' EXIT
+          CARGO_TARGET_DIR="$probe_target" cargo bundle --profile "$NATIVE_PROFILE" \
+            --bin gentle --format osx --binary-path /usr/bin/true
+          python3 scripts/package_desktop.py verify-macos-bundle --repo . \
+            --app-bundle "$probe_target/$NATIVE_TARGET_SUBDIR/bundle/osx/GENtle.app" \
+            --binary /usr/bin/true
+          git diff --exit-code -- Cargo.lock Cargo.toml
 
       - name: Build locked native binaries
         shell: bash
@@ -217,7 +232,7 @@ jobs:
 
       - name: Build macOS bundle
         if: runner.os == 'macOS'
-        run: cargo bundle --profile "$NATIVE_PROFILE" --bin gentle --format ${{ matrix.bundle_format }}
+        run: cargo bundle --profile "$NATIVE_PROFILE" --bin gentle --format ${{ matrix.bundle_format }} --binary-path "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle"
 
       - name: Inspect macOS bundle outputs
         if: runner.os == 'macOS'
@@ -233,6 +248,9 @@ jobs:
             echo "Expected bundle directory ${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/osx after cargo bundle"
             exit 1
           fi
+          python3 scripts/package_desktop.py verify-macos-bundle --repo . \
+            --app-bundle "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/bundle/osx/GENtle.app" \
+            --binary "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle"
 
       - name: Inspect Windows build outputs
         if: runner.os == 'Windows'

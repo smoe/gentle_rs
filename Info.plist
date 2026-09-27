@@ -1,20 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>GENtle</string>
-    <key>CFBundleDisplayName</key>
-    <string>GENtle</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.1</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>NSHumanReadableCopyright</key>
-    <string>Cross-platform DNA cloning workbench</string>
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>GENtle can capture a window you explicitly select so its Agent Assistant can help diagnose a visible problem.</string>
-    <key>CFBundleIconFile</key>
-    <string>icon</string>
-</dict>
-</plist>
+<!-- cargo-bundle inserts this fragment inside its generated Info.plist dict.
+     Keep generated name, version, executable and icon keys in Cargo metadata. -->
+<key>NSScreenCaptureUsageDescription</key>
+<string>GENtle can capture a window you explicitly select so its Agent Assistant can help diagnose a visible problem.</string>

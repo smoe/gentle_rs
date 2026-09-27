@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-09-27 - Repair The macOS Bundler Contract
+
+- Release run `36273325748`, macOS job `108491306694`, installed unpinned
+  `cargo-bundle 0.12.0` and rejected the obsolete root `osx_info_plist_exts`
+  field after compilation. Pin that tool version, preserving unoptimized
+  helper installation and the current `dev` package recipe.
+- Put bundle settings under the explicit `bin.gentle` selection and macOS
+  options under `.osx`; remove the unsupported `windows` table (Windows icons
+  still come from `build.rs`). Replace the full extension plist with only the
+  consent-text fragment so generated version, executable and icon keys remain
+  authoritative rather than being nested or overwritten by stale values.
+- Add a real-tool macOS preflight before the expensive application build,
+  using an isolated target directory and a prebuilt system executable. Verify
+  generated metadata, consent, icon and binary bytes, then repeat validation
+  on the real bundle. Package the previously built GENtle binary directly,
+  without invoking another Cargo build.
+- Add offline metadata, bundle-output and workflow-order regressions to the
+  existing early CI packaging gate. No local builds or tests run at the
+  owner's request; native preflight, DMG and extracted-package acceptance
+  remain pending. No tag or published asset is changed.
+
 ## 2026-09-26 - Pause Optimization Across Artifact Builds
 
 - Select unoptimized `dev` for every native installer version label, not only

@@ -9,6 +9,7 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
+import tomllib
 
 
 BINARIES = (
@@ -36,6 +37,49 @@ def digest(path: Path) -> str:
 
 def files(root: Path) -> list[Path]:
     return sorted(p for p in root.rglob("*") if p.is_file() and p != root / "SHA256SUMS")
+
+
+def verify_macos_bundle(repo: Path, app_bundle: Path, binary: Path) -> None:
+    """Check real cargo-bundle output, using either a preflight or built binary."""
+    manifest = tomllib.loads((repo / "Cargo.toml").read_text(encoding="utf-8"))
+    bundle = manifest["package"]["metadata"]["bundle"]["bin"]["gentle"]
+    version = manifest["workspace"]["package"]["version"]
+    expected = {
+        "CFBundleName": bundle["name"], "CFBundleDisplayName": bundle["name"],
+        "CFBundleIdentifier": bundle["identifier"], "CFBundleExecutable": "gentle",
+        "CFBundleShortVersionString": version, "CFBundlePackageType": "APPL",
+        "NSHumanReadableCopyright": bundle["copyright"],
+    }
+    for relative in bundle["osx"]["info_plist_exts"]:
+        fragment = (repo / relative).read_text(encoding="utf-8")
+        extra = plistlib.loads(
+            f'<plist version="1.0"><dict>{fragment}</dict></plist>'.encode("utf-8"))
+        if any(key in expected or key in ("CFBundleIconFile", "CFBundleVersion") for key in extra):
+            raise ValueError("Plist extensions must not override generated bundle identity")
+        expected.update(extra)
+    if not expected.get("NSScreenCaptureUsageDescription"):
+        raise ValueError("Missing screen-capture consent description")
+    with (app_bundle / "Contents/Info.plist").open("rb") as stream:
+        info = plistlib.load(stream)
+    for key, value in expected.items():
+        if info.get(key) != value:
+            raise ValueError(f"Bundle metadata mismatch: {key}")
+    if not info.get("CFBundleVersion"):
+        raise ValueError("Missing generated bundle build version")
+    icon = info.get("CFBundleIconFile")
+    resources = (app_bundle / "Contents/Resources").resolve()
+    if not isinstance(icon, str) or not icon or Path(icon).name != icon:
+        raise ValueError("Missing or invalid declared bundle icon")
+    icon_path = resources / icon
+    if not icon_path.suffix:
+        icon_path = icon_path.with_suffix(".icns")
+    if (not icon_path.is_file() or icon_path.stat().st_size == 0
+            or not icon_path.resolve().is_relative_to(resources)):
+        raise ValueError("Missing or escaping declared bundle icon")
+    executable = app_bundle / "Contents/MacOS/gentle"
+    if (not binary.is_file() or binary.stat().st_size == 0
+            or not executable.is_file() or digest(executable) != digest(binary)):
+        raise ValueError("Bundle executable differs from the supplied prebuilt binary")
 
 
 def stage(repo: Path, binaries: Path, destination: Path, platform: str,
@@ -176,9 +220,13 @@ def main() -> None:
     checking.add_argument("--checkout", type=Path, required=True)
     for command in (staging, checking):
         command.add_argument("--platform", choices=("macos", "windows", "linux"), required=True)
+    bundle_check = commands.add_parser("verify-macos-bundle")
+    bundle_check.add_argument("--repo", type=Path, required=True)
+    bundle_check.add_argument("--app-bundle", type=Path, required=True)
+    bundle_check.add_argument("--binary", type=Path, required=True)
     args = vars(parser.parse_args())
     command = args.pop("command")
-    (stage if command == "stage" else smoke)(**args)
+    {"stage": stage, "smoke": smoke, "verify-macos-bundle": verify_macos_bundle}[command](**args)
 
 
 if __name__ == "__main__":

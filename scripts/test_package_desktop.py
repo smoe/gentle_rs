@@ -18,6 +18,7 @@ import textwrap
 import tomllib
 import unittest
 from unittest.mock import patch
+from xml.parsers.expat import ExpatError
 
 from scripts import package_desktop as package
 
@@ -254,7 +255,119 @@ class DesktopPackageTests(unittest.TestCase):
                 self.smoke(root, "windows")
 
 
+class MacosBundleMetadataTests(unittest.TestCase):
+    """Synthetic bundle bytes; real candidate metadata, no compiler or app execution."""
+
+    def setUp(self) -> None:
+        self.repo = Path(__file__).resolve().parents[1]
+        manifest = tomllib.loads((self.repo / "Cargo.toml").read_text(encoding="utf-8"))
+        self.temp = tempfile.TemporaryDirectory(prefix="synthetic macos bundle ")
+        self.addCleanup(self.temp.cleanup)
+        root = Path(self.temp.name)
+        self.app = root / "GENtle.app"
+        (self.app / "Contents/MacOS").mkdir(parents=True)
+        (self.app / "Contents/Resources").mkdir()
+        self.binary = root / "prebuilt gentle"
+        self.binary.write_bytes(b"synthetic prebuilt executable\n")
+        shutil.copy2(self.binary, self.app / "Contents/MacOS/gentle")
+        (self.app / "Contents/Resources/GENtle.icns").write_bytes(b"synthetic icon")
+        self.info = {
+            "CFBundleName": "GENtle", "CFBundleDisplayName": "GENtle",
+            "CFBundleIdentifier": "com.example.gentle", "CFBundleExecutable": "gentle",
+            "CFBundleShortVersionString": manifest["workspace"]["package"]["version"],
+            "CFBundlePackageType": "APPL", "CFBundleVersion": "20260927.010203",
+            "CFBundleIconFile": "GENtle.icns",
+            "NSHumanReadableCopyright": "Cross-platform DNA cloning workbench",
+            "NSScreenCaptureUsageDescription": (
+                "GENtle can capture a window you explicitly select so its Agent Assistant "
+                "can help diagnose a visible problem."),
+        }
+        self.write_plist()
+
+    def write_plist(self) -> None:
+        (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps(self.info))
+
+    def verify(self) -> None:
+        package.verify_macos_bundle(self.repo, self.app, self.binary)
+
+    def test_valid_bundle_preserves_candidate_identity_consent_icon_and_binary(self) -> None:
+        self.verify()
+
+    def test_missing_or_stale_generated_fields_fail(self) -> None:
+        for key in list(self.info):
+            for replacement in (None, "stale"):
+                # Build numbers are generated, not tied to a fixed timestamp.
+                if key == "CFBundleVersion" and replacement is not None:
+                    continue
+                with self.subTest(key=key, replacement=replacement):
+                    original = self.info.pop(key)
+                    if replacement is not None:
+                        self.info[key] = replacement
+                    self.write_plist()
+                    with self.assertRaises(ValueError):
+                        self.verify()
+                    self.info[key] = original
+
+    def test_bundle_must_contain_the_supplied_binary_bytes(self) -> None:
+        (self.app / "Contents/MacOS/gentle").write_bytes(b"different build\n")
+        with self.assertRaisesRegex(ValueError, "prebuilt binary"):
+            self.verify()
+
+    def test_missing_or_escaping_icon_fails(self) -> None:
+        for icon in ("missing.icns", "../Info.plist", ""):
+            with self.subTest(icon=icon):
+                self.info["CFBundleIconFile"] = icon
+                self.write_plist()
+                with self.assertRaisesRegex(ValueError, "bundle icon"):
+                    self.verify()
+
+    def test_full_plist_cannot_be_inserted_as_an_extension(self) -> None:
+        # Reproduce the old extension boundary: an XML document inside a dict.
+        nested = b'<plist version="1.0"><dict>' + plistlib.dumps(self.info) + b'</dict></plist>'
+        (self.app / "Contents/Info.plist").write_bytes(nested)
+        with self.assertRaises(ExpatError):
+            self.verify()
+
+
 class WorkflowWiringTests(unittest.TestCase):
+    def test_macos_metadata_targets_the_explicit_binary_and_uses_the_pinned_schema(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        manifest = tomllib.loads((repo / "Cargo.toml").read_text(encoding="utf-8"))
+        root = manifest["package"]["metadata"]["bundle"]
+        # cargo-bundle 0.12.0 rejects old flat osx_* / windows keys, and --bin
+        # does not inherit the package-level bundle settings.
+        self.assertEqual(set(root), {"bin"})
+        self.assertEqual(set(root["bin"]), {"gentle"})
+        bundle = root["bin"]["gentle"]
+        self.assertEqual(set(bundle), {"name", "identifier", "icon", "resources", "copyright", "osx"})
+        self.assertEqual(bundle["osx"], {"info_plist_exts": ["Info.plist"]})
+        self.assertEqual(bundle["name"], "GENtle")
+        self.assertEqual(bundle["icon"], ["assets/icon.icns"])
+        fragment = (repo / "Info.plist").read_text(encoding="utf-8")
+        extensions = plistlib.loads(
+            f'<plist version="1.0"><dict>{fragment}</dict></plist>'.encode("utf-8"))
+        self.assertEqual(set(extensions), {"NSScreenCaptureUsageDescription"})
+        self.assertIn("explicitly select", extensions["NSScreenCaptureUsageDescription"])
+        self.assertIn('res.set_icon("assets/icon.ico")', (repo / "build.rs").read_text())
+
+    def test_actual_macos_bundler_preflight_precedes_the_expensive_build(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        workflow = (repo / ".github/workflows/release.yml").read_text()
+        name = "- name: Preflight macOS bundle metadata without compiling GENtle\n"
+        self.assertLess(workflow.index("- name: Install cargo-bundle\n"), workflow.index(name))
+        self.assertLess(workflow.index(name), workflow.index("- name: Build locked native binaries\n"))
+        step = workflow.split(name, 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("if: runner.os == 'macOS'", step)
+        self.assertIn('CARGO_TARGET_DIR="$probe_target" cargo bundle --profile "$NATIVE_PROFILE"', step)
+        self.assertIn("--bin gentle --format osx --binary-path /usr/bin/true", step)
+        self.assertIn("scripts/package_desktop.py verify-macos-bundle --repo .", step)
+        self.assertIn('--app-bundle "$probe_target/$NATIVE_TARGET_SUBDIR/bundle/osx/GENtle.app"', step)
+        self.assertIn("--binary /usr/bin/true", step)
+        self.assertIn("git diff --exit-code -- Cargo.lock Cargo.toml", step)
+        inspect = workflow.split("- name: Inspect macOS bundle outputs\n", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn("scripts/package_desktop.py verify-macos-bundle --repo .", inspect)
+        self.assertIn('--binary "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle"', inspect)
+
     def test_native_release_disables_all_lto_without_changing_custom_profiles(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
@@ -311,7 +424,7 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn('case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in', workflow)
         self.assertIn("dev:debug) ;;", workflow)
         self.assertNotIn("release:release)", workflow)
-        self.assertIn("run: cargo install cargo-bundle --locked --debug -j1", workflow)
+        self.assertIn("run: cargo install cargo-bundle --version 0.12.0 --locked --debug -j1", workflow)
         self.assertNotIn("script-interfaces", workflow)
         self.assertNotIn("CARGO_PROFILE_RELEASE_", workflow)
         self.assertNotIn("RUSTFLAGS:", workflow)
@@ -422,11 +535,14 @@ class WorkflowWiringTests(unittest.TestCase):
                     result = subprocess.run(
                         [shutil.which("bash"), "-c", script], cwd=root,
                         env={**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
-                             "NATIVE_PROFILE": profile},
+                             "NATIVE_PROFILE": profile, "CARGO_TARGET_DIR": str(root / "target dir"),
+                             "NATIVE_TARGET_SUBDIR": "debug" if profile == "dev" else "release"},
                         capture_output=True, text=True, check=True, timeout=30,
                     )
                     self.assertEqual(result.stdout.splitlines(),
-                                     ["bundle", "--profile", profile, "--bin", "gentle", "--format", "osx"])
+                                     ["bundle", "--profile", profile, "--bin", "gentle", "--format", "osx",
+                                      "--binary-path", str(root / "target dir" /
+                                                           ("debug" if profile == "dev" else "release") / "gentle")])
 
     def test_release_stages_and_checks_each_platform_after_extraction(self) -> None:
         repo = Path(__file__).resolve().parents[1]

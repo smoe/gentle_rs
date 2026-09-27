@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-26 - Integrate the TSS presentation, feature-tree reuse and diagnostic changes while preserving the temporary unoptimized artifact policy. The September 24 `.11` ledger at `ffe5c637` records Windows success, Unix native failures and headless container success, not acceptance of later candidates. Keep the [`.12` DNA-feature latency aim](#12-priorities) separate and do not roll the package version yet.
+Last session: 2026-09-27 - Repair the macOS cargo-bundle metadata contract and add pre-build validation, preserving the temporary unoptimized artifact policy. Native packaging verification remains pending. The September 24 `.11` ledger at `ffe5c637` records historical results, not acceptance of later candidates. Keep the [`.12` DNA-feature latency aim](#12-priorities) separate and do not roll the package version yet.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -70,7 +70,7 @@ Release acceptance:
 Release cut line:
 
 - Carry the unrecorded `.10` acceptance forward without erasing its historical ledger; bind each new verdict to the selected `.11` SHA.
-- Packaging still needs Unix native CI proof. Retain the published `.11` tag; carry Glen's scientific/GUI acceptance items forward and require his readiness verdict plus owner approval for any later package publication.
+- Packaging still needs Unix native CI proof, including the [pinned macOS bundler preflight](release.md), DMG and extracted-package smokes. Run `36273325748` at `0467867c` failed on the old metadata schema; rerunning it cannot pick up this main-only repair. No local builds/tests were run. Retain the published `.11` tag; carry Glen's scientific/GUI acceptance items forward and require his readiness verdict plus owner approval for later package publication.
 
 Outstanding acceptance scope (including [native Windows repairs and the expanded input audit](testing.md#september-2026-failure-analysis), and [independent anchor-to-assembly authority](architecture.md#source-coherent-locus-transcript-presentation)):
 - Glen reports five-gene export QC at `d978b0c4` with LOCUS-column fix `d37bd427`; recheck the [selected annotated downloads](integrated_locus_tss_profiles.md), receipts and raw signal/motif provenance at the final candidate. Before offering EMBL, re-export into fresh directories and independently compare GenBank/EMBL/FASTA sequences and annotations. [Synthetic format-parity coverage](sequence_format_parity.md) does not replace his September 13 real-data acceptance.

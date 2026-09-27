@@ -26,9 +26,27 @@ switch, tag move or publication is triggered by success.
 Compilation and macOS bundling use `--profile dev`, one Cargo build job and
 `target/debug`; JS/Lua stay excluded. Both native and container cold builds use
 `incremental=false` and `debug=0`, retaining development assertions and overflow
-checks. The Rust-built packaging/rendering helpers (`cargo-bundle` and pinned
+checks. The Rust-built packaging/rendering helpers (pinned `cargo-bundle` and
 `rnapkin`) also use `cargo install --debug -j1`, not the default optimized tool
 profile. Distribution-provided runtime dependencies are unchanged.
+
+The macOS bundler is pinned to `cargo-bundle 0.12.0`. Its `--bin gentle`
+selection reads `[package.metadata.bundle.bin.gentle]`, not the package-level
+defaults; macOS options belong in its `.osx` subtable. `Info.plist` in the source
+tree is an extension fragment containing the screen-capture consent text, not
+a complete plist document. The bundler generates the name, current package
+version, executable and icon keys. Windows icons remain owned by `build.rs`
+and the Windows packaging steps, not a cargo-bundle `windows` table.
+
+Before compiling GENtle, the macOS installer job runs the pinned bundler over
+the real manifest with `/usr/bin/true` as a prebuilt stand-in, in a disposable
+target directory. `package_desktop.py verify-macos-bundle` checks the resulting
+plist, consent text, icon and exact copied binary. This is a packaging-contract
+preflight, not a GENtle launch or acceptance test. The final bundling call uses
+`--binary-path` for the already-built `target/debug/gentle`, avoiding another
+Cargo build, and passes the same validation before staging. Keep the pin,
+metadata, extension and early packaging-policy tests aligned when upgrading
+the tool. Native extracted-package smokes remain required.
 
 The optimized `release`, `release-fast` and `bench-audit` definitions remain in
 `Cargo.toml`, but artifact workflows do not select them. Glen's benchmark ladder
