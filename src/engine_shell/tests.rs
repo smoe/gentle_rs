@@ -47546,3 +47546,61 @@ fn tss_profile_ui_intent_is_explicit_and_non_mutating() {
     assert!(parse_shell_line("ui open tss-view --report").is_err());
     assert!(parse_shell_line("ui open tss-view --unknown report.json").is_err());
 }
+
+#[test]
+fn tss_local_score_ui_intent_keeps_exact_accessions_and_own_settings() {
+    for action in ["open", "focus"] {
+        let command = parse_shell_line(&format!(
+            "ui {action} tss-view --local-score MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10 --keep-negative"
+        ))
+        .unwrap();
+        match &command {
+            ShellCommand::UiTssLocalScore {
+                action: parsed_action,
+                matrix_ids,
+                score_kind,
+                clip_negative,
+            } => {
+                assert_eq!(parsed_action.as_str(), action);
+                assert_eq!(matrix_ids, &["MA0861.2", "MA0024.3", "MA1961.2"]);
+                assert_eq!(score_kind.as_str(), "llr_background_tail_log10");
+                assert!(!clip_negative, "--keep-negative must retain signed scores");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+        let mut engine = GentleEngine::default();
+        let result = execute_shell_command(&mut engine, &command).unwrap();
+        // A recorded intent never scores or mutates state on its own.
+        assert!(!result.state_changed);
+        assert_eq!(result.output["applied"], false);
+        assert_eq!(result.output["ui_intent"]["target"], "tss-view");
+        assert_eq!(result.output["ui_intent"]["matrix_ids"][0], "MA0861.2");
+        assert_eq!(result.output["ui_intent"]["clip_negative"], false);
+    }
+    // Clipping is the default, and a single accession needs no comma.
+    match parse_shell_line("ui open tss-view --local-score MA0861.2").unwrap() {
+        ShellCommand::UiTssLocalScore {
+            matrix_ids,
+            clip_negative,
+            ..
+        } => {
+            assert_eq!(matrix_ids, &["MA0861.2"]);
+            assert!(clip_negative);
+        }
+        other => panic!("unexpected command: {other:?}"),
+    }
+    assert!(parse_shell_line("ui close tss-view --local-score MA0861.2").is_err());
+    assert!(parse_shell_line("ui open tss-view --local-score").is_err());
+    assert!(parse_shell_line("ui open tss-view --local-score MA0861.2 --bogus").is_err());
+    assert!(parse_shell_line("ui open tss-view --local-score MA0861.2 --score-kind nope").is_err());
+    // The introspected target advertises the new argument alongside the old ones.
+    let target = UiIntentTarget::parse("tss-view").unwrap();
+    assert!(target.arguments().iter().any(|a| a.name == "matrix_ids"));
+    assert!(
+        target
+            .arguments()
+            .iter()
+            .find(|a| a.name == "matrix_ids")
+            .is_some_and(|a| a.detail.contains("refused") && !a.required)
+    );
+}

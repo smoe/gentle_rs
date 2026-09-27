@@ -1739,6 +1739,13 @@ pub enum ShellCommand {
         action: UiIntentAction,
         report_path: String,
     },
+    /// Explicit local scoring for the active annotated TSS viewer; its own settings.
+    UiTssLocalScore {
+        action: UiIntentAction,
+        matrix_ids: Vec<String>,
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+    },
     UiSequenceSelection {
         seq_id: String,
         start_0based: Option<usize>,
@@ -9358,6 +9365,17 @@ impl ShellCommand {
                 "request GUI {} for active TSS view with profile report '{}'",
                 action.as_str(),
                 report_path
+            ),
+            Self::UiTssLocalScore {
+                action,
+                matrix_ids,
+                score_kind,
+                ..
+            } => format!(
+                "request GUI {} for active TSS view with locally computed {} curves for {}",
+                action.as_str(),
+                score_kind.as_str(),
+                matrix_ids.join(", ")
             ),
             Self::UiSequenceWindow { action, seq_id } => {
                 format!(
@@ -40751,10 +40769,59 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                     .is_some_and(|s| UiIntentTarget::parse(s) == Some(UiIntentTarget::TssView))
                 && tokens.len() > 3 =>
         {
-            if tokens.len() != 5 || tokens[4].trim().is_empty() {
-                return Err("ui open|focus|close tss-view --collection COLLECTION_ID, or ui open|focus tss-view --report REPORT_JSON".into());
-            }
+            const TSS_VIEW_USAGE: &str = "ui open|focus|close tss-view --collection COLLECTION_ID, ui open|focus tss-view --report REPORT_JSON, or ui open|focus tss-view --local-score ACCESSION[,ACCESSION...] [--score-kind KIND] [--keep-negative]";
             let action = UiIntentAction::parse(action_raw).unwrap();
+            if tokens[3] == "--local-score" {
+                if matches!(action, UiIntentAction::Close) {
+                    return Err("ui close tss-view --local-score is not supported; use ui close tss-view to return to the Standard map".into());
+                }
+                let raw = tokens
+                    .get(4)
+                    .filter(|s| !s.trim().is_empty())
+                    .ok_or(TSS_VIEW_USAGE)?;
+                // Exact accessions only; the viewer refuses aliases, ALL and consensus fallback.
+                let matrix_ids = raw
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect::<Vec<_>>();
+                let mut score_kind = TfbsScoreTrackValueKind::default();
+                let mut clip_negative = true;
+                let mut idx = 5;
+                while idx < tokens.len() {
+                    match tokens[idx].as_str() {
+                        "--score-kind" => {
+                            idx += 1;
+                            let raw = tokens
+                                .get(idx)
+                                .ok_or("--score-kind requires a value")?
+                                .clone();
+                            score_kind = parse_tfbs_score_track_value_kind_shell(
+                                &raw,
+                                "ui open tss-view --local-score",
+                            )?;
+                        }
+                        "--keep-negative" => clip_negative = false,
+                        "--clip-negative" => clip_negative = true,
+                        other => {
+                            return Err(format!(
+                                "Unknown ui tss-view --local-score option '{other}'. {TSS_VIEW_USAGE}"
+                            ));
+                        }
+                    }
+                    idx += 1;
+                }
+                return Ok(ShellCommand::UiTssLocalScore {
+                    action,
+                    matrix_ids,
+                    score_kind,
+                    clip_negative,
+                });
+            }
+            if tokens.len() != 5 || tokens[4].trim().is_empty() {
+                return Err(TSS_VIEW_USAGE.into());
+            }
             if tokens[3] == "--report" {
                 if matches!(action, UiIntentAction::Close) {
                     return Err("ui close tss-view --report is not supported; use ui close tss-view to return to the Standard map".into());
@@ -40765,7 +40832,7 @@ fn parse_ui_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 });
             }
             if tokens[3] != "--collection" {
-                return Err("ui open|focus|close tss-view --collection COLLECTION_ID, or ui open|focus tss-view --report REPORT_JSON".into());
+                return Err(TSS_VIEW_USAGE.into());
             }
             Ok(ShellCommand::UiTssCollection {
                 action,
@@ -42944,6 +43011,112 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::Op {
                 payload: serde_json::to_string(&Operation::ListTssCollections {})
                     .map_err(|e| e.to_string())?,
+            })
+        }
+        "tss-view-svg" => {
+            // Same native presentation the GUI draws; attachments stay explicit.
+            if tokens.len() < 4 {
+                return Err("promoters tss-view-svg SEQ_ID OUTPUT.svg [--report REPORT_JSON] [--motif ACCESSION]... [--score-kind KIND] [--keep-negative] [--span START..END] [--width PX]".into());
+            }
+            let seq_id = tokens[2].clone();
+            let path = tokens[3].clone();
+            let mut report: Option<String> = None;
+            let mut local_motifs: Vec<String> = vec![];
+            let mut score_kind = TfbsScoreTrackValueKind::default();
+            let mut clip_negative = true;
+            let mut start_0based: Option<usize> = None;
+            let mut end_0based_exclusive: Option<usize> = None;
+            let mut width_px: Option<u32> = None;
+            let mut idx = 4;
+            while idx < tokens.len() {
+                match tokens[idx].as_str() {
+                    "--report" => {
+                        idx += 1;
+                        report = Some(
+                            tokens
+                                .get(idx)
+                                .filter(|s| !s.trim().is_empty())
+                                .ok_or("--report requires REPORT_JSON")?
+                                .clone(),
+                        );
+                    }
+                    "--motif" => {
+                        idx += 1;
+                        let raw = tokens
+                            .get(idx)
+                            .filter(|s| !s.trim().is_empty())
+                            .ok_or("--motif requires an exact full-PFM accession")?;
+                        // Accept repeated flags and comma lists; never expand to ALL.
+                        local_motifs.extend(
+                            raw.split(',')
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string),
+                        );
+                    }
+                    "--score-kind" => {
+                        idx += 1;
+                        let raw = tokens
+                            .get(idx)
+                            .ok_or("--score-kind requires a value")?
+                            .clone();
+                        score_kind = parse_tfbs_score_track_value_kind_shell(
+                            &raw,
+                            "promoters tss-view-svg",
+                        )?;
+                    }
+                    "--keep-negative" => clip_negative = false,
+                    "--clip-negative" => clip_negative = true,
+                    "--span" => {
+                        idx += 1;
+                        let raw = tokens.get(idx).ok_or("--span requires START..END")?;
+                        let (a, b) = raw
+                            .split_once("..")
+                            .ok_or("--span expects local 1-based START..END")?;
+                        let a: usize = a
+                            .trim()
+                            .parse()
+                            .map_err(|_| "--span START must be a positive integer")?;
+                        let b: usize = b
+                            .trim()
+                            .parse()
+                            .map_err(|_| "--span END must be a positive integer")?;
+                        if a == 0 || b < a {
+                            return Err("--span expects local 1-based START..END with START >= 1 and END >= START".into());
+                        }
+                        start_0based = Some(a - 1);
+                        end_0based_exclusive = Some(b);
+                    }
+                    "--width" => {
+                        idx += 1;
+                        width_px = Some(
+                            tokens
+                                .get(idx)
+                                .ok_or("--width requires a pixel count")?
+                                .trim()
+                                .parse()
+                                .map_err(|_| "--width must be an integer between 1000 and 5000")?,
+                        );
+                    }
+                    other => {
+                        return Err(format!("Unknown promoters tss-view-svg option '{other}'"));
+                    }
+                }
+                idx += 1;
+            }
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&Operation::ExportTssViewSvg {
+                    seq_id,
+                    path,
+                    report,
+                    local_motifs,
+                    score_kind,
+                    clip_negative,
+                    start_0based,
+                    end_0based_exclusive,
+                    width_px,
+                })
+                .map_err(|e| e.to_string())?,
             })
         }
         "tss-inventory" | "tss-materialize" | "tss-collection" | "tss-forget" => {
@@ -67264,6 +67437,26 @@ fn execute_ui_command(
                 "message": "UI intent recorded; the active annotated TSS viewer must validate and attach this report. No scoring or database query is performed."
             }),
         }),
+        ShellCommand::UiTssLocalScore {
+            action,
+            matrix_ids,
+            score_kind,
+            clip_negative,
+        } => Ok(ShellRunResult {
+            state_changed: false,
+            output: json!({
+                "schema": "gentle.ui_tss_local_score_intent.v1",
+                "applied": false,
+                "ui_intent": {
+                    "target": "tss-view",
+                    "action": action.as_str(),
+                    "matrix_ids": matrix_ids,
+                    "score_kind": score_kind.as_str(),
+                    "clip_negative": clip_negative
+                },
+                "message": "UI intent recorded; the active annotated TSS viewer computes these curves on its own worker with its own settings. Locally computed lanes never replace an attached report or imported evidence. For a headless result use promoters tss-view-svg SEQ_ID OUTPUT.svg --motif ACCESSION instead."
+            }),
+        }),
         ShellCommand::UiSplicingExpert {
             action,
             seq_id,
@@ -68232,6 +68425,7 @@ fn execute_shell_command_with_options_dispatch_inner(
             | ShellCommand::UiSplicingExpert { .. }
             | ShellCommand::UiTssCollection { .. }
             | ShellCommand::UiTssProfile { .. }
+            | ShellCommand::UiTssLocalScore { .. }
             | ShellCommand::UiSequenceSelection { .. }
             | ShellCommand::UiPreparedGenomes { .. }
             | ShellCommand::UiLatestPrepared { .. }
@@ -68940,6 +69134,7 @@ fn execute_shell_command_with_options_inner(
         | ShellCommand::UiSplicingExpert { .. }
         | ShellCommand::UiTssCollection { .. }
         | ShellCommand::UiTssProfile { .. }
+        | ShellCommand::UiTssLocalScore { .. }
         | ShellCommand::UiSequenceSelection { .. }
         | ShellCommand::UiPreparedGenomes { .. }
         | ShellCommand::UiLatestPrepared { .. } => execute_ui_command(engine, command, options)?,

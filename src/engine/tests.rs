@@ -24000,6 +24000,136 @@ fn test_genome_chromosome_matches_accepts_refseq_accessions_for_sex_and_mito_con
 }
 
 #[test]
+fn export_tss_view_svg_scores_exact_matrices_headless_and_refuses_plain_sequences() {
+    use gentle_protocol::tss_workspace::{TssInventoryRequest, TssMaterializeRequest};
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("dnp73.svg");
+    let mut engine = GentleEngine::new();
+    engine
+        .apply(Operation::LoadFile {
+            path: "test_files/tp73.ncbi.gb".to_string(),
+            as_id: Some("tp73_locus".to_string()),
+        })
+        .unwrap();
+    // A plain locus carries no annotated-TSS metadata and must fail closed.
+    let plain = engine.apply(Operation::ExportTssViewSvg {
+        seq_id: "tp73_locus".to_string(),
+        path: out.to_string_lossy().to_string(),
+        report: None,
+        local_motifs: vec!["MA0861.2".to_string()],
+        score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+        clip_negative: true,
+        start_0based: None,
+        end_0based_exclusive: None,
+        width_px: None,
+    });
+    assert!(
+        plain.is_err(),
+        "a locus without TSS metadata must be refused"
+    );
+    assert!(!out.exists(), "a refused export must not write a file");
+
+    let inventory = TssInventoryRequest {
+        seq_id: "tp73_locus".to_string(),
+        gene_query: "TP73".to_string(),
+        collection_id: "tp73_tss".to_string(),
+        upstream_bp: 500,
+        downstream_bp: 200,
+    };
+    let preview = engine
+        .apply(Operation::InspectTssInventory {
+            request: inventory.clone(),
+        })
+        .unwrap();
+    let report = preview.tss_inventory.expect("inventory report");
+    // The internal dNp73 start is the one with a complete upstream flank here.
+    let row = report
+        .rows
+        .iter()
+        .find(|row| row.genomic_tss.start_0based + 1 == 3_690_672)
+        .expect("annotated dNp73 start at 1:3690672");
+    assert_eq!(row.local_strand, "+");
+    // The P1/TAp73 start begins this excerpt, so its window is unavailable, not clipped.
+    assert!(report.rows.iter().any(|r| {
+        r.genomic_tss.start_0based + 1 == 3_652_516
+            && matches!(
+                r.availability,
+                gentle_protocol::tss_workspace::TssWindowAvailability::MissingFlanks
+            )
+    }));
+    let created = engine
+        .apply(Operation::MaterializeTssWindows {
+            request: TssMaterializeRequest {
+                inventory,
+                expected_approval_sha256: report.approval_sha256.clone(),
+                selected_tss_ids: vec![row.tss_id.clone()],
+            },
+        })
+        .unwrap();
+    let window = created.created_seq_ids.first().expect("one TSS window");
+
+    let result = engine
+        .apply(Operation::ExportTssViewSvg {
+            seq_id: window.clone(),
+            path: out.to_string_lossy().to_string(),
+            report: None,
+            local_motifs: vec![
+                "MA0861.2".to_string(),
+                "MA0024.3".to_string(),
+                "MA1961.2".to_string(),
+            ],
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            start_0based: None,
+            end_0based_exclusive: None,
+            width_px: None,
+        })
+        .unwrap();
+    assert!(
+        result
+            .messages
+            .iter()
+            .any(|m| m.contains("3 exact matrix accession"))
+    );
+    let svg = std::fs::read_to_string(&out).unwrap();
+    // Each factor keeps its own lane, exact accession and separate scale.
+    for (factor, accession) in [
+        ("TP73", "MA0861.2"),
+        ("E2F1", "MA0024.3"),
+        ("PATZ1", "MA1961.2"),
+    ] {
+        assert!(
+            svg.contains(&format!("Locally computed | {factor} | {accession}")),
+            "missing locally computed lane for {factor}"
+        );
+    }
+    // Genomic, TSS-relative and local coordinates stay aligned on the plus strand.
+    assert!(svg.contains("local 501 | TSS +0 bp | 1:3690672 (+)"));
+    assert!(svg.contains("local 1 | TSS -500 bp | 1:3690172 (+)"));
+    // Trailing positions without a complete motif window are marked, not scored as zero.
+    assert!(svg.contains("data-role=\"terminal-unavailable\""));
+    assert!(svg.contains("Unavailable is not zero"));
+
+    // An unknown accession is refused outright rather than silently dropped.
+    assert!(
+        engine
+            .apply(Operation::ExportTssViewSvg {
+                seq_id: window.clone(),
+                path: dir.path().join("bad.svg").to_string_lossy().to_string(),
+                report: None,
+                local_motifs: vec!["TP73".to_string()],
+                score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+                clip_negative: true,
+                start_0based: None,
+                end_0based_exclusive: None,
+                width_px: None,
+            })
+            .is_err(),
+        "a factor-name alias must not resolve to a matrix"
+    );
+}
+
+#[test]
 fn test_load_file_operation_genbank_region_anchor_enables_bed_import() {
     let mut engine = GentleEngine::new();
     let res = engine

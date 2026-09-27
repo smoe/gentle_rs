@@ -1,5 +1,47 @@
 # GENtle Changelog
 
+## 2026-09-27 - Agent Parity For Native TSS Scoring And Export
+
+- Add `Operation::ExportTssViewSvg` and `promoters tss-view-svg SEQ_ID
+  OUTPUT.svg [--report REPORT_JSON] [--motif ACCESSION]... [--score-kind KIND]
+  [--keep-negative] [--span START..END] [--width PX]`: a fully headless export
+  of the native annotated-TSS presentation, drawing exactly what the GUI's
+  **Export View SVG** draws for the same attachments. It decodes the annotated
+  window, optionally attaches a validated profile report and optionally computes
+  local curves, then writes atomically and reports the lane count, exported
+  local span and SVG SHA-256. A sequence without GENtle annotated-TSS metadata
+  is refused rather than guessed, and factor-name aliases do not resolve to a
+  matrix. `--score-kind` is not inherited from a viewer and falls back to the
+  route default, so it must be repeated per export.
+- Add `ui open|focus tss-view --local-score ACCESSION[,ACCESSION...]
+  [--score-kind KIND] [--keep-negative]`, mirroring the existing `--report`
+  intent. The GUI host adopts the request into the TSS view's own controls
+  before computing, so the displayed settings always describe the curves that
+  were produced; the separate TFBS panel and its caches stay untouched. The
+  intent is consumed exactly once and a repaint does not queue a second job.
+  Headless shells record `applied=false`. `matrix_ids` is registered as an
+  introspected `tss-view` intent argument.
+- Preserve the existing evidence-class separation: report-backed, locally
+  computed and imported DuckDB lanes keep separate, non-cross-calibrated
+  scales, and unavailable windows remain distinct from a scored zero.
+- Add tutorial 08.17, a real-locus walkthrough on the retained public TP73
+  RefSeq excerpt: recover its GenBank REGION anchor, preview all five annotated
+  starts (the P1/TAp73 start is reported `missing_flanks` because the excerpt
+  has no upstream flank), approve only the internal dNp73 start at 1:3690672,
+  then compute and export locally scored E2F1 `MA0024.3`, PATZ1 `MA1961.2` and
+  TP73 `MA0861.2` curves. Every step has GUI, Agent Assistant and inner-agent
+  parity; scoring and export also run fully headless. No new fixture is added.
+- Tests: headless export over the real TP73 record (lane classes, aligned
+  genomic/TSS-relative/local coordinates, terminal-unavailable band, alias and
+  plain-locus refusal), hosted-intent adoption and single consumption,
+  over-budget refusal leaving panel state untouched, and shell parse/receipt
+  coverage including `--keep-negative` and rejected options.
+- Not done: no GUI run, screenshot, benchmark or native-Windows check. The
+  exporter still emits one hover title per scored window start, so a 701 bp
+  three-matrix export is already 1.2 MB of SVG; whether that, rather than
+  scoring, is the practical ceiling is assigned to Glen in
+  `docs/tp73_dnp73_factor_curves_glen_handoff.md` and deliberately unchanged here.
+
 ## 2026-09-27 - Repair The macOS Bundler Contract
 
 - Release run `36273325748`, macOS job `108491306694`, installed unpinned

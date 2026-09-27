@@ -3050,6 +3050,23 @@ Shared shell command:
     - `ui focus sequence-window SEQ_ID`
     - `promoters tss-list`: sorted registry metadata (`gentle.tss_collection_list.v1`), including legacy/invalid entries. Members are `not_checked`; use `promoters tss-collection ID` to validate explicitly.
     - `ui open|focus|close tss-view --collection COLLECTION_ID` (bounded, persisted TSS collection; headless reports `applied=false`)
+    - `ui open|focus tss-view --report REPORT_JSON` (attaches a validated TSS
+      profile report to the active annotated TSS viewer; no rescoring or database query)
+    - `ui open|focus tss-view --local-score ACCESSION[,ACCESSION...] [--score-kind KIND] [--keep-negative]`
+      (locally scored curves for exact full-PFM accessions on the displayed
+      window; aliases, `ALL` and consensus fallback are refused. The viewer
+      adopts these settings into its own controls and computes on its own
+      worker; locally computed lanes stay separate from an attached report and
+      from imported evidence. Headless records `applied=false`.)
+    - `promoters tss-view-svg SEQ_ID OUTPUT.svg [--report REPORT_JSON] [--motif ACCESSION]... [--score-kind KIND] [--keep-negative] [--span START..END] [--width PX]`:
+      headless export of the native annotated-TSS presentation, exactly what the
+      GUI's **Export View SVG** draws for the same attachments. `--motif` accepts
+      repeated flags or a comma list and computes local curves; `--report`
+      attaches a validated profile report. `--span` is local 1-based inclusive.
+      Writes atomically and reports the lane count, exported span and SVG
+      SHA-256. Requires GENtle annotated-TSS metadata on `SEQ_ID`: a plain locus
+      is refused, not guessed. `--score-kind` is not inherited from the viewer —
+      repeat it per export or it falls back to `llr_bits`.
     - `promoters tss-inventory REQUEST_JSON_OR_@FILE` (read-only exact-start preview)
     - `promoters tss-materialize REQUEST_JSON_OR_@FILE` (approval-bound selected windows)
     - `promoters tss-collection COLLECTION_ID` (persisted collection and member validation; [walkthrough](tss_workspace.md))

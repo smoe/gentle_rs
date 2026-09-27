@@ -223,7 +223,7 @@ const UI_INTENT_ARGUMENT_CONFIGURATION_SECTION: UiIntentArgument = UiIntentArgum
 };
 const UI_INTENT_OPTIONAL_ARGUMENTS_DEFAULT: [&str; 1] = ["genome_id"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_NONE: [&str; 0] = [];
-const UI_INTENT_OPTIONAL_ARGUMENTS_TSS: [&str; 2] = ["collection_id", "report_path"];
+const UI_INTENT_OPTIONAL_ARGUMENTS_TSS: [&str; 3] = ["collection_id", "report_path", "matrix_ids"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_CONFIGURATION: [&str; 1] = ["section"];
 const UI_INTENT_OPTIONAL_ARGUMENTS_PREPARED_REFERENCES: [&str; 7] = [
     "genome_id",
@@ -248,7 +248,7 @@ const UI_INTENT_ARGUMENTS_SPLICING: [UiIntentArgument; 2] = [
         detail: "Zero-based feature id from features query; selects the same splicing group as inspect-feature-expert SEQ_ID splicing FEATURE_ID.",
     },
 ];
-const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 2] = [
+const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 3] = [
     UiIntentArgument {
         name: "collection_id",
         required: false,
@@ -258,6 +258,11 @@ const UI_INTENT_ARGUMENTS_TSS: [UiIntentArgument; 2] = [
         name: "report_path",
         required: false,
         detail: "Use --report REPORT_JSON with open/focus to attach the same bound TSS profile report as the GUI file-picker path. The active annotated TSS viewer validates reference, geometry and sequence hash; no rescoring or database query is performed.",
+    },
+    UiIntentArgument {
+        name: "matrix_ids",
+        required: false,
+        detail: "Use --local-score ACCESSION[,ACCESSION...] with open/focus, optionally --score-kind KIND and --keep-negative, to compute locally scored curves for exact full-PFM accessions on the displayed window. Aliases, ALL and consensus fallback are refused. Locally computed lanes stay separate from an attached report and from imported evidence; for a headless file use promoters tss-view-svg instead.",
     },
 ];
 const UI_INTENT_ARGUMENTS_RECENT_OR_CHAPTER_ID: [UiIntentArgument; 1] =

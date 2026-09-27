@@ -51547,6 +51547,79 @@ impl GentleEngine {
                     self.forget_tss_collection(&collection_id)?;
                     result.messages.push(format!("Forgot TSS collection '{collection_id}' metadata; member sequences and lineage retained"));
                 }
+                Operation::ExportTssViewSvg {
+                    seq_id,
+                    path,
+                    report,
+                    local_motifs,
+                    score_kind,
+                    clip_negative,
+                    start_0based,
+                    end_0based_exclusive,
+                    width_px,
+                } => {
+                    let dna = self.state.sequences.get(&seq_id).ok_or_else(|| {
+                        EngineError::new(
+                            ErrorCode::NotFound,
+                            format!("Sequence '{seq_id}' not found"),
+                        )
+                    })?;
+                    let sequence = dna.get_forward_string();
+                    // Decoding validates the hash, geometry and per-feature metadata; a
+                    // sequence without GENtle annotated-TSS metadata is refused, not guessed.
+                    let mut view = crate::tss_sequence_view::TssSequenceView::from_dna(dna)
+                        .map_err(EngineError::invalid_input)?;
+                    if let Some(report_path) = report.as_deref() {
+                        view = view
+                            .load_profile(std::path::Path::new(report_path))
+                            .map_err(EngineError::invalid_input)?;
+                        result.messages.push(format!(
+                            "Attached validated TSS profile report '{report_path}'; no rescoring or database query"
+                        ));
+                    }
+                    if !local_motifs.is_empty() {
+                        let request = crate::tss_sequence_view::TssLocalScoreRequest {
+                            matrix_ids: local_motifs.clone(),
+                            score_kind,
+                            clip_negative,
+                        };
+                        let tracks = view
+                            .compute_local_scores(&sequence, &request, on_progress)
+                            .map_err(EngineError::invalid_input)?;
+                        view = view
+                            .with_local_scores(&request, &tracks)
+                            .map_err(EngineError::invalid_input)?;
+                        result.messages.push(format!(
+                            "Computed local {} curves for {} exact matrix accession(s) on the displayed window",
+                            score_kind.as_str(),
+                            local_motifs.len()
+                        ));
+                    }
+                    let length = view
+                        .geometry
+                        .length()
+                        .ok_or_else(|| EngineError::invalid_input("Invalid TSS geometry"))?;
+                    let options = crate::tss_sequence_view::TssViewSvgOptions {
+                        start_0based: start_0based.unwrap_or(0),
+                        end_0based_exclusive: end_0based_exclusive.unwrap_or(length),
+                        lane_indices: (0..view.lanes.len()).collect(),
+                        width_px: width_px.unwrap_or(1600),
+                        print_size_mm: None,
+                    };
+                    let svg_sha256 = crate::tss_sequence_view::write_tss_view_svg(
+                        &view,
+                        &options,
+                        std::path::Path::new(&path),
+                    )
+                    .map_err(EngineError::invalid_input)?;
+                    result.warnings.extend(view.warnings.iter().cloned());
+                    result.messages.push(format!(
+                        "Wrote the native TSS view for '{seq_id}' ({} lanes, local {}..{}) to '{path}' (SVG SHA-256 {svg_sha256})",
+                        view.lanes.len(),
+                        options.start_0based + 1,
+                        options.end_0based_exclusive
+                    ));
+                }
                 Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
                     let report = self.plan_reporter_fragment_selection(*request)?;
                     if let Some(path) = path.as_deref() {

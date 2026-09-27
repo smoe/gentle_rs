@@ -6903,6 +6903,25 @@ actual matrix hashes, background policy and scorer; a fresh run always resolves
 the current registry anew. A matrix mismatch between admission and scoring
 rejects the result.
 
+### Agent and Headless Routes
+
+Every step of the native view is reachable without the mouse. `ui open|focus
+tss-view --report REPORT_JSON` attaches a report, and `ui open|focus tss-view
+--local-score ACCESSION[,ACCESSION...] [--score-kind KIND] [--keep-negative]`
+computes local curves; the viewer adopts those settings into its own controls so
+the displayed panel always describes the curves that were actually computed.
+Both need a GUI host, and headless shells record `applied=false`.
+
+`promoters tss-view-svg SEQ_ID OUTPUT.svg` needs no GUI host at all: it decodes
+the annotated window, optionally attaches a report with `--report`, optionally
+computes local curves with `--motif`, and writes the same figure this view
+exports. It reports the lane count, exported local span and SVG SHA-256, and
+refuses a sequence without GENtle annotated-TSS metadata. `--score-kind` is not
+inherited from the viewer; repeat it per export.
+
+See the [TP73 ΔNp73 factor-curve walkthrough](tutorial/08-17_tp73_dnp73_factor_curves.md)
+for all three routes on a real locus.
+
 ### Export the Native TSS View
 
 **Export View SVG** exports the current horizontal span and enabled/filter-matched

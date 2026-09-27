@@ -106,6 +106,15 @@ impl Window {
         }
     }
 
+    pub(crate) fn queue_tss_local_score(
+        &mut self,
+        request: crate::tss_sequence_view::TssLocalScoreRequest,
+    ) -> Result<(), String> {
+        match self {
+            Self::Dna(window) => window.queue_tss_local_score(request),
+        }
+    }
+
     pub(crate) fn focus_tata_boxes(&mut self) {
         match self {
             Self::Dna(window) => window.focus_tata_boxes(),

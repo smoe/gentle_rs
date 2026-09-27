@@ -19,6 +19,82 @@ mod tests {
     use super::*;
 
     #[test]
+    fn hosted_local_score_intent_adopts_settings_and_runs_once() {
+        let (dna, _report) = crate::tss_sequence_view::profile_fixture(false);
+        let source = Arc::new(TssSequenceView::from_dna(&dna).unwrap());
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.tss_view_available();
+        area.tss_ui.document = Some(Ok(source.clone()));
+        let request = TssLocalScoreRequest {
+            matrix_ids: vec!["MA0004.1".to_string()],
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: false,
+        };
+        area.queue_tss_local_score(request.clone()).unwrap();
+        // The panel shows the hosted request before anything is computed, so the
+        // displayed settings always describe the curves that were produced.
+        assert_eq!(area.tss_ui.local_scores.request(), request);
+        assert!(area.tss_ui.requested_local_score.is_some());
+        assert!(!area.tss_ui.local_scores.running());
+        // An unapplied intent must also block exporting the still-unscored view.
+        assert!(area.tss_svg_snapshot(ViewSvgExportProfile::Screen).is_err());
+
+        let ctx = egui::Context::default();
+        let render = |area: &mut MainAreaDna| {
+            ctx.begin_pass(egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1000.0, 900.0),
+                )),
+                ..Default::default()
+            });
+            crate::egui_compat::show_central_panel_for_test_context(
+                &ctx,
+                egui::CentralPanel::default(),
+                |ui| area.render_primary_tss_map_ui(ui),
+            );
+            let _ = crate::egui_compat::end_test_pass(&ctx);
+        };
+        render(&mut area);
+        // Consumed exactly once: the job started and no intent remains to re-fire.
+        assert!(area.tss_ui.requested_local_score.is_none());
+        assert!(area.tss_ui.local_scores.running());
+        let job = area.tss_ui.local_scores.job.clone().unwrap();
+        assert_eq!(job.request, request);
+        // Repainting must not queue a second job for the same intent.
+        render(&mut area);
+        if let Some(active_job) = &area.tss_ui.local_scores.job {
+            assert!(Arc::ptr_eq(active_job, &job));
+        } else {
+            // The worker may finish between frames; a terminal result is not a restart.
+            assert!(
+                area.tss_ui.local_scores.report.is_some()
+                    || area.tss_ui.local_scores.error.is_some()
+            );
+        }
+        assert!(area.tss_ui.requested_local_score.is_none());
+    }
+
+    #[test]
+    fn hosted_local_score_intent_refuses_over_budget_without_touching_settings() {
+        let (dna, _report) = crate::tss_sequence_view::profile_fixture(false);
+        let mut area = MainAreaDna::new(dna, None, None);
+        area.tss_view_available();
+        let before = area.tss_ui.local_scores.request();
+        let error = area
+            .queue_tss_local_score(TssLocalScoreRequest {
+                matrix_ids: (0..33).map(|i| format!("MA{i:04}.1")).collect(),
+                score_kind: TfbsScoreTrackValueKind::LlrBits,
+                clip_negative: true,
+            })
+            .unwrap_err();
+        assert!(error.contains("1..32"), "{error}");
+        // A refused intent leaves the panel and the pending slot untouched.
+        assert_eq!(area.tss_ui.local_scores.request(), before);
+        assert!(area.tss_ui.requested_local_score.is_none());
+    }
+
+    #[test]
     fn hosted_profile_queue_waits_for_local_job_and_blocks_old_view_export() {
         let (dna, report) = crate::tss_sequence_view::profile_fixture(false);
         let source = Arc::new(TssSequenceView::from_dna(&dna).unwrap());
@@ -225,6 +301,19 @@ impl LocalScoreState {
         self.job.is_some()
     }
 
+    pub(super) fn set_error(&mut self, error: String) {
+        self.error = Some(error);
+    }
+
+    /// Show a hosted request in this view's own controls before it runs, so the
+    /// displayed settings always describe the curves that were actually computed.
+    pub(super) fn adopt(&mut self, request: &TssLocalScoreRequest) {
+        self.matrix_text = request.matrix_ids.join(", ");
+        self.score_kind = request.score_kind;
+        self.clip_negative = request.clip_negative;
+        self.error = None;
+    }
+
     fn request(&self) -> TssLocalScoreRequest {
         TssLocalScoreRequest {
             matrix_ids: self
@@ -240,7 +329,7 @@ impl LocalScoreState {
 }
 
 impl MainAreaDna {
-    fn start_tss_local_scores(
+    pub(super) fn start_tss_local_scores(
         &mut self,
         source: Arc<TssSequenceView>,
         ctx: &egui::Context,

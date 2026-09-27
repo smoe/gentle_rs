@@ -27,6 +27,8 @@ pub(super) struct TssUiState {
     document: Option<LoadedView>,
     profile_load: Option<ProfileLoad>,
     requested_profile_path: Option<std::path::PathBuf>,
+    /// Hosted local-scoring intent; applied once, never re-run on pan or repaint.
+    requested_local_score: Option<crate::tss_sequence_view::TssLocalScoreRequest>,
     profile_error: Option<String>,
     local_scores: LocalScoreState,
     structures: bool,
@@ -49,6 +51,7 @@ impl Default for TssUiState {
             document: None,
             profile_load: None,
             requested_profile_path: None,
+            requested_local_score: None,
             profile_error: None,
             local_scores: LocalScoreState::default(),
             structures: true,
@@ -143,6 +146,7 @@ impl MainAreaDna {
         if self.tss_ui.profile_load.is_some()
             || self.tss_ui.pending.is_some()
             || self.tss_ui.requested_profile_path.is_some()
+            || self.tss_ui.requested_local_score.is_some()
         {
             return Err("Wait for the TSS document/report to finish loading before export".into());
         }
@@ -292,6 +296,20 @@ impl MainAreaDna {
         Ok(())
     }
 
+    /// Hosted local-scoring intent. Adopts the request into this view's own settings
+    /// so the panel keeps showing exactly what was computed; the TFBS panel is untouched.
+    pub(crate) fn queue_tss_local_score(
+        &mut self,
+        request: crate::tss_sequence_view::TssLocalScoreRequest,
+    ) -> Result<(), String> {
+        let length = self.dna.read().map_err(|_| "Could not read DNA")?.len();
+        request.validate_budget(length)?;
+        self.set_tss_view(true)?;
+        self.tss_ui.local_scores.adopt(&request);
+        self.tss_ui.requested_local_score = Some(request);
+        Ok(())
+    }
+
     fn poll_tss_view(&mut self, ctx: &egui::Context) {
         self.refresh_tss_recognition();
         if self.tss_ui.document.is_none() && self.tss_ui.pending.is_none() {
@@ -405,6 +423,21 @@ impl MainAreaDna {
             && let Some(path) = self.tss_ui.requested_profile_path.take()
         {
             self.load_tss_profile(path, ui.ctx());
+        }
+        // A queued report attachment is applied first; local curves are independent of it.
+        if self.tss_ui.profile_load.is_none()
+            && !self.tss_ui.local_scores.running()
+            && self.tss_ui.requested_profile_path.is_none()
+            && let Some(source) = self
+                .tss_ui
+                .document
+                .as_ref()
+                .and_then(|document| document.as_ref().ok())
+                .cloned()
+            && self.tss_ui.requested_local_score.take().is_some()
+            && let Err(error) = self.start_tss_local_scores(source, ui.ctx())
+        {
+            self.tss_ui.local_scores.set_error(error);
         }
         let Some(document) = self.tss_ui.document.clone() else {
             ui.spinner();

@@ -2120,6 +2120,7 @@ impl GENtleApp {
             ShellCommand::UiSplicingExpert { .. }
                 | ShellCommand::UiTssCollection { .. }
                 | ShellCommand::UiTssProfile { .. }
+                | ShellCommand::UiTssLocalScore { .. }
                 | ShellCommand::UiRecentProject { .. }
                 | ShellCommand::UiTutorialProject { .. }
                 | ShellCommand::UiTutorialGuide { .. }
@@ -3532,6 +3533,19 @@ impl GENtleApp {
         {
             return Some(self.apply_tss_profile_intent(report_path));
         }
+        if let ShellCommand::UiTssLocalScore {
+            action: _,
+            matrix_ids,
+            score_kind,
+            clip_negative,
+        } = command
+        {
+            return Some(self.apply_tss_local_score_intent(
+                matrix_ids,
+                *score_kind,
+                *clip_negative,
+            ));
+        }
         if let ShellCommand::UiRecentProject { item_id } = command {
             return Some(self.apply_recent_project_intent(item_id));
         }
@@ -4163,6 +4177,42 @@ impl GENtleApp {
                 )
             }
             Err(error) => format!("TSS profile not attached: {error}"),
+        }
+    }
+
+    fn apply_tss_local_score_intent(
+        &mut self,
+        matrix_ids: &[String],
+        score_kind: TfbsScoreTrackValueKind,
+        clip_negative: bool,
+    ) -> String {
+        let Some((seq_id, _)) = self.active_dna_window_context() else {
+            return "Local TSS scoring not started: activate the intended annotated TSS DNA viewer first (ui focus sequence-window SEQ_ID). No sequence is selected implicitly.".into();
+        };
+        let Some(viewport) = self.find_open_sequence_viewport_id(&seq_id) else {
+            return "Local TSS scoring not started: active DNA window is unavailable".into();
+        };
+        let request = crate::tss_sequence_view::TssLocalScoreRequest {
+            matrix_ids: matrix_ids.to_vec(),
+            score_kind,
+            clip_negative,
+        };
+        let result = self
+            .windows
+            .get(&viewport)
+            .and_then(|window| window.write().ok())
+            .ok_or_else(|| "Could not access DNA window".to_string())
+            .and_then(|mut window| window.queue_tss_local_score(request));
+        match result {
+            Ok(()) => {
+                self.queue_focus_viewport(viewport);
+                format!(
+                    "Queued local {} scoring of {} exact matrix accession(s) for '{seq_id}'; the viewer resolves them on its own worker and keeps attached report/imported lanes unchanged",
+                    score_kind.as_str(),
+                    matrix_ids.len()
+                )
+            }
+            Err(error) => format!("Local TSS scoring not started: {error}"),
         }
     }
 

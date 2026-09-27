@@ -5848,6 +5848,33 @@ pub enum Operation {
     ForgetTssCollection {
         collection_id: String,
     },
+    /// Export the native annotated-TSS presentation of one loaded window, headless.
+    ///
+    /// Renders exactly what the GUI's TSS / Regulatory view would draw for the same
+    /// attachments: supplied annotation lanes always, report-backed curves and
+    /// imported DuckDB hits when `report` is given, and locally computed curves when
+    /// `local_motifs` is given. It never retrieves sequence, queries a motif package,
+    /// reinterprets an attached report, or modifies the loaded sequence.
+    ExportTssViewSvg {
+        seq_id: String,
+        path: String,
+        /// Validated TSS profile report to attach, exactly as the GUI file picker does.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        report: Option<String>,
+        /// Exact full-PFM accessions for locally computed curves; no aliases or `ALL`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        local_motifs: Vec<String>,
+        #[serde(default = "default_tfbs_score_track_value_kind")]
+        score_kind: TfbsScoreTrackValueKind,
+        #[serde(default = "default_tfbs_score_track_clip_negative")]
+        clip_negative: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_0based: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_0based_exclusive: Option<usize>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        width_px: Option<u32>,
+    },
     /// Stateless fixed-window geometry, not adaptive reporter insert selection.
     ComputeTssWindowGeometry {
         request: Box<gentle_protocol::tss_window_geometry::TssWindowGeometryRequest>,
@@ -10181,6 +10208,7 @@ impl GentleEngine {
                 | Operation::InspectTssInventory { .. }
                 | Operation::GetTssCollection { .. }
                 | Operation::ListTssCollections { .. }
+                | Operation::ExportTssViewSvg { .. }
                 | Operation::PlanRegulatoryFragmentPanel { .. }
                 | Operation::PlanRegulatoryFragmentMaterialization { .. }
                 | Operation::RenderRegulatoryFragmentPanelSvg { .. }

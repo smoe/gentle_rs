@@ -5652,6 +5652,7 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "GetTssCollection",
     "ListTssCollections",
     "ForgetTssCollection",
+    "ExportTssViewSvg",
     "ComposeRegulatoryReporterStudy",
     "PlanRegulatoryFragmentPanel",
     "PlanRegulatoryFragmentMaterialization",

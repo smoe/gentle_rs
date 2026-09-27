@@ -138,6 +138,18 @@ impl WindowDna {
         self.main_area.queue_tss_profile(path)
     }
 
+    pub(crate) fn queue_tss_local_score(
+        &mut self,
+        request: crate::tss_sequence_view::TssLocalScoreRequest,
+    ) -> Result<(), String> {
+        if self.pending_dna_load.is_some() {
+            return Err(
+                "DNA sequence is still loading; retry local scoring after loading finishes".into(),
+            );
+        }
+        self.main_area.queue_tss_local_score(request)
+    }
+
     fn render_deferred_load_indicator(ui: &mut egui::Ui) {
         let phase = ((ui.input(|input| input.time) * 10.0) as usize) % 4;
         let marker = match phase {
