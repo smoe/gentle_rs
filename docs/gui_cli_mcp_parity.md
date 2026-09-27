@@ -17,11 +17,11 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 
 | Adapter | prominent | shell-only | gap |
 |---|---:|---:|---:|
-| GUI | 58 | 743 | 0 |
-| gentle_cli | 475 | 350 | 0 |
-| MCP | 169 | 513 | 50 |
-| JS | 78 | 566 | 69 |
-| Lua | 77 | 567 | 69 |
+| GUI | 58 | 744 | 0 |
+| gentle_cli | 475 | 351 | 0 |
+| MCP | 169 | 514 | 50 |
+| JS | 78 | 567 | 69 |
+| Lua | 77 | 568 | 69 |
 | ClawBio | 0 | 0 | 0 |
 
 ## Glossary Commands
@@ -837,6 +837,7 @@ Only `gap` signals implementation work. Human-readable Notes are populated from 
 | GetTssCollection | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ListTssCollections | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ForgetTssCollection | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
+| ExportTssViewSvg | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | ComposeRegulatoryReporterStudy | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PlanRegulatoryFragmentPanel | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |
 | PlanRegulatoryFragmentMaterialization | engine-operation | shell-only | shell-only | shell-only | shell-only | shell-only | n/a | ClawBio: ClawBio exposes curated skill intents rather than raw engine operation rows. |

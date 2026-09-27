@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-09-27 - Refresh The TSS Export Parity Projection
+
+- Add the omitted `ExportTssViewSvg` row and its five shell-route count increments
+  to `docs/gui_cli_mcp_parity.md`. This is the only registry-input change since
+  the matrix's last update; adapter behavior and gap counts remain unchanged.
+- Derive this bounded projection update from the unchanged renderer without
+  running the Cargo-based generator, builds or tests. Keep the exact freshness
+  assertion and existing LF/CRLF checkout regression; CI confirmation is pending.
+
 ## 2026-09-27 - Help Startup Attribution, Not A Loading Change
 
 - Split help preparation into manual loading, shell-reference generation,
