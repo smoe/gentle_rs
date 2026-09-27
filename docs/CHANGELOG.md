@@ -1,5 +1,45 @@
 # GENtle Changelog
 
+## 2026-09-27 - Native Linux GUI Attribution
+
+- Integrate Glen's two audit commits through `1d6ff354` as a merge, retaining
+  the exact `0467867c` evidence boundary. Later tree reuse and TSS presentation
+  changes still need their own acceptance. Supersede the old boundary-audit
+  assignment without discarding its reproduction instructions; raw storage
+  checksums remain auditor-reported, not locally reverified. No runtime change.
+- Exercise a locally rebuilt, exact-identity `0467867c` internal-`dev` GUI in
+  fresh Linux/Xvfb profiles. Authentic PATZ1 opens with its 20,802-bp
+  minus-strand locus, 13 transcript rows, selection, layer toggling, four
+  resizes, zoom and explicit range navigation intact. The bound synthetic TSS
+  report opens through the direct reviewed Agent-Assistant command and keeps
+  coordinates, evidence classes, missing control and score curves distinct.
+- Reproduce a 37.461--37.807 s `help_preparation` span across empty, PATZ1 and
+  TSS startups; project decode/install remain milliseconds. PATZ1 dispatch to
+  the first CPU-side native-content marker is 833 ms, while the tiny TSS case
+  is 217 ms. Select help preparation as the next measured startup slice rather
+  than inferring another feature-rendering optimization.
+- Keep boundaries explicit: the original successful Linux Actions artifact
+  could not be downloaded with the invalid local GitHub credential, this Xvfb
+  host lacks an EWMH window manager, the supplied TSS fixture has no nonempty
+  DuckDB hit rows, and no macOS check was possible. A public circular pGEX-3X
+  SVG regression passes without creating a circular timing promise.
+
+## 2026-09-27 - Current DNA-Feature Boundary Audit
+
+- Retain Glen's exact-`main` `bench-audit` baseline at `0467867c`: two clean,
+  direct-binary replays completed all 130 content-bound Criterion cases and 90
+  work-counter observations, including the explicit 250-kbp/5,000-feature
+  derived-layer boundary.
+- Record boundary medians of 62.696 ms pan, 52.328 ms zoom and 51.209 ms mRNA
+  toggle. Each rebuilds feature-tree/layer counts once but scans zero GC bases;
+  steady, selection and hover rebuild neither. The 117 cases shared with the
+  retained `ee9eb483` post-GC baseline remain broadly continuous (+1.72%
+  geometric aggregate; 104/117 within +/-5% under two quick repeats).
+- Keep this CPU characterization separate from native GUI correctness,
+  responsiveness and package acceptance. The cold thin-LTO audit build itself
+  used 21,023,304 KiB maximum RSS; it is not the internal `dev` package recipe
+  and does not demonstrate hosted-runner suitability.
+
 ## 2026-09-27 - Complete TSS Export And Tutorial Registration
 
 - Add the missing fact-annotated introspection contract for `ExportTssViewSvg`

@@ -43,6 +43,17 @@ External evidence retained by Glen:
 
 ### Next Audit, Not Another Performance Patch
 
+**September 27 update:** the boundary assignment below is now retained as
+completed at `0467867c` in the [boundary audit](glen_gui_latency_audit_20260927.md).
+Do not repeat it as if still missing. The [Linux GUI audit](glen_native_gui_audit_20260927.md)
+selects `help_preparation` attribution next. That revision predates the
+integrated feature-tree reuse, so its acceptance remains separate. Downloaded
+package, macOS, nonempty DuckDB-hit and native circular-interaction checks
+remain open; the circular SVG check is not a native interaction test.
+
+The following instructions preserve the original assignment and comparison
+contract; they are not a fresh request to rerun the old baseline.
+
 Use the existing `density_boundary_v1` workload on a clean, frozen revision.
 `3cee43346d61eeeada2d8645b1bcb5a72a85d245` is the pre-tree-reuse baseline for
 this follow-up. The owner subsequently requested integration of `e99c1fb8`'s
@@ -75,9 +86,10 @@ run supports attribution. Workload scope is now owner-confirmed through Glen's
 
 ## Original Request To Glen (Retained For Reproduction)
 
-The fixed-pair runs below have been reported complete. Do not repeat them as
-the next assignment; the next audit is specified above. Native/profile sections
-retain their contracts but are deferred as described in the received verdict.
+The fixed-pair runs and the subsequent boundary assignment have been reported
+complete. Do not repeat them as the next assignment; follow the September 27
+update above. Native/profile sections retain their contracts; the newer Linux
+diagnostic does not replace the remaining package/platform acceptance.
 
 Please compare these two clean revisions without changing the development
 checkout, publishing, tagging or merging:

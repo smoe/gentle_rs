@@ -15,18 +15,24 @@ Implementation update: S0's density tools landed in `5893aa35` and are
 smoke-tested. Opt-in startup phase checkpoints (`d24c3fa7`) cover app
 initialization, project loading and first root/DNA CPU frames; they do not
 confirm native presentation. The agreed 250 kbp / 5,000-feature boundary now
-includes explicit derived layers and content-bound workload checks. The macOS
-cross-check and Glen's current-boundary timed/native audit remain pending.
+includes explicit derived layers and content-bound workload checks. Glen's
+[boundary audit](glen_gui_latency_audit_20260927.md) now retains two complete
+130-case/90-observation replays at `0467867c`. His separately documented
+[Linux GUI audit](glen_native_gui_audit_20260927.md) covers the tested PATZ1
+and report-backed TSS paths, not downloaded-package, macOS, nonempty DuckDB
+hits or native circular interactions. These results do not certify later code.
 Glen's [reported fixed-pair audit](glen_gui_latency_handoff_20260924.md#reported-audit-result-received-2026-09-25)
 finds measurable CPU benefit from the arithmetic GC counts (`ee9eb483`), while
 retaining a reproducible 5% regression for the 250 kbp / 10,000-feature mRNA
-toggle. His raw evidence is external and has not been reanalysed here. Next is
-the exact 250 kbp / 5,000-feature workload, not a further performance patch or a
-general GUI-performance claim; broader runtime slices remain pending.
+toggle. His raw evidence is external and has not been reanalysed here. The
+new repeatable 37.461--37.807 s `help_preparation` span selects S6 attribution
+as the next step, not another rendering patch or a general performance claim.
 The separately merged S2 tree change (`e99c1fb8`) retains grouping/filter labels
 on pan and refreshes exon-aware visibility/counts in place. Developer CPU
 attribution and full-rebuild equivalence tests support that change; Glen's GC
-audit does not certify it. Its optimized/native comparison remains pending.
+audit does not certify it. Neither does the September 27 audit: `0467867c`
+predates the replayed tree-reuse commit `d06c6fc6` and TSS presentation fixes
+at `364e012b`. Their optimized/native follow-up remains pending.
 B0 separates build feedback from runtime performance. The consolidated
 hypothesis ledger and S0 section below retain both updates. This plan does not
 change the `.11` candidate; counts of work are not timing evidence or performance
