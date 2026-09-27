@@ -86,24 +86,20 @@ observed RSS reduction cannot be assigned to the recipe alone.
 
 ## Audit Admission Decisions
 
-These two owner decisions were requested on 2026-09-21 and remain pending.
-Recommendations are not accepted performance promises:
+The owner confirmed these two release-scope decisions on 2026-09-24. They are
+scope choices, not accepted performance promises:
 
-- **Interactive envelope:** recommend linear loci up to 250 kbp and 5,000
+- **Interactive envelope:** linear loci up to 250 kbp and 5,000
   loaded features; retain 2 Mbp and 10,000 features as stress cases. The exact
   250 kbp / 5,000-feature boundary is now available with the same clustered
   annotation and deferred/loaded-tree modes, plus explicit synthetic restriction,
   GC, ORF and methylation layers and their counts. This closes the fixture gap,
-  not the scope decision or timing gate. The original nine cases remain
+  not the timing gate. The original nine cases remain
   comparable; their results alone cannot certify this boundary by interpolation.
-- **Circular scope:** recommend linear optimization first, with circular-map
-  correctness and native interaction regression checks still required. If the
-  owner instead requires circular optimization, agree its fixture envelope and
-  budgets before running a dedicated pass/fail audit; linear results do not
-  establish circular performance.
+- **Circular scope:** optimize linear views first. Circular-map correctness and
+  native interaction regression checks remain required, but `.12` sets no
+  circular timing budget; linear results do not establish circular performance.
 
-Confirm these choices before Glen's release-target audit. Preparatory traces
-may still diagnose a problem, but cannot declare an undecided workload accepted.
 Glen proposes host-bound numerical budgets from the baseline; the owner agrees
 the release target before optimization. Do not relax it after seeing results
 without an explicit recorded scope decision. Stress cases must remain correct,
@@ -216,7 +212,8 @@ this plan adds no new execution authority.
 
 ## Proposed interaction budgets
 
-These proposals assume the recommended envelope, pending owner confirmation.
+These proposals use the owner-selected envelope; the numerical budgets remain
+pending owner agreement.
 Glen establishes reproducible numerical targets before optimization; each is
 bound to a host, toolchain, profile, fixture hash and GENtle revision. First
 usable content means subject-correct selected feature content, not an empty

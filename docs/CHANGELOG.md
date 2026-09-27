@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-27 - Current DNA-Feature Boundary Audit
+
+- Retain Glen's exact-`main` `bench-audit` baseline at `0467867c`: two clean,
+  direct-binary replays completed all 130 content-bound Criterion cases and 90
+  work-counter observations, including the explicit 250-kbp/5,000-feature
+  derived-layer boundary.
+- Record boundary medians of 62.696 ms pan, 52.328 ms zoom and 51.209 ms mRNA
+  toggle. Each rebuilds feature-tree/layer counts once but scans zero GC bases;
+  steady, selection and hover rebuild neither. The 117 cases shared with the
+  retained `ee9eb483` post-GC baseline remain broadly continuous (+1.72%
+  geometric aggregate; 104/117 within +/-5% under two quick repeats).
+- Keep this CPU characterization separate from native GUI correctness,
+  responsiveness and package acceptance. The cold thin-LTO audit build itself
+  used 21,023,304 KiB maximum RSS; it is not the internal `dev` package recipe
+  and does not demonstrate hosted-runner suitability.
+
 ## 2026-09-25 - Complete Motif Guide Query Coverage
 
 - Restore tutorial 08.13's explicit use case, `Compare promoter/TSS traces

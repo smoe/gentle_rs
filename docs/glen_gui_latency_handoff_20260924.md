@@ -41,9 +41,11 @@ result, not a failed experiment to conceal.
 
 - The nine fixtures at the fixed comparison revisions cover 20 kbp / 250 kbp / 2 Mbp crossed with
   100 / 1,000 / 10,000 features. Do not modify them for this comparison.
-- The proposed interactive target of 250 kbp / 5,000 features and linear-first
-  optimization is still awaiting explicit owner confirmation. These runs may
-  diagnose costs now, but cannot certify that target. The exact 5,000-feature
+- The owner-selected interactive target is 250 kbp / 5,000 features with
+  linear-first optimization; 2 Mbp and 10,000-feature cases remain stress
+  probes, and circular maps retain correctness checks without a `.12` timing
+  budget. The fixed comparison revisions predate that decision and cannot
+  certify the target. The exact 5,000-feature
   boundary is absent from this historical ladder and must not be inferred by
   interpolation. Current `main` adds it in `d035912e`, with derived-layer
   inventories, 130 cases and 90 counter observations. Use that workload for a

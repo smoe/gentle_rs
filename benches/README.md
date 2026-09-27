@@ -204,6 +204,13 @@ interpolation. A receipt/binary workload mismatch fails before execution. Even
 `interactive_boundary_exercised=true` is only a completed workload, not a timing
 pass; the run mode distinguishes smoke from an audit.
 
+Glen's [2026-09-27 current-main audit](../docs/glen_gui_latency_audit_20260927.md)
+establishes the first clean `density_boundary_v1` CPU baseline at `0467867c`:
+two complete `bench-audit` replays, 130/130 Criterion estimates and 90/90
+counter observations. The 250-kbp/5,000-feature medians were 62.696 ms pan,
+52.328 ms zoom and 51.209 ms mRNA toggle, with zero GC bases rescanned. This is
+headless CPU evidence, not native-GUI or release acceptance.
+
 The diagnostics pane and Puffin scopes are described in `docs/gui.md`;
 `docs/dna_feature_rendering_latency_plan.md` retains the conditional optimization
 sequence. Developers smoke-test; Glen provides timed and native acceptance.
