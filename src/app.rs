@@ -3901,17 +3901,25 @@ Error: `{err}`"
     }
 
     fn refresh_help_docs(&mut self) {
-        self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
-        self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
-        self.help_agent_interface_markdown =
-            Self::load_help_doc("docs/agent_interface.md", AGENT_INTERFACE_MD);
-        self.help_reviewer_preview_markdown =
-            Self::load_help_doc("docs/reviewer_preview.md", REVIEWER_PREVIEW_MD);
-        self.help_shell_markdown =
-            Self::generate_shell_help_markdown_for(self.help_shell_interface);
+        use crate::gui_profiler::startup_trace::{Phase, measure};
+        measure(Phase::HelpManuals, || {
+            self.help_gui_markdown = Self::load_help_doc("docs/gui.md", GUI_MANUAL_MD);
+            self.help_cli_markdown = Self::load_help_doc("docs/cli.md", CLI_MANUAL_MD);
+            self.help_agent_interface_markdown =
+                Self::load_help_doc("docs/agent_interface.md", AGENT_INTERFACE_MD);
+            self.help_reviewer_preview_markdown =
+                Self::load_help_doc("docs/reviewer_preview.md", REVIEWER_PREVIEW_MD);
+        });
+        self.help_shell_markdown = measure(Phase::HelpShellReference, || {
+            Self::generate_shell_help_markdown_for(self.help_shell_interface)
+        });
         self.help_rendered_markdown_cache.clear();
-        self.help_tutorial_entries = Self::discover_help_tutorial_entries();
-        self.set_help_tutorial_selected(self.help_tutorial_selected);
+        self.help_tutorial_entries = measure(Phase::HelpTutorialDiscovery, || {
+            Self::discover_help_tutorial_entries()
+        });
+        measure(Phase::HelpTutorialSelectedLoad, || {
+            self.set_help_tutorial_selected(self.help_tutorial_selected);
+        });
     }
 
     fn ensure_help_docs_loaded(&mut self) {
@@ -5965,6 +5973,9 @@ Error: `{err}`"
             self.queue_focus_viewport(Self::help_viewport_id());
             return;
         }
+        let trace = crate::gui_profiler::startup_trace::span_once(
+            crate::gui_profiler::startup_trace::Phase::HelpOpen,
+        );
         let opening_from_closed_state = !self.show_help_dialog;
         if !self.show_help_dialog {
             self.mark_viewport_open_requested(Self::help_viewport_id());
@@ -5980,6 +5991,7 @@ Error: `{err}`"
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
         self.queue_focus_viewport(Self::help_viewport_id());
+        trace.finish(true);
     }
 
     fn active_help_title(&self) -> &str {
@@ -7705,7 +7717,12 @@ Error: `{err}`"
     }
 
     fn tutorial_project_guided_walkthrough_entries() -> Vec<HelpTutorialDocEntry> {
-        Self::discover_guided_walkthrough_entries()
+        let trace = crate::gui_profiler::startup_trace::span_once(
+            crate::gui_profiler::startup_trace::Phase::HelpTutorialMenuDiscovery,
+        );
+        let entries = Self::discover_guided_walkthrough_entries();
+        trace.finish(true);
+        entries
     }
 
     fn tutorial_project_generated_chapter_path(entry: &TutorialProjectEntry) -> String {

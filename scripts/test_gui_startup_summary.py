@@ -72,9 +72,90 @@ def encode(trace):
     return (json.dumps(trace, indent=2) + "\n").encode()
 
 
+def help_fixture():
+    trace = fixture()
+    trace["help_image_work"] = dict.fromkeys(summary.HELP_IMAGE_COUNTERS, 0)
+    trace["help_image_work"].update(svg_references=7, cache_hits=2, preparation_failures=1,
+                                    rasterization_attempts=4, rasterization_completed=4,
+                                    rasterization_failures=1, rasterization_us=35, saturated=False)
+    trace["dropped_help_image_observations"] = 0
+    trace["events"].extend([
+        event(21, "help_preparation", "begin", span=30),
+        event(65, "help_preparation", "completed", span=30),
+    ])
+    for i, phase in enumerate(("help_manuals", "help_shell_reference", "help_tutorial_discovery",
+                               "help_tutorial_selected_load", "help_open", "help_tutorial_open",
+                               "help_tutorial_menu_discovery", "help_tutorial_switch")):
+        start = 22 + i * 10 if i < 4 else 300 + i * 10
+        trace["events"].extend([event(start, phase, "begin", span=31 + i),
+                                event(start + 5, phase, "completed", span=31 + i)])
+    trace["events"].sort(key=lambda row: row["elapsed_us"])
+    return trace
+
+
 class GuiStartupSummaryTests(unittest.TestCase):
     def analyze(self, trace=None):
         return summary.summarize(encode(fixture() if trace is None else trace))
+
+    def test_help_extension_is_optional_not_zero_in_old_traces(self):
+        self.assertEqual(self.analyze()["help_image_work"], {
+            "status": "unavailable", "reason": "producer_did_not_record", "recorded": None,
+        })
+        trace = help_fixture()
+        trace["help_image_work"] = dict.fromkeys(summary.HELP_IMAGE_COUNTERS, 0)
+        trace["help_image_work"]["saturated"] = False
+        images = self.analyze(trace)["help_image_work"]
+        self.assertEqual(images["status"], "no_recorded_loss")
+        self.assertEqual(images["rasterization_total_us"], 0)
+
+    def test_help_subphases_keep_nested_intervals_and_first_use_separate(self):
+        report = self.analyze(help_fixture())
+        spans = {row["phase"]: row for row in report["subjects"][0]["spans"]}
+        parent = spans["help_preparation"]
+        self.assertEqual(parent["duration_us"], 44)
+        for phase in ("help_manuals", "help_shell_reference", "help_tutorial_discovery", "help_tutorial_selected_load"):
+            child = spans[phase]
+            self.assertLess(parent["begin_us"], child["begin_us"])
+            self.assertLess(child["end_us"], parent["end_us"])
+            self.assertEqual(child["duration_us"], 5)
+        self.assertGreater(spans["help_open"]["begin_us"], parent["end_us"])
+        images = report["help_image_work"]
+        self.assertEqual(images["rasterization_total_us"], 35)
+        self.assertEqual(images["recorded"]["rasterization_failures"], 1)
+        self.assertIn("Whole Session, Not Additive", summary.markdown(report))
+
+    def test_help_losses_and_unfinished_work_are_not_complete_totals(self):
+        for change, reason in (({"rasterization_completed": 3}, "unfinished_work"),
+                               ({"saturated": True}, "saturated"),
+                               ({"svg_references": 0}, "dropped_observations")):
+            trace = help_fixture()
+            trace["help_image_work"].update(change)
+            if reason == "dropped_observations":
+                trace["dropped_help_image_observations"] = 1
+            with self.subTest(reason=reason):
+                report = self.analyze(trace)
+                images = report["help_image_work"]
+                self.assertEqual(images["status"], "incomplete")
+                self.assertEqual(images["reason"], reason)
+                self.assertIsNone(images["rasterization_total_us"])
+                self.assertIsNotNone(report["subjects"][0]["spans"][0]["duration_us"])
+        trace = help_fixture()
+        trace["dropped_events"] = 1
+        self.assertEqual(self.analyze(trace)["help_image_work"]["rasterization_total_us"], 35)
+
+    def test_help_extension_rejects_bad_types_and_unexplained_inconsistency(self):
+        for key, value in (("svg_references", -1), ("cache_hits", True), ("rasterization_us", 0.5),
+                           ("saturated", 1), ("rasterization_completed", 5),
+                           ("rasterization_failures", 5), ("cache_hits", 8), ("path", "private")):
+            trace = help_fixture()
+            trace["help_image_work"][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                self.analyze(trace)
+        for field in ("help_image_work", "dropped_help_image_observations"):
+            trace = help_fixture()
+            del trace[field]
+            with self.subTest(missing=field), self.assertRaises(ValueError):
+                self.analyze(trace)
 
     def test_span_pairing_and_cpu_only_limits(self):
         report = self.analyze()
@@ -257,7 +338,7 @@ class GuiStartupSummaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="startup space ") as directory:
             root = Path(directory)
             hashes = []
-            for name, raw in (("LF", encode(fixture())), ("CRLF", encode(fixture()).replace(b"\n", b"\r\n"))):
+            for name, raw in (("LF", encode(help_fixture())), ("CRLF", encode(help_fixture()).replace(b"\n", b"\r\n"))):
                 source = root / f"{name} input.json"
                 output = root / f"{name} report"
                 source.write_bytes(raw)

@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-27 - Integrate Glen's revision-bound boundary and Linux GUI audits at `0467867c`; they do not certify subsequent tree/TSS changes or extracted packages. Prioritize the measured `help_preparation` startup span for a read-only design review before implementation. Preserve the temporary unoptimized artifact policy and historical `.11` ledger; no version rollover or release acceptance.
+Last session: 2026-09-27 - Follow Claude's read-only review with bounded help subphase/image-work instrumentation, without changing loading or cache behavior. Next, Glen's S6 cold/warm comparison and first help/tutorial-use attribution select the smallest justified fix; retain `0467867c` audits separately from later implementation and package acceptance. Preserve the temporary unoptimized artifact policy and historical `.11` ledger; no version rollover or release acceptance.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

@@ -568,6 +568,54 @@ Codex owns the smallest product fix justified by S0's startup attribution;
 Glen owns its repeatable acceptance. If this is the dominant confirmed delay,
 prioritize S6 ahead of S1-S5 rather than leaving it until the end.
 
+#### Help attribution: read-only review reconciliation (2026-09-27)
+
+Original Codex scope: split the measured `help_preparation` span before changing
+loading behavior. Claude's read-only review at `c2e569e6` confirms that tutorial
+title discovery loads complete Markdown, rewrites images and can rasterize SVGs;
+each rasterization currently discovers system fonts again. It also identifies
+fresh TMPDIR in Glen's `dev` audit, silent rendering fallback, and repeated
+guided-walkthrough discovery while the tutorial-project menu is open. These are
+source-supported hypotheses, not measured attribution of the 37.5 s delay.
+
+Revised bounded implementation: four help subspans, aggregate image-work
+counters, first-use help/tutorial/menu-discovery handler spans, and an updated
+backward-compatible offline reader. No raw-title shortcut, font sharing,
+negative cache, lazy loading, worker migration or build-profile change yet.
+Image counters cover the entire session, carry explicit loss/incompletion, and
+do not use the event budget. Handler timings do not include presented pixels.
+See the [counter contract](../benches/README.md#startup-phase-checkpoints).
+
+Glen's next evidence, in two stages:
+
+1. **A, existing binary:** keep exact `0467867c` binary identity and effective
+   internal-`dev` recipe. Run three fresh-TMPDIR empty-project sessions and three
+   sessions reusing one warmed TMPDIR (exclude its initial filling run). Keep
+   HOME/XDG/runtime fresh and otherwise equivalent; keep runtime documentation,
+   working directory, resource paths and mtimes fixed so cache keys are stable.
+   Report `help_preparation`,
+   `root_workspace_frame`, PNG-cache file counts and installed-font count, not
+   private filenames. A cold/warm difference supports the cache hypothesis but
+   does not by itself separate font discovery from rendering or other caches;
+   do not require exactly 30 PNGs as an invariant.
+2. **B, instrumented revision:** repeat the same matrix and retain all four
+   help subspans, image counters and both loss counts. In each session also open
+   help, open a tutorial, change its Topic, and open File > Open tutorial project,
+   then exit normally. Retain those first-use spans and external visual evidence; a
+   startup improvement must not merely transfer delay into the first help use.
+   Aggregate image time cannot be assigned to one phase without further evidence.
+
+For both stages, retain source/binary/input hashes, effective profile, host,
+toolchain, exact interaction sequence and cache conditions. The offline reader
+was introduced after `0467867c`: use the newer reader with its retained SHA/hash
+for stage A, not a nonexistent reader from that audited revision. Linux and
+macOS remain separate, and an optional optimized comparison is not prerequisite.
+Only after attribution choose the smallest fix; if necessary use a separate
+targeted profiler to distinguish font scanning from rendering. Glen owns the
+native before/after verdict. No startup timing target is inferred here.
+
+#### S6 guardrails and exit
+
 - Separate process launch to responsive root window, requested project load,
   DNA-window admission/hydration and first subject-correct feature content.
   Retain time spent in harness waits, external I/O, GPU/window initialization

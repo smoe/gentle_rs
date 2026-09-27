@@ -339,25 +339,33 @@ impl GENtleApp {
     }
 
     pub(super) fn help_image_render_path(absolute_dest: &Path) -> PathBuf {
+        use crate::gui_profiler::startup_trace::{
+            HelpImageObservation, measure_help_rasterization, observe_help_image,
+        };
         let Some(png_path) = Self::help_svg_png_cache_path(absolute_dest) else {
             return absolute_dest.to_path_buf();
         };
+        observe_help_image(HelpImageObservation::SvgReference);
         if png_path.is_file() {
+            observe_help_image(HelpImageObservation::CacheHit);
             return png_path;
         }
         if let Some(parent) = png_path.parent()
             && fs::create_dir_all(parent).is_err()
         {
+            observe_help_image(HelpImageObservation::PreparationFailed);
             return absolute_dest.to_path_buf();
         }
-        match crate::svg_png::render_svg_file_to_png(
-            absolute_dest,
-            &png_path,
-            crate::svg_png::SvgPngRenderOptions {
-                scale: 1.0,
-                drop_dotplot_metadata: false,
-            },
-        ) {
+        match measure_help_rasterization(|| {
+            crate::svg_png::render_svg_file_to_png(
+                absolute_dest,
+                &png_path,
+                crate::svg_png::SvgPngRenderOptions {
+                    scale: 1.0,
+                    drop_dotplot_metadata: false,
+                },
+            )
+        }) {
             Ok(_) => png_path,
             Err(_) => absolute_dest.to_path_buf(),
         }
@@ -730,6 +738,11 @@ impl GENtleApp {
         }
         let clamped_index = tutorial_index.min(self.help_tutorial_entries.len() - 1);
         let changed = clamped_index != self.help_tutorial_selected;
+        let trace = (self.show_help_dialog && changed).then(|| {
+            crate::gui_profiler::startup_trace::span_once(
+                crate::gui_profiler::startup_trace::Phase::HelpTutorialSwitch,
+            )
+        });
         self.help_tutorial_selected = clamped_index;
         if let Some(entry) = self.help_tutorial_entries.get(clamped_index) {
             self.help_tutorial_title = entry.title.clone();
@@ -742,10 +755,16 @@ impl GENtleApp {
                     )
                 });
         }
+        if let Some(trace) = trace {
+            trace.finish(true);
+        }
         changed
     }
 
     pub(super) fn open_help_tutorial_doc(&mut self, tutorial_index: usize) {
+        let trace = crate::gui_profiler::startup_trace::span_once(
+            crate::gui_profiler::startup_trace::Phase::HelpTutorialOpen,
+        );
         if self.help_tutorial_entries.is_empty() {
             self.help_tutorial_entries = Self::discover_help_tutorial_entries();
         }
@@ -766,6 +785,7 @@ impl GENtleApp {
         self.help_focus_search_box = true;
         self.show_help_dialog = true;
         self.queue_focus_viewport(Self::help_viewport_id());
+        trace.finish(true);
     }
 
     pub(super) fn open_help_tutorial_path(

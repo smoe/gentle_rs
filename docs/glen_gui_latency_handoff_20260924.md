@@ -51,6 +51,17 @@ integrated feature-tree reuse, so its acceptance remains separate. Downloaded
 package, macOS, nonempty DuckDB-hit and native circular-interaction checks
 remain open; the circular SVG check is not a native interaction test.
 
+**Help follow-up after Claude's read-only review:** follow the
+[two-stage S6 assignment](dna_feature_rendering_latency_plan.md#help-attribution-read-only-review-reconciliation-2026-09-27).
+Stage A needs no new binary: three cold and three warmed-TMPDIR runs of the
+same `0467867c` binary, with otherwise fresh profiles. Stage B uses the new
+instrumentation tip on a clean checkout, retains its exact SHA, and adds four
+help subspans, aggregate image-work/loss counters, and first help/tutorial/menu
+use. The newer offline reader can read the old trace; retain its own SHA/hash
+because it did not exist at `0467867c`. No runtime fix or performance acceptance
+is claimed by instrumentation. A cache effect alone does not prove font scans
+are the dominant cost. Do not postpone stage A for an optimized rebuild.
+
 The following instructions preserve the original assignment and comparison
 contract; they are not a fresh request to rerun the old baseline.
 

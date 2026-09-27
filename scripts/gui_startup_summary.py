@@ -28,7 +28,14 @@ SPANS = frozenset((
     "project_load", "project_read_decode", "project_install", "dna_open_dispatch",
     "dna_construct", "dna_placeholder_construct", "dna_engine_read_lock",
     "dna_sequence_clone", "dna_hydrate",
+    "help_manuals", "help_shell_reference", "help_tutorial_discovery",
+    "help_tutorial_selected_load", "help_open", "help_tutorial_open",
+    "help_tutorial_menu_discovery", "help_tutorial_switch",
 ))
+HELP_IMAGE_COUNTERS = (
+    "svg_references", "cache_hits", "preparation_failures", "rasterization_attempts",
+    "rasterization_completed", "rasterization_failures", "rasterization_us",
+)
 METADATA_STRINGS = ("source_revision", "git_commit", "os", "architecture", "clock", "scope")
 METADATA_FLAGS = ("debug_assertions", "gui_test_support", "gui_profiler")
 LIMITATIONS = [
@@ -40,6 +47,9 @@ LIMITATIONS = [
     "Revision and build flags are producer-reported, not independently verified binary identity.",
     "Retain binary/input hashes, effective profile, host/toolchain and cold/warm conditions separately.",
     "Process-local subjects cannot identify a biological sequence or link separate runs.",
+    "Help image counters cover the whole session, including reloads; not unique files or startup-only work.",
+    "Rasterization time includes file I/O and font loading; it overlaps help spans, not an additional cost.",
+    "First help/tutorial spans measure handler work; menu discovery excludes other menu work and presentation.",
 ]
 
 
@@ -56,6 +66,34 @@ def unique_object(pairs: list[tuple[str, object]]) -> dict:
             raise ValueError("Duplicate JSON field")
         result[key] = value
     return result
+
+
+def help_image_work(trace: dict) -> dict:
+    """Optional v1 extension: absence is unavailable, loss is not measured zero."""
+    if "help_image_work" not in trace and "dropped_help_image_observations" not in trace:
+        return {"status": "unavailable", "reason": "producer_did_not_record", "recorded": None}
+    work = trace.get("help_image_work")
+    if (not isinstance(work, dict) or set(work) != {*HELP_IMAGE_COUNTERS, "saturated"}
+            or type(work["saturated"]) is not bool):
+        raise ValueError("Invalid help image work fields")
+    for key in HELP_IMAGE_COUNTERS:
+        unsigned(work[key], key)
+    dropped = unsigned(trace.get("dropped_help_image_observations"), "dropped_help_image_observations")
+    reason = "dropped_observations" if dropped else "saturated" if work["saturated"] else None
+    if reason is None:
+        if (work["rasterization_failures"] > work["rasterization_completed"]
+                or work["rasterization_completed"] > work["rasterization_attempts"]
+                or work["cache_hits"] + work["preparation_failures"] + work["rasterization_attempts"] > work["svg_references"]
+                or (work["rasterization_completed"] == 0 and work["rasterization_us"] != 0)):
+            raise ValueError("Inconsistent help image work counts")
+        if (work["rasterization_completed"] != work["rasterization_attempts"]
+                or work["cache_hits"] + work["preparation_failures"] + work["rasterization_attempts"] != work["svg_references"]):
+            reason = "unfinished_work"
+    return {
+        "status": "incomplete" if reason else "no_recorded_loss", "reason": reason,
+        "recorded": work, "dropped_observations": dropped,
+        "rasterization_total_us": work["rasterization_us"] if reason is None else None,
+    }
 
 
 def summarize(raw: bytes) -> dict:
@@ -122,9 +160,12 @@ def summarize(raw: bytes) -> dict:
             raise ValueError("Unknown event kind")
 
     warnings = []
+    images = help_image_work(trace)
+    if images["status"] != "no_recorded_loss":
+        warnings.append(f"Help image work {images['status']}: {images['reason']}; not a measured complete total.")
     if dropped:
         warnings.append(f"{dropped} events dropped; all derived durations are unavailable (loss cannot be localized).")
-    incomplete = bool(dropped)
+    incomplete = bool(dropped) or images["status"] == "incomplete"
     for entry in spans.values():
         begin, end = entry.get("begin"), entry.get("end")
         if begin is not None and end is not None and end < begin:
@@ -170,6 +211,7 @@ def summarize(raw: bytes) -> dict:
         "event_count": len(events), "dropped_events": dropped,
         "trace_completeness": "incomplete" if incomplete else "no_recorded_loss",
         "failed_spans": failures, "native_gui_measured": False,
+        "help_image_work": images,
         "performance_verdict": "not_assessed", "limitations": LIMITATIONS,
         "warnings": warnings, "subjects": [subjects[key] for key in sorted(subjects)],
     }
@@ -229,6 +271,15 @@ def markdown(report: dict) -> str:
     lines.extend(f"- {item}" for item in report["limitations"])
     lines.extend(["", "## Warnings", ""])
     lines.extend(f"- {item}" for item in report["warnings"] or ["No recorded loss; this is not a successful-startup or responsiveness verdict."])
+    images = report["help_image_work"]
+    lines.extend(["", "## Help Image Work (Whole Session, Not Additive)", "",
+                  f"Status: {images['status']}; reason: {images['reason'] or 'none'}."])
+    if images["recorded"] is not None:
+        lines.extend([f"Dropped observations: {images['dropped_observations']}; "
+                      f"saturated: {images['recorded']['saturated']}.", "",
+                      "| Recorded counter (may be partial) | Value |", "| --- | ---: |"])
+        lines.extend(f"| {key} | {images['recorded'][key]} |" for key in HELP_IMAGE_COUNTERS)
+        lines.extend(["", f"Complete rasterization total (ms): {ms(images['rasterization_total_us'])}."])
     for row in report["subjects"]:
         lines.extend(["", f"## Subject {row['subject']} (Process-Local Ordinal)", "",
                       "### CPU Markers", "", "| Marker | Since Rust main (ms) |", "| --- | ---: |"])

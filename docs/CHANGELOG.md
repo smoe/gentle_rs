@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-09-27 - Help Startup Attribution, Not A Loading Change
+
+- Split help preparation into manual loading, shell-reference generation,
+  tutorial discovery and selected-tutorial loading. Record first help/tutorial
+  handler and tutorial-menu discovery work once, without skipping later calls.
+  A separate first changed-topic load span covers the in-window Topic picker.
+- Add bounded, opt-in, path-free session totals for SVG visits, cache hits,
+  cache-directory failures and rasterization attempts/outcomes/time. Keep
+  unfinished work, counter contention and saturation explicit, independently
+  from the existing 512-event budget; no per-image events or live file writes.
+- Extend the offline reader and deterministic producer/adapter/reader tests;
+  old v1 traces without counters remain readable as unavailable, not zero.
+  No help-loading, cache-policy, font-loading, scientific or build-profile
+  changes; documentation describes diagnostics only. The 37.5 s cause and any
+  improvement remain unmeasured here.
+- Reconcile Claude's read-only review into S6: Glen first compares identical
+  cold/warm binaries, then the instrumented subphases plus first help use.
+  Font sharing, raw-heading discovery and negative caching await attribution.
+- Implementation verification on macOS with Rust/Cargo 1.99.0-beta.7: 16
+  startup-trace and six existing help regressions, 18 offline-reader tests,
+  `cargo check -q --locked --offline -j1`, formatting and whitespace checks pass.
+  The test link reports a large `__eh_frame` warning but succeeds. No full-suite,
+  native-Windows or Linux/macOS performance acceptance is claimed.
+
 ## 2026-09-27 - Native Linux GUI Attribution
 
 - Integrate Glen's two audit commits through `1d6ff354` as a merge, retaining

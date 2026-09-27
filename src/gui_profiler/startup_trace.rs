@@ -47,6 +47,59 @@ pub enum Phase {
     DnaLoadFailed,
     DnaNativeContentFrame,
     DnaEmbeddedContentFrame,
+    HelpManuals,
+    HelpShellReference,
+    HelpTutorialDiscovery,
+    HelpTutorialSelectedLoad,
+    HelpOpen,
+    HelpTutorialOpen,
+    HelpTutorialMenuDiscovery,
+    HelpTutorialSwitch,
+}
+
+/// Session totals, not per-file events or additional time outside enclosing spans.
+#[derive(Debug, Default, Serialize)]
+struct HelpImageWork {
+    svg_references: u64,
+    cache_hits: u64,
+    preparation_failures: u64,
+    rasterization_attempts: u64,
+    rasterization_completed: u64,
+    rasterization_failures: u64,
+    rasterization_us: u64,
+    saturated: bool,
+}
+
+pub(crate) enum HelpImageObservation {
+    SvgReference,
+    CacheHit,
+    PreparationFailed,
+    RasterizationStarted,
+    RasterizationFinished { elapsed_us: u64, failed: bool },
+}
+
+impl HelpImageWork {
+    fn observe(&mut self, observation: HelpImageObservation) {
+        fn add(counter: &mut u64, value: u64, saturated: &mut bool) {
+            let sum = counter.checked_add(value);
+            *saturated |= sum.is_none();
+            *counter = sum.unwrap_or(u64::MAX);
+        }
+        let counter = match observation {
+            HelpImageObservation::SvgReference => &mut self.svg_references,
+            HelpImageObservation::CacheHit => &mut self.cache_hits,
+            HelpImageObservation::PreparationFailed => &mut self.preparation_failures,
+            HelpImageObservation::RasterizationStarted => &mut self.rasterization_attempts,
+            HelpImageObservation::RasterizationFinished { elapsed_us, failed } => {
+                add(&mut self.rasterization_us, elapsed_us, &mut self.saturated);
+                if failed {
+                    add(&mut self.rasterization_failures, 1, &mut self.saturated);
+                }
+                &mut self.rasterization_completed
+            }
+        };
+        add(counter, 1, &mut self.saturated);
+    }
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -76,6 +129,8 @@ struct Recorder {
     next_id: AtomicU64,
     dropped: AtomicU64,
     closed: AtomicBool,
+    help_images: Mutex<HelpImageWork>,
+    dropped_help_image_observations: AtomicU64,
 }
 
 impl Recorder {
@@ -86,6 +141,22 @@ impl Recorder {
             next_id: AtomicU64::new(1),
             dropped: AtomicU64::new(0),
             closed: AtomicBool::new(false),
+            help_images: Mutex::new(HelpImageWork::default()),
+            dropped_help_image_observations: AtomicU64::new(0),
+        }
+    }
+
+    fn observe_help_image(&self, observation: HelpImageObservation) {
+        if self.closed.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Ok(mut work) = self.help_images.try_lock() {
+            if !self.closed.load(Ordering::Relaxed) {
+                work.observe(observation);
+            }
+        } else {
+            self.dropped_help_image_observations
+                .fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -119,6 +190,10 @@ impl Recorder {
             .events
             .lock()
             .map_err(|_| io::Error::other("Startup trace recorder poisoned"))?;
+        let help_images = self
+            .help_images
+            .lock()
+            .map_err(|_| io::Error::other("Help image trace recorder poisoned"))?;
         Ok(serde_json::json!({
             "schema": "gentle.gui_startup_trace.v1",
             "source_revision": crate::about::GENTLE_SOURCE_REVISION,
@@ -133,6 +208,8 @@ impl Recorder {
             "event_limit": MAX_EVENTS,
             "dropped_events": self.dropped.load(Ordering::Relaxed),
             "events": *events,
+            "help_image_work": *help_images,
+            "dropped_help_image_observations": self.dropped_help_image_observations.load(Ordering::Relaxed),
         }))
     }
 }
@@ -187,6 +264,16 @@ impl TraceContext {
             (subject.clone(), phase, id)
         }))
     }
+
+    fn span_once(&self, phase: Phase) -> Span {
+        if let Some(subject) = &self.0 {
+            let mask = 1_u64 << phase as u8;
+            if subject.checkpoints.fetch_or(mask, Ordering::Relaxed) & mask == 0 {
+                return self.span(phase);
+            }
+        }
+        Span(None)
+    }
 }
 
 /// An unfinished or unwinding scope is recorded as interrupted, never successful.
@@ -231,6 +318,39 @@ pub(crate) fn context() -> TraceContext {
 /// Time a named phase; inert unless recording was explicitly enabled.
 pub fn span(phase: Phase) -> Span {
     context().span(phase)
+}
+
+/// First invocation only, so an open menu cannot fill the recorder each frame.
+pub(crate) fn span_once(phase: Phase) -> Span {
+    context().span_once(phase)
+}
+
+pub(crate) fn observe_help_image(observation: HelpImageObservation) {
+    if let Some(subject) = context().0 {
+        subject.recorder.observe_help_image(observation);
+    }
+}
+
+/// Measures the existing file-to-PNG call, including I/O and font loading.
+/// Errors and panics retain their original behavior; unfinished attempts stay visible.
+pub(crate) fn measure_help_rasterization<T, E>(
+    operation: impl FnOnce() -> Result<T, E>,
+) -> Result<T, E> {
+    let Some(subject) = context().0 else {
+        return operation();
+    };
+    subject
+        .recorder
+        .observe_help_image(HelpImageObservation::RasterizationStarted);
+    let started = Instant::now();
+    let result = operation();
+    subject
+        .recorder
+        .observe_help_image(HelpImageObservation::RasterizationFinished {
+            elapsed_us: started.elapsed().as_micros().min(u64::MAX as u128) as u64,
+            failed: result.is_err(),
+        });
+    result
 }
 
 /// Bounded process checkpoint, recorded at most once during this invocation.
@@ -321,6 +441,95 @@ mod tests {
         let context = TraceContext::default();
         context.checkpoint(Phase::RootFirstFrame);
         assert!(context.child().span(Phase::DnaConstruct).0.is_none());
+        assert!(context.span_once(Phase::HelpOpen).0.is_none());
+        assert!(super::context().0.is_none());
+        observe_help_image(HelpImageObservation::SvgReference);
+        assert_eq!(measure_help_rasterization(|| Ok::<_, ()>(17)), Ok(17));
+        assert_eq!(
+            measure_help_rasterization(|| Err::<(), _>("unchanged")),
+            Err("unchanged")
+        );
+    }
+
+    #[test]
+    fn startup_trace_help_first_use_is_once_but_work_is_not_skipped() {
+        let mut calls = 0;
+        let (_, report) = capture(|| {
+            for _ in 0..600 {
+                let trace = span_once(Phase::HelpTutorialMenuDiscovery);
+                calls += 1;
+                trace.finish(true);
+            }
+        });
+        assert_eq!(calls, 600);
+        assert_eq!(report["events"].as_array().unwrap().len(), 2);
+        assert_eq!(report["dropped_events"], 0);
+        assert!((Phase::HelpTutorialSwitch as u8) < 64);
+    }
+
+    #[test]
+    fn startup_trace_help_totals_preserve_errors_panics_and_event_budget() {
+        let (_, report) = capture(|| {
+            for _ in 0..600 {
+                observe_help_image(HelpImageObservation::SvgReference);
+                observe_help_image(HelpImageObservation::CacheHit);
+            }
+            for _ in 0..3 {
+                observe_help_image(HelpImageObservation::SvgReference);
+            }
+            observe_help_image(HelpImageObservation::SvgReference);
+            observe_help_image(HelpImageObservation::PreparationFailed);
+            assert_eq!(measure_help_rasterization(|| Ok::<_, ()>(7)), Ok(7));
+            assert_eq!(
+                measure_help_rasterization(|| Err::<(), _>("failed")),
+                Err("failed")
+            );
+            assert!(
+                std::panic::catch_unwind(|| {
+                    let _: Result<(), ()> = measure_help_rasterization(|| panic!("interrupted"));
+                })
+                .is_err()
+            );
+        });
+        let work = &report["help_image_work"];
+        assert_eq!(work["svg_references"], 604);
+        assert_eq!(work["cache_hits"], 600);
+        assert_eq!(work["preparation_failures"], 1);
+        assert_eq!(work["rasterization_attempts"], 3);
+        assert_eq!(work["rasterization_completed"], 2);
+        assert_eq!(work["rasterization_failures"], 1);
+        assert!(work["rasterization_us"].as_u64().is_some());
+        assert_eq!(report["events"].as_array().unwrap().len(), 0);
+        assert_eq!(report["dropped_events"], 0);
+        assert_eq!(report["dropped_help_image_observations"], 0);
+        assert!(work.as_object().unwrap().keys().all(|key| {
+            [
+                "svg_references",
+                "cache_hits",
+                "preparation_failures",
+                "rasterization_attempts",
+                "rasterization_completed",
+                "rasterization_failures",
+                "rasterization_us",
+                "saturated",
+            ]
+            .contains(&key.as_str())
+        }));
+    }
+
+    #[test]
+    fn startup_trace_help_losses_saturation_and_exit_are_explicit() {
+        let recorder = Recorder::new(Instant::now());
+        let mut work = recorder.help_images.lock().unwrap();
+        recorder.observe_help_image(HelpImageObservation::SvgReference);
+        work.svg_references = u64::MAX;
+        drop(work);
+        recorder.observe_help_image(HelpImageObservation::SvgReference);
+        let report = recorder.report().unwrap();
+        assert_eq!(report["dropped_help_image_observations"], 1);
+        assert_eq!(report["help_image_work"]["saturated"], true);
+        recorder.observe_help_image(HelpImageObservation::CacheHit);
+        assert_eq!(recorder.report().unwrap(), report);
     }
 
     #[test]

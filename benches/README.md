@@ -269,6 +269,18 @@ Use these boundaries for attribution:
 - `native_run` begin to `app_initialize` begin separates pre-constructor native
   setup from app defaults, help preparation, configuration and credential load.
   `native_run` ends on exit, not when startup finishes.
+- `help_preparation` contains `help_manuals`, `help_shell_reference`,
+  `help_tutorial_discovery` and `help_tutorial_selected_load`. Reloads can repeat
+  these subspans; do not sum them with their enclosing span.
+- `help_open` and `help_tutorial_open` measure the first actual help handlers,
+  including payload preparation and search refresh, not rendering/presentation.
+  A focus-only return on an already open manual does not consume `help_open`.
+  `help_tutorial_menu_discovery` measures the first guided-walkthrough discovery
+  called by File > Open tutorial project, not the rest of that menu's work.
+  First-use spans are recorded once per process; later calls still execute.
+  `help_tutorial_switch` measures the first changed tutorial selection while
+  help is already open (including the Topic picker), excluding subsequent
+  search refresh and painting. Startup's initial selection does not consume it.
 - `project_read_decode` and `project_install` distinguish file/parsing work from
   installation and presentation-state reset. Failed loads have no install span.
 - `root_first_frame` may be a splash; `root_workspace_frame` excludes it. Both
@@ -291,6 +303,22 @@ evidence classes; record process-launch and visibly confirmed content with the
 external native audit. This file alone cannot certify an interaction budget,
 and enabling tracing adds some overhead. The existing Criterion replay remains
 unchanged and clears inherited `GENTLE_*` options.
+
+The additive `help_image_work` object retains fixed, path-free **whole-session**
+totals: `svg_references`, `cache_hits`, `preparation_failures` (cache-directory
+creation), `rasterization_attempts`, `rasterization_completed` (including errors),
+`rasterization_failures` and `rasterization_us`. References are visits, not unique
+images. Rasterization time surrounds the existing file-to-PNG call, including
+file I/O, font discovery, parsing, rendering and writing; it does not isolate
+font cost. These totals include startup, reloads, help and menu work and overlap
+their spans. They consume no events from the 512-event budget. Contention is
+nonblocking and increments `dropped_help_image_observations`; overflow sets
+`saturated`. An unfinished attempt, loss or saturation prevents a complete-total
+claim. The reader retains partial counters but marks the complete duration
+unavailable. Counter loss does not invalidate intact event spans, nor event loss
+intact counters. Older v1 traces without this extension remain readable and show
+image work as unavailable, not zero. No paths, image names or error text are
+recorded; loading, fallback and cache behavior remain unchanged.
 
 #### Read a saved startup trace
 

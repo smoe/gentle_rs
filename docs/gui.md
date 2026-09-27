@@ -1096,8 +1096,12 @@ Feature tree grouping:
   for missing-event handling and the distinction from native presentation and
   performance acceptance. The offline `scripts/gui_startup_summary.py` reader
   produces per-subject CPU tables and retains the exact trace without relaunching
-  GENtle; missing durations stay unavailable, not zero. This diagnostic is off
-  by default.
+  GENtle; missing durations stay unavailable, not zero. Help preparation has
+  separate manual, shell-reference, tutorial-discovery and selected-load spans,
+  plus first-use help/tutorial/menu-discovery spans and path-free, session-wide
+  SVG/cache/rasterization totals. These are attribution only: they do not change
+  help loading or prove that rasterization causes the observed startup delay.
+  This diagnostic is off by default.
 - The splicing expert window uses its own window-styling slot (`splicing`) so
   tint/image backdrop can be configured separately from DNA and pool windows.
 - The Agent Assistant window uses its own window-styling slot (`agent assistant`)
