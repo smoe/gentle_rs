@@ -95,10 +95,9 @@ feature boundary. It does not measure native event delivery, compositor delay,
 window creation, project loading, circular-map behavior or scientific/visual
 correctness.
 
-The next release-facing step is therefore native Linux acceptance on one exact
-package/commit, separating correctness from interaction speed. It should cover
-TP73/PATZ1 window opening, resize, selection, pan/zoom and layer toggles plus
-TSS curves, DuckDB hits, strand legends, navigation, coordinates and exports.
-Circular maps need correctness and interaction-regression checks without a new
-`.12` timing promise. A macOS cross-check remains separate and requires a
-macOS host or a package built there.
+The follow-up [native Linux audit](glen_native_gui_audit_20260927.md) exercises
+a local exact-identity internal-`dev` rebuild. PATZ1 and the synthetic TSS path
+are visually correct in that run, while fresh startup is dominated by a
+repeatable 37.5--37.8 s help-preparation span. Exact downloaded-package,
+nonempty DuckDB-hit and macOS evidence remain open. Circular maps keep
+correctness coverage without a new `.12` timing promise.

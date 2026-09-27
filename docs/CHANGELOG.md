@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-09-27 - Native Linux GUI Attribution
+
+- Exercise a locally rebuilt, exact-identity `0467867c` internal-`dev` GUI in
+  fresh Linux/Xvfb profiles. Authentic PATZ1 opens with its 20,802-bp
+  minus-strand locus, 13 transcript rows, selection, layer toggling, four
+  resizes, zoom and explicit range navigation intact. The bound synthetic TSS
+  report opens through the direct reviewed Agent-Assistant command and keeps
+  coordinates, evidence classes, missing control and score curves distinct.
+- Reproduce a 37.461--37.807 s `help_preparation` span across empty, PATZ1 and
+  TSS startups; project decode/install remain milliseconds. PATZ1 dispatch to
+  the first CPU-side native-content marker is 833 ms, while the tiny TSS case
+  is 217 ms. Select help preparation as the next measured startup slice rather
+  than inferring another feature-rendering optimization.
+- Keep boundaries explicit: the original successful Linux Actions artifact
+  could not be downloaded with the invalid local GitHub credential, this Xvfb
+  host lacks an EWMH window manager, the supplied TSS fixture has no nonempty
+  DuckDB hit rows, and no macOS check was possible. A public circular pGEX-3X
+  SVG regression passes without creating a circular timing promise.
+
 ## 2026-09-27 - Current DNA-Feature Boundary Audit
 
 - Retain Glen's exact-`main` `bench-audit` baseline at `0467867c`: two clean,
