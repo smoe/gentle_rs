@@ -30834,6 +30834,65 @@ fn execute_introspect_capabilities_filters_first_slice_by_kind() {
 }
 
 #[test]
+fn execute_introspect_tss_view_svg_declares_sequence_and_artifact_contract() {
+    let mut engine = GentleEngine::default();
+    for command in ["introspect capabilities", "introspect all"] {
+        let output = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(command).expect("parse introspection"),
+        )
+        .expect("execute introspection");
+        let capabilities = if command == "introspect all" {
+            &output.output["capabilities"]["capabilities"]
+        } else {
+            &output.output["capabilities"]
+        };
+        for id in ["promoters tss-view-svg", "ExportTssViewSvg"] {
+            let descriptor = capabilities
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|row| row["id"] == id)
+                .unwrap_or_else(|| panic!("missing {id} in {command}"));
+            assert_eq!(descriptor["annotation_status"], "fact_annotated", "{id}");
+            assert_eq!(descriptor["mutating"], "external", "{id}");
+            assert_eq!(descriptor["requires_confirmation"], true, "{id}");
+            assert_eq!(
+                descriptor["reads"],
+                json!([{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}]),
+                "{id}"
+            );
+            assert_eq!(descriptor["precondition_expr"]["all"], descriptor["reads"]);
+            assert_eq!(
+                descriptor["effects"],
+                json!([{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}]),
+                "{id}"
+            );
+            for name in ["SEQ_ID", "OUTPUT_PATH"] {
+                assert!(
+                    descriptor["args"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|arg| { arg["name"] == name && arg["required"] == true })
+                );
+            }
+        }
+    }
+    for id in ["promoters tss-view-svg", "ExportTssViewSvg"] {
+        let output = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!("introspect readiness {id}")).unwrap(),
+        )
+        .unwrap();
+        let row = &output.output["readiness"][0];
+        assert_eq!(row["readiness"], "unknown");
+        assert_eq!(row["unknown_atoms"][0]["fact"], "sequence.exists");
+        assert_eq!(row["unknown_atoms"][0]["reason"], "unbound argument");
+    }
+}
+
+#[test]
 fn execute_introspect_capabilities_projects_full_registry_with_fact_annotations() {
     let mut engine = GentleEngine::default();
 

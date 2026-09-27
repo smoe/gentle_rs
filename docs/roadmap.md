@@ -21,7 +21,7 @@ Maintenance invariant:
 ## Release Gate
 
 Historical publication ledger: `v0.1.0-internal.11` was recorded on September 24 at `ffe5c637d5dddaf2f48daa3fa529d6e9bafd4c7b`, without attached packages or exact-candidate acceptance. Recheck the current remote tag/assets before dispatch; this is not a current-tag assertion. The `.10` ledger remains pending at `84f34a9e`.
-Current package version remains `v0.1.0-internal.11`; the route to Unix packages and the `.12` rollover date are owner decisions.
+Current candidate: `v0.1.0-internal.11` remains the package version under acceptance; this does not identify the current remote tag or claim successful publication. The route to Unix packages and the `.12` rollover date are owner decisions.
 Active aim: gene-informed primer-PAIR studies, source-aware isoform inspection and TSS workflows, with portable evidence and package acceptance; discovery is not experimental validation.
 
 Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,

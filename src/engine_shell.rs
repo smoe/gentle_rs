@@ -21170,6 +21170,28 @@ fn tss_profile_capability_descriptor(id: &str, compute: bool) -> Value {
     })
 }
 
+fn tss_view_svg_capability_descriptor(id: &str) -> Value {
+    json!({
+        "id": id, "kind": "operation", "mutating": "external",
+        "requires_confirmation": true,
+        "args": [
+            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence with valid GENtle annotated-TSS metadata; a plain locus is refused"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "SVG destination; path on the typed operation"},
+            {"name": "REPORT_PATH", "required": false, "subject_kind": "other", "detail": "--report PATH, or report on the typed operation; validates and attaches a saved profile without rescoring it"},
+            {"name": "MATRIX_IDS", "required": false, "subject_kind": "other", "detail": "repeat --motif ACCESSION, or local_motifs on the typed operation; exact full-PFM accessions only, no factor aliases"},
+            {"name": "SCORE_KIND", "required": false, "subject_kind": "other", "detail": "--score-kind KIND, or score_kind on the typed operation; defaults to llr_bits, never inherited from a GUI"},
+            {"name": "CLIP_NEGATIVE", "required": false, "subject_kind": "other", "detail": "defaults to true; --keep-negative disables clipping"},
+            {"name": "SPAN", "required": false, "subject_kind": "other", "detail": "--span START..END uses 1-based inclusive local coordinates; typed start_0based/end_0based_exclusive use a half-open interval"},
+            {"name": "WIDTH_PX", "required": false, "subject_kind": "other", "detail": "--width PX, or width_px on the typed operation; defaults to 1600"}
+        ],
+        "reads": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}],
+        "precondition_expr": {"all": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}]},
+        "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}],
+        "description": "Export the native annotated-TSS view as SVG without changing project state or requiring a GUI. Runtime validation checks TSS metadata, optional report bindings, exact motif accessions and scoring limits. Local curves and attached evidence retain separate scales; scores do not establish occupancy.",
+        "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)
+    })
+}
+
 fn tata_capability_descriptor(id: &str, mutating: bool) -> Value {
     json!({
         "id": id, "kind": "operation", "mutating": if mutating { "true" } else { "false" },
@@ -21552,6 +21574,8 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
         tss_profile_capability_descriptor("ComputeTssTfbsProfiles", true),
         tss_profile_capability_descriptor("features tss-tfbs-profiles-export", false),
         tss_profile_capability_descriptor("ExportTssTfbsProfiles", false),
+        tss_view_svg_capability_descriptor("promoters tss-view-svg"),
+        tss_view_svg_capability_descriptor("ExportTssViewSvg"),
         json!({
             "id": "gene_isoform_assay_publication",
             "kind": "operation",

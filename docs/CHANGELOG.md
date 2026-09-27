@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-09-27 - Complete TSS Export And Tutorial Registration
+
+- Add the missing fact-annotated introspection contract for `ExportTssViewSvg`
+  and `promoters tss-view-svg`: a loaded sequence is required, SVG writing is
+  an external effect, and report/motif/coordinate validation remains at execution.
+  Add focused direct/aggregate introspection and unbound-readiness coverage.
+- Register tutorial 08.17 in the authoring sources and review manifest, not
+  only the generated catalog. Align its catalog projection with the generator's
+  unreviewed status and issue routing; screenshots and native acceptance remain
+  pending. Correct Glen's handoff to add graphics to the source then regenerate.
+  The existing catalog freshness/count tests and LF/CRLF policy stay intact.
+- No local builds or tests run; the five reported regressions need CI confirmation.
+
+## 2026-09-27 - Restore The Release-Gate Version Marker
+
+- Restore the roadmap's explicit `Current candidate: v0.1.0-internal.11`
+  marker required by `release_metadata_matches_cargo_package_version`; the
+  replacement prose named the same version but no longer matched the guard.
+  Keep publication history and pending acceptance separate. No package version,
+  tag, dependency, or test expectation changes; no local builds or tests run.
+
 ## 2026-09-27 - Agent Parity For Native TSS Scoring And Export
 
 - Add `Operation::ExportTssViewSvg` and `promoters tss-view-svg SEQ_ID

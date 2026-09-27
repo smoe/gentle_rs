@@ -1566,7 +1566,7 @@
         "regulatory_analysis",
         "wet_lab_biologists"
       ],
-      "notes": "Offline real-locus native TSS walkthrough on the retained public TP73 RefSeq excerpt. Recovers the GenBank REGION anchor, previews all five annotated starts (the P1/TAp73 start is reported missing_flanks because the excerpt has no upstream sequence), approves only the internal ΔNp73 start at 1:3690672, then computes and exports locally scored E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Every step has GUI, Agent Assistant and inner-agent parity; local scoring and export also have a fully headless route (ui open tss-view --local-score, promoters tss-view-svg). Separate non-cross-calibrated scales, unavailable-not-zero bands, no occupancy or reporter claim.",
+      "notes": "Offline real-locus native TSS walkthrough on the retained public TP73 RefSeq excerpt. Recovers the GenBank REGION anchor, previews all five annotated starts (the P1/TAp73 start is reported missing_flanks because the excerpt has no upstream sequence), approves only the internal ΔNp73 start at 1:3690672, then computes and exports locally scored E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Every step has GUI, Agent Assistant and inner-agent parity; ui open tss-view --local-score is GUI-hosted, while promoters tss-view-svg provides headless local scoring and export. Separate non-cross-calibrated scales, unavailable-not-zero bands, no occupancy or reporter claim. Screenshots and native acceptance remain pending.",
       "estimated_minutes": 15,
       "difficulty": "intermediate",
       "network": "offline",
@@ -1580,8 +1580,9 @@
         "interactive native TSS evidence view",
         "deterministic native TSS view SVG"
       ],
-      "review_status": "pending_graphics",
-      "graphics": []
+      "review_status": "unreviewed",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
     }
   ]
 }

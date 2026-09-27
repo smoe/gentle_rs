@@ -110,8 +110,9 @@ and effective build settings as in our other GUI latency audits.
 ## 4. Screenshots for the tutorial
 
 Once you are satisfied the workflow is correct, please capture screenshots and
-register them in `docs/tutorial/catalog.json` under the `08-17` entry's
-`graphics` array, following the shape already used by the `08-16` entry
+register them in `docs/tutorial/sources/08-17_tp73_dnp73_factor_curves.json`
+under `graphics`, then regenerate `docs/tutorial/catalog.json`. Do not edit the
+generated catalog directly. Follow the shape used by the `08-16` source
 (`kind`, `path`, `caption`, `illustrates_step`, `capture_date`).
 
 Most useful, in order:

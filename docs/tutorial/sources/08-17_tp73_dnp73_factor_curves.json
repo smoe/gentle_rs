@@ -1,0 +1,29 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "tp73_dnp73_factor_curves",
+  "title": "Compare E2F1, PATZ1 and TP73 motif curves at the human ΔNp73 TSS",
+  "graphics": [],
+  "catalog": {
+    "order": 95,
+    "path": "docs/tutorial/08-17_tp73_dnp73_factor_curves.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": [
+      "gui_first",
+      "cli_first",
+      "agent_users",
+      "regulatory_analysis",
+      "wet_lab_biologists"
+    ],
+    "notes": "Offline real-locus native TSS walkthrough on the retained public TP73 RefSeq excerpt. Recovers the GenBank REGION anchor, previews all five annotated starts (the P1/TAp73 start is reported missing_flanks because the excerpt has no upstream sequence), approves only the internal ΔNp73 start at 1:3690672, then computes and exports locally scored E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Every step has GUI, Agent Assistant and inner-agent parity; ui open tss-view --local-score is GUI-hosted, while promoters tss-view-svg provides headless local scoring and export. Separate non-cross-calibrated scales, unavailable-not-zero bands, no occupancy or reporter claim. Screenshots and native acceptance remain pending.",
+    "estimated_minutes": 15,
+    "difficulty": "intermediate",
+    "network": "offline",
+    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI headless export"],
+    "starting_state": "Empty project and the retained public test_files/tp73.ncbi.gb RefSeq excerpt",
+    "produces": ["interactive native TSS evidence view", "deterministic native TSS view SVG"],
+    "group": "08",
+    "group_position": 17
+  }
+}
