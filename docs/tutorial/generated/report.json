@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "e54ba416385639b6060a5e736796bccef375af3885fafc33ab3d50a99bff3697",
+    "README.md": "fa8c0568986c59c8deda81c887e184ba2103527468b7cd5e3cf64fa175941fbd",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -109,7 +109,7 @@
     "chapters/03-03_gibson_two_fragment_overlap_preview.md": "5bd55c4cbe333606150850979a3a67b8e61eb71b3ea67a3a51bc1e094c9e6e39",
     "chapters/03-04_gibson_specialist_testing_baseline.md": "c75ef145218194d6a9dd58a2523d8e991cb79dfbfc29c54025f6561d0addb2fb",
     "chapters/03-06_gibson_arrangements_baseline.md": "1c924a909fb2b61366b54f2080443e99360d09e19d20a3877585055d2ebf02ee",
-    "chapters/04-01_simple_pcr_selection_gui.md": "fbbf8d5d5f5581aaeae9f091f30d43532cec326294b03752fc776a62102e1467",
+    "chapters/04-01_simple_pcr_selection_gui.md": "a38df39a13b0d7d82c2d547913c366512ae24b98c8b74c1a63e054f9879f98c2",
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "aa91ec372866cdf301eef5d6342d007a5816a441253102c10e60c14345538cba",
     "chapters/04-04_guides_filter_and_generate_oligos.md": "5b27b430a868f7b206229060726b806641e7e76d453f6d88f39f7fa3f4b76687",
     "chapters/04-05_guides_export_csv_and_protocol.md": "12ac1eb859aa9663912d0a790f374af91f34e47d4be7c7a19c25766879c9671a",
@@ -610,9 +610,8 @@
         "deterministic_workflows"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-28",
       "graphics": [
         {
           "kind": "screenshot",
@@ -630,10 +629,10 @@
         },
         {
           "kind": "screenshot",
-          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.context.svg",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg",
           "caption": "The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.",
           "illustrates_step": 5,
-          "capture_date": "2026-09-08"
+          "capture_date": "2026-09-28"
         }
       ],
       "retained_artifacts": []

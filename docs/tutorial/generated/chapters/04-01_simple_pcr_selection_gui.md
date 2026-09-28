@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/simple_pcr_selection_gui.json"
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-09-28"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/simple_pcr_selection_gui"
 ---
 
@@ -184,9 +184,9 @@ gentle_cli shell 'primers list-reports'
 
 The report makes the design auditable by exposing product length, core-flanking geometry and primer properties.
 
-![The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.context.svg)
+![The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg)
 
-*Figure: The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI. Screenshot captured 2026-09-08.*
+*Figure: The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI. Screenshot captured 2026-09-28.*
 
 
 ## Interpretation and Reference
@@ -234,8 +234,8 @@ gentle_cli shell 'primers list-reports'
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-09-28`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

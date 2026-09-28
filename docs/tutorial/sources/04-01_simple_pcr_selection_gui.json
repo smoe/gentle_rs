@@ -22,7 +22,7 @@
       "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg",
       "caption": "The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.",
       "illustrates_step": 5,
-      "capture_date": "2026-09-08"
+      "capture_date": "2026-09-28"
     }
   ],
   "catalog": {
@@ -400,7 +400,7 @@
           "id": "design_primers",
           "prose_step": 5,
           "window": "window.pcr_design",
-          "target": "pcr.design.report_preview",
+          "target": "pcr.design.run",
           "subject": {
             "sequence": "tp73_locus"
           },
@@ -492,7 +492,7 @@
           "id": "inspect_primer_report",
           "prose_step": 5,
           "window": "window.pcr_design",
-          "target": "pcr.design.run",
+          "target": "pcr.design.report_preview",
           "subject": {
             "sequence": "tp73_locus"
           },

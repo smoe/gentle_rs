@@ -1989,10 +1989,10 @@
         },
         {
           "kind": "screenshot",
-          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.context.svg",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg",
           "caption": "The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.",
           "illustrates_step": 5,
-          "capture_date": "2026-09-08"
+          "capture_date": "2026-09-28"
         }
       ],
       "gui_acceptance": {
@@ -2332,6 +2332,36 @@
                     "right_path": "roi_end_0based"
                   }
                 ]
+              }
+            ],
+            "evidence": {
+              "screenshot": "optional",
+              "snapshot": "required"
+            }
+          },
+          {
+            "id": "inspect_primer_report",
+            "prose_step": 5,
+            "window": "window.pcr_design",
+            "target": "pcr.design.report_preview",
+            "subject": {
+              "sequence": "tp73_locus"
+            },
+            "interaction": {
+              "kind": "scroll",
+              "direction": "down",
+              "clicks": 8
+            },
+            "timeout_class": "interactive",
+            "persists_project_state": false,
+            "scientific_effect": false,
+            "verifiers": [
+              {
+                "kind": "visible_claim",
+                "semantic_id": "pcr.design.report_preview",
+                "visible": true,
+                "enabled": true,
+                "outcome_role": "ready"
               }
             ],
             "evidence": {
