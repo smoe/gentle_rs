@@ -359,7 +359,7 @@
         "new_users",
         "primer_design"
       ],
-      "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
+      "notes": "Beginner-friendly selection-first PCR walkthrough centered on the must-cover core ROI, deterministic left/right primer-search windows, and a visibly verified saved report.",
       "estimated_minutes": 20,
       "difficulty": "beginner",
       "network": "offline",
@@ -372,21 +372,13 @@
       "produces": [
         "primer-pair report"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-09-28",
       "graphics": [
         {
           "kind": "screenshot",
-          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg",
-          "caption": "Whole-screen orientation for opening the selected core region's context menu.",
-          "illustrates_step": 3,
-          "capture_date": "2026-09-08"
-        },
-        {
-          "kind": "screenshot",
           "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
-          "caption": "Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.",
+          "caption": "The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough.",
           "illustrates_step": 3,
           "capture_date": "2026-09-08"
         },
@@ -399,10 +391,10 @@
         },
         {
           "kind": "screenshot",
-          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg",
-          "caption": "Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.",
+          "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg",
+          "caption": "The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.",
           "illustrates_step": 5,
-          "capture_date": "2026-09-08"
+          "capture_date": "2026-09-28"
         }
       ]
     },

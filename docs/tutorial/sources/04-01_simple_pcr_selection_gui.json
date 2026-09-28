@@ -5,15 +5,8 @@
   "graphics": [
     {
       "kind": "screenshot",
-      "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg",
-      "caption": "Whole-screen orientation for opening the selected core region's context menu.",
-      "illustrates_step": 3,
-      "capture_date": "2026-09-08"
-    },
-    {
-      "kind": "screenshot",
       "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg",
-      "caption": "Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.",
+      "caption": "The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough.",
       "illustrates_step": 3,
       "capture_date": "2026-09-08"
     },
@@ -26,10 +19,10 @@
     },
     {
       "kind": "screenshot",
-      "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg",
-      "caption": "Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.",
+      "path": "docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg",
+      "caption": "The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.",
       "illustrates_step": 5,
-      "capture_date": "2026-09-08"
+      "capture_date": "2026-09-28"
     }
   ],
   "catalog": {
@@ -43,7 +36,7 @@
       "new_users",
       "primer_design"
     ],
-    "notes": "Beginner-friendly selection-first PCR walkthrough centered on core ROI, maximum primer distance from the core, and maximum amplicon length.",
+    "notes": "Beginner-friendly selection-first PCR walkthrough centered on the must-cover core ROI, deterministic left/right primer-search windows, and a visibly verified saved report.",
     "estimated_minutes": 20,
     "difficulty": "beginner",
     "network": "offline",
@@ -58,8 +51,8 @@
     "example_id": "simple_pcr_selection_gui",
     "tier": "core",
     "guide_path": "docs/tutorial/04-01_simple_pcr_selection_gui.md",
-    "summary": "Open an 800-base local TP73 extract and walk through the smallest useful PCR story: select the core ROI, limit primer distance from the core, and cap the amplicon length.",
-    "narrative": "This chapter uses the 800-base interval [61520, 62320) of the committed TP73 locus, shared with the scripted PCR oracle. Open `tp73_locus`, the compact extract; `simple_pcr_source_locus` retains the full input for provenance. The fixed smoke core is extract bases 201..600 (1-based inclusive), or [200, 600) in engine coordinates. This bounds template and flank search sizes without relaxing primer rules or precomputing a GUI result.",
+    "summary": "Open an 800-base local TP73 extract and walk through the smallest useful PCR story: select the must-cover core ROI, derive bounded primer-search windows, and verify the saved result.",
+    "narrative": "This chapter uses the 800-base interval [61520, 62320) of the committed TP73 locus, shared with the scripted PCR oracle. Open `tp73_locus`, the compact extract; `simple_pcr_source_locus` retains the full input for provenance. The fixed smoke core is extract bases 201..600 (1-based inclusive), or [200, 600) in engine coordinates. With the default 150-base distance, GENtle searches bases 51..200 for the forward primer and 601..750 for the reverse primer. This bounds template and flank search sizes without relaxing primer rules or precomputing a GUI result.",
     "use_cases": [
       "You want the shortest possible path from one selected region to one PCR design attempt.",
       "You want to learn the meaning of core ROI, maximum primer distance from the core, and maximum amplicon length without queueing or painting multiple regions.",
@@ -69,8 +62,8 @@
       "Open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`.",
       "Open `tp73_locus` (800 bases) and select `=201 .. 600` in linear mode.",
       "Right-click the selection and choose `Simple PCR from selection`.",
-      "In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.",
-      "Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core."
+      "In `PCR Designer`, read the seeded core and flank windows before adjusting `max primer distance from core` or `max amplicon`; click `Apply simple flank windows` after changing the distance.",
+      "Set report ID `simple_pcr_demo_primers`, run `Design Primer Pairs`, and inspect the in-panel saved-report preview for a non-empty pair list, left/right distance from the core ROI, and clean flanking."
     ],
     "step_titles": [
       "Open the tutorial project",
@@ -97,8 +90,8 @@
       "The starter project contains the 800-base TP73 extract `tp73_locus` and its full source locus; open the extract. The primer backend is pinned to the deterministic internal implementation.",
       "The selected core ROI is the biological interval that must be included; scripted users should encode the same interval explicitly in a primer-design request.",
       "The PCR Designer opens from the same shared UI-intent route used by agent and shell callers.",
-      "The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.",
-      "After primer design, report rows expose amplicon length plus left/right distance from the core ROI."
+      "The default 150-base distance maps the 1-based core 201..600 to forward search bases 51..200 and reverse search bases 601..750; a changed distance must be applied before design.",
+      "After primer design, the visible `simple_pcr_demo_primers` preview contains at least one pair and report rows expose amplicon length plus left/right distance from the core ROI."
     ],
     "step_rationales": [
       "The compact 800-base extract keeps the beginner exercise bounded while the full source locus remains available for provenance.",
@@ -433,6 +426,13 @@
           },
           "verifiers": [
             {
+              "kind": "visible_claim",
+              "semantic_id": "pcr.design.report_preview",
+              "visible": true,
+              "enabled": true,
+              "outcome_role": "ready"
+            },
+            {
               "kind": "report",
               "report_id": "simple_pcr_demo_primers",
               "schema": "gentle.primer_design_report.v1",
@@ -481,6 +481,36 @@
                   "right_path": "roi_end_0based"
                 }
               ]
+            }
+          ],
+          "evidence": {
+            "screenshot": "optional",
+            "snapshot": "required"
+          }
+        },
+        {
+          "id": "inspect_primer_report",
+          "prose_step": 5,
+          "window": "window.pcr_design",
+          "target": "pcr.design.report_preview",
+          "subject": {
+            "sequence": "tp73_locus"
+          },
+          "interaction": {
+            "kind": "scroll",
+            "direction": "down",
+            "clicks": 8
+          },
+          "timeout_class": "interactive",
+          "persists_project_state": false,
+          "scientific_effect": false,
+          "verifiers": [
+            {
+              "kind": "visible_claim",
+              "semantic_id": "pcr.design.report_preview",
+              "visible": true,
+              "enabled": true,
+              "outcome_role": "ready"
             }
           ],
           "evidence": {

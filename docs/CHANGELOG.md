@@ -29,6 +29,26 @@
   explicit GUI settings and the separately replayed headless SVG route produce
   the expected 11-lane view.
 
+## 2026-09-28 - Make The Simple-PCR Tutorial Show Its Result
+
+- Rewrite tutorial 04.01 around one explicit mental model: the selected core
+  ROI is the must-cover interval, while the two primer-search windows flank it.
+  Show the exact 1-based and engine-coordinate geometry for the bundled TP73
+  exercise, state visible success criteria, and add bounded troubleshooting.
+- Publish the saved primer-report preview as an observe-only semantic GUI
+  surface. The executable walkthrough now requires that preview to be visible
+  in addition to validating a non-empty persisted report and first-pair
+  flanking geometry, then records an explicit scroll before photographing the
+  result rows rather than treating an off-screen result as useful evidence.
+- Reactivate the native window containing a verified result before retaining a
+  GUI screenshot. This prevents a later project-save shortcut from leaving the
+  main window over the evidence surface; scientific actions and save ordering
+  remain unchanged.
+- Keep the toolbar's selection-navigation semantics unique when the same two
+  actions are also rendered in the map context menu, and hold automated
+  secondary clicks for one ordinary input-frame interval. This restores the
+  executable selection-to-PCR route without introducing a hidden setup action.
+
 ## 2026-09-27 - Refresh The TSS Export Parity Projection
 
 - Add the omitted `ExportTssViewSvg` row and its five shell-route count increments

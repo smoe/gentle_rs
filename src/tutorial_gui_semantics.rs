@@ -51,6 +51,7 @@ pub const PCR_SIMPLE_STARTER_SEED_FROM_SELECTION: &str = "pcr.simple_starter.see
 pub const PCR_DESIGN_REPORT_ID: &str = "pcr.design.report_id";
 pub const PCR_DESIGN_MAX_PAIRS: &str = "pcr.design.max_pairs";
 pub const PCR_DESIGN_RUN: &str = "pcr.design.run";
+pub const PCR_DESIGN_REPORT_PREVIEW: &str = "pcr.design.report_preview";
 pub const DNA_SELECTION_SAVE_REGION: &str = "dna.selection.save_genomic_region";
 pub const GENOMIC_REGION_REFRESH: &str = "genomic_region.refresh";
 pub const GENOMIC_REGION_SAVE_PENDING: &str = "genomic_region.save_pending";
@@ -448,6 +449,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
         window_id: WINDOW_PCR_DESIGN,
         authority: TutorialGuiControlAuthority::ScientificState,
         allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PCR_DESIGN_REPORT_PREVIEW,
+        window_id: WINDOW_PCR_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: SCROLL,
         text_policy: None,
     },
     TutorialGuiControlSpec {

@@ -7,22 +7,22 @@ source_example: "docs/examples/workflows/simple_pcr_selection_gui.json"
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-09-28"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/simple_pcr_selection_gui"
 ---
 
 # Simple PCR From a Selected Core Region
 
-Open an 800-base local TP73 extract and walk through the smallest useful PCR story: select the core ROI, limit primer distance from the core, and cap the amplicon length.
+Open an 800-base local TP73 extract and walk through the smallest useful PCR story: select the must-cover core ROI, derive bounded primer-search windows, and verify the saved result.
 
-This chapter uses the 800-base interval [61520, 62320) of the committed TP73 locus, shared with the scripted PCR oracle. Open `tp73_locus`, the compact extract; `simple_pcr_source_locus` retains the full input for provenance. The fixed smoke core is extract bases 201..600 (1-based inclusive), or [200, 600) in engine coordinates. This bounds template and flank search sizes without relaxing primer rules or precomputing a GUI result.
+This chapter uses the 800-base interval [61520, 62320) of the committed TP73 locus, shared with the scripted PCR oracle. Open `tp73_locus`, the compact extract; `simple_pcr_source_locus` retains the full input for provenance. The fixed smoke core is extract bases 201..600 (1-based inclusive), or [200, 600) in engine coordinates. With the default 150-base distance, GENtle searches bases 51..200 for the forward primer and 601..750 for the reverse primer. This bounds template and flank search sizes without relaxing primer rules or precomputing a GUI result.
 
 See also: guided walkthrough [docs/tutorial/04-01_simple_pcr_selection_gui.md](../../04-01_simple_pcr_selection_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
@@ -47,8 +47,8 @@ See also: guided walkthrough [docs/tutorial/04-01_simple_pcr_selection_gui.md](.
 1. Open File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region.
 2. Open tp73_locus (800 bases) and select =201 .. 600 in linear mode.
 3. Right-click the selection and choose Simple PCR from selection.
-4. In PCR Designer, adjust max primer distance from core and max amplicon, then click Apply simple flank windows if you changed the distance.
-5. Run Design Primer Pairs and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core.
+4. In PCR Designer, read the seeded core and flank windows before adjusting max primer distance from core or max amplicon; click Apply simple flank windows after changing the distance.
+5. Set report ID simple_pcr_demo_primers, run Design Primer Pairs, and inspect the in-panel saved-report preview for a non-empty pair list, left/right distance from the core ROI, and clean flanking.
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
@@ -128,19 +128,15 @@ gentle_cli shell 'ui open pcr-design'
 
 GUI, shell and agent callers converge on the same engine-owned PCR Designer intent.
 
-![Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg)
+![The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg)
 
-*Figure: Focused selection context menu with the Simple PCR action and enough sequence-map context for orientation. Screenshot captured 2026-09-08.*
-
-![Whole-screen orientation for opening the selected core region's context menu.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg)
-
-*Figure: Whole-screen orientation for opening the selected core region's context menu. Screenshot captured 2026-09-08.*
+*Figure: The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough. Screenshot captured 2026-09-08.*
 
 ### Step 4: Set the flank and amplicon limits
 
 **GUI**
 
-In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, then click `Apply simple flank windows` if you changed the distance.
+In `PCR Designer`, read the seeded core and flank windows before adjusting `max primer distance from core` or `max amplicon`; click `Apply simple flank windows` after changing the distance.
 
 **CLI (terminal)**
 
@@ -154,7 +150,7 @@ In `PCR Designer`, adjust `max primer distance from core` and `max amplicon`, th
 
 **Expected**
 
-> The primer-design request should carry flank-window and maximum-amplicon constraints derived from the selected core ROI.
+> The default 150-base distance maps the 1-based core 201..600 to forward search bases 51..200 and reverse search bases 601..750; a changed distance must be applied before design.
 
 **Why it matters**
 
@@ -168,7 +164,7 @@ These two limits control where primers may move and how long the product may bec
 
 **GUI**
 
-Run `Design Primer Pairs` and inspect the in-panel primer report preview for left/right distance from the core ROI and whether the pair cleanly flanks the core.
+Set report ID `simple_pcr_demo_primers`, run `Design Primer Pairs`, and inspect the in-panel saved-report preview for a non-empty pair list, left/right distance from the core ROI, and clean flanking.
 
 **CLI (terminal)**
 
@@ -182,15 +178,15 @@ gentle_cli shell 'primers list-reports'
 
 **Expected**
 
-> After primer design, report rows expose amplicon length plus left/right distance from the core ROI.
+> After primer design, the visible `simple_pcr_demo_primers` preview contains at least one pair and report rows expose amplicon length plus left/right distance from the core ROI.
 
 **Why it matters**
 
 The report makes the design auditable by exposing product length, core-flanking geometry and primer properties.
 
-![Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg)
+![The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.](../../../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg)
 
-*Figure: Whole-screen orientation after primer design, with the PCR Designer report and project lineage visible together. Screenshot captured 2026-09-08.*
+*Figure: The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI. Screenshot captured 2026-09-28.*
 
 
 ## Interpretation and Reference
@@ -238,8 +234,8 @@ gentle_cli shell 'primers list-reports'
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-09-28`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 
