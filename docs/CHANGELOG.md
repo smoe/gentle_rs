@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-28 - Make The Simple-PCR Tutorial Show Its Result
+
+- Rewrite tutorial 04.01 around one explicit mental model: the selected core
+  ROI is the must-cover interval, while the two primer-search windows flank it.
+  Show the exact 1-based and engine-coordinate geometry for the bundled TP73
+  exercise, state visible success criteria, and add bounded troubleshooting.
+- Publish the saved primer-report preview as an observe-only semantic GUI
+  surface. The executable walkthrough now requires that preview to be visible
+  in addition to validating a non-empty persisted report and first-pair
+  flanking geometry.
+- Reactivate the native window containing a verified result before retaining a
+  GUI screenshot. This prevents a later project-save shortcut from leaving the
+  main window over the evidence surface; scientific actions and save ordering
+  remain unchanged.
+
 ## 2026-09-27 - Refresh The TSS Export Parity Projection
 
 - Add the omitted `ExportTssViewSvg` row and its five shell-route count increments

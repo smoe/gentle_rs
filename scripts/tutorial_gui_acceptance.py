@@ -1813,9 +1813,21 @@ class TutorialAcceptanceRun:
             checkpoint_dir = self.chapter_dir / "checkpoints"
             screenshot_path = checkpoint_dir / f"{step['id']}.raw.png"
             screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+            focus_item = self.screenshot_focus_item(step, snapshot)
+            if focus_item is None:
+                raise AcceptanceFailure(
+                    "harness_gap",
+                    f"Screenshot step '{step['id']}' has no visible semantic focus item",
+                )
+            focus_binding = self.native_target_binding(snapshot, focus_item)
+            # A persisted-state verifier may save through the main window after
+            # the scientific action. Bring the verified result's native window
+            # back to the front before capturing, otherwise a valid screenshot
+            # can be dominated by an unrelated overlapping window.
+            self.ensure_native_window_active(focus_binding["x11_client_window_id"])
             # The semantic snapshot is written during egui's frame. Give the
-            # X11 surface one bounded interval to present that verified frame
-            # before capturing its pixels.
+            # reactivated X11 surface one bounded interval to present that
+            # verified frame before capturing its pixels.
             time.sleep(0.15)
             completed = subprocess.run(
                 [str(self.args.scrot), str(screenshot_path)],
@@ -1834,13 +1846,6 @@ class TutorialAcceptanceRun:
                     )
             else:
                 canvas_width, canvas_height = png_dimensions(screenshot_path)
-                focus_item = self.screenshot_focus_item(step, snapshot)
-                if focus_item is None:
-                    raise AcceptanceFailure(
-                        "harness_gap",
-                        f"Screenshot step '{step['id']}' has no visible semantic focus item",
-                    )
-                focus_binding = self.native_target_binding(snapshot, focus_item)
                 focus_rect = focus_binding["screen_rect_physical_pixels"]
                 focus_rect = {
                     "min_x": max(0, min(canvas_width - 1, focus_rect["min_x"])),

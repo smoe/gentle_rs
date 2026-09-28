@@ -20,6 +20,10 @@ GENtle now supports that flow directly from a selection context menu, so you do
 not have to translate the selection into PCR form fields by hand before you
 start.
 
+> **One idea to keep in mind:** the selected **core ROI is the interval that
+> every acceptable product must contain**. It is not the whole amplicon and it
+> is not a primer-search window.
+
 ## What You Will Do
 
 By the end of this tutorial, you should be able to:
@@ -49,7 +53,7 @@ not a validated assay or evidence of whole-genome specificity.
 
 ## Fastest Path
 
-1. open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`
+1. open `File -> Open Tutorial Project... -> Core -> Simple PCR From a Selected Core Region`
 2. open the 800-base `tp73_locus` extract and keep its map in linear mode
 3. enter `=201 .. 600` in the selection formula field and apply it, or drag-select that core
 4. right-click that selection
@@ -57,7 +61,8 @@ not a validated assay or evidence of whole-genome specificity.
 6. in `PCR Designer`, adjust:
    - `max primer distance from core`
    - `max amplicon`
-7. click `Design Primer Pairs`
+7. set report ID `simple_pcr_demo_primers`, click `Design Primer Pairs`, and
+   find that ID in the visible `Primer report preview`
 
 For the scripted starter, run the workflow linked by the executable reference
 chapter. Opening the full GenBank locus directly is a separate, larger-input
@@ -83,6 +88,9 @@ GUI:
 1. open the tutorial project through the menu above
 2. open the compact `tp73_locus` sequence (800 bases)
 
+The number shown before a tutorial title is its current catalog position and
+may move as chapters are added. Match the title rather than memorizing `18`.
+
 CLI (terminal):
 
 ```bash
@@ -103,6 +111,18 @@ GUI:
 2. apply `=201 .. 600` in the selection formula field, or drag over those bases
 
 This selection is your **core ROI**.
+
+For this exercise, the geometry is:
+
+```text
+bases 51..200       bases 201..600          bases 601..750
+[forward search] | [must-cover core ROI] | [reverse search]
+       150 bp              400 bp                  150 bp
+```
+
+GENtle stores those same half-open engine coordinates as `[50, 200)`,
+`[200, 600)`, and `[600, 750)`. The GUI keeps the human-facing 1-based ranges
+visible; the report preserves the engine coordinates for reproducibility.
 
 CLI / GUI Shell guidance:
 
@@ -145,9 +165,7 @@ Ask the inner agent:
 > Propose the GENtle operation that opens Simple PCR from my current
 > selection. Explain which shared UI-intent route it uses; do not execute it.
 
-![Whole-screen orientation for opening the selected core region's context menu.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.orientation.svg)
-
-![Focused selection context menu with the Simple PCR action.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg)
+![The selected core region's context menu. Choose Simple PCR from selection; the surrounding advanced map actions are unrelated to this walkthrough.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/open_selection_context.context.svg)
 
 What the GUI's `Simple PCR from selection` action does for you:
 
@@ -161,6 +179,10 @@ What the GUI's `Simple PCR from selection` action does for you:
 ### Step 4: Interpret the Three Main Inputs
 
 Inside `PCR Designer`, the beginner path is now the `Simple PCR starter` block.
+
+The designer intentionally also contains advanced constraints. For this first
+walkthrough, stay with the three inputs below; you do not need to understand or
+change the other panels shown around them.
 
 Use it like this:
 
@@ -183,6 +205,11 @@ Important translation:
 So the simple controls are still deterministic and inspectable: they just write
 the existing forward/reverse side-window fields for you.
 
+With this tutorial's default `D = 150`, that translation produces forward
+search bases `51..200` and reverse search bases `601..750` in the GUI. If you
+change `D`, click `Apply simple flank windows` and confirm those fields change
+before running the design.
+
 CLI / GUI Shell guidance:
 
 Use the typed `DesignPrimerPairs` request with explicit core, flank-window and
@@ -203,7 +230,8 @@ GUI:
 
 1. keep or adjust `max amplicon`
 2. set `max pairs` to `5` for this walkthrough
-3. click `Design Primer Pairs`
+3. set report ID to `simple_pcr_demo_primers`
+4. click `Design Primer Pairs`
 
 CLI / GUI Shell guidance:
 
@@ -223,6 +251,13 @@ runner still requires a non-empty primer report within its ten-minute compute
 budget; a timeout is a failure, not a skipped or successful tutorial.
 
 ### Step 6: Review the Result
+
+Do not stop at the status text or assume that a click produced a useful assay.
+Scroll to the in-panel `Primer report preview` and first confirm:
+
+- report ID is `simple_pcr_demo_primers`
+- `pairs` is greater than zero
+- the first row says `yes` under `flanks`
 
 Inspect the returned primer-pair report for:
 
@@ -257,7 +292,29 @@ Ask the inner agent:
 > the core ROI, flanking status, Tm and GC values. Do not run a new design or
 > export anything until I approve.
 
-![Whole-screen orientation after primer design, with report and project lineage visible together.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.orientation.svg)
+![The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.context.svg)
+
+## Automated Checkpoint
+
+The executable GUI acceptance follows the same path with the committed offline
+fixture. It does not merely test that the button can be clicked. It requires a
+persisted `gentle.primer_design_report.v1` report, a non-empty pair list, a
+visible report-preview panel, and verifies that the first forward primer ends
+at or before the core while the first reverse primer begins at or after it.
+
+That establishes tutorial consistency and flanking geometry for this fixture;
+it does **not** establish whole-genome specificity or validate a wet-lab assay.
+
+## If Your Screen Does Not Match
+
+- No `Simple PCR from selection`: apply a non-empty selection and right-click
+  inside the highlighted span in the linear map.
+- Wrong flank windows: re-enter the distance and click
+  `Apply simple flank windows` before designing.
+- No accepted pairs: restore the tutorial defaults before widening advanced
+  constraints; the automated fixture is expected to produce at least one pair.
+- A report exists but is not visible: scroll below `Design Primer Pairs` to the
+  `Primer report preview`; do not start a second design merely to reveal it.
 
 For this beginner flow, the most important question is simply:
 
