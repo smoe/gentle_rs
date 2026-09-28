@@ -5037,7 +5037,7 @@ impl MainAreaDna {
                     {
                         self.fit_linear_features_in_view();
                     }
-                    self.render_selection_navigation_controls(ui);
+                    self.render_selection_navigation_controls(ui, true);
                     let view_end = start_bp.saturating_add(span_bp).min(sequence_length);
                     ui.monospace(format!(
                         "view {}..{} ({} bp)",
@@ -27960,7 +27960,7 @@ impl MainAreaDna {
                 let mut map_delete_feature: Option<usize> = None;
                 response.context_menu(|ui| {
                     let mut showed_any = false;
-                    if self.render_selection_navigation_controls(ui) {
+                    if self.render_selection_navigation_controls(ui, false) {
                         ui.close();
                         return;
                     }

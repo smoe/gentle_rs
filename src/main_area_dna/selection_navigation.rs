@@ -32,7 +32,16 @@ impl MainAreaDna {
     }
 
     /// Both the toolbar and the map context menu navigate the same stored selection.
-    pub(super) fn render_selection_navigation_controls(&mut self, ui: &mut egui::Ui) -> bool {
+    ///
+    /// The toolbar owns the stable tutorial semantics. The context menu renders
+    /// the same actions in the same frame, so publishing those IDs there as
+    /// well would make an otherwise ordinary right-click fail the uniqueness
+    /// guard used by GUI acceptance.
+    pub(super) fn render_selection_navigation_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        publish_tutorial_semantics: bool,
+    ) -> bool {
         let enabled = !self.is_circular() && self.current_selection_range_0based().is_some();
         let mut activated = false;
         for (fit, label, hint) in [
@@ -51,20 +60,22 @@ impl MainAreaDna {
                 .add_enabled(enabled, egui::Button::new(Self::tr(label)))
                 .on_hover_text(Self::tr(hint));
             #[cfg(feature = "gui-test-support")]
-            crate::gui_test_support::register_response(
-                &response,
-                if fit {
-                    "dna.selection.zoom"
-                } else {
-                    "dna.selection.go"
-                },
-                crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
-                Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
-                    self.seq_id.as_deref().unwrap_or("unnamed"),
-                ])),
-                crate::gui_test_support::GuiTestWidgetKind::Button,
-                false,
-            );
+            if publish_tutorial_semantics {
+                crate::gui_test_support::register_response(
+                    &response,
+                    if fit {
+                        "dna.selection.zoom"
+                    } else {
+                        "dna.selection.go"
+                    },
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+            }
             if response.clicked() {
                 activated |= self.navigate_to_selection(fit);
             }
@@ -201,7 +212,7 @@ mod tests {
                     },
                     |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            area.render_selection_navigation_controls(ui);
+                            area.render_selection_navigation_controls(ui, false);
                         });
                     },
                 );

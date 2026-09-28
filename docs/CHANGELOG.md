@@ -14,6 +14,10 @@
   GUI screenshot. This prevents a later project-save shortcut from leaving the
   main window over the evidence surface; scientific actions and save ordering
   remain unchanged.
+- Keep the toolbar's selection-navigation semantics unique when the same two
+  actions are also rendered in the map context menu, and hold automated
+  secondary clicks for one ordinary input-frame interval. This restores the
+  executable selection-to-PCR route without introducing a hidden setup action.
 
 ## 2026-09-27 - Refresh The TSS Export Parity Projection
 

@@ -1560,7 +1560,21 @@ class TutorialAcceptanceRun:
         if kind in {"click", "select_tab"}:
             commands.append([str(self.args.xdotool), "click", "1"])
         elif kind == "right_click":
-            commands.append([str(self.args.xdotool), "click", "3"])
+            # Keep the secondary button down across an ordinary input-frame
+            # interval. A zero-duration synthetic press/release can be folded
+            # into one winit/egui frame and fail to produce a context-menu
+            # click even though the pointer is over the verified target.
+            commands.append(
+                [
+                    str(self.args.xdotool),
+                    "mousedown",
+                    "3",
+                    "sleep",
+                    "0.1",
+                    "mouseup",
+                    "3",
+                ]
+            )
         elif kind == "double_click":
             commands.append(
                 [
