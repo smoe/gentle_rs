@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-09-29 - Align The TSS UI Catalog Regression
+
+- Update `ui_intent_catalog_rows_are_complete` to assert the exact three optional
+  TSS-view arguments: `collection_id`, `report_path` and `matrix_ids`. The local
+  scoring route added the third argument, but the catalog test still expected
+  two. Keep menu/action and optional-argument consistency checks unchanged.
+- Test-only correction; no production behavior or generated metadata changes.
+  No local builds or tests run; CI confirmation remains pending.
+
 ## 2026-09-27 - Refresh The TSS Export Parity Projection
 
 - Add the omitted `ExportTssViewSvg` row and its five shell-route count increments

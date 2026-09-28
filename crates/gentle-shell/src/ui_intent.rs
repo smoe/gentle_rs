@@ -913,11 +913,17 @@ mod tests {
                 // A display-mode transition lives in the DNA toolbar, not a new global menu.
                 assert_eq!(row.menu_path, "DNA viewer");
                 assert_eq!(row.actions, ["open", "focus", "close"]);
-                assert_eq!(row.arguments.len(), 2);
-                assert_eq!(row.arguments[0].name, "collection_id");
-                assert!(!row.arguments[0].required);
-                assert_eq!(row.arguments[1].name, "report_path");
-                assert!(!row.arguments[1].required);
+                assert_eq!(
+                    row.arguments
+                        .iter()
+                        .map(|argument| (argument.name, argument.required))
+                        .collect::<Vec<_>>(),
+                    vec![
+                        ("collection_id", false),
+                        ("report_path", false),
+                        ("matrix_ids", false),
+                    ]
+                );
             } else {
                 assert!(
                     known_menus.contains(row.menu_path),
