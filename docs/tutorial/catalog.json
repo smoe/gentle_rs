@@ -1536,14 +1536,14 @@
           "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
           "caption": "Native TSS / Regulatory view before profile attachment: annotation, structure and signal remain distinct from a complete score trace.",
           "illustrates_step": 2,
-          "capture_date": "2026-09-24"
+          "capture_date": "2026-09-28"
         },
         {
           "kind": "screenshot",
           "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
           "caption": "The lower part of the same viewer after attaching its hash-bound profile report; the report-provided MA0004.1 lane is present without rescoring or a database query, and this tiny fixture's negative scores are explicitly clipped to a flat zero display trace.",
           "illustrates_step": 3,
-          "capture_date": "2026-09-24"
+          "capture_date": "2026-09-28"
         }
       ]
     },
@@ -1566,7 +1566,7 @@
         "regulatory_analysis",
         "wet_lab_biologists"
       ],
-      "notes": "Offline real-locus native TSS walkthrough on the retained public TP73 RefSeq excerpt. Recovers the GenBank REGION anchor, previews all five annotated starts (the P1/TAp73 start is reported missing_flanks because the excerpt has no upstream sequence), approves only the internal ΔNp73 start at 1:3690672, then computes and exports locally scored E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Every step has GUI, Agent Assistant and inner-agent parity; ui open tss-view --local-score is GUI-hosted, while promoters tss-view-svg provides headless local scoring and export. Separate non-cross-calibrated scales, unavailable-not-zero bands, no occupancy or reporter claim. Screenshots and native acceptance remain pending.",
+      "notes": "Offline real-locus native TSS walkthrough on the retained public TP73 RefSeq excerpt. Recovers the GenBank REGION anchor, previews all five annotated starts (the P1/TAp73 start is reported missing_flanks because the excerpt has no upstream sequence), approves only the internal ΔNp73 start at 1:3690672, then computes and exports locally scored E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Every step has GUI, Agent Assistant and inner-agent parity; ui open tss-view --local-score is GUI-hosted, while promoters tss-view-svg provides headless local scoring and export. Separate non-cross-calibrated scales, unavailable-not-zero bands, no occupancy or reporter claim. Publication-safe Linux/X11 screenshots were reviewed at the exact recorded display revision; native Windows and human scientific approval remain pending.",
       "estimated_minutes": 15,
       "difficulty": "intermediate",
       "network": "offline",
@@ -1582,7 +1582,30 @@
       ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_dnp73_factor_curves/01-tss-inventory.raw.png",
+          "caption": "The TP73 annotated-start inventory retains all five starts and marks the P1/TAp73 row missing_flanks instead of silently padding or hiding it.",
+          "illustrates_step": 2,
+          "capture_date": "2026-09-28"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_dnp73_factor_curves/02-annotated-window.raw.png",
+          "caption": "The approved 701 bp DeltaNp73 window before scoring, with aligned local, genomic and TSS-relative rulers and transcript context but no local motif curves.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-28"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_dnp73_factor_curves/03-local-factor-curves.raw.png",
+          "caption": "Locally computed TP73, E2F1 and PATZ1 motif-score lanes; each lane retains its own scale and score kind, so curve heights are not cross-factor rankings.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-28"
+        }
+      ]
     }
   ]
 }

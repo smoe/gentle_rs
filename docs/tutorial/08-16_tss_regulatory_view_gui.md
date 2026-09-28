@@ -163,6 +163,10 @@ is zero, or that a CUT&RUN-style interval proves the displayed motif is occupied
 - [08.15](08-15_tss_collection_gui.md) creates, validates and reopens a
   collection of annotated TSS windows.
 - **This tutorial** inspects one member and attaches its bound profile.
+- [08.17](08-17_tp73_dnp73_factor_curves.md) uses the public human *TP73*
+  excerpt to derive one available ΔNp73 window and compute three local motif
+  curves. It keeps those curves separate from attached reports and imported
+  motif evidence.
 - [Integrated locus context and selected-TSS profiles](../integrated_locus_tss_profiles.md)
   remains the publication/export path for a whole-locus page followed by
   selected TSS detail pages. The native GUI is an interactive per-TSS peer, not

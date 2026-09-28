@@ -115,7 +115,7 @@ Save this request as `tp73-inventory.json`:
 **GUI**
 
 **TFBS scan → Transcript starts / TSS windows…**, enter the same gene query,
-collection ID and flank sizes, then **Refresh inventory**.
+collection ID and flank sizes, then **Inspect starts (no changes)**.
 
 **Agent Assistant / shared operation**
 
@@ -153,6 +153,11 @@ first — a separate task, deliberately not hidden inside this tutorial.
 `1:3,690,672` is the internal ΔNp73 start, it carries six transcript models,
 and it has the full flank. That is the window used below.
 
+![TP73 annotated-start inventory with the unavailable P1 row retained](../screenshots/tp73_dnp73_factor_curves/01-tss-inventory.raw.png)
+
+The disabled P1 row is useful evidence: it remains visible with
+`missing_flanks` instead of disappearing from the inventory or being padded.
+
 The preview also prints an `approval_sha256`. It binds this exact inventory,
 and the next step refuses to run without it.
 
@@ -177,7 +182,8 @@ own preview output — do not copy an ID from this page, and never invent one.
 
 **GUI**
 
-Select only the `1:3,690,672` row, then **Approve selected starts**.
+Select only the `1:3,690,672` row, then
+**Approve and create selected windows**.
 
 **Agent Assistant / shared operation**
 
@@ -194,6 +200,9 @@ promoters tss-materialize @tp73-materialize.json
 One window sequence is created. Its ID is `tp73_tss_` followed by the TSS ID;
 the commands below call it `TP73_WINDOW`. Re-running the same approval reuses
 the existing window rather than creating a duplicate.
+
+`TP73_WINDOW` is a placeholder in the snippets: replace it with the exact
+output sequence ID reported by your materialization result.
 
 The window is annotation-derived. Its `Origin=project_annotation_derivation`
 comment states that it is not a verified external report bundle.
@@ -227,6 +236,11 @@ the TSS marker, and one exon/CDS context lane per transcript model that starts
 here — `NM_001126240.3`, `NM_001126241.3`, `NM_001126242.3`, `NM_001204189.2`,
 `NM_001204190.2` and `NM_001204191.2`. There are no score curves yet, and their
 absence is not a statement about the sequence.
+
+![The approved ΔNp73 window before local motif scoring](../screenshots/tp73_dnp73_factor_curves/02-annotated-window.raw.png)
+
+This pre-score view is the control for the next image: the transcript context
+is already present, while local factor curves have not yet been computed.
 
 ## 5. Compute the three factor curves
 
@@ -268,6 +282,11 @@ The counts differ only because the matrices differ in length: a 16 bp matrix
 has fewer complete window starts in 701 bp than an 11 bp matrix, and each start
 is scored on both strands. Every lane ends in a grey band marking the trailing
 positions where no complete motif window fits.
+
+![Three locally computed motif-score lanes with separate scales](../screenshots/tp73_dnp73_factor_curves/03-local-factor-curves.raw.png)
+
+The screenshot deliberately keeps the per-lane axes and score-kind labels in
+view. Curve height is interpretable only within its own matrix lane.
 
 ### Reading these lanes honestly
 
@@ -357,8 +376,9 @@ perturbation and a reporter or endogenous readout.
   itself — inventory, approval, stored collections and their registry.
 - [08-16](08-16_tss_regulatory_view_gui.md) teaches the same native viewer on a
   synthetic **minus-strand** fixture and, unlike this page, walks through
-  attaching a hash-bound profile report with imported DuckDB evidence. Use it
-  for the minus-strand coordinate convention and the report-attachment path.
+  attaching a hash-bound profile report. Its teaching fixture intentionally
+  contains no imported DuckDB hits; use it for the minus-strand coordinate
+  convention, unavailable-signal handling and the report-attachment path.
 - [08-06](08-06_promoter_motif_control_comparison.md) takes these same factors
   across several promoters against a matched control set, which is the right
   tool for asking whether a motif is enriched.

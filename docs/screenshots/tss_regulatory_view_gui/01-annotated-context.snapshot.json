@@ -1,7 +1,7 @@
 {
   "schema": "gentle.gui_semantic_snapshot.v2",
   "coordinate_space": "egui logical points translated by the viewport outer rectangle; native window decorations are excluded",
-  "generation": 953,
+  "generation": 498,
   "settled": true,
   "items": [
     {
@@ -23,7 +23,7 @@
         "max_y": 18.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.display.arrays",
@@ -44,7 +44,7 @@
         "max_y": 61.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.display.repeats",
@@ -65,7 +65,7 @@
         "max_y": 61.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.display.tfbs",
@@ -86,7 +86,7 @@
         "max_y": 61.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.feature_tree.filter",
@@ -107,7 +107,7 @@
         "max_y": 248.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.selection.go",
@@ -128,7 +128,7 @@
         "max_y": 39.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.selection.zoom",
@@ -149,7 +149,7 @@
         "max_y": 39.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.selection_formula.apply",
@@ -170,7 +170,7 @@
         "max_y": 123.5
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.selection_formula.input",
@@ -191,7 +191,7 @@
         "max_y": 124.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953,
+      "generation": 498,
       "outcome_role": "empty"
     },
     {
@@ -213,7 +213,7 @@
         "max_y": 158.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.sequence.open_regions",
@@ -234,7 +234,7 @@
         "max_y": 158.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.sequence.open_tools",
@@ -255,7 +255,7 @@
         "max_y": 158.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.sequence.reverse_complement",
@@ -276,7 +276,7 @@
         "max_y": 158.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.splitter.info_height",
@@ -297,7 +297,7 @@
         "max_y": 811.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.splitter.info_width",
@@ -318,7 +318,7 @@
         "max_y": 1180.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "dna.tfbs.menu",
@@ -339,7 +339,7 @@
         "max_y": 84.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953
+      "generation": 498
     },
     {
       "semantic_id": "window.dna_viewer",
@@ -360,7 +360,7 @@
         "max_y": 1180.0
       },
       "pixels_per_point": 1.0,
-      "generation": 953,
+      "generation": 498,
       "outcome_role": "ready"
     },
     {
@@ -382,7 +382,7 @@
         "max_y": 20.0
       },
       "pixels_per_point": 1.0,
-      "generation": 932
+      "generation": 490
     },
     {
       "semantic_id": "main.edit.menu",
@@ -402,7 +402,7 @@
         "max_y": 20.0
       },
       "pixels_per_point": 1.0,
-      "generation": 932
+      "generation": 490
     },
     {
       "semantic_id": "main.project.save_state",
@@ -417,12 +417,12 @@
       },
       "rect_logical_points": {
         "min_x": 8.0,
-        "min_y": 570.0,
+        "min_y": 1150.0,
         "max_x": 148.9375,
-        "max_y": 585.0
+        "max_y": 1165.0
       },
       "pixels_per_point": 1.0,
-      "generation": 932,
+      "generation": 490,
       "outcome_role": "unsaved"
     },
     {
@@ -444,7 +444,7 @@
         "max_y": 384.0
       },
       "pixels_per_point": 1.0,
-      "generation": 932
+      "generation": 490
     },
     {
       "semantic_id": "window.main",
@@ -460,11 +460,11 @@
       "rect_logical_points": {
         "min_x": 0.0,
         "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 600.0
+        "max_x": 1900.0,
+        "max_y": 1180.0
       },
       "pixels_per_point": 1.0,
-      "generation": 932,
+      "generation": 490,
       "outcome_role": "ready"
     }
   ]
