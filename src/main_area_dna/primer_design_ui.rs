@@ -2786,7 +2786,7 @@ impl MainAreaDna {
         let selected_pair =
             selected_rank.and_then(|rank| report.pairs.iter().find(|pair| pair.rank == rank));
         let prior_selected_rank = self.primer_design_ui.specificity_pair_rank_1based.clone();
-        let report_preview = ui.group(|ui| {
+        let _report_preview = ui.group(|ui| {
             ui.label("Primer report preview");
             ui.small(format!(
                 "report={} template={} core={}..{} (len {} bp) pairs={} backend={}->{}",
@@ -2922,7 +2922,7 @@ impl MainAreaDna {
         });
         #[cfg(feature = "gui-test-support")]
         crate::gui_test_support::register_response_with_outcome(
-            &report_preview.response,
+            &_report_preview.response,
             crate::tutorial_gui_semantics::PCR_DESIGN_REPORT_PREVIEW,
             self.semantic_control_window_id(),
             Some(&crate::gui_test_support::pseudonymous_subject_scope(&[

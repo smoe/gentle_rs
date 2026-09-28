@@ -40,7 +40,7 @@ impl MainAreaDna {
     pub(super) fn render_selection_navigation_controls(
         &mut self,
         ui: &mut egui::Ui,
-        publish_tutorial_semantics: bool,
+        _publish_tutorial_semantics: bool,
     ) -> bool {
         let enabled = !self.is_circular() && self.current_selection_range_0based().is_some();
         let mut activated = false;
@@ -60,7 +60,7 @@ impl MainAreaDna {
                 .add_enabled(enabled, egui::Button::new(Self::tr(label)))
                 .on_hover_text(Self::tr(hint));
             #[cfg(feature = "gui-test-support")]
-            if publish_tutorial_semantics {
+            if _publish_tutorial_semantics {
                 crate::gui_test_support::register_response(
                     &response,
                     if fit {
