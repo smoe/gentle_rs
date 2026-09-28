@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-09-28 - Refresh And Illustrate The Native TSS Tutorials
+
+- Refresh tutorial 08.16 from exact revision `8652ecf2` so its synthetic
+  annotation-only and attached-report captures show the current evidence
+  legend, navigation and lane controls. Rebind the screenshots, semantic
+  snapshots, binary and public inputs in the retained evidence manifest.
+- Extend tutorial 08.17 with publication-safe native captures of all five
+  annotated TP73 starts, the approved 701 bp DeltaNp73 window before scoring
+  and the three local TP73/E2F1/PATZ1 score lanes. Keep the missing-flanks
+  refusal, separate lane scales and non-occupancy/non-binding interpretation
+  explicit.
+- Correct the two observed documentation drifts: use the current GUI labels
+  **Inspect starts (no changes)** and **Approve and create selected windows**,
+  and stop claiming that the synthetic 08.16 fixture contains imported DuckDB
+  hits. The current fixture intentionally contains none.
+- Retain the host-safety observation: an unbound Agent Assistant scoring request
+  is refused instead of selecting a project sequence implicitly. The equivalent
+  explicit GUI settings and the separately replayed headless SVG route produce
+  the expected 11-lane view.
+
 ## 2026-09-27 - Refresh The TSS Export Parity Projection
 
 - Add the omitted `ExportTssViewSvg` row and its five shell-route count increments

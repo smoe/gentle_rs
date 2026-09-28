@@ -3,11 +3,12 @@
   "status": "manual_hybrid_pass",
   "automated_gui_acceptance": false,
   "input_policy": "publication_safe_synthetic_only",
-  "capture_date": "2026-09-24",
+  "capture_date": "2026-09-28",
   "capture_backend": "ImageMagick import -window on the native X11 DNA-viewer window",
+  "environment": "Linux Xvfb without an EWMH window manager; suitable for manual/hybrid capture, not formal native-package acceptance",
   "display": {
-    "revision": "99563576153769f5c86654f082f74482a73f64a7",
-    "gentle_gui_sha256": "34c795e4e276284c65c4fc197417421877e350426960a004cdd1b50cff097028",
+    "revision": "8652ecf29cf970e2d6c5df7e544c33f2bec116d4",
+    "gentle_gui_sha256": "cd420132633cc42660a61109f6a91b80bc45c59fc3fad1de2d3b4f9b1f5da031",
     "viewport_pixels": [1900, 1180]
   },
   "profile_producer": {
@@ -31,13 +32,13 @@
   "agent_assistant": {
     "launch_subject": "synthetic_minus_tss",
     "command": "ui open tss-view --report docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json",
-    "host_result": "Queued TSS profile report for 'synthetic_minus_tss'; the viewer will validate reference, TSS geometry and sequence hash before display. No scoring or database query was started",
+    "host_result": "The viewer attached the report and displayed its exact producer revision with 'no new scoring or database query'",
     "direct_shared_command": true,
     "external_agent_transport_invoked": false,
     "checkpoint": {
       "path": "docs/screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png",
-      "sha256": "f96bafe243f7288a4435d9dd61befa9018f3d23359229c992df69f4892b14c5a",
-      "size_bytes": 438622
+      "sha256": "d2059813a711f82022c50a2bb781521c8b4f5593e6902bb17d3aefcfac192b5c",
+      "size_bytes": 396722
     }
   },
   "captures": [
@@ -45,13 +46,13 @@
       "id": "annotated_context",
       "raw_png": {
         "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.raw.png",
-        "sha256": "8a155b21289319ea10819fc625f5300b0ce8246176617ed8b3ea4cf1844c1584",
-        "size_bytes": 1135441
+        "sha256": "6125524a9ddec98c8b09672c7401291e90006d717b20d48b080cd74a0a7e7ef6",
+        "size_bytes": 1142116
       },
       "semantic_snapshot": {
         "path": "docs/screenshots/tss_regulatory_view_gui/01-annotated-context.snapshot.json",
-        "sha256": "9b56a3f214c76433c2bf534d1aa076c5d4b34371579b74f25c023c7c80eddb44",
-        "size_bytes": 12351
+        "sha256": "920c2abaa7d2006b94f9251dc0e098d7287111916dc2266f0365cf4caaba0691",
+        "size_bytes": 12355
       },
       "profile_attached": false
     },
@@ -59,18 +60,18 @@
       "id": "attached_profile",
       "raw_png": {
         "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.raw.png",
-        "sha256": "14838a6f784f83daddc27b09f75065b424194078776c7068dfb5596e71e8f12a",
-        "size_bytes": 1141719
+        "sha256": "efbfc39937ed9895a6ac22b8aef39c15c242bb217e3f1aac52514f875679abf9",
+        "size_bytes": 1150691
       },
       "semantic_snapshot": {
         "path": "docs/screenshots/tss_regulatory_view_gui/02-attached-profile.snapshot.json",
-        "sha256": "d54ddd3d7198a69ee073547a3d4049909ee864c2d236790103b8f9369b04bace",
-        "size_bytes": 13936
+        "sha256": "cc9eb099fab4854ad9393ee43cfc664ed978f2d500a79cf931fcbc62b9f8b10d",
+        "size_bytes": 14404
       },
       "profile_attached": true,
       "visible_report_lane": "MA0004.1",
       "display_note": "12/12 valid strand-windows; displayed values are zero because negative scores are clipped for display"
     }
   ],
-  "interpretation": "The captures demonstrate the native per-TSS viewer and a report attached through the GUI-hosted Agent Assistant direct-command path. They do not constitute biological evidence, automated GUI acceptance, motif rescoring, or a database query."
+  "interpretation": "The captures demonstrate the native per-TSS viewer and a report attached through the GUI-hosted direct-command path. They do not constitute biological evidence, automated GUI acceptance, motif rescoring, or a database query."
 }

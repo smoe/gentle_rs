@@ -1,0 +1,62 @@
+{
+  "schema": "gentle.manual_tp73_dnp73_factor_gui_evidence.v1",
+  "status": "manual_hybrid_pass",
+  "automated_gui_acceptance": false,
+  "input_policy": "publication_safe_public_fixture_only",
+  "capture_date": "2026-09-28",
+  "capture_backend": "ImageMagick import -window on native X11 windows",
+  "environment": "Linux Xvfb without an EWMH window manager; suitable for manual/hybrid capture, not formal native-package acceptance",
+  "display": {
+    "revision": "8652ecf29cf970e2d6c5df7e544c33f2bec116d4",
+    "gentle_gui_sha256": "cd420132633cc42660a61109f6a91b80bc45c59fc3fad1de2d3b4f9b1f5da031",
+    "viewport_pixels": [1900, 1180]
+  },
+  "input": {
+    "path": "test_files/tp73.ncbi.gb",
+    "sha256": "9acebbd259f535a9f780006632e2fde3d796d4674783b313d5b28930ff898ab4"
+  },
+  "inventory": {
+    "gene": "TP73",
+    "window": {"upstream_bp": 500, "downstream_bp": 200},
+    "candidate_starts": 5,
+    "selected_genomic_start": 3690672,
+    "selected_transcripts": 6,
+    "refused_start": {"genomic_start": 3652516, "transcripts": 6, "reason": "missing_flanks"},
+    "approval_sha256": "sha256:9fa94b897a40baa9d6adb61245759d2ffe69faf28e84f28f7ce16fe9e657d215",
+    "request_sha256": "b705206a10e564fbd184d3ce21e18716463bc83dab041e7de7303baa8ce50d58"
+  },
+  "local_scoring": {
+    "motifs": ["MA0861.2", "MA0024.3", "MA1961.2"],
+    "factors": ["TP73", "E2F1", "PATZ1"],
+    "score_kind": "llr_background_tail_log10",
+    "visible_lanes": 11,
+    "agent_unbound_request_refused": true,
+    "gui_controls_used_after_refusal": true,
+    "external_agent_transport_invoked": false
+  },
+  "headless_replay": {
+    "command": "promoters tss-view-svg TP73_WINDOW tp73-dnp73-factors.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10",
+    "svg_sha256": "83c2f79fbbef199605411b5aea02a06c5df6c13107ce86aa7059638c9fca362c",
+    "svg_size_bytes": 1244221,
+    "lane_count": 11,
+    "network_used": false
+  },
+  "captures": [
+    {
+      "id": "tss_inventory",
+      "raw_png": {"path": "docs/screenshots/tp73_dnp73_factor_curves/01-tss-inventory.raw.png", "sha256": "02fa3f0994ef8717ff84687d9419076adfb799ec29ac2e34717a2fa5e680c21b", "size_bytes": 975228},
+      "semantic_snapshot": {"path": "docs/screenshots/tp73_dnp73_factor_curves/01-tss-inventory.snapshot.json", "sha256": "928929eecfef37ad7903ce52479a12eca59f5e1fedaf9e1b0c21b9c55f0ccd60", "size_bytes": 19032}
+    },
+    {
+      "id": "annotated_window_before_scoring",
+      "raw_png": {"path": "docs/screenshots/tp73_dnp73_factor_curves/02-annotated-window.raw.png", "sha256": "9435a59032166bd9ac770f85488396c4b67dd042df1b422dccc7f7acb8d3bcf1", "size_bytes": 1153336},
+      "semantic_snapshot": {"path": "docs/screenshots/tp73_dnp73_factor_curves/02-annotated-window.snapshot.json", "sha256": "12c0d615ad3fc5d0bbc79e056c03f245e7a5904ec7507a12c1a90c2fe8278a34", "size_bytes": 12907}
+    },
+    {
+      "id": "local_factor_curves",
+      "raw_png": {"path": "docs/screenshots/tp73_dnp73_factor_curves/03-local-factor-curves.raw.png", "sha256": "b8b44eaba85d3363f5c1c3efa621d71f1187d96ba5deccf2d666589d4558f28f", "size_bytes": 1291346},
+      "semantic_snapshot": {"path": "docs/screenshots/tp73_dnp73_factor_curves/03-local-factor-curves.snapshot.json", "sha256": "0a06f23ae49d9d51adf0b49f0ad17dcd6a3b144863066492405f16ae451a4125", "size_bytes": 14467}
+    }
+  ],
+  "interpretation": "The captures demonstrate the current annotated-start inventory, exact approved DeltaNp73 window and three local motif-score lanes. They do not establish occupancy, direct binding, reporter activity, regulation, biological TSS preference, automated GUI acceptance or cross-platform package acceptance."
+}
