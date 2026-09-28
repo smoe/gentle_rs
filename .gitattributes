@@ -21,6 +21,13 @@ docs/tutorial/manifest.json text eol=lf
 docs/screenshots/gene_assay_study_gui/*.snapshot.json text eol=lf
 docs/screenshots/gene_assay_study_gui/*.context.svg text eol=lf
 docs/screenshots/tss_regulatory_view_gui/*.snapshot.json text eol=lf
+docs/screenshots/tp73_dnp73_factor_curves/*.snapshot.json text eol=lf
+docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.snapshot.json text eol=lf
+docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg text eol=lf
+docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.orientation.svg text eol=lf
+
+# The native TP73 TSS evidence manifest binds the retained NCBI input bytes.
+test_files/tp73.ncbi.gb text eol=lf
 
 test_files/fixtures/transcript_assay_panel/patz1_reference/* text eol=lf
 # Preserve the exact hash-bound NCBI response, including its final blank line.

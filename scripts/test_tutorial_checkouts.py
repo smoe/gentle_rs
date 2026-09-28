@@ -186,6 +186,68 @@ class TutorialCheckoutTests(unittest.TestCase):
                                      f"{relative} needs a scoped .gitattributes LF rule")
                     self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
 
+    def test_tp73_tss_and_pcr_evidence_hashes_survive_both_checkout_modes(self):
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        evidence = json.loads((checker.ROOT /
+            "docs/screenshots/tp73_dnp73_factor_curves/evidence.json").read_bytes())
+        records = [evidence["input"]]
+        for capture in evidence["captures"]:
+            records.extend(capture[field] for field in ("raw_png", "semantic_snapshot"))
+
+        pcr_dir = Path("docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui")
+        pcr = json.loads((checker.ROOT / pcr_dir /
+            "inspect_primer_report.screenshot.json").read_bytes())
+        # The capture receipt records archived Linux paths; the retained files
+        # are siblings of that receipt, with the same basenames and byte hashes.
+        for record in [pcr["capture"]["raw"], *pcr["derived_views"]]:
+            records.append({"path": pcr_dir / Path(record["path"]).name,
+                            "sha256": record["sha256"]})
+        snapshot = pcr["semantic_snapshot"]
+        records.append({"path": pcr_dir / Path(snapshot["retained_path"]).name,
+                        "sha256": snapshot["retained_file_sha256"]})
+
+        expected = {}
+        for record in records:
+            relative = Path(record["path"])
+            payload = (checker.ROOT / relative).read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), record["sha256"])
+            expected[relative] = (payload, record["sha256"])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        self.assertEqual(len(expected), 11)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained TP73 TSS and Simple PCR evidence")
+
+        scopes = (b"docs/screenshots/tp73_dnp73_factor_curves/",
+                  b"docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/",
+                  b"test_files/tp73.ncbi.gb")
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not any(scope in line for scope in scopes)
+        )
+        broken = Path(self.tmp.name) / "tp73-tss-pcr-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        text_paths = sorted(relative for relative in expected
+                            if relative.suffix in (".json", ".svg", ".gb"))
+        self.assertEqual(len(text_paths), 7)
+        self.assertEqual(
+            sorted(relative for relative, (payload, _) in expected.items()
+                   if (broken / relative).read_bytes() != payload),
+            text_paths,
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"tp73-tss-pcr-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload,
+                                     f"{relative} needs a scoped .gitattributes LF rule")
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
     def test_generated_parity_matrix_stays_byte_exact_in_both_checkout_modes(self):
         relative = "docs/gui_cli_mcp_parity.md"
         payload = (checker.ROOT / relative).read_bytes()

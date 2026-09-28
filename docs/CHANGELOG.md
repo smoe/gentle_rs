@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-09-29 - Integrate Glen's TSS And Simple-PCR Evidence
+
+- Merge TSS tutorial evidence through `272106a1` and the complete Simple-PCR
+  tutorial branch through `3649ec60`, including its semantic-ID and capture-focus
+  fixes. The later PCR handoff refers to that same branch, not additional work.
+- Preserve the recorded evidence bytes and add scoped LF checkout rules for the
+  newly bound TP73 input, TSS snapshots and PCR snapshot/SVGs. Add a fast checkout
+  regression for all eleven newly bound files, with a missing-rules negative
+  control for the seven text files; do not normalize hashes or rewrite receipts.
+- Verify all nineteen retained-file hashes across the three evidence manifests.
+  No local builds, tests or native GUI replay run during integration. Glen's
+  Linux/X11 captures remain bound to `8652ecf2` (TSS) and `9070cb1d` (PCR), not
+  merged-candidate, Windows/macOS or human scientific acceptance. The PCR image
+  exposes the report and leading result rows, but its lower rows remain clipped.
+
 ## 2026-09-29 - Align The TSS UI Catalog Regression
 
 - Update `ui_intent_catalog_rows_are_complete` to assert the exact three optional
