@@ -292,15 +292,16 @@ Ask the inner agent:
 > the core ROI, flanking status, Tm and GC values. Do not run a new design or
 > export anything until I approve.
 
-![The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/design_primers.context.svg)
+![The saved primer-report preview after design. The automated check requires at least one pair and verifies that the first pair flanks the core ROI.](../screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg)
 
 ## Automated Checkpoint
 
 The executable GUI acceptance follows the same path with the committed offline
 fixture. It does not merely test that the button can be clicked. It requires a
 persisted `gentle.primer_design_report.v1` report, a non-empty pair list, a
-visible report-preview panel, and verifies that the first forward primer ends
-at or before the core while the first reverse primer begins at or after it.
+visible report-preview panel, and an explicit recorded scroll to its result
+rows. It verifies that the first forward primer ends at or before the core
+while the first reverse primer begins at or after it.
 
 That establishes tutorial consistency and flanking geometry for this fixture;
 it does **not** establish whole-genome specificity or validate a wet-lab assay.

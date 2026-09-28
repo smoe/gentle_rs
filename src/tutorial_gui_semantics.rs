@@ -454,8 +454,8 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
     TutorialGuiControlSpec {
         semantic_id: PCR_DESIGN_REPORT_PREVIEW,
         window_id: WINDOW_PCR_DESIGN,
-        authority: TutorialGuiControlAuthority::Observe,
-        allowed_interactions: NO_INTERACTIONS,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: SCROLL,
         text_policy: None,
     },
     TutorialGuiControlSpec {

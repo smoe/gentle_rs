@@ -9,7 +9,8 @@
 - Publish the saved primer-report preview as an observe-only semantic GUI
   surface. The executable walkthrough now requires that preview to be visible
   in addition to validating a non-empty persisted report and first-pair
-  flanking geometry.
+  flanking geometry, then records an explicit scroll before photographing the
+  result rows rather than treating an off-screen result as useful evidence.
 - Reactivate the native window containing a verified result before retaining a
   GUI screenshot. This prevents a later project-save shortcut from leaving the
   main window over the evidence surface; scientific actions and save ordering
