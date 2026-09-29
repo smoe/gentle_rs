@@ -128,7 +128,7 @@ Authoring and unit-testing the contract does not establish a Linux GUI pass.
 
 ## Manual Lifecycle Checks
 
-These are **not** part of the 10-step automated verdict. Use a copy of the
+These are **not** part of the 10-step automated learner verdict. Use a copy of the
 synthetic project and retain a checkpoint/result for each:
 
 1. Inspect the actual sequence display for 701-bp sequences and the expected

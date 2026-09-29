@@ -6981,7 +6981,9 @@ collection-targeted opening. Truncated or uncertain 5-prime starts and unlinked
 transcripts appear as nonselectable diagnostic rows, not candidate TSSs; unlinked
 records are labelled locus-level unassigned rather than exclusions from the gene.
 **Inspect stored collection** validates the entered collection ID in the
-background and exposes members, the fingerprint and copyable JSON. Stale or
+background and shows a concise **Validated collection** summary. Expand
+**Technical details** for the member table, full fingerprint on hover and
+copyable JSON. Stale or
 legacy metadata produces the shared engine diagnostic. **Forget registry
 entry...** requires a second, ID-bound confirmation and retains all sequences,
 windows and lineage; use a new ID for re-derivation rather than overwriting them.
@@ -6995,6 +6997,11 @@ Collection-window requests originating in a child DNA viewer wake the root
 application poller before validation and window creation continue. This keeps
 the asynchronous request bounded while ensuring an otherwise idle root does
 not leave it queued indefinitely.
+New sequence windows use a bounded 48-point cascade (six positions); existing
+windows retain their positions. Collection opening reuses pending/open members
+and requests focus for the first member after new windows are registered.
+Use the native **Window** menu to raise another named member. Native focus
+remains subject to the window manager; a queued request is not proof of focus.
 
 **Refresh collections** lists stored collection IDs, gene queries, source loci
 and window counts. Select a row, then explicitly **Inspect stored collection**;
@@ -7002,10 +7009,11 @@ the browser's **not checked** label is never a validity claim. Invalid/legacy
 records remain visible. Selecting another ID clears old validation and pending
 forget confirmation; project edits invalidate the displayed validation. The
 workspace scrolls on smaller screens. The [synthetic TSS tutorial](tutorial/08-15_tss_collection_gui.md)
-includes typed checks for repeated opening, cancelling/confirming Forget and
-Undo with fresh inspection. It describes retained acceptance evidence without
-claiming a live GUI or TP73 run. Save/restart and stale-member GUI editing remain
-separate manual checks.
+has ten learner steps from preview through explicit approval, validation and
+opening members. Repeated opening has focused application regressions;
+Forget/Undo, save/restart and stale-member editing remain separate contributor
+checks. Its retained Linux/X11 evidence names the exact source revision and
+does not establish merged-candidate, Windows/macOS or live TP73 acceptance.
 Prepared GenBank/XML references do not supply a tabular transcript index:
 extraction reports unavailable transcript enrichment, not zero transcripts.
 The workspace can still use transcript features already imported into the

@@ -18107,6 +18107,19 @@ fn tss_workspace_collection_open_is_deferred_and_reuses_pending_windows() {
     }
     assert!(app.tss_window_task.is_none(), "{}", app.app_status);
     assert_eq!(app.new_windows.len(), 2, "{}", app.app_status);
+    // A repeat before viewport registration must reuse the queued windows too.
+    assert!(
+        app.try_apply_shell_ui_intent(&command)
+            .unwrap()
+            .contains("queued")
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while app.tss_window_task.is_some() && Instant::now() < deadline {
+        app.poll_tss_collection_intent(&ctx);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.tss_window_task.is_none(), "{}", app.app_status);
+    assert_eq!(app.new_windows.len(), 2, "{}", app.app_status);
     app.open_pending_sequence_windows(&ctx);
     let first_viewport = app.find_open_sequence_viewport_id(&first_id).unwrap();
     assert_eq!(app.pending_focus_viewports.last(), Some(&first_viewport));
@@ -18126,12 +18139,76 @@ fn tss_workspace_collection_open_is_deferred_and_reuses_pending_windows() {
     assert!(app.new_windows.is_empty(), "{}", app.app_status);
     assert_eq!(app.windows.len(), window_count);
     assert_eq!(app.pending_focus_viewports.last(), Some(&first_viewport));
-    assert!(app.app_status.contains("focused first member"));
+    assert!(app.app_status.contains("focus requested for first member"));
     assert!(app.app_status.contains("Use Window"));
     assert!(
         app.active_dna_window_context().is_none(),
         "collection opening must not depend on active DNA"
     );
+}
+
+#[test]
+fn tss_workspace_collection_prioritizes_first_member_with_mixed_open_windows() {
+    for preopened_member in 0..2 {
+        for action in ["open", "focus"] {
+            let mut engine = crate::engine::synthetic_tss_engine(false);
+            let request = crate::engine::synthetic_tss_approval(&engine);
+            engine
+                .apply(Operation::MaterializeTssWindows { request })
+                .unwrap();
+            let ids = engine
+                .get_tss_collection("toy_tss")
+                .unwrap()
+                .members
+                .iter()
+                .map(|member| member.tss.output_seq_id.clone())
+                .collect::<Vec<_>>();
+            assert_eq!(ids.len(), 2);
+            let mut app = GENtleApp::default();
+            app.engine = Arc::new(RwLock::new(engine));
+            let preopened_viewport = app.register_window(Window::new_dna_lazy(
+                ids[preopened_member].clone(),
+                app.engine.clone(),
+            ));
+            app.pending_focus_viewports.clear();
+            let ctx = egui::Context::default();
+            let command =
+                parse_shell_line(&format!("ui {action} tss-view --collection toy_tss")).unwrap();
+            assert!(
+                app.try_apply_shell_ui_intent(&command)
+                    .unwrap()
+                    .contains("queued")
+            );
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while app.tss_window_task.is_some() && Instant::now() < deadline {
+                app.poll_tss_collection_intent(&ctx);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert!(app.tss_window_task.is_none(), "{}", app.app_status);
+            assert_eq!(app.new_windows.len(), 1);
+            assert_eq!(
+                app.pending_sequence_focus_after_open.as_deref(),
+                Some(ids[0].as_str())
+            );
+            app.open_pending_sequence_windows(&ctx);
+            assert_eq!(app.windows.len(), 2);
+            assert_eq!(
+                app.find_open_sequence_viewport_id(&ids[preopened_member]),
+                Some(preopened_viewport),
+                "the already-open member must be reused"
+            );
+            let first_viewport = app.find_open_sequence_viewport_id(&ids[0]).unwrap();
+            assert_eq!(app.pending_focus_viewports.last(), Some(&first_viewport));
+            assert_eq!(
+                app.pending_focus_viewports
+                    .iter()
+                    .filter(|id| **id == first_viewport)
+                    .count(),
+                1
+            );
+            assert!(app.pending_sequence_focus_after_open.is_none());
+        }
+    }
 }
 
 #[test]

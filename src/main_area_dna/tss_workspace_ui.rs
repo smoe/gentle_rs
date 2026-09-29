@@ -410,7 +410,7 @@ impl MainAreaDna {
                 let member_count = collection.members.len();
                 let summary = ui.group(|ui| {
                     ui.horizontal_wrapped(|ui| {
-                        ui.strong("✓ Validated collection");
+                        ui.strong("Validated collection");
                         ui.monospace(&collection.collection_id);
                         ui.label(format!(
                             "· {member_count} member windows · gene {}",

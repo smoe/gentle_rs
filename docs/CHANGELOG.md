@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-29 - Integrate TSS Collection Usability And Preserve Mixed-Window Focus
+
+- Merge Glen's complete `504ae0f4` branch, retaining its code and exact
+  `1fcee6c0` Linux/X11 evidence separately from merged-candidate acceptance.
+- Preserve first-member focus priority after new members are registered even
+  when that first member was already open. Cover mixed open/new members for
+  both open and focus commands, and restore the pending-window reuse check.
+  Describe a focus request rather than claiming native focus has completed.
+- Use a text-only validated heading: Glen's retained screenshot shows an
+  unsupported checkmark glyph. Keep fonts, historical images, full JSON and
+  validation semantics unchanged; align GUI documentation with the learner path.
+
 ## 2026-09-29 - Repair RNAPKIN's Unoptimized PNG Renderer
 
 - Diagnose container run `36561534544`, job `109383399310`, at `8a87118f`:

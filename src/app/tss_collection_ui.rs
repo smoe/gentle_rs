@@ -186,11 +186,14 @@ impl GENtleApp {
                 if let Some(seq_id) = preferred_focus {
                     if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
                         self.prioritize_focus_viewport(viewport_id);
-                    } else {
+                    }
+                    // New members queue focus during registration, even when the first
+                    // member is already open. Reapply its priority after the batch.
+                    if !self.new_windows.is_empty() {
                         self.pending_sequence_focus_after_open = Some(seq_id.clone());
                     }
                     self.app_status = format!(
-                        "TSS windows: {}; focused first member '{seq_id}'. Use Window to raise another member.",
+                        "TSS windows: {}; focus requested for first member '{seq_id}'. Use Window to raise another member.",
                         outcomes.join("; ")
                     );
                 } else if task.action == UiIntentAction::Close {
