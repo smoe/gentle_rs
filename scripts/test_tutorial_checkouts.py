@@ -70,6 +70,32 @@ class TutorialCheckoutTests(unittest.TestCase):
         self.assertEqual((fixed / "evidence.json").read_bytes(), self.payload)
         self.assertEqual((self.root / ".gitattributes").read_bytes(), b"# No protection\n")
 
+    def test_rnapkin_lock_receipt_bytes_survive_both_checkout_modes(self):
+        relative = Path("docker/rnapkin/Cargo.lock")
+        payload = (checker.ROOT / relative).read_bytes()
+        digest = hashlib.sha256(payload).hexdigest()
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained RNAPKIN helper lock")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                   if not line.startswith(b"Cargo.lock "))
+        broken = Path(self.tmp.name) / "rnapkin-lock-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertEqual((broken / relative).read_bytes(), payload.replace(b"\n", b"\r\n"))
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"rnapkin-lock-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload,
+                                 "Cargo.lock text eol=lf must also protect the helper lock")
+                self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), digest)
+
     def test_generated_tutorial_json_stays_byte_exact_in_both_checkout_modes(self):
         # Use the real checkout policy with synthetic generated JSON, so removing
         # a targeted LF rule reproduces Windows' strict drift-check failure.

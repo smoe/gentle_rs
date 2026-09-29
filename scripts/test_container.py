@@ -8,6 +8,7 @@ Actual Linux linking, dependencies and image execution remain container CI gates
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ import shlex
 import subprocess
 from tempfile import TemporaryDirectory
 import textwrap
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -175,21 +177,59 @@ class ContainerContractTests(unittest.TestCase):
         docker = (ROOT / "Dockerfile").read_text().replace("\\\n", "")
         builder, runtime = docker.split("FROM debian:${DEBIAN_SUITE}-slim AS runtime-cli", 1)
         for stage, packages in (
-            (builder, ("pkg-config", "libfontconfig1-dev", "libfreetype6-dev")),
+            (builder, ("pkg-config", "curl", "libfontconfig1-dev", "libfreetype6-dev",
+                       "fonts-dejavu-core")),
             (runtime, ("libfontconfig1", "libfreetype6", "fonts-dejavu-core")),
         ):
             install = next(line for line in stage.splitlines() if "apt-get install" in line)
             for package in packages:
                 with self.subTest(package=package):
                     self.assertIn(package, shlex.split(install))
-        command = next(line for line in builder.splitlines() if line.startswith("RUN cargo install "))
+        command = re.search(r"cargo install [^&\n]+", builder).group(0).strip()
         self.assertEqual(shlex.split(command), [
-            "RUN", "cargo", "install", "--locked", "--debug", "--version", "0.3.9",
-            "--root", "/opt/rnapkin", "rnapkin", "-j1",
+            "cargo", "install", "--locked", "--debug", "--path", "/opt/rnapkin-src",
+            "--root", "/opt/rnapkin", "-j1",
         ])
+        self.assertIn("https://static.crates.io/crates/rnapkin/rnapkin-0.3.9.crate", builder)
+        self.assertIn(
+            'echo "4495690197e1cced9b16234d6a66b40ebf190e9613b9c1c6aea837adeed00f17  '
+            '/tmp/rnapkin.crate" | sha256sum -c -', builder,
+        )
+        self.assertLess(builder.index("sha256sum -c -"), builder.index("tar -xzf"))
+        self.assertIn("COPY docker/rnapkin/Cargo.lock /tmp/rnapkin.Cargo.lock", builder)
+        self.assertLess(builder.index("cp /tmp/rnapkin.Cargo.lock /opt/rnapkin-src/Cargo.lock"),
+                        builder.index(command))
         self.assertLess(builder.index(command), builder.index("COPY Cargo.toml"))
         self.assertLess(builder.index(command), builder.index("RUN cargo build "))
         self.assertIn("COPY --from=build /opt/rnapkin/bin/rnapkin /usr/local/bin/rnapkin", runtime)
+
+    def test_rnapkin_lock_keeps_the_fixed_bitmap_backend_and_existing_application(self) -> None:
+        lock = tomllib.loads((ROOT / "docker/rnapkin/Cargo.lock").read_text())
+        packages = {package["name"]: package for package in lock["package"]}
+        for name, version in (("rnapkin", "0.3.9"), ("plotters", "0.3.4"),
+                              ("plotters-bitmap", "0.3.3"), ("plotters-backend", "0.3.7"),
+                              ("gif", "0.12.0")):
+            with self.subTest(package=name):
+                self.assertEqual(packages[name]["version"], version)
+        self.assertEqual(packages["plotters-bitmap"]["checksum"],
+                         "0cebbe1f70205299abc69e8b295035bb52a6a70ee35474ad10011f0a4efb8543")
+        self.assertEqual(packages["plotters-bitmap"]["source"],
+                         "registry+https://github.com/rust-lang/crates.io-index")
+
+    def test_rnapkin_smoke_precedes_gentle_build_without_disabling_checks(self) -> None:
+        docker = (ROOT / "Dockerfile").read_text()
+        before_gentle = docker.split("COPY Cargo.toml", 1)[0]
+        self.assertIn('printf "%s\\n" "GGGAAACCC" "(((...)))"', before_gentle)
+        for extension in ("svg", "png"):
+            self.assertIn(
+                f'timeout 30 /opt/rnapkin/bin/rnapkin --height 128 '
+                f'-o "$smoke_dir/hairpin.{extension}" "$smoke_dir/hairpin.dbn"',
+                before_gentle,
+            )
+            self.assertIn(f'test -s "$smoke_dir/hairpin.{extension}"', before_gentle)
+        self.assertNotIn("CARGO_PROFILE_DEV_DEBUG_ASSERTIONS", docker)
+        self.assertNotIn("CARGO_PROFILE_DEV_OVERFLOW_CHECKS", docker)
+        self.assertNotIn("debug-assertions=off", docker)
 
     def test_container_smoke_renders_rna_with_fonts_without_network(self) -> None:
         workflow = (ROOT / ".github/workflows/container.yml").read_text()
@@ -231,10 +271,13 @@ class ContainerContractTests(unittest.TestCase):
             "CANDIDATE_MODE": "validate_only",
         }
         records = []
+        helper_lock = b"# Synthetic helper lockfile\nversion = 4\n"
         with patch.dict(os.environ, env, clear=True), \
              patch("subprocess.check_output", return_value="synthetic-buildx\n"), \
+             patch.object(Path, "read_bytes", return_value=helper_lock) as read_bytes, \
              patch.object(Path, "write_text", side_effect=lambda text: records.append(json.loads(text))):
             exec(compile(script, "container-receipt", "exec"), {})
+        read_bytes.assert_called_once()
         record, = records
         self.assertEqual(record["profile"], "dev")
         self.assertIs(record["incremental"], False)
@@ -245,6 +288,11 @@ class ContainerContractTests(unittest.TestCase):
         self.assertFalse(record["pushed"])
         self.assertEqual(record["revision"], env["EXPECTED_REVISION"])
         self.assertEqual(record["cargo_lock_sha256"], env["EXPECTED_LOCK_SHA256"])
+        self.assertEqual(record["helpers"], {
+            "rnapkin": {"version": "0.3.9", "profile": "dev",
+                        "cargo_lock_path": "docker/rnapkin/Cargo.lock",
+                        "cargo_lock_sha256": hashlib.sha256(helper_lock).hexdigest()},
+        })
         self.assertEqual(record["images"], [{
             "target": "runtime-cli", "image_id": env["CLI_IMAGE"],
             "digest": env["CLI_DIGEST"], "entrypoint_smoke": "passed",

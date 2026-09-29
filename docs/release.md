@@ -118,15 +118,23 @@ Container Registry (GHCR); a tag push alone only runs build checks:
   now mean headless, not browser GUI. Native packages retain the GUI, not scripting.
 - current image platform: `linux/amd64`
 
-The RNA drawing helper `rnapkin` is pinned to `0.3.9` and installed with its
-locked dependencies and one build job before GENtle compilation. Its Plotters
-renderer needs Fontconfig and FreeType development libraries in the builder,
-and the corresponding runtime libraries plus DejaVu fonts in the final image.
-These support headless rendering; they do not restore the GENtle GUI. Container
-CI checks the helper's dynamic linking and renders a hand-crafted RNA hairpin
-to SVG and PNG without network access, as the unprivileged runtime user. The
-PNG check exercises font loading, not only executable discovery. This is a
-packaging smoke, not validation of an RNA folding prediction.
+The RNA drawing helper `rnapkin` is pinned to the checksum-verified `0.3.9`
+source archive and installed unoptimized with `--locked --debug -j1`, using the
+separate [container helper lockfile](../docker/rnapkin/README.md). The published
+lockfile's `plotters-bitmap 0.3.2` aborts on misaligned RGB pointer writes in the
+dev build; the scoped replacement selects upstream's fixed `0.3.3` plus its
+required backend/GIF dependencies without changing GENtle's root lockfile.
+Do not suppress this with optimization, disabled assertions or a skipped PNG
+smoke. The build receipt records the helper lockfile's digest separately.
+
+Its Plotters renderer needs Fontconfig and FreeType development libraries in
+the builder, corresponding runtime libraries in the final image, and DejaVu
+fonts in both stages. These support headless rendering, not the GENtle GUI.
+The builder renders a hand-crafted RNA hairpin to SVG and PNG before GENtle's
+long compilation. Container CI still repeats both renders without network
+access as the unprivileged runtime user and checks dynamic linking. The PNG
+check exercises font loading and bitmap drawing, not only executable discovery.
+This is a packaging smoke, not validation of an RNA folding prediction.
 
 The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
 packaging remain deferred. `linux_distribution=tarball` records the artifact

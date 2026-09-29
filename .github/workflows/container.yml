@@ -126,7 +126,7 @@ jobs:
         run: |
           python3 scripts/release_candidate.py verify
           python3 - <<'PY'
-          import json, os, pathlib, subprocess
+          import hashlib, json, os, pathlib, subprocess
           rows = []
           for flavor in ("cli",):
               image_id = os.environ[f"{flavor.upper()}_IMAGE"]
@@ -144,6 +144,14 @@ jobs:
               "profile": "dev", "incremental": False, "debug": 0,
               "default_features": False, "features": [],
               "binaries": ["gentle_cli", "gentle_mcp", "gentle_examples_docs"],
+              "helpers": {
+                  "rnapkin": {
+                      "version": "0.3.9", "profile": "dev",
+                      "cargo_lock_path": "docker/rnapkin/Cargo.lock",
+                      "cargo_lock_sha256": hashlib.sha256(
+                          pathlib.Path("docker/rnapkin/Cargo.lock").read_bytes()).hexdigest(),
+                  },
+              },
               "build_args": {"DEBIAN_SUITE": "forky"}, "platform": "linux/amd64",
               "buildx": subprocess.check_output(["docker", "buildx", "version"], text=True).strip(),
               "images": rows,

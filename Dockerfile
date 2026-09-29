@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     clang \
     cmake \
+    curl \
+    fonts-dejavu-core \
     git \
     libfontconfig1-dev \
     libfreetype6-dev \
@@ -27,9 +29,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# RNA rendering needs font libraries, not a desktop GUI. Fail before GENtle's
-# long build and keep this pinned helper layer independent of source changes.
-RUN cargo install --locked --debug --version 0.3.9 --root /opt/rnapkin rnapkin -j1
+# RNAPKIN's published lockfile selects a bitmap backend with unaligned pointer
+# dereferences. Use the scoped corrected lock, not optimization to hide the bug.
+COPY docker/rnapkin/Cargo.lock /tmp/rnapkin.Cargo.lock
+RUN curl --fail --show-error --silent --location \
+        https://static.crates.io/crates/rnapkin/rnapkin-0.3.9.crate -o /tmp/rnapkin.crate \
+    && echo "4495690197e1cced9b16234d6a66b40ebf190e9613b9c1c6aea837adeed00f17  /tmp/rnapkin.crate" | sha256sum -c - \
+    && mkdir -p /opt/rnapkin-src \
+    && tar -xzf /tmp/rnapkin.crate -C /opt/rnapkin-src --strip-components=1 \
+    && cp /tmp/rnapkin.Cargo.lock /opt/rnapkin-src/Cargo.lock \
+    && cargo install --locked --debug --path /opt/rnapkin-src --root /opt/rnapkin -j1 \
+    && rm -rf /opt/rnapkin-src /tmp/rnapkin.crate /tmp/rnapkin.Cargo.lock
+
+# Exercise both renderers before GENtle's long build. The final-image smoke
+# still repeats this as the unprivileged runtime user with networking disabled.
+RUN smoke_dir="$(mktemp -d)" \
+    && printf "%s\n" "GGGAAACCC" "(((...)))" > "$smoke_dir/hairpin.dbn" \
+    && timeout 30 /opt/rnapkin/bin/rnapkin --height 128 -o "$smoke_dir/hairpin.svg" "$smoke_dir/hairpin.dbn" \
+    && timeout 30 /opt/rnapkin/bin/rnapkin --height 128 -o "$smoke_dir/hairpin.png" "$smoke_dir/hairpin.dbn" \
+    && test -s "$smoke_dir/hairpin.svg" \
+    && grep -q "<svg" "$smoke_dir/hairpin.svg" \
+    && test -s "$smoke_dir/hairpin.png" \
+    && rm -rf "$smoke_dir"
 
 WORKDIR /opt/gentle
 

@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-29 - Repair RNAPKIN's Unoptimized PNG Renderer
+
+- Diagnose container run `36561534544`, job `109383399310`, at `8a87118f`:
+  compilation and SVG rendering succeeded, then RNAPKIN PNG rendering aborted
+  with a misaligned pointer dereference in `plotters-bitmap 0.3.2` (`rgb.rs:215`).
+  This is not a GENtle compiler failure, missing font library or timeout.
+- Keep upstream RNAPKIN 0.3.9 and unoptimized builds with safety checks. Verify
+  its published source archive by SHA-256 and install against a separate locked
+  dependency graph selecting the upstream bitmap fix in 0.3.3. Only its bitmap,
+  backend and GIF package versions change; GENtle's root lockfile is untouched.
+- Add an SVG/PNG smoke before GENtle compilation, retaining the unprivileged,
+  network-disabled final-image smoke. Bind the helper lock in the container
+  receipt and add recipe, dependency and LF/CRLF regression coverage.
+- Source/lockfile inspection only; no local builds or tests run. A fresh
+  container CI run on the repaired candidate must establish execution acceptance.
+
 ## 2026-09-29 - Integrate Glen's TSS And Simple-PCR Evidence
 
 - Merge TSS tutorial evidence through `272106a1` and the complete Simple-PCR
