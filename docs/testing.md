@@ -395,6 +395,10 @@ The generated `docs/tutorial/catalog.json`, `docs/tutorial/manifest.json` and
 normalize away a mismatch inside the validator. The
 `scripts.test_tutorial_checkouts` suite exercises the real rules in disposable
 LF and CRLF Git checkouts without rebuilding or changing scientific outputs.
+Tutorial navigation is part of the catalog contract: prerequisite and
+continuation ids must resolve, cannot repeat or self-reference, and are capped
+at three per direction. Generated-chapter prerequisites project into the same
+catalog field used by manual pages and the in-app Help navigation.
 
 The prebuilt-binary checkout replay runs `parity-matrix-check` before `--check`
 and `tutorial-check` in both modes, so matrix drift fails before the longer

@@ -39,6 +39,8 @@
     "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
     "produces": ["interactive native TSS evidence view"],
     "group": "08",
-    "group_position": 16
+    "group_position": 16,
+    "prerequisites": ["tss_collection_gui"],
+    "next_steps": ["tp73_dnp73_factor_curves"]
   }
 }

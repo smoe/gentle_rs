@@ -15,6 +15,7 @@
     ],
     "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.",
     "group": "03",
-    "group_position": 8
+    "group_position": 8,
+    "prerequisites": ["gibson_arrangements_gui"]
   }
 }

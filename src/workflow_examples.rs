@@ -48,6 +48,7 @@ pub const TUTORIAL_ARTIFACT_ISSUE_TEMPLATE_PATH: &str =
     ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md";
 pub const TUTORIAL_EXECUTION_ISSUE_TEMPLATE_PATH: &str =
     ".github/ISSUE_TEMPLATE/tutorial-execution-failure.md";
+const TUTORIAL_NAVIGATION_LINK_LIMIT: usize = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TutorialCatalogGeneratedRuntime {
@@ -92,6 +93,12 @@ pub struct TutorialCatalogEntry {
     pub starting_state: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub produces: Vec<String>,
+    /// Tutorial ids that should normally be read or completed first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<String>,
+    /// Tutorial ids that form the most useful continuation of this page.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -201,6 +208,10 @@ pub struct TutorialSourceCatalogSection {
     pub starting_state: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub produces: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub next_steps: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -488,7 +499,13 @@ impl TutorialSourceCatalogSection {
         placement: TutorialPlacement,
         review: TutorialReviewProjection,
         graphics: Vec<TutorialGraphic>,
+        generated_prerequisites: Vec<String>,
     ) -> TutorialCatalogEntry {
+        let prerequisites = if self.prerequisites.is_empty() {
+            generated_prerequisites
+        } else {
+            self.prerequisites
+        };
         TutorialCatalogEntry {
             id,
             title,
@@ -509,6 +526,8 @@ impl TutorialSourceCatalogSection {
             interfaces: self.interfaces,
             starting_state: self.starting_state,
             produces: self.produces,
+            prerequisites,
+            next_steps: self.next_steps,
             review_status: Some(review.status),
             codex_reviewed_at: review.codex_reviewed_at,
             human_reviewed_at: review.human_reviewed_at,
@@ -616,7 +635,17 @@ impl TutorialSourceUnit {
         );
         Ok(Some({
             let order = catalog.order;
-            let entry = catalog.into_catalog_entry(id, title, placement, review, graphics);
+            let generated_prerequisites = generated_chapter
+                .map(|chapter| chapter.prerequisites)
+                .unwrap_or_default();
+            let entry = catalog.into_catalog_entry(
+                id,
+                title,
+                placement,
+                review,
+                graphics,
+                generated_prerequisites,
+            );
             (order, entry)
         }))
     }
@@ -1423,7 +1452,62 @@ pub fn load_tutorial_catalog(catalog_path: &Path) -> Result<TutorialCatalog, Str
             ));
         }
     }
+    validate_tutorial_catalog_navigation(&catalog.entries, &seen_ids).map_err(|error| {
+        format!(
+            "Tutorial catalog '{}' navigation validation error: {error}",
+            display_path(catalog_path)
+        )
+    })?;
     Ok(catalog)
+}
+
+fn validate_tutorial_catalog_navigation(
+    entries: &[TutorialCatalogEntry],
+    known_ids: &HashSet<String>,
+) -> Result<(), String> {
+    for entry in entries {
+        for (field, targets) in [
+            ("prerequisites", &entry.prerequisites),
+            ("next_steps", &entry.next_steps),
+        ] {
+            if targets.len() > TUTORIAL_NAVIGATION_LINK_LIMIT {
+                return Err(format!(
+                    "tutorial '{}' has {} {field} links (maximum {})",
+                    entry.id,
+                    targets.len(),
+                    TUTORIAL_NAVIGATION_LINK_LIMIT
+                ));
+            }
+            let mut seen_targets = HashSet::new();
+            for target in targets {
+                if target.trim().is_empty() {
+                    return Err(format!(
+                        "tutorial '{}' contains a blank {field} link",
+                        entry.id
+                    ));
+                }
+                if target == &entry.id {
+                    return Err(format!(
+                        "tutorial '{}' cannot link to itself in {field}",
+                        entry.id
+                    ));
+                }
+                if !seen_targets.insert(target) {
+                    return Err(format!(
+                        "tutorial '{}' repeats '{}' in {field}",
+                        entry.id, target
+                    ));
+                }
+                if !known_ids.contains(target) {
+                    return Err(format!(
+                        "tutorial '{}' references unknown {field} tutorial '{}'",
+                        entry.id, target
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn load_tutorial_catalog_meta(meta_path: &Path) -> Result<TutorialCatalogMeta, String> {
@@ -1658,7 +1742,7 @@ pub fn generate_tutorial_catalog_from_sources(
             .cmp(&right.0)
             .then_with(|| left.1.id.cmp(&right.1.id))
     });
-    Ok(TutorialCatalog {
+    let catalog = TutorialCatalog {
         schema: TUTORIAL_CATALOG_SCHEMA.to_string(),
         description: meta.description,
         entry_page: meta.entry_page,
@@ -1667,7 +1751,14 @@ pub fn generate_tutorial_catalog_from_sources(
             .into_iter()
             .map(|(_, entry)| entry)
             .collect(),
-    })
+    };
+    let known_ids = catalog
+        .entries
+        .iter()
+        .map(|entry| entry.id.clone())
+        .collect::<HashSet<_>>();
+    validate_tutorial_catalog_navigation(&catalog.entries, &known_ids)?;
+    Ok(catalog)
 }
 
 pub fn generate_tutorial_manifest_from_sources(
@@ -8451,6 +8542,45 @@ mod tests {
             "catalog manifest path should exist: '{}'",
             display_path(&generated_manifest)
         );
+    }
+
+    #[test]
+    fn tutorial_catalog_navigation_is_bounded_and_resolves_ids() {
+        let catalog =
+            load_tutorial_catalog(&tutorial_catalog_path()).expect("load tutorial catalog");
+        let by_id = catalog
+            .entries
+            .iter()
+            .map(|entry| (entry.id.as_str(), entry))
+            .collect::<HashMap<_, _>>();
+
+        let tss_collection = by_id
+            .get("tss_collection_gui")
+            .expect("TSS collection tutorial");
+        assert_eq!(
+            tss_collection.prerequisites,
+            ["motif_logo_to_promoter_trace"]
+        );
+        assert_eq!(tss_collection.next_steps, ["tss_regulatory_view_gui"]);
+
+        let generated_prerequisite = by_id
+            .get("gibson_specialist_testing_baseline")
+            .expect("generated Gibson baseline");
+        assert_eq!(
+            generated_prerequisite.prerequisites,
+            ["gibson_two_fragment_overlap_preview"]
+        );
+        assert_eq!(
+            generated_prerequisite.next_steps,
+            ["gibson_specialist_testing_gui"]
+        );
+
+        let known_ids = by_id.keys().map(|id| (*id).to_string()).collect();
+        let mut invalid = catalog.entries.clone();
+        invalid[0].next_steps = vec!["missing_tutorial".to_string()];
+        let error = validate_tutorial_catalog_navigation(&invalid, &known_ids)
+            .expect_err("unknown navigation target should fail");
+        assert!(error.contains("missing_tutorial"), "{error}");
     }
 
     #[test]

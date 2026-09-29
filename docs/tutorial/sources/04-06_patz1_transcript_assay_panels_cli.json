@@ -16,7 +16,8 @@
     ],
     "notes": "Historical synthetic regression walkthrough, not human PATZ1 biology. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
     "group": "04",
-    "group_position": 6
+    "group_position": 6,
+    "next_steps": ["transcript_assay_followup_gui_cli"]
   },
   "generated_chapter": {
     "order": 28,

@@ -16,6 +16,7 @@
     ],
     "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.",
     "group": "04",
-    "group_position": 3
+    "group_position": 3,
+    "prerequisites": ["simple_pcr_selection_gui"]
   }
 }

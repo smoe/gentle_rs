@@ -112,6 +112,12 @@
         "contributors"
       ],
       "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity.",
+      "prerequisites": [
+        "gibson_specialist_testing_baseline"
+      ],
+      "next_steps": [
+        "gibson_arrangements_baseline"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -134,6 +140,12 @@
         "contributors"
       ],
       "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
+      "prerequisites": [
+        "gibson_arrangements_baseline"
+      ],
+      "next_steps": [
+        "gibson_physical_rack_gui"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -156,6 +168,9 @@
         "contributors"
       ],
       "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.",
+      "prerequisites": [
+        "gibson_arrangements_gui"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -372,6 +387,13 @@
       "produces": [
         "primer-pair report"
       ],
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "next_steps": [
+        "pcr_selection_batch_primer_pairs_offline",
+        "qpcr_exon_junctions_gui"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-28",
       "graphics": [
@@ -483,6 +505,9 @@
         "contributors"
       ],
       "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.",
+      "prerequisites": [
+        "tp53_uniprot_projection_online"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -506,6 +531,9 @@
         "contributors"
       ],
       "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.",
+      "prerequisites": [
+        "simple_pcr_selection_gui"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -578,6 +606,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -600,6 +631,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
@@ -645,6 +679,12 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "next_steps": [
+        "gibson_specialist_testing_baseline"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -667,6 +707,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -689,6 +732,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_and_digest_pgex"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -710,6 +756,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "guides_filter_and_generate_oligos"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -730,6 +779,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -774,6 +826,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -796,6 +851,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -818,6 +876,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -840,6 +901,12 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta"
+      ],
+      "next_steps": [
+        "patz1_transcript_assay_panels_cli"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-07-28"
     },
@@ -861,6 +928,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -883,6 +953,12 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "gibson_two_fragment_overlap_preview"
+      ],
+      "next_steps": [
+        "gibson_specialist_testing_gui"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -905,6 +981,12 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "gibson_specialist_testing_baseline"
+      ],
+      "next_steps": [
+        "gibson_arrangements_gui"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -927,6 +1009,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "prerequisites": [
+        "prepare_reference_genome_online"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -949,6 +1034,11 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "prerequisites": [
+        "load_branch_reverse_complement_pgex_fasta",
+        "guides_export_csv_and_protocol",
+        "contribute_to_gentle_development"
+      ],
       "review_status": "human_reviewed",
       "codex_reviewed_at": "2026-08-29",
       "human_reviewed_at": "2026-05-18",
@@ -1078,6 +1168,9 @@
         "contributors"
       ],
       "notes": "Machine-checked offline chapter for declared promoter-cohort relationships, unexpected-divergence flags, and local ortholog promoter cohorts.",
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
@@ -1100,6 +1193,9 @@
         "contributors"
       ],
       "notes": "Machine-checked generated chapter for offline gene-set and ortholog promoter cohort relationship flags.",
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-06-25"
     },
@@ -1122,6 +1218,10 @@
         "contributors"
       ],
       "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer; all plotted values are synthetic.",
+      "prerequisites": [
+        "tp53_isoform_architecture_online",
+        "pcr_selection_batch_primer_pairs_offline"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-02",
       "graphics": [
@@ -1153,6 +1253,12 @@
         "contributors"
       ],
       "notes": "Historical synthetic regression walkthrough, not human PATZ1 biology. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
+      "prerequisites": [
+        "pcr_selection_batch_primer_pairs_offline"
+      ],
+      "next_steps": [
+        "transcript_assay_followup_gui_cli"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-07-21"
     },
@@ -1196,6 +1302,9 @@
         "contributors"
       ],
       "notes": "Machine-checked offline planning chapter; exact digest approval remains a separate, explicit user action.",
+      "prerequisites": [
+        "promoter_design_artifact_slice_offline"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-08-29",
       "graphics": [
@@ -1234,6 +1343,10 @@
         "contributors"
       ],
       "notes": "Machine-checked offline chapter. The locus sequence and transcript geometry are from the pinned public Ensembl-116 fixture; regulatory and CUT&RUN evidence are explicitly synthetic.",
+      "prerequisites": [
+        "promoter_reporter_panel_planning_offline",
+        "patz1_gene_locus_evidence_offline"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-04",
       "graphics": [
@@ -1266,6 +1379,10 @@
         "contributors"
       ],
       "notes": "Machine-checked offline planning chapter. The locus is a pinned public sequence fixture; all A/B roles and comparison geometries are tutorial declarations rather than biological findings.",
+      "prerequisites": [
+        "promoter_reporter_panel_planning_offline",
+        "portable_genomic_regions_offline"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-08",
       "graphics": [
@@ -1297,6 +1414,9 @@
         "contributors"
       ],
       "notes": "Offline synthetic tutorial for query-referenced local-BLAST similarity, explicit orthology evidence, conserved blocks, and reporter-module decision traces.",
+      "prerequisites": [
+        "portable_genomic_regions_offline"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-07",
       "graphics": [
@@ -1356,6 +1476,9 @@
         "contributors"
       ],
       "notes": "Score-interpretation guide for PWM/PSSM matrices, PFM counts, motif logos, JASPAR TFBS match scores, pseudocounts, log odds, raw LLR bits, relative scores, quantiles and inclusive background tail probability. Distinguishes sequence preference from binding affinity, occupancy and reporter activity; explains why the TP73 MA0861.2 score 300 was wrong and the corrected tail score. Compare promoter/TSS traces with shared scales and interpret sparse peaks. Offline teaching guide: no loaded project required; replay needs a built GENtle CLI, with the independent scanner optional. Hands-on native TSS inspection is deliberately split into tutorial 08.16; TSS collection derivation remains 08.15.",
+      "next_steps": [
+        "tss_collection_gui"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-12"
     },
@@ -1421,6 +1544,12 @@
         "wet_lab_biologists"
       ],
       "notes": "Offline synthetic PATZ1 follow-up after qPCR exon junctions and transcript panels: terminal-exon RT primer pool geometry, differential junction selection and missing threshold provenance, transcript-assay specificity planning/finalization, and gene-isoform study orchestration with two separate approval stages. GUI PCR Designer and shared Shell continuation; deterministic Python fixture checks and optional supplied-binary replay. External manifest-backed specificity is optional and not executed; no vendor submission, validated assay, or human scientific/GUI approval is claimed.",
+      "prerequisites": [
+        "patz1_transcript_assay_panels_cli"
+      ],
+      "next_steps": [
+        "gene_assay_study_gui"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-11"
     },
@@ -1465,6 +1594,9 @@
         "wet_lab_biologists"
       ],
       "notes": "Authentic human PATZ1: pinned Ensembl 116 and RefSeq genomic annotations, source/shared exon-chain inspection and primer-pair discrimination across all 13 Ensembl transcript records. Reference-wide specificity, Glen's live screenshots and human scientific acceptance remain pending. No synthetic expression or array evidence.",
+      "prerequisites": [
+        "transcript_assay_followup_gui_cli"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-19"
     },
@@ -1485,6 +1617,12 @@
         "contributors"
       ],
       "notes": "Synthetic core-path GUI acceptance plus a separate contributor lifecycle checklist. Glen source and native Linux/X11 review 2026-09-29 at 1fcee6c0: preview, explicit approval, concise validation and bounded-cascade window opening; native Windows/macOS, human scientific approval and live TP73 sign-off remain pending.",
+      "prerequisites": [
+        "motif_logo_to_promoter_trace"
+      ],
+      "next_steps": [
+        "tss_regulatory_view_gui"
+      ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-29",
       "graphics": [
@@ -1535,6 +1673,12 @@
       "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
       "produces": [
         "interactive native TSS evidence view"
+      ],
+      "prerequisites": [
+        "tss_collection_gui"
+      ],
+      "next_steps": [
+        "tp73_dnp73_factor_curves"
       ],
       "review_status": "codex_reviewed",
       "codex_reviewed_at": "2026-09-24",
@@ -1587,6 +1731,9 @@
       "produces": [
         "interactive native TSS evidence view",
         "deterministic native TSS view SVG"
+      ],
+      "prerequisites": [
+        "tss_regulatory_view_gui"
       ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",

@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-09-29 - Add Bounded Tutorial Learning Routes
+
+- Extend the canonical tutorial catalog with up to three explicit prerequisite
+  and continuation ids per page. Reuse generated chapters' existing
+  prerequisite declarations rather than creating a second relationship source;
+  reject blank, duplicate, self-referential and unknown targets.
+- Show catalog relationships as compact **Prerequisite** and **Continue with**
+  buttons below the in-app Help topic selector. Decimal ids keep the row small,
+  while hover text retains the full title and summary; file-discovery fallback
+  remains usable without inventing relationships.
+- Seed three bounded learning routes: Gibson preview through physical rack,
+  simple PCR through transcript-assay follow-up, and motif interpretation
+  through TSS collection, evidence attachment and local factor curves. This is
+  navigation only; tutorial execution, biological conclusions and agent
+  approval behavior are unchanged.
+
 ## 2026-09-29 - Integrate TSS Collection Usability And Preserve Mixed-Window Focus
 
 - Merge Glen's complete `504ae0f4` branch, retaining its code and exact
