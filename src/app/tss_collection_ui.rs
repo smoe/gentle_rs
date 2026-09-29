@@ -75,6 +75,7 @@ impl GENtleApp {
         if self.tss_window_task.is_some() {
             return "TSS window opening is already pending; retry after completion".into();
         }
+        self.pending_sequence_focus_after_open = None;
         let engine = self.engine.clone();
         let id = collection_id.to_owned();
         let (tx, receiver) = mpsc::channel();
@@ -148,8 +149,14 @@ impl GENtleApp {
             Ok(ids)
         });
         match result {
-            Err(error) => self.app_status = error,
+            Err(error) => {
+                self.pending_sequence_focus_after_open = None;
+                self.app_status = error;
+            }
             Ok(ids) => {
+                let preferred_focus = (task.action != UiIntentAction::Close)
+                    .then(|| ids.first().cloned())
+                    .flatten();
                 let mut outcomes = Vec::new();
                 for id in ids {
                     if task.action == UiIntentAction::Close {
@@ -166,7 +173,6 @@ impl GENtleApp {
                                 Err(_) => outcomes.push(format!("{id}: busy; retry")),
                             }
                         }
-                        self.queue_focus_viewport(viewport);
                     } else if let Some(window) = self.find_pending_sequence_window_mut(&id) {
                         window.focus_tss_view();
                         outcomes.push(format!("{id}: already opening"));
@@ -177,7 +183,22 @@ impl GENtleApp {
                         outcomes.push(format!("{id}: opening"));
                     }
                 }
-                self.app_status = format!("TSS windows: {}", outcomes.join("; "));
+                if let Some(seq_id) = preferred_focus {
+                    if let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id) {
+                        self.prioritize_focus_viewport(viewport_id);
+                    } else {
+                        self.pending_sequence_focus_after_open = Some(seq_id.clone());
+                    }
+                    self.app_status = format!(
+                        "TSS windows: {}; focused first member '{seq_id}'. Use Window to raise another member.",
+                        outcomes.join("; ")
+                    );
+                } else if task.action == UiIntentAction::Close {
+                    self.pending_sequence_focus_after_open = None;
+                    self.app_status = format!("TSS windows: {}", outcomes.join("; "));
+                } else {
+                    self.app_status = "TSS collection contains no windows".into();
+                }
             }
         }
         ctx.request_repaint();

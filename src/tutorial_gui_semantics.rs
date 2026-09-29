@@ -23,6 +23,7 @@ pub const TSS_FORGET: &str = "tss.forget";
 pub const TSS_CONFIRM_FORGET: &str = "tss.confirm_forget";
 pub const TSS_CANCEL_FORGET: &str = "tss.cancel_forget";
 pub const TSS_STATUS: &str = "tss.status";
+pub const TSS_VALIDATION_SUMMARY: &str = "tss.validation_summary";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
 pub const WINDOW_SEQUENCE_TOOLS: &str = "window.sequence_tools";
@@ -243,6 +244,13 @@ pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
     },
     TutorialGuiControlSpec {
         semantic_id: TSS_STATUS,
+        window_id: WINDOW_TSS_WORKSPACE,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: TSS_VALIDATION_SUMMARY,
         window_id: WINDOW_TSS_WORKSPACE,
         authority: TutorialGuiControlAuthority::Observe,
         allowed_interactions: NO_INTERACTIONS,

@@ -4003,14 +4003,22 @@ fn register_window_records_one_time_initial_position() {
 }
 
 #[test]
-fn deferred_window_position_uses_monotonic_cascade_index() {
+fn deferred_window_position_uses_bounded_readable_cascade() {
     assert_eq!(
         GENtleApp::deferred_window_position(0),
         egui::Pos2 { x: 0.0, y: 0.0 }
     );
     assert_eq!(
         GENtleApp::deferred_window_position(3),
-        egui::Pos2 { x: 600.0, y: 600.0 }
+        egui::Pos2 { x: 144.0, y: 144.0 }
+    );
+    assert_eq!(
+        GENtleApp::deferred_window_position(5),
+        egui::Pos2 { x: 240.0, y: 240.0 }
+    );
+    assert_eq!(
+        GENtleApp::deferred_window_position(6),
+        egui::Pos2 { x: 0.0, y: 0.0 }
     );
 }
 
@@ -18075,24 +18083,51 @@ fn tss_workspace_collection_open_is_deferred_and_reuses_pending_windows() {
     engine
         .apply(Operation::MaterializeTssWindows { request })
         .unwrap();
+    let member_ids = engine
+        .get_tss_collection("toy_tss")
+        .unwrap()
+        .members
+        .iter()
+        .map(|member| member.tss.output_seq_id.clone())
+        .collect::<Vec<_>>();
+    let first_id = member_ids.first().unwrap().clone();
     let mut app = GENtleApp::default();
     app.engine = Arc::new(RwLock::new(engine));
     let command = parse_shell_line("ui open tss-view --collection toy_tss").unwrap();
     let ctx = egui::Context::default();
-    for _ in 0..2 {
-        assert!(
-            app.try_apply_shell_ui_intent(&command)
-                .unwrap()
-                .contains("queued")
-        );
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while app.tss_window_task.is_some() && Instant::now() < deadline {
-            app.poll_tss_collection_intent(&ctx);
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        assert!(app.tss_window_task.is_none(), "{}", app.app_status);
-        assert_eq!(app.new_windows.len(), 2, "{}", app.app_status);
+    assert!(
+        app.try_apply_shell_ui_intent(&command)
+            .unwrap()
+            .contains("queued")
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while app.tss_window_task.is_some() && Instant::now() < deadline {
+        app.poll_tss_collection_intent(&ctx);
+        std::thread::sleep(Duration::from_millis(5));
     }
+    assert!(app.tss_window_task.is_none(), "{}", app.app_status);
+    assert_eq!(app.new_windows.len(), 2, "{}", app.app_status);
+    app.open_pending_sequence_windows(&ctx);
+    let first_viewport = app.find_open_sequence_viewport_id(&first_id).unwrap();
+    assert_eq!(app.pending_focus_viewports.last(), Some(&first_viewport));
+    let window_count = app.windows.len();
+
+    assert!(
+        app.try_apply_shell_ui_intent(&command)
+            .unwrap()
+            .contains("queued")
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while app.tss_window_task.is_some() && Instant::now() < deadline {
+        app.poll_tss_collection_intent(&ctx);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(app.tss_window_task.is_none(), "{}", app.app_status);
+    assert!(app.new_windows.is_empty(), "{}", app.app_status);
+    assert_eq!(app.windows.len(), window_count);
+    assert_eq!(app.pending_focus_viewports.last(), Some(&first_viewport));
+    assert!(app.app_status.contains("focused first member"));
+    assert!(app.app_status.contains("Use Window"));
     assert!(
         app.active_dna_window_context().is_none(),
         "collection opening must not depend on active DNA"

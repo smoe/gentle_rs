@@ -31,6 +31,19 @@
   cold/warm acceptance remain Glen's task; the excluded local rehearsal is not
   a responsiveness verdict.
 
+## 2026-09-29 - Clarify Validated TSS Collections And Window Focus
+
+- Replace the always-expanded TSS collection fingerprint/member dump with a
+  visible validated summary and collapsed technical details. Preserve the full
+  fingerprint, JSON export and member metadata without making them the first
+  thing a learner must parse; long stable IDs retain their full hover text.
+- Open collection members in a bounded 48-pixel cascade and deterministically
+  bring the first member forward. Reopening reuses the same windows and the
+  native Window menu remains the explicit route to any other named member.
+- Extend tutorial 08.15's executable contract to observe the validated summary
+  and describe the focus behavior. Exact native GUI evidence is pending the
+  post-change build and capture.
+
 ## 2026-09-29 - Make The TSS-Collection Tutorial A Learner Workflow
 
 - Reduce tutorial 08.15's executable native GUI path from an 18-step mixed

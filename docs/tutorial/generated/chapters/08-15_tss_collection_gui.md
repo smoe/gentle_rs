@@ -47,7 +47,7 @@ See also: guided walkthrough [docs/tutorial/08-15_tss_collection_gui.md](../../0
 3. Set Gene to TOY; keep Collection ID tss_windows and upstream/downstream 500/200. Inspect starts without changing project state.
 4. Check starts 601 (+), 901 (+), 1500 (-), with plus_a/plus_b sharing the first row. Select available and explicitly approve creation of all three windows.
 5. Refresh collections: readable / not checked is expected, not pass. Inspect stored collection; compare the validated report with the independent oracle.
-6. Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward.
+6. Open TSS collection once. Expect exactly three member viewers plus the original locus. GENtle brings the first collection member forward and places the others in a bounded cascade; use the native Window menu to raise another named member.
 7. Only contributors testing registry recovery should continue with the separate forget/undo, restart and deliberately stale-member checklist. Repeated-open reuse remains covered by the focused application regression rather than by asking a learner to repeat a visually disruptive action.
 
 ## Walkthrough: GUI, CLI and Inner Agent
@@ -130,15 +130,15 @@ Refresh collections: readable / not checked is expected, not pass. Inspect store
 
 *Figure: After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint. Screenshot captured 2026-09-29.*
 
-### Step 6: Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward
+### Step 6: Open TSS collection once. Expect exactly three member viewers plus the original locus. GENtle brings the first collection member forward and places the others in a bounded cascade; use the native Window menu to raise another named member
 
 **GUI**
 
-Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward.
+Open TSS collection once. Expect exactly three member viewers plus the original locus. GENtle brings the first collection member forward and places the others in a bounded cascade; use the native Window menu to raise another named member.
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> In the current GENtle project, help me perform this tutorial step: Open TSS collection once. Expect exactly three member viewers plus the original locus. GENtle brings the first collection member forward and places the others in a bounded cascade; use the native Window menu to raise another named member. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
 
 **Expected**
 

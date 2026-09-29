@@ -6,6 +6,18 @@ use gentle_protocol::tss_workspace::*;
 
 const TSS_WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
 
+fn compact_tss_identity(value: &str) -> String {
+    const HEAD: usize = 18;
+    const TAIL: usize = 10;
+    let length = value.chars().count();
+    if length <= HEAD + TAIL + 1 {
+        return value.to_owned();
+    }
+    let head = value.chars().take(HEAD).collect::<String>();
+    let tail = value.chars().skip(length - TAIL).collect::<String>();
+    format!("{head}…{tail}")
+}
+
 fn tss_control(
     response: egui::Response,
     id: &'static str,
@@ -395,33 +407,69 @@ impl MainAreaDna {
                 else { "idle" };
             tss_control(ui.label(&self.tss_inventory_ui.status), TSS_STATUS, &scope_seq, Some(outcome));
             if let Some(collection) = self.tss_inventory_ui.inspected_collection.clone() {
-                ui.label(format!(
-                    "{}: {} validated windows; gene {}",
-                    collection.collection_id,
-                    collection.members.len(),
-                    collection.inventory.request.gene_query
-                ));
-                ui.monospace(&collection.collection_membership_fingerprint_sha256);
-                if ui.button("Copy collection JSON").clicked()
-                    && let Ok(json) = serde_json::to_string_pretty(collection.as_ref())
-                {
-                    ui.ctx().copy_text(json);
-                }
-                egui::ScrollArea::vertical()
-                    .id_salt("tss_collection_members")
-                    .max_height(160.0)
-                    .show(ui, |ui| {
-                        for member in &collection.members {
-                            ui.label(format!(
-                                "{}: {}:{} ({:?}) | {}",
-                                member.tss.output_seq_id,
-                                member.tss.genomic_tss.reference.contig_name,
-                                member.tss.genomic_tss.start_0based + 1,
-                                member.tss.genomic_tss.strand,
-                                member.tss.transcript_ids.join(", ")
-                            ));
-                        }
+                let member_count = collection.members.len();
+                let summary = ui.group(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong("✓ Validated collection");
+                        ui.monospace(&collection.collection_id);
+                        ui.label(format!(
+                            "· {member_count} member windows · gene {}",
+                            collection.inventory.request.gene_query
+                        ));
                     });
+                    ui.small(
+                        "Stored member sequences and annotated-start metadata match the current project.",
+                    );
+                });
+                tss_control(
+                    summary.response,
+                    TSS_VALIDATION_SUMMARY,
+                    &scope_seq,
+                    Some("validated"),
+                );
+                ui.collapsing(
+                    format!("Technical details and {member_count} members"),
+                    |ui| {
+                        ui.label("Collection membership fingerprint (SHA-256)");
+                        ui.monospace(compact_tss_identity(
+                            &collection.collection_membership_fingerprint_sha256,
+                        ))
+                        .on_hover_text(&collection.collection_membership_fingerprint_sha256);
+                        if ui.button("Copy collection JSON").clicked()
+                            && let Ok(json) = serde_json::to_string_pretty(collection.as_ref())
+                        {
+                            ui.ctx().copy_text(json);
+                        }
+                        egui::ScrollArea::vertical()
+                            .id_salt("tss_collection_members")
+                            .max_height(180.0)
+                            .show(ui, |ui| {
+                                egui::Grid::new("tss_collection_member_grid")
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        ui.strong("Window");
+                                        ui.strong("Genomic TSS");
+                                        ui.strong("Strand");
+                                        ui.strong("Transcripts");
+                                        ui.end_row();
+                                        for member in &collection.members {
+                                            ui.monospace(compact_tss_identity(
+                                                &member.tss.output_seq_id,
+                                            ))
+                                            .on_hover_text(&member.tss.output_seq_id);
+                                            ui.label(format!(
+                                                "{}:{}",
+                                                member.tss.genomic_tss.reference.contig_name,
+                                                member.tss.genomic_tss.start_0based + 1
+                                            ));
+                                            ui.label(format!("{:?}", member.tss.genomic_tss.strand));
+                                            ui.label(member.tss.transcript_ids.join(", "));
+                                            ui.end_row();
+                                        }
+                                    });
+                            });
+                    },
+                );
             }
             if let Some(id) = self.tss_inventory_ui.materialized_collection.clone() {
                 if tss_control(ui
@@ -561,6 +609,16 @@ impl MainAreaDna {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_tss_identity_keeps_short_ids_and_abbreviates_long_ids() {
+        assert_eq!(compact_tss_identity("short_tss"), "short_tss");
+        let long = "tss_windows__TOY__chrSynthetic__plus__0000000600__abcdef";
+        let compact = compact_tss_identity(long);
+        assert!(compact.starts_with("tss_windows__TOY_"), "{compact}");
+        assert!(compact.ends_with("00__abcdef"), "{compact}");
+        assert!(compact.contains('…'));
+    }
 
     #[test]
     fn tss_workspace_worker_has_expanded_stack_for_engine_snapshots() {

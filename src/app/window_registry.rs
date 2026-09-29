@@ -1183,9 +1183,12 @@ impl GENtleApp {
     }
 
     pub(super) fn deferred_window_position(index: usize) -> Pos2 {
+        const CASCADE_STEP_PX: f32 = 48.0;
+        const CASCADE_SLOTS: usize = 6;
+        let offset = (index % CASCADE_SLOTS) as f32 * CASCADE_STEP_PX;
         Pos2 {
-            x: index as f32 * 200.0,
-            y: index as f32 * 200.0,
+            x: offset,
+            y: offset,
         }
     }
 

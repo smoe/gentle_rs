@@ -734,6 +734,7 @@ pub struct GENtleApp {
     pattern_catalog: pattern_catalog_ui::PatternCatalogCache,
     new_windows: Vec<Window>,
     tss_window_task: Option<tss_collection_ui::TssWindowTask>,
+    pending_sequence_focus_after_open: Option<String>,
     windows: HashMap<ViewportId, Arc<RwLock<Window>>>,
     detached_auxiliary_window_hosts: HashMap<ViewportId, Arc<RwLock<Window>>>,
     windows_to_close: Arc<RwLock<Vec<ViewportId>>>,
@@ -2667,6 +2668,7 @@ impl Default for GENtleApp {
             pattern_catalog: pattern_catalog_ui::PatternCatalogCache::default(),
             new_windows: vec![],
             tss_window_task: None,
+            pending_sequence_focus_after_open: None,
             windows: HashMap::new(),
             detached_auxiliary_window_hosts: HashMap::new(),
             windows_to_close: Arc::new(RwLock::new(vec![])),
@@ -6344,6 +6346,12 @@ Error: `{err}`"
         }
     }
 
+    fn prioritize_focus_viewport(&mut self, viewport_id: ViewportId) {
+        self.pending_focus_viewports
+            .retain(|candidate| *candidate != viewport_id);
+        self.queue_focus_viewport(viewport_id);
+    }
+
     fn mark_viewport_open_requested(&mut self, viewport_id: ViewportId) {
         self.pending_window_open_timestamps
             .insert(viewport_id, Instant::now());
@@ -7419,6 +7427,7 @@ Error: `{err}`"
         self.lineage_node_rename_text.clear();
         self.lineage_node_remove_target_id = None;
         self.new_windows.clear();
+        self.pending_sequence_focus_after_open = None;
         self.windows.clear();
         self.detached_auxiliary_window_hosts.clear();
         self.windows_to_close.write().unwrap().clear();
@@ -16173,6 +16182,7 @@ Error: `{err}`"
         self.tutorial_project_progress_label.clear();
         self.tutorial_project_status.clear();
         self.new_windows.clear();
+        self.pending_sequence_focus_after_open = None;
         self.windows.clear();
         self.detached_auxiliary_window_hosts.clear();
         self.windows_to_close.write().unwrap().clear();
@@ -17473,6 +17483,11 @@ Error: `{err}`"
         let mut new_windows: Vec<Window> = self.new_windows.drain(..).collect();
         for window in new_windows.drain(..) {
             self.register_window(window);
+        }
+        if let Some(seq_id) = self.pending_sequence_focus_after_open.take()
+            && let Some(viewport_id) = self.find_open_sequence_viewport_id(&seq_id)
+        {
+            self.prioritize_focus_viewport(viewport_id);
         }
     }
 

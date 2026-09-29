@@ -3855,7 +3855,7 @@
         "Set Gene to TOY; keep Collection ID tss_windows and upstream/downstream 500/200. Inspect starts without changing project state.",
         "Check starts 601 (+), 901 (+), 1500 (-), with plus_a/plus_b sharing the first row. Select available and explicitly approve creation of all three windows.",
         "Refresh collections: readable / not checked is expected, not pass. Inspect stored collection; compare the validated report with the independent oracle.",
-        "Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward.",
+        "Open TSS collection once. Expect exactly three member viewers plus the original locus. GENtle brings the first collection member forward and places the others in a bounded cascade; use the native Window menu to raise another named member.",
         "Only contributors testing registry recovery should continue with the separate forget/undo, restart and deliberately stale-member checklist. Repeated-open reuse remains covered by the focused application regression rather than by asking a learner to repeat a visually disruptive action."
       ],
       "step_expectations": [
@@ -4240,6 +4240,12 @@
               {
                 "kind": "visible_claim",
                 "semantic_id": "tss.status",
+                "visible": true,
+                "outcome_role": "validated"
+              },
+              {
+                "kind": "visible_claim",
+                "semantic_id": "tss.validation_summary",
                 "visible": true,
                 "outcome_role": "validated"
               },

@@ -129,7 +129,7 @@
     "chapters/08-10_portable_genomic_regions_offline.md": "24d452418634e458f0e7cbc1ae7e72cd25a63a4a9b2bb1aab5b3d381af8c4edc",
     "chapters/08-11_regulatory_fragment_panel_planning_offline.md": "96abf79497c243a680e0207ba87bbf4c4d4f6bdfbfe071b8ff48969925e8623e",
     "chapters/08-12_region_homology_promoter_modules_offline.md": "45134d70d12d3205be05980e06beb1b54f0b48d53bbf2c243450f797c8162df7",
-    "chapters/08-15_tss_collection_gui.md": "b3dbfc7163d2bd64f98d5d9b80008cfdc25a2e49f1f58eedffb56132af043e21"
+    "chapters/08-15_tss_collection_gui.md": "17cf2172bf0ae7534864c5d79670680750cb537738a8600dd67db19bb87d1b4b"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
