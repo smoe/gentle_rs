@@ -4096,6 +4096,13 @@ The `Help` menu now includes:
     the pointer near the top/bottom of a list to scroll toward that end
   - falls back to recursive markdown discovery under `docs/tutorial/**` if the
     catalog is unavailable
+  - discovery reads titles without preparing other tutorials' images. The
+    document heading still takes precedence over the catalog title, with the
+    same catalog/filename fallbacks. Only the selected tutorial prepares its
+    images; the initial selected page remains preloaded with the manuals.
+    Opening Help or the tutorial-project menu does not render the whole catalog.
+    Images use the existing shared SVG font configuration and PNG cache, with
+    the same original-image fallback if conversion fails; no network is needed.
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 - re-selecting an already open help page, including via `GENtle -> GENtle Windows`, reuses the existing help viewport instead of reloading the manuals from disk

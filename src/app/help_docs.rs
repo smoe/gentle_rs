@@ -11,6 +11,10 @@
 
 use super::*;
 
+#[cfg(test)]
+#[path = "help_docs/tests.rs"]
+mod tests;
+
 pub(super) const AGENT_INTERFACES_TUTORIAL_PATH: &str = "docs/tutorial/01-01_agent_interfaces.md";
 pub(super) const AGENT_INTERFACES_TUTORIAL_TITLE: &str =
     "GENtle Agent Assistant and Agent Interfaces Tutorial";
@@ -24,14 +28,16 @@ impl GENtleApp {
         entry: crate::workflow_examples::TutorialCatalogEntry,
     ) -> Option<HelpTutorialDocEntry> {
         let resolved_path = Self::resolve_runtime_doc_path(&entry.path)?;
-        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
-        let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
-            if entry.title.trim().is_empty() {
-                Self::markdown_title_from_path(&resolved_path)
-            } else {
-                entry.title.clone()
-            }
-        });
+        let title = Self::load_help_tutorial_heading(&resolved_path)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| {
+                if entry.title.trim().is_empty() {
+                    Self::markdown_title_from_path(&resolved_path)
+                } else {
+                    entry.title.clone()
+                }
+            });
         let mut summary = format!(
             "{}\ntype: {}\nstatus: {}",
             entry.path, entry.entry_type, entry.status
@@ -558,6 +564,13 @@ impl GENtleApp {
         Some(text)
     }
 
+    fn load_help_tutorial_heading(path: &Path) -> std::io::Result<Option<String>> {
+        // Discovery preserves the document's heading without preparing images
+        // (and their fonts). Only the selected page uses the rendering loader.
+        let markdown = fs::read_to_string(path)?;
+        Ok(Self::markdown_first_heading(&markdown))
+    }
+
     pub(super) fn collect_markdown_paths_recursive(root: &Path, out: &mut Vec<PathBuf>) {
         let Ok(entries) = fs::read_dir(root) else {
             return;
@@ -643,8 +656,9 @@ impl GENtleApp {
         let mut entries = markdown_paths
             .into_iter()
             .map(|path| {
-                let markdown = Self::load_help_markdown_from_path(&path).unwrap_or_default();
-                let title = Self::markdown_first_heading(&markdown)
+                let title = Self::load_help_tutorial_heading(&path)
+                    .ok()
+                    .flatten()
                     .unwrap_or_else(|| Self::markdown_title_from_path(&path));
                 let relative = path
                     .strip_prefix(&tutorial_root)
@@ -703,8 +717,9 @@ impl GENtleApp {
         if entries.iter().any(|entry| entry.path == resolved_string) {
             return;
         }
-        let markdown = Self::load_help_markdown_from_path(&resolved_path).unwrap_or_default();
-        let title = Self::markdown_first_heading(&markdown)
+        let title = Self::load_help_tutorial_heading(&resolved_path)
+            .ok()
+            .flatten()
             .unwrap_or_else(|| AGENT_INTERFACES_TUTORIAL_TITLE.to_string());
         entries.push(HelpTutorialDocEntry {
             title,
@@ -804,7 +819,7 @@ impl GENtleApp {
                 )
             })?
         };
-        let markdown = Self::load_help_markdown_from_path(&resolved_path).ok_or_else(|| {
+        let heading = Self::load_help_tutorial_heading(&resolved_path).map_err(|_| {
             format!(
                 "Tutorial guide '{}' could not be loaded",
                 resolved_path.display()
@@ -821,7 +836,7 @@ impl GENtleApp {
         {
             Some(index) => index,
             None => {
-                let title = Self::markdown_first_heading(&markdown).unwrap_or_else(|| {
+                let title = heading.unwrap_or_else(|| {
                     let trimmed = fallback_title.trim();
                     if trimmed.is_empty() {
                         Self::markdown_title_from_path(&resolved_path)

@@ -16,6 +16,21 @@
 - Source/lockfile inspection only; no local builds or tests run. A fresh
   container CI run on the repaired candidate must establish execution acceptance.
 
+## 2026-09-29 - Prepare Only Selected Tutorial Images
+
+- Discover tutorial and guided-walkthrough titles from raw Markdown, retaining
+  heading/catalog/filename precedence, grouping, review metadata and fallbacks.
+  Stop preparing SVG images and their fonts for every unselected tutorial just
+  to populate a menu. Keep the initial selected tutorial and manuals preloaded.
+- Opening a guide by path now prepares its images once, through the same
+  selected-page loader, shared font configuration, PNG cache and image fallback.
+  No new font declarations, rendering policy, scientific output or network use.
+- Add deterministic discovery/selected-page regressions for LF/CRLF titles,
+  missing/invalid text, catalog ordering, successful image conversion, cache
+  reuse and failed-conversion fallback. Native before/after first-use and
+  cold/warm acceptance remain Glen's task; the excluded local rehearsal is not
+  a responsiveness verdict.
+
 ## 2026-09-29 - Integrate Glen's TSS And Simple-PCR Evidence
 
 - Merge TSS tutorial evidence through `272106a1` and the complete Simple-PCR

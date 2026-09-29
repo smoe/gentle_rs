@@ -578,10 +578,11 @@ fresh TMPDIR in Glen's `dev` audit, silent rendering fallback, and repeated
 guided-walkthrough discovery while the tutorial-project menu is open. These are
 source-supported hypotheses, not measured attribution of the 37.5 s delay.
 
-Revised bounded implementation: four help subspans, aggregate image-work
+Initial bounded implementation (`10f99df3`): four help subspans, aggregate image-work
 counters, first-use help/tutorial/menu-discovery handler spans, and an updated
-backward-compatible offline reader. No raw-title shortcut, font sharing,
-negative cache, lazy loading, worker migration or build-profile change yet.
+backward-compatible offline reader. That instrumentation-only change did not
+add title-only discovery, font sharing, negative caching, lazy loading, worker
+migration or build-profile changes.
 Image counters cover the entire session, carry explicit loss/incompletion, and
 do not use the event budget. Handler timings do not include presented pixels.
 See the [counter contract](../benches/README.md#startup-phase-checkpoints).
@@ -610,9 +611,39 @@ toolchain, exact interaction sequence and cache conditions. The offline reader
 was introduced after `0467867c`: use the newer reader with its retained SHA/hash
 for stage A, not a nonexistent reader from that audited revision. Linux and
 macOS remain separate, and an optional optimized comparison is not prerequisite.
-Only after attribution choose the smallest fix; if necessary use a separate
-targeted profiler to distinguish font scanning from rendering. Glen owns the
-native before/after verdict. No startup timing target is inferred here.
+Use attribution to choose further fixes; if necessary use a separate targeted
+profiler to distinguish font scanning from rendering. Glen owns the native
+before/after verdict. No startup timing target is inferred here.
+
+#### Owner-authorized lazy tutorial discovery (2026-09-29)
+
+The owner deferred controlled timings on the busy development host, then
+explicitly authorized title-only tutorial discovery. One excluded macOS
+rehearsal at `8a87118f` recorded 24,151.271 ms in tutorial discovery and
+24,114.446 ms in the nested/session image wrapper (29 SVG references, all
+cache misses and completed, no failures or dropped observations). Selected-page
+loading was 0.816 ms. This incomplete interaction sequence identifies discarded
+image work, not a six-session baseline, font-cost attribution or native acceptance.
+The raw trace is retained locally under
+`/private/tmp/gentle-help-audit-8a87118f-20260929/rehearsal-bundled/`, with SHA-256
+`b105d026149595c59bc3defdbb6c4f0103f9217dffdc222fffdfd9c406ac1136`.
+
+The bounded fix keeps heading/catalog/filename precedence, ordering, metadata
+and fallbacks, but reads raw Markdown for discovery without image preparation.
+The same path covers catalog entries, fallback discovery, pinned agent help and
+guided walkthroughs. Opening a tutorial by path prepares its images only once.
+Only selected tutorials take the unchanged rendering path; startup still loads
+the initial selected page. No font declarations, font resolver, image cache,
+scientific renderer, worker or build profile changes. Regression counters require
+zero image work during discovery and preserve selected-page success, cache reuse
+and failed-conversion fallback.
+
+Glen must still repeat the complete cold/warm matrix above on the before/after
+candidates, including first Help use, tutorial opening, Topic switch and the
+tutorial-project menu. Do not subtract this rehearsal from a later sample or
+claim that first paint, selected-page font discovery or native responsiveness
+has been accepted. Profile fonts separately only if selected-page evidence
+still identifies material rasterization cost.
 
 #### S6 guardrails and exit
 
