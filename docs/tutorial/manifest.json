@@ -3904,7 +3904,7 @@
         {
           "kind": "screenshot",
           "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
-          "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint.",
+          "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection produces a concise validated summary while keeping the full fingerprint, JSON and member table in collapsed technical details.",
           "illustrates_step": 5,
           "capture_date": "2026-09-29"
         }

@@ -41,8 +41,9 @@
   bring the first member forward. Reopening reuses the same windows and the
   native Window menu remains the explicit route to any other named member.
 - Extend tutorial 08.15's executable contract to observe the validated summary
-  and describe the focus behavior. Exact native GUI evidence is pending the
-  post-change build and capture.
+  and describe the focus behavior. The exact `1fcee6c0` Linux/X11 native replay
+  passed all ten steps; refresh both publication-safe captures and retain the
+  still-cluttered four-window state only in the raw evidence bundle.
 
 ## 2026-09-29 - Make The TSS-Collection Tutorial A Learner Workflow
 

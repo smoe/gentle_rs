@@ -11,5 +11,6 @@ These publication-safe synthetic captures come from the green native
 The untouched X11-root PNGs are paired with their semantic snapshots and
 screenshot receipts. Do not retouch them. The final four-window capture remains
 in the archived raw run rather than this teaching set: it proved that the three
-members opened, but the overlapping windows were less intelligible than the two
-selected states.
+members opened in the bounded cascade, but the acceptance runner raised the TSS
+workspace again to verify its target. That image therefore does not independently
+prove final native focus and is less intelligible than the two selected states.

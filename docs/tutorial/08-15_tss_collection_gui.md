@@ -75,9 +75,13 @@ extra authority:
 - **Refresh collections** corresponds to `promoters tss-list`. It discovers
   registry metadata and deliberately reports entries as **not checked**.
 - **Inspect stored collection** corresponds to
-  `promoters tss-collection tss_windows`. This is the validating read.
+  `promoters tss-collection tss_windows`. This is the validating read. Its
+  concise summary is the learner checkpoint; expand **Technical details** only
+  when comparing the full fingerprint, member table or copied JSON.
 - **Open TSS collection** corresponds to
-  `ui open tss-view --collection tss_windows` in a GUI host.
+  `ui open tss-view --collection tss_windows` in a GUI host. GENtle places the
+  members in a bounded cascade and brings the first member forward; use the
+  native **Window** menu for another named member.
 
 The Agent Assistant may inspect the preview and draft either exact shared
 command, but it must not invent TSS IDs or a digest and must not treat a prose
@@ -106,8 +110,8 @@ The window-set check expects exactly four subject-bound DNA viewers: the source
 locus and three members. It detects missing or duplicate viewers, but is not a
 substitute for the typed report and sequence checks. The application regression
 suite separately checks that opening the same collection again reuses pending or
-existing windows; making a learner repeat the visually disruptive multi-window
-action adds no biological understanding.
+existing windows and re-prioritizes the first member; making a learner repeat the
+multi-window action adds no biological understanding.
 
 Inside a network-isolated Linux/Xvfb session with an EWMH window manager,
 `xdotool`, `xdpyinfo`, `xprop`, `xwininfo` and `scrot`:
@@ -124,7 +128,7 @@ Authoring and unit-testing the contract does not establish a Linux GUI pass.
 
 ## Manual Lifecycle Checks
 
-These are **not** part of the 18-step automated verdict. Use a copy of the
+These are **not** part of the 10-step automated verdict. Use a copy of the
 synthetic project and retain a checkpoint/result for each:
 
 1. Inspect the actual sequence display for 701-bp sequences and the expected

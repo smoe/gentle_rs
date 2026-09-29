@@ -126,9 +126,9 @@ Refresh collections: readable / not checked is expected, not pass. Inspect store
 
 > The validating engine report contains three 701 bp windows; not checked and validated are distinct.
 
-![After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint.](../../../screenshots/tss_collection_gui/validate_collection.raw.png)
+![After explicit approval, registry discovery still says not checked; Inspect stored collection produces a concise validated summary while keeping the full fingerprint, JSON and member table in collapsed technical details.](../../../screenshots/tss_collection_gui/validate_collection.raw.png)
 
-*Figure: After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint. Screenshot captured 2026-09-29.*
+*Figure: After explicit approval, registry discovery still says not checked; Inspect stored collection produces a concise validated summary while keeping the full fingerprint, JSON and member table in collapsed technical details. Screenshot captured 2026-09-29.*
 
 ### Step 6: Open TSS collection once. Expect exactly three member viewers plus the original locus. GENtle brings the first collection member forward and places the others in a bounded cascade; use the native Window menu to raise another named member
 

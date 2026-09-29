@@ -1,10 +1,10 @@
 {
   "coordinate_space": "egui logical points translated by the viewport outer rectangle; native window decorations are excluded",
-  "generation": 199,
+  "generation": 203,
   "items": [
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 256.90625,
@@ -25,7 +25,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 416.8125,
@@ -46,7 +46,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 324.71875,
@@ -67,7 +67,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 615.96875,
@@ -88,7 +88,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 266.1875,
@@ -109,7 +109,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 1161.0,
@@ -130,7 +130,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 1032.4375,
@@ -151,7 +151,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 929.625,
@@ -172,7 +172,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 489.09375,
@@ -193,7 +193,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "outcome_role": "empty",
       "pixels_per_point": 1.0,
       "rect_logical_points": {
@@ -215,7 +215,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 207.8125,
@@ -236,7 +236,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 952.9375,
@@ -257,7 +257,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 824.3125,
@@ -278,7 +278,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 151.375,
@@ -299,7 +299,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 320.0,
@@ -320,7 +320,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 340.0,
@@ -341,7 +341,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 429.6875,
@@ -362,7 +362,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "outcome_role": "ready",
       "pixels_per_point": 1.0,
       "rect_logical_points": {
@@ -384,7 +384,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "outcome_role": "ready",
       "pixels_per_point": 1.0,
       "rect_logical_points": {
@@ -406,13 +406,13 @@
     },
     {
       "egui_viewport_id": "\"FFFF\"",
-      "generation": 175,
+      "generation": 91,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
-        "max_x": 888.1875,
-        "max_y": 307.0,
-        "min_x": 818.875,
-        "min_y": 289.0
+        "max_x": 1048.1875,
+        "max_y": 247.0,
+        "min_x": 978.875,
+        "min_y": 229.0
       },
       "semantic_id": "agent.help.open",
       "state": {
@@ -427,13 +427,13 @@
     },
     {
       "egui_viewport_id": "\"FFFF\"",
-      "generation": 175,
+      "generation": 91,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
-        "max_x": 466.0625,
-        "max_y": 307.0,
-        "min_x": 439.28125,
-        "min_y": 289.0
+        "max_x": 626.0625,
+        "max_y": 247.0,
+        "min_x": 599.28125,
+        "min_y": 229.0
       },
       "semantic_id": "main.edit.menu",
       "state": {
@@ -447,14 +447,14 @@
     },
     {
       "egui_viewport_id": "\"FFFF\"",
-      "generation": 175,
+      "generation": 91,
       "outcome_role": "unsaved",
       "pixels_per_point": 1.0,
       "rect_logical_points": {
-        "max_x": 547.9375,
-        "max_y": 872.0,
-        "min_x": 407.0,
-        "min_y": 857.0
+        "max_x": 707.9375,
+        "max_y": 812.0,
+        "min_x": 567.0,
+        "min_y": 797.0
       },
       "semantic_id": "main.project.save_state",
       "state": {
@@ -468,13 +468,13 @@
     },
     {
       "egui_viewport_id": "\"FFFF\"",
-      "generation": 175,
+      "generation": 91,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
-        "max_x": 555.0,
-        "max_y": 671.0,
-        "min_x": 517.0,
-        "min_y": 633.0
+        "max_x": 715.0,
+        "max_y": 611.0,
+        "min_x": 677.0,
+        "min_y": 573.0
       },
       "semantic_id": "main.project.sequence.open",
       "state": {
@@ -489,14 +489,14 @@
     },
     {
       "egui_viewport_id": "\"FFFF\"",
-      "generation": 175,
+      "generation": 91,
       "outcome_role": "ready",
       "pixels_per_point": 1.0,
       "rect_logical_points": {
-        "max_x": 1199.0,
-        "max_y": 887.0,
-        "min_x": 399.0,
-        "min_y": 287.0
+        "max_x": 1359.0,
+        "max_y": 827.0,
+        "min_x": 559.0,
+        "min_y": 227.0
       },
       "semantic_id": "window.main",
       "state": {
@@ -510,7 +510,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 738.78125,
@@ -531,7 +531,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 472.21875,
@@ -552,7 +552,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 369.1875,
@@ -573,7 +573,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 326.78125,
@@ -594,7 +594,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 484.375,
@@ -615,7 +615,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 492.46875,
@@ -636,7 +636,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 168.875,
@@ -657,7 +657,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "pixels_per_point": 1.0,
       "rect_logical_points": {
         "max_x": 147.75,
@@ -678,7 +678,7 @@
     },
     {
       "egui_viewport_id": "\"0122\"",
-      "generation": 199,
+      "generation": 203,
       "outcome_role": "idle",
       "pixels_per_point": 1.0,
       "rect_logical_points": {

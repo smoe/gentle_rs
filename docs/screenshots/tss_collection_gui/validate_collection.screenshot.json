@@ -1,5 +1,5 @@
 {
-  "acceptance_contract_sha256": "b32e62fa081a28500daf9e71a5a34c4d996534458e5acec658eafa09ec341d41",
+  "acceptance_contract_sha256": "f6f939279fb0632ddcd3320718d3e9d4e66995b497a4bdcad0dd622dd58a2f9f",
   "capture": {
     "backend": "scrot",
     "backend_version": {
@@ -11,14 +11,14 @@
       "exit_code": 0,
       "output": "scrot version 2.0.0"
     },
-    "captured_at_unix_ms": 1790663763493,
-    "display": ":103",
-    "gui_process_pid": 1180991,
+    "captured_at_unix_ms": 1790688842695,
+    "display": ":104",
+    "gui_process_pid": 1294316,
     "raw": {
-      "height_px": 1200,
-      "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/validate_collection.raw.png",
-      "sha256": "ccf3dd26e58d2663f995f56a8855bad463b5db5ee8db51f51e9d549c7b9c279f",
-      "width_px": 1600
+      "height_px": 1080,
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/validate_collection.raw.png",
+      "sha256": "483754be676aa70e4d3bcba4bab10c888ea6af9ebbb812222ee95c9233a051bf",
+      "width_px": 1920
     },
     "scope": "x11_root"
   },
@@ -27,14 +27,14 @@
     {
       "annotation": "Numbered outline derived from the semantic focus rectangle",
       "crop_physical_pixels": {
-        "max_x": 1600,
-        "max_y": 1200,
+        "max_x": 1920,
+        "max_y": 1080,
         "min_x": 0,
         "min_y": 0
       },
-      "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/validate_collection.orientation.svg",
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/validate_collection.orientation.svg",
       "role": "orientation",
-      "sha256": "87dbf46efc79566e5ecb420142f6a268dbfa408b5419e9cd1a5a8ba851db3455"
+      "sha256": "b3e04ddceba3992a8e3cb9aee9e3fcf16e54c8921040683c01ed6fae402329db"
     },
     {
       "annotation": "Padded crop around the same semantic focus rectangle",
@@ -44,15 +44,15 @@
         "min_x": 0,
         "min_y": 105
       },
-      "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/validate_collection.context.svg",
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/validate_collection.context.svg",
       "role": "interaction_context",
-      "sha256": "4f57a3548514e2710b74ed7df4cde015290f9fb6c87db5edfaf04e77e098018f"
+      "sha256": "c9472158c8b084632aa32244596e04afcb9697a60527386a4ad58d0597c4f405"
     }
   ],
-  "gentle_binary_sha256": "9d099826c2e4f202659dd5dfaa196102f756ab513b9dedd4107adec3c695ce95",
+  "gentle_binary_sha256": "441734d68a9aad736e24cf3b1b91324e45d2af6c7a9ba74087c79a71b3adf612",
   "project_state": {
-    "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/starter.project.gentle.json",
-    "sha256": "c8bb1f1ad157a72a1e9c5edbac14afc151e63b9938410dac67def26babc25388"
+    "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/starter.project.gentle.json",
+    "sha256": "c92a91c42939258da11c796a96b9deb786d3a4f423419aa0699b09b440df6b5e"
   },
   "prose_step": 5,
   "requested_target": {
@@ -63,17 +63,17 @@
   "requirement": "required",
   "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
   "semantic_snapshot": {
-    "canonical_sha256": "38b6532ce88ad214551a89bffa52612a5fb1e5dee6d6bc26382c62dc3c562e26",
-    "generation": 245,
-    "retained_file_sha256": "a71fbed4f003f39a68e9fb1dc37263b2e9a477e53747aa92f59169bcbb07aa0e",
-    "retained_path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/validate_collection.snapshot.json",
+    "canonical_sha256": "44b239041808199716d27eb8ee2f7975e5700fd49c8b03d0ff3805ee2ea2f7fc",
+    "generation": 248,
+    "retained_file_sha256": "57ca490ee33d387e61dfe55aac8e27e6cf4b9a1a14aaeae8fb06814fbc9993cf",
+    "retained_path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/validate_collection.snapshot.json",
     "schema": "gentle.gui_semantic_snapshot.v2",
     "settled": true
   },
-  "source_revision": "8a87118fe860bbed207becf4d6e8b333cacbb8c3",
+  "source_revision": "1fcee6c078c913b6720f7f84437111fa7482f7ca",
   "step_id": "validate_collection",
-  "step_sha256": "5e562408a28c7d055d75eb13d13ca7ebdd3ee1b92c5a901c537c4531ff1ee802",
-  "tutorial_manifest_sha256": "ec3e3682d098778663f880cd198d6d38844ae1cd026fa8046fc4983109c3b76c",
+  "step_sha256": "4383f8c49da5144b0e474444160e35c56b8b16ac94f0fa9e96e3497d08b31f6b",
+  "tutorial_manifest_sha256": "0e864f07df88369c315e77532299e0e54553c6ab331d84bf795dc461c2eb07fc",
   "visual_focus": {
     "native_window_binding": {
       "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
@@ -98,7 +98,7 @@
         "min_x": 0.0,
         "min_y": 0.0
       },
-      "x11_client_window_id": 2097217
+      "x11_client_window_id": 4194363
     },
     "pixels_per_point": 1.0,
     "rect_logical_points": {

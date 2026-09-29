@@ -6,45 +6,45 @@
   "environment": {
     "platform": "Linux X11/Xvfb with Openbox",
     "network_enforcement": "linux_network_namespace",
-    "source_revision": "8a87118fe860bbed207becf4d6e8b333cacbb8c3",
-    "gentle_gui_sha256": "9d099826c2e4f202659dd5dfaa196102f756ab513b9dedd4107adec3c695ce95"
+    "source_revision": "1fcee6c078c913b6720f7f84437111fa7482f7ca",
+    "gentle_gui_sha256": "441734d68a9aad736e24cf3b1b91324e45d2af6c7a9ba74087c79a71b3adf612"
   },
   "acceptance": {
     "chapter_id": "tss_collection_gui",
     "step_count": 10,
     "result": "pass",
-    "ledger_sha256": "59638a3f9383855d2c94e29fb4589a7f40c6caded2231debe7d0c9a80b168871",
-    "starter_project_sha256": "c8bb1f1ad157a72a1e9c5edbac14afc151e63b9938410dac67def26babc25388"
+    "ledger_sha256": "25785bc496e8b9d7bb4cba3eb7eb80cd8c0103fc5c9e002a02cd8fa646f8cc8f",
+    "starter_project_sha256": "c92a91c42939258da11c796a96b9deb786d3a4f423419aa0699b09b440df6b5e"
   },
   "captures": [
     {
       "id": "preview",
       "raw_png": {
         "path": "docs/screenshots/tss_collection_gui/preview.raw.png",
-        "sha256": "9c643f96d6066046ac5f1a28e0ebf71ade2edcefd6c4bfb809ec7b50aac1c132"
+        "sha256": "0000a4d2df201ae24869ad0d48ad76b30f3dfc2286df85cce4a3200b61979817"
       },
       "semantic_snapshot": {
         "path": "docs/screenshots/tss_collection_gui/preview.snapshot.json",
-        "sha256": "c8f92f635e2e9cc8052dd28299b138c370a18f0470cdca481723aad73f7bd61a"
+        "sha256": "1111b7e46124271b45292f9a0f1b52e64cdc892dd24419804a6cb61b5992b75e"
       },
       "screenshot_receipt": {
         "path": "docs/screenshots/tss_collection_gui/preview.screenshot.json",
-        "sha256": "315ce06a43cac0da7c0661d5ff3bd5916e4e4a8c56ee1b4aec2a6113942f77f2"
+        "sha256": "f3bc649eeffb8914b9618396a81e15dc96eabeaedb2771389e988a2688ee351f"
       }
     },
     {
       "id": "validate_collection",
       "raw_png": {
         "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
-        "sha256": "ccf3dd26e58d2663f995f56a8855bad463b5db5ee8db51f51e9d549c7b9c279f"
+        "sha256": "483754be676aa70e4d3bcba4bab10c888ea6af9ebbb812222ee95c9233a051bf"
       },
       "semantic_snapshot": {
         "path": "docs/screenshots/tss_collection_gui/validate_collection.snapshot.json",
-        "sha256": "a71fbed4f003f39a68e9fb1dc37263b2e9a477e53747aa92f59169bcbb07aa0e"
+        "sha256": "57ca490ee33d387e61dfe55aac8e27e6cf4b9a1a14aaeae8fb06814fbc9993cf"
       },
       "screenshot_receipt": {
         "path": "docs/screenshots/tss_collection_gui/validate_collection.screenshot.json",
-        "sha256": "eee3dc3c1170f5eb7542af543fea72b3d0521779cded2114fbb5f3f6bae8afcb"
+        "sha256": "3f8a8286a1812bc7332c2bdb054875f4d26de28c1839041a15db6da9b1bcb7f3"
       }
     }
   ],
@@ -53,7 +53,7 @@
       "preview",
       "validate_collection"
     ],
-    "retained_but_not_published": "The final four-window root capture is valid acceptance evidence but visually cluttered; it is kept in the raw evidence bundle rather than presented as an instructional image.",
+    "retained_but_not_published": "The final four-window root capture verifies the bounded cascade, but the acceptance runner raises the TSS workspace again to verify its target. It therefore does not independently prove final native focus and remains raw evidence rather than an instructional image; focused Rust coverage verifies the first-member focus queue.",
     "limitations": "Synthetic annotation geometry only. This is not promoter activity, occupancy, complete biological coverage, native Windows/macOS acceptance or human scientific approval."
   }
 }

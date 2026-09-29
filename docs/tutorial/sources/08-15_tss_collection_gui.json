@@ -13,7 +13,7 @@
     {
       "kind": "screenshot",
       "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
-      "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint.",
+      "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection produces a concise validated summary while keeping the full fingerprint, JSON and member table in collapsed technical details.",
       "illustrates_step": 5,
       "capture_date": "2026-09-29"
     }
@@ -28,7 +28,7 @@
       "wet_lab_biologists",
       "contributors"
     ],
-    "notes": "Synthetic core-path GUI acceptance plus a separate contributor lifecycle checklist. Glen source and native Linux/X11 review 2026-09-29: preview, explicit approval, validation and window opening; native Windows/macOS, human scientific approval and live TP73 sign-off remain pending.",
+    "notes": "Synthetic core-path GUI acceptance plus a separate contributor lifecycle checklist. Glen source and native Linux/X11 review 2026-09-29 at 1fcee6c0: preview, explicit approval, concise validation and bounded-cascade window opening; native Windows/macOS, human scientific approval and live TP73 sign-off remain pending.",
     "group": "08",
     "group_position": 15
   },

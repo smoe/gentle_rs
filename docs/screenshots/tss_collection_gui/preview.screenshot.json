@@ -1,5 +1,5 @@
 {
-  "acceptance_contract_sha256": "b32e62fa081a28500daf9e71a5a34c4d996534458e5acec658eafa09ec341d41",
+  "acceptance_contract_sha256": "f6f939279fb0632ddcd3320718d3e9d4e66995b497a4bdcad0dd622dd58a2f9f",
   "capture": {
     "backend": "scrot",
     "backend_version": {
@@ -11,14 +11,14 @@
       "exit_code": 0,
       "output": "scrot version 2.0.0"
     },
-    "captured_at_unix_ms": 1790663755425,
-    "display": ":103",
-    "gui_process_pid": 1180991,
+    "captured_at_unix_ms": 1790688834579,
+    "display": ":104",
+    "gui_process_pid": 1294316,
     "raw": {
-      "height_px": 1200,
-      "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/preview.raw.png",
-      "sha256": "9c643f96d6066046ac5f1a28e0ebf71ade2edcefd6c4bfb809ec7b50aac1c132",
-      "width_px": 1600
+      "height_px": 1080,
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.raw.png",
+      "sha256": "0000a4d2df201ae24869ad0d48ad76b30f3dfc2286df85cce4a3200b61979817",
+      "width_px": 1920
     },
     "scope": "x11_root"
   },
@@ -27,14 +27,14 @@
     {
       "annotation": "Numbered outline derived from the semantic focus rectangle",
       "crop_physical_pixels": {
-        "max_x": 1600,
-        "max_y": 1200,
+        "max_x": 1920,
+        "max_y": 1080,
         "min_x": 0,
         "min_y": 0
       },
-      "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/preview.orientation.svg",
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.orientation.svg",
       "role": "orientation",
-      "sha256": "dd3e9e08fa5bcf55ff37b9df4255704f69d9d7223217940c243f0e6441f4ab52"
+      "sha256": "cb49b1adac494406757b9030803491b5b1895e911f337f3eddf71dfef99deeed"
     },
     {
       "annotation": "Padded crop around the same semantic focus rectangle",
@@ -44,15 +44,15 @@
         "min_x": 0,
         "min_y": 115
       },
-      "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/preview.context.svg",
+      "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.context.svg",
       "role": "interaction_context",
-      "sha256": "eafd9068f30ed12804d7645fd0747cda55765cd6d7f666daa07e8ac9c0a8793e"
+      "sha256": "2b1550ab4a8da001bc0f4f665eee7e565bce1457596c8660b3b077fd697311ca"
     }
   ],
-  "gentle_binary_sha256": "9d099826c2e4f202659dd5dfaa196102f756ab513b9dedd4107adec3c695ce95",
+  "gentle_binary_sha256": "441734d68a9aad736e24cf3b1b91324e45d2af6c7a9ba74087c79a71b3adf612",
   "project_state": {
-    "path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/starter.project.gentle.json",
-    "sha256": "f40818db927c5bfbb299b17459923797383e3fe9ae1f74d34fd68bf55e555efd"
+    "path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/starter.project.gentle.json",
+    "sha256": "f5d77f965baa6b26a7e2c36c6a2b97d370e781bea5a4ff4fe2a6a0ab39ef4954"
   },
   "prose_step": 3,
   "requested_target": {
@@ -63,17 +63,17 @@
   "requirement": "required",
   "schema": "gentle.tutorial_gui_screenshot_evidence.v1",
   "semantic_snapshot": {
-    "canonical_sha256": "a8d355514d2bf5ac0c2a6566a2968ecd7a6d1bba9eec3a053408490cb7c32959",
-    "generation": 199,
-    "retained_file_sha256": "c8f92f635e2e9cc8052dd28299b138c370a18f0470cdca481723aad73f7bd61a",
-    "retained_path": "/tmp/gentle-tutorial-round2-corepath-8a87118f-r1/tss_collection_gui/checkpoints/preview.snapshot.json",
+    "canonical_sha256": "be4a1d292f45a5ecb1ef30a3abe4c78015567b024d362782a3d3b7b73624c47f",
+    "generation": 203,
+    "retained_file_sha256": "1111b7e46124271b45292f9a0f1b52e64cdc892dd24419804a6cb61b5992b75e",
+    "retained_path": "/tmp/gentle-tutorial-round2-product-1fcee6c0-r2/tss_collection_gui/checkpoints/preview.snapshot.json",
     "schema": "gentle.gui_semantic_snapshot.v2",
     "settled": true
   },
-  "source_revision": "8a87118fe860bbed207becf4d6e8b333cacbb8c3",
+  "source_revision": "1fcee6c078c913b6720f7f84437111fa7482f7ca",
   "step_id": "preview",
   "step_sha256": "1a0bdbc6e505641c2ec3dd1921b37d613730c31049086137f4a8f8dceae4ac54",
-  "tutorial_manifest_sha256": "ec3e3682d098778663f880cd198d6d38844ae1cd026fa8046fc4983109c3b76c",
+  "tutorial_manifest_sha256": "0e864f07df88369c315e77532299e0e54553c6ab331d84bf795dc461c2eb07fc",
   "visual_focus": {
     "native_window_binding": {
       "coordinate_transform": "root_screen_px = native_client_origin_px + (target_logical - semantic_window_logical_origin) * pixels_per_point",
@@ -98,7 +98,7 @@
         "min_x": 0.0,
         "min_y": 0.0
       },
-      "x11_client_window_id": 2097217
+      "x11_client_window_id": 4194363
     },
     "pixels_per_point": 1.0,
     "rect_logical_points": {
