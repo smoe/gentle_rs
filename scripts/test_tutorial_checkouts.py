@@ -212,6 +212,54 @@ class TutorialCheckoutTests(unittest.TestCase):
                                      f"{relative} needs a scoped .gitattributes LF rule")
                     self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
 
+    def test_tss_collection_gui_evidence_hashes_survive_both_checkout_modes(self):
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        evidence = json.loads((checker.ROOT /
+            "docs/screenshots/tss_collection_gui/evidence.json").read_bytes())
+        records = []
+        for capture in evidence["captures"]:
+            records.extend(capture[field] for field in
+                           ("raw_png", "semantic_snapshot", "screenshot_receipt"))
+
+        expected = {}
+        for record in records:
+            relative = Path(record["path"])
+            payload = (checker.ROOT / relative).read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), record["sha256"])
+            expected[relative] = (payload, record["sha256"])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        self.assertEqual(len(expected), 6)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained TSS collection GUI evidence")
+
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if b"docs/screenshots/tss_collection_gui/" not in line
+        )
+        broken = Path(self.tmp.name) / "tss-collection-evidence-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        text_paths = sorted(relative for relative in expected
+                            if relative.suffix == ".json")
+        self.assertEqual(len(text_paths), 4)
+        self.assertEqual(
+            sorted(relative for relative, (payload, _) in expected.items()
+                   if (broken / relative).read_bytes() != payload),
+            text_paths,
+        )
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"tss-collection-evidence-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    checked_out = (target / relative).read_bytes()
+                    self.assertEqual(checked_out, payload,
+                                     f"{relative} needs a scoped .gitattributes LF rule")
+                    self.assertEqual(hashlib.sha256(checked_out).hexdigest(), digest)
+
     def test_tp73_tss_and_pcr_evidence_hashes_survive_both_checkout_modes(self):
         attributes = (checker.ROOT / ".gitattributes").read_bytes()
         (self.root / ".gitattributes").write_bytes(attributes)

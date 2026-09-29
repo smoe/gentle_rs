@@ -31,6 +31,27 @@
   cold/warm acceptance remain Glen's task; the excluded local rehearsal is not
   a responsiveness verdict.
 
+## 2026-09-29 - Make The TSS-Collection Tutorial A Learner Workflow
+
+- Reduce tutorial 08.15's executable native GUI path from an 18-step mixed
+  learner/maintenance sequence to the ten-step scientific core: preview exact
+  annotated starts, approve the digest-bound selection, distinguish unchecked
+  registry discovery from validation, and open the three materialized windows.
+  Keep forget/undo, restart and deliberately stale-member checks as a separate
+  contributor checklist; repeated-open reuse remains a focused application test.
+- Add an explicit GUI/Shell/Agent Assistant mapping for inventory,
+  materialization, validation and hosted window opening. The inner agent may
+  explain or draft exact shared commands but may not invent TSS IDs/digests or
+  turn prose into mutation approval.
+- Publish two reviewed synthetic GUI captures for the preview and validated
+  collection. Retain the valid four-window capture only in the raw evidence
+  bundle because overlapping windows make it poor instruction; tell learners to
+  use the native Window menu for a named member.
+- Add simple next-step pointers among 08.13 score interpretation, 08.15 window
+  derivation, 08.16 retained evidence and 08.17 public TP73 local scoring.
+  Native offline Linux/X11 replay passed all 10 steps at `8a87118f`; this is not
+  Windows/macOS, human scientific or live-promoter acceptance.
+
 ## 2026-09-29 - Integrate Glen's TSS And Simple-PCR Evidence
 
 - Merge TSS tutorial evidence through `272106a1` and the complete Simple-PCR

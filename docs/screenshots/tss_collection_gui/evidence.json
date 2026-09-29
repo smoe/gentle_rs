@@ -1,0 +1,59 @@
+{
+  "schema": "gentle.tutorial_gui_publication_evidence.v1",
+  "status": "automated_gui_acceptance_pass",
+  "input_policy": "publication_safe_synthetic_only",
+  "capture_date": "2026-09-29",
+  "environment": {
+    "platform": "Linux X11/Xvfb with Openbox",
+    "network_enforcement": "linux_network_namespace",
+    "source_revision": "8a87118fe860bbed207becf4d6e8b333cacbb8c3",
+    "gentle_gui_sha256": "9d099826c2e4f202659dd5dfaa196102f756ab513b9dedd4107adec3c695ce95"
+  },
+  "acceptance": {
+    "chapter_id": "tss_collection_gui",
+    "step_count": 10,
+    "result": "pass",
+    "ledger_sha256": "59638a3f9383855d2c94e29fb4589a7f40c6caded2231debe7d0c9a80b168871",
+    "starter_project_sha256": "c8bb1f1ad157a72a1e9c5edbac14afc151e63b9938410dac67def26babc25388"
+  },
+  "captures": [
+    {
+      "id": "preview",
+      "raw_png": {
+        "path": "docs/screenshots/tss_collection_gui/preview.raw.png",
+        "sha256": "9c643f96d6066046ac5f1a28e0ebf71ade2edcefd6c4bfb809ec7b50aac1c132"
+      },
+      "semantic_snapshot": {
+        "path": "docs/screenshots/tss_collection_gui/preview.snapshot.json",
+        "sha256": "c8f92f635e2e9cc8052dd28299b138c370a18f0470cdca481723aad73f7bd61a"
+      },
+      "screenshot_receipt": {
+        "path": "docs/screenshots/tss_collection_gui/preview.screenshot.json",
+        "sha256": "315ce06a43cac0da7c0661d5ff3bd5916e4e4a8c56ee1b4aec2a6113942f77f2"
+      }
+    },
+    {
+      "id": "validate_collection",
+      "raw_png": {
+        "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
+        "sha256": "ccf3dd26e58d2663f995f56a8855bad463b5db5ee8db51f51e9d549c7b9c279f"
+      },
+      "semantic_snapshot": {
+        "path": "docs/screenshots/tss_collection_gui/validate_collection.snapshot.json",
+        "sha256": "a71fbed4f003f39a68e9fb1dc37263b2e9a477e53747aa92f59169bcbb07aa0e"
+      },
+      "screenshot_receipt": {
+        "path": "docs/screenshots/tss_collection_gui/validate_collection.screenshot.json",
+        "sha256": "eee3dc3c1170f5eb7542af543fea72b3d0521779cded2114fbb5f3f6bae8afcb"
+      }
+    }
+  ],
+  "review": {
+    "published_images": [
+      "preview",
+      "validate_collection"
+    ],
+    "retained_but_not_published": "The final four-window root capture is valid acceptance evidence but visually cluttered; it is kept in the raw evidence bundle rather than presented as an instructional image.",
+    "limitations": "Synthetic annotation geometry only. This is not promoter activity, occupancy, complete biological coverage, native Windows/macOS acceptance or human scientific approval."
+  }
+}

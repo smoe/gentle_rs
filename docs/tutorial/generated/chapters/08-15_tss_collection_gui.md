@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: "2026-09-19"
+codex_reviewed_at: "2026-09-29"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
@@ -20,9 +20,9 @@ generated_artifact_dir: "docs/tutorial/generated/artifacts/tss_collection_gui"
 
 # From annotated transcript starts to reusable TSS windows (offline)
 
-Preview and approve annotated starts, validate and reopen their windows, then cancel or confirm metadata-only forgetting and undo it.
+Preview and approve annotated starts, distinguish registry discovery from validation, then open the three reusable transcript-oriented windows.
 
-Two transcripts can share a first base without being the same transcript. In this artificial 2 kb locus, plus_a and plus_b share start 601; plus_c starts at 901; minus_a starts at 1500 on the opposite strand. Their common TOY label selects two separate gene IDs without merging them. Three 701 bp windows result, oriented in transcript direction with the annotated start at local base 501. These annotations are not experimental evidence for active promoters. The repetitive toy DNA is not suitable for primer or biological TFBS conclusions. The generated passing status refers to engine workflow replay only, not to a completed Linux/Xvfb acceptance run.
+Two transcripts can share a first base without being the same transcript. In this artificial 2 kb locus, plus_a and plus_b share start 601; plus_c starts at 901; minus_a starts at 1500 on the opposite strand. Their common TOY label selects two separate gene IDs without merging them. Three 701 bp windows result, oriented in transcript direction with the annotated start at local base 501. The executable GUI path deliberately ends after opening those windows. Destructive registry maintenance, restart and stale-member damage tests are a separate contributor checklist rather than obstacles in the learner path. These annotations are not experimental evidence for active promoters, and the repetitive toy DNA is not suitable for primer or biological TFBS conclusions.
 
 See also: guided walkthrough [docs/tutorial/08-15_tss_collection_gui.md](../../08-15_tss_collection_gui.md). Use that page first when you want a human-led path; this chapter is the executable reference.
 
@@ -47,10 +47,8 @@ See also: guided walkthrough [docs/tutorial/08-15_tss_collection_gui.md](../../0
 3. Set Gene to TOY; keep Collection ID tss_windows and upstream/downstream 500/200. Inspect starts without changing project state.
 4. Check starts 601 (+), 901 (+), 1500 (-), with plus_a/plus_b sharing the first row. Select available and explicitly approve creation of all three windows.
 5. Refresh collections: readable / not checked is expected, not pass. Inspect stored collection; compare the validated report with the independent oracle.
-6. Open TSS collection twice. Expect exactly three member viewers plus the original locus, with no duplicate windows. Compare persisted members with the independent oracle.
-7. Request Forget registry entry, then Cancel. Verify the collection still validates. Request again and confirm the named entry: the registry disappears, but all sequences and open viewers remain.
-8. Choose Edit > Undo in the main window. Inspect stored collection again: its report and member content must match the original oracle.
-9. Continue the separate manual checklist for save/close/reopen and deliberately editing a member. Rejection of a stale member after undoing forget is not yet certified by the automated GUI subset.
+6. Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward.
+7. Only contributors testing registry recovery should continue with the separate forget/undo, restart and deliberately stale-member checklist. Repeated-open reuse remains covered by the focused application regression rather than by asking a learner to repeat a visually disruptive action.
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
@@ -96,6 +94,10 @@ Set Gene to TOY; keep Collection ID tss_windows and upstream/downstream 500/200.
 
 > Preview exposes three exact starts and its approval digest.
 
+![The read-only preview groups plus_a and plus_b at one shared start while keeping the second plus-strand start and the minus-strand start separate; no window has been created yet.](../../../screenshots/tss_collection_gui/preview.raw.png)
+
+*Figure: The read-only preview groups plus_a and plus_b at one shared start while keeping the second plus-strand start and the minus-strand start separate; no window has been created yet. Screenshot captured 2026-09-29.*
+
 ### Step 4: Check starts 601 (+), 901 (+), 1500 (-), with plus_a/plus_b sharing the first row. Select available and explicitly approve creation of all three windows
 
 **GUI**
@@ -124,61 +126,37 @@ Refresh collections: readable / not checked is expected, not pass. Inspect store
 
 > The validating engine report contains three 701 bp windows; not checked and validated are distinct.
 
-### Step 6: Open TSS collection twice. Expect exactly three member viewers plus the original locus, with no duplicate windows. Compare persisted members with the independent oracle
+![After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint.](../../../screenshots/tss_collection_gui/validate_collection.raw.png)
+
+*Figure: After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint. Screenshot captured 2026-09-29.*
+
+### Step 6: Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward
 
 **GUI**
 
-Open TSS collection twice. Expect exactly three member viewers plus the original locus, with no duplicate windows. Compare persisted members with the independent oracle.
+Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward.
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open TSS collection twice. Expect exactly three member viewers plus the original locus, with no duplicate windows. Compare persisted members with the independent oracle. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> In the current GENtle project, help me perform this tutorial step: Open TSS collection once. Expect exactly three member viewers plus the original locus. Compare the persisted members with the independent oracle; opening several windows can overlap them, so use the native Window menu to bring one named member forward. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
 
 **Expected**
 
-> Repeated opening reuses the same four subject-bound DNA viewers; queued is not yet opened.
+> Opening yields the same four exact subject-bound DNA viewers represented in the saved project; queued is not yet opened.
 
-### Step 7: Request Forget registry entry, then Cancel. Verify the collection still validates. Request again and confirm the named entry: the registry disappears, but all sequences and open viewers remain
+### Step 7: Only contributors testing registry recovery should continue with the separate forget/undo, restart and deliberately stale-member checklist. Repeated-open reuse remains covered by the focused application regression rather than by asking a learner to repeat a visually disruptive action
 
 **GUI**
 
-Request Forget registry entry, then Cancel. Verify the collection still validates. Request again and confirm the named entry: the registry disappears, but all sequences and open viewers remain.
+Only contributors testing registry recovery should continue with the separate forget/undo, restart and deliberately stale-member checklist. Repeated-open reuse remains covered by the focused application regression rather than by asking a learner to repeat a visually disruptive action.
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Request Forget registry entry, then Cancel. Verify the collection still validates. Request again and confirm the named entry: the registry disappears, but all sequences and open viewers remain. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> In the current GENtle project, help me perform this tutorial step: Only contributors testing registry recovery should continue with the separate forget/undo, restart and deliberately stale-member checklist. Repeated-open reuse remains covered by the focused application regression rather than by asking a learner to repeat a visually disruptive action. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
 
 **Expected**
 
-> Cancellation changes nothing; confirmed forgetting removes only collection registry metadata, not the member sequences.
-
-### Step 8: Choose Edit > Undo in the main window. Inspect stored collection again: its report and member content must match the original oracle
-
-**GUI**
-
-Choose Edit > Undo in the main window. Inspect stored collection again: its report and member content must match the original oracle.
-
-**Ask the inner agent**
-
-> In the current GENtle project, help me perform this tutorial step: Choose Edit > Undo in the main window. Inspect stored collection again: its report and member content must match the original oracle. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
-
-**Expected**
-
-> Undo restores the collection; a fresh inspection validates the restored members.
-
-### Step 9: Continue the separate manual checklist for save/close/reopen and deliberately editing a member. Rejection of a stale member after undoing forget is not yet certified by the automated GUI subset
-
-**GUI**
-
-Continue the separate manual checklist for save/close/reopen and deliberately editing a member. Rejection of a stale member after undoing forget is not yet certified by the automated GUI subset.
-
-**Ask the inner agent**
-
-> In the current GENtle project, help me perform this tutorial step: Continue the separate manual checklist for save/close/reopen and deliberately editing a member. Rejection of a stale member after undoing forget is not yet certified by the automated GUI subset. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
-
-**Expected**
-
-> Manual restart and stale-member GUI acceptance remain separately recorded.
+> Registry forget/undo, application restart and stale-member rejection remain explicitly separate contributor checks.
 
 
 ## Complete Workflow Replay
@@ -208,7 +186,7 @@ gentle_cli shell 'workflow @docs/examples/workflows/tss_collection_gui_oracle.js
 
 - Starter completion is unsatisfied; the independent oracle satisfies it.
 - Typed collection report and persisted sequences agree, including both strands.
-- No claim of live Linux or TP73 acceptance is made until Glen runs and reviews the retained evidence.
+- The core GUI path has retained Linux/X11 evidence; Windows/macOS, human scientific review and live TP73 acceptance remain separate.
 
 ## Tutorial Provenance
 
@@ -222,7 +200,7 @@ gentle_cli shell 'workflow @docs/examples/workflows/tss_collection_gui_oracle.js
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `codex_reviewed`
-- Codex reviewed at: `2026-09-19`
+- Codex reviewed at: `2026-09-29`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

@@ -62,20 +62,52 @@ The list is discovery metadata. The second command returns the validated
 `gentle.tss_collection.v1`. Compare its approval/membership fingerprints and
 member bases/annotations with the GUI's saved project, not just a screenshot.
 
+## The same contract through GUI, Shell and Agent Assistant
+
+The interfaces share one operation contract; they do not grant one another
+extra authority:
+
+- **Inspect starts (no changes)** corresponds to
+  `promoters tss-inventory REQUEST_JSON_OR_@FILE`.
+- **Approve and create selected windows** corresponds to
+  `promoters tss-materialize REQUEST_JSON_OR_@FILE`. The request must contain
+  the preview's exact `approval_sha256` and the explicitly selected TSS IDs.
+- **Refresh collections** corresponds to `promoters tss-list`. It discovers
+  registry metadata and deliberately reports entries as **not checked**.
+- **Inspect stored collection** corresponds to
+  `promoters tss-collection tss_windows`. This is the validating read.
+- **Open TSS collection** corresponds to
+  `ui open tss-view --collection tss_windows` in a GUI host.
+
+The Agent Assistant may inspect the preview and draft either exact shared
+command, but it must not invent TSS IDs or a digest and must not treat a prose
+request as approval. A useful prompt after the GUI preview is:
+
+> Explain which annotated starts are available and draft the exact
+> `promoters tss-materialize` command for the starts I selected. Do not execute
+> it; show the collection ID, selected TSS IDs and approval digest first.
+
+After approval, ask it to draft
+`ui open tss-view --collection tss_windows`. That command needs a GUI host;
+the sequence-local **Shell...** can preview the intent but does not itself own
+the application window registry. Forgetting a registry entry is likewise an
+explicit mutating command (`promoters tss-forget tss_windows`), never an
+automatic repair suggested merely because validation failed.
+
 ## Automated Linux Subset
 
-The `tss_collection_gui` contract has 18 semantic steps: open the form, enter
-the gene, preview, select, approve, refresh, inspect, open the members twice,
-cancel then confirm forgetting, undo and inspect again. The external runner
+The `tss_collection_gui` contract has 10 semantic steps: open the form, enter
+the gene, preview, select, approve, refresh, validate and open the members once.
+This is the ordinary learner path. The external runner
 uses ordinary X11 input to locate controls. It never executes prose or arbitrary
 shell verifiers. A fixed `GetTssCollection` verifier rejects stale members and
 checks starts, strands, shared membership and sequence content against the oracle.
 The window-set check expects exactly four subject-bound DNA viewers: the source
 locus and three members. It detects missing or duplicate viewers, but is not a
-substitute for the typed report and sequence checks. Metadata-only changes are
-saved before on-disk verifiers run. Forgetting is checked as absence of the
-registry entry together with retention of every sequence and viewer. Undo is
-followed by fresh collection validation, not merely a restored label.
+substitute for the typed report and sequence checks. The application regression
+suite separately checks that opening the same collection again reuses pending or
+existing windows; making a learner repeat the visually disruptive multi-window
+action adds no biological understanding.
 
 Inside a network-isolated Linux/Xvfb session with an EWMH window manager,
 `xdotool`, `xdpyinfo`, `xprop`, `xwininfo` and `scrot`:
@@ -113,10 +145,10 @@ synthetic project and retain a checkpoint/result for each:
    member: undoing forget is not undoing the earlier biological edit. Retain
    before/after state and validation receipts.
 
-The automated Forget/Undo cycle uses an intact collection. Steps 3-5 above test
-the separate stale-member case; restoring its registry must not repair or hide
-the deliberate edit. Engine regressions cover this distinction, but GUI editing
-and application restart still need their own retained live evidence.
+Run steps 4-5 first on an intact copy if the purpose is registry recovery. Then
+repeat them after step 3 on a second copy: restoring its registry must not repair
+or hide the deliberate edit. Engine regressions cover these distinctions, but
+GUI editing and application restart still need their own retained live evidence.
 
 Changing collection ID cancels a pending forget confirmation. Forgetting does
 not authorize sequence overwrite; a new derivation normally needs a new name.
@@ -125,11 +157,18 @@ Record separate verdicts for the automated subset, manual lifecycle and live
 biology. Glen's TP73/DeltaNp73 acceptance remains a separate private-data test.
 None of this fixture proves active promoters or complete biological coverage.
 
-## Continue with one regulatory profile
+## Choose the next tutorial
 
 This tutorial ends when the annotated windows are materialized, validated and
-reopenable. To inspect one member's exon/CDS context, CUT&RUN/chromatin lanes,
-stored motif peaks and a separately bound full score report, continue with
-[08.16: Inspect TFBS scores and regulatory evidence at one annotated TSS](08-16_tss_regulatory_view_gui.md).
-That chapter keeps GUI, GUI Shell and inner-agent commands together and does not
-rescore the sequence merely to display the retained report.
+openable.
+
+- If PWM/PSSM score meaning is still unfamiliar, read
+  [08.13: motif scoring background](08-13_motif_logo_to_promoter_trace.md)
+  before interpreting any curve.
+- To inspect one member's exon/CDS context, CUT&RUN/chromatin lanes,
+  stored motif peaks and a separately bound full score report, continue with
+  [08.16: Inspect TFBS scores and regulatory evidence at one annotated TSS](08-16_tss_regulatory_view_gui.md).
+  That chapter keeps GUI, GUI Shell and inner-agent commands together and does
+  not rescore the sequence merely to display the retained report.
+- To derive and locally score a real public TP73 DeltaNp73 window, continue with
+  [08.17: TP73 DeltaNp73 factor curves](08-17_tp73_dnp73_factor_curves.md).

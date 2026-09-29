@@ -25,6 +25,7 @@ docs/screenshots/tp73_dnp73_factor_curves/*.snapshot.json text eol=lf
 docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.snapshot.json text eol=lf
 docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.context.svg text eol=lf
 docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/inspect_primer_report.orientation.svg text eol=lf
+docs/screenshots/tss_collection_gui/*.json text eol=lf
 
 # The native TP73 TSS evidence manifest binds the retained NCBI input bytes.
 test_files/tp73.ncbi.gb text eol=lf

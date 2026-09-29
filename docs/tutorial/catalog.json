@@ -1484,9 +1484,25 @@
         "wet_lab_biologists",
         "contributors"
       ],
-      "notes": "Synthetic GUI lifecycle acceptance plus a manual restart/stale-member checklist. Codex source review 2026-09-19: wet-lab readability, coordinates and reproducibility; native GUI, human scientific approval and live TP73 sign-off remain pending.",
+      "notes": "Synthetic core-path GUI acceptance plus a separate contributor lifecycle checklist. Glen source and native Linux/X11 review 2026-09-29: preview, explicit approval, validation and window opening; native Windows/macOS, human scientific approval and live TP73 sign-off remain pending.",
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-19"
+      "codex_reviewed_at": "2026-09-29",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/preview.raw.png",
+          "caption": "The read-only preview groups plus_a and plus_b at one shared start while keeping the second plus-strand start and the minus-strand start separate; no window has been created yet.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-29"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
+          "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-29"
+        }
+      ]
     },
     {
       "id": "tss_regulatory_view_gui",

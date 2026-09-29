@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "fa8c0568986c59c8deda81c887e184ba2103527468b7cd5e3cf64fa175941fbd",
+    "README.md": "99814b41fcff1c43aabda0bec75e2a37bd71b42bdf70cae62c40db844ada8230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -129,7 +129,7 @@
     "chapters/08-10_portable_genomic_regions_offline.md": "24d452418634e458f0e7cbc1ae7e72cd25a63a4a9b2bb1aab5b3d381af8c4edc",
     "chapters/08-11_regulatory_fragment_panel_planning_offline.md": "96abf79497c243a680e0207ba87bbf4c4d4f6bdfbfe071b8ff48969925e8623e",
     "chapters/08-12_region_homology_promoter_modules_offline.md": "45134d70d12d3205be05980e06beb1b54f0b48d53bbf2c243450f797c8162df7",
-    "chapters/08-15_tss_collection_gui.md": "8df7d363108020e15bb7dfb54ac9bbfe31da9cb54904e8937a6da410f964b160"
+    "chapters/08-15_tss_collection_gui.md": "b3dbfc7163d2bd64f98d5d9b80008cfdc25a2e49f1f58eedffb56132af043e21"
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
@@ -1030,7 +1030,23 @@
       ],
       "executed": true,
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-19",
+      "codex_reviewed_at": "2026-09-29",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/preview.raw.png",
+          "caption": "The read-only preview groups plus_a and plus_b at one shared start while keeping the second plus-strand start and the minus-strand start separate; no window has been created yet.",
+          "illustrates_step": 3,
+          "capture_date": "2026-09-29"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_collection_gui/validate_collection.raw.png",
+          "caption": "After explicit approval, registry discovery still says not checked; Inspect stored collection performs the validating read and exposes all three members plus the collection fingerprint.",
+          "illustrates_step": 5,
+          "capture_date": "2026-09-29"
+        }
+      ],
       "retained_artifacts": []
     }
   ]
