@@ -202,9 +202,10 @@ use crate::{
         UniprotProjectionAuditReport,
     },
     engine_shell::{
-        AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellExecutionOptions, ShellRunResult,
-        UiConfigurationSection, UiIntentAction, UiIntentTarget, execute_shell_command_with_options,
-        normalize_pasted_iupac_sequence, parse_shell_line, split_shell_words,
+        AGENT_HISTORY_CONFIRMATION_REQUIRED, AGENT_MUTATION_CONFIRMATION_REQUIRED, ShellCommand,
+        ShellExecutionOptions, ShellRunResult, UiConfigurationSection, UiIntentAction,
+        UiIntentTarget, execute_shell_command_with_options, normalize_pasted_iupac_sequence,
+        parse_shell_line, split_shell_words,
     },
     ensembl_protein::{EnsemblProteinEntry, EnsemblProteinEntrySummary},
     enzymes,

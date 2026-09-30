@@ -25232,6 +25232,53 @@ fn execute_agent_suggestions_require_explicit_confirmation_for_history_transitio
 }
 
 #[test]
+fn execute_agent_suggestions_require_explicit_confirmation_for_mutations() {
+    let mut engine = GentleEngine::from_state(ProjectState::default());
+    let before = serde_json::to_value(engine.state()).expect("serialize initial state");
+    let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {
+        title: Some("Change one project parameter".to_string()),
+        command: "set-param max_fragments_per_container 123".to_string(),
+        execution: AgentExecutionIntent::Auto,
+        ..Default::default()
+    }];
+
+    let (changed, reports) = execute_agent_suggested_commands(
+        &mut engine,
+        &suggestions,
+        false,
+        &BTreeSet::new(),
+        true,
+        &ShellExecutionOptions::default(),
+    );
+    assert!(!changed);
+    assert_eq!(
+        serde_json::to_value(engine.state()).expect("serialize blocked state"),
+        before
+    );
+    assert!(!reports[0].executed);
+    assert_eq!(
+        reports[0].feedback.as_ref().expect("receipt").status,
+        crate::agent_feedback::AgentExecutionStatus::Blocked
+    );
+    assert_eq!(
+        reports[0].error.as_deref(),
+        Some(AGENT_MUTATION_CONFIRMATION_REQUIRED)
+    );
+
+    let (changed, reports) = execute_agent_suggested_commands(
+        &mut engine,
+        &suggestions,
+        false,
+        &BTreeSet::from([1]),
+        true,
+        &ShellExecutionOptions::default(),
+    );
+    assert!(changed);
+    assert!(reports[0].executed);
+    assert!(reports[0].ok);
+}
+
+#[test]
 fn execute_agent_suggestions_allows_blast_shell_route() {
     let mut engine = GentleEngine::from_state(ProjectState::default());
     let suggestions = vec![crate::agent_bridge::AgentSuggestedCommand {

@@ -82,8 +82,8 @@ use crate::{
         construct_reasoning_dotplot_inspection_provenance,
     },
     engine_shell::{
-        AGENT_HISTORY_CONFIRMATION_REQUIRED, ShellCommand, ShellRunResult, UiConfigurationSection,
-        UiIntentAction, UiIntentTarget, parse_shell_line,
+        AGENT_HISTORY_CONFIRMATION_REQUIRED, AGENT_MUTATION_CONFIRMATION_REQUIRED, ShellCommand,
+        ShellRunResult, UiConfigurationSection, UiIntentAction, UiIntentTarget, parse_shell_line,
     },
     ensembl_gene::{
         EnsemblGeneEntry, EnsemblGeneExonSummary, EnsemblGeneTranscriptSummary,
@@ -1754,6 +1754,36 @@ fn agent_history_transition_rejects_auto_execution_and_active_background_jobs() 
     );
     assert!(app.agent_status.contains("background jobs are active"));
     assert!(!app.agent_execution_log.last().expect("guard log entry").ok);
+}
+
+#[test]
+fn agent_mutation_rejects_auto_execution_but_accepts_explicit_run() {
+    let mut app = GENtleApp::default();
+    let before = serde_json::to_value(app.engine.read().expect("engine").state())
+        .expect("serialize initial state");
+
+    app.execute_agent_suggested_command(1, "set-param max_fragments_per_container 123", "auto");
+
+    assert_eq!(
+        serde_json::to_value(app.engine.read().expect("engine").state())
+            .expect("serialize blocked state"),
+        before
+    );
+    assert!(
+        app.agent_status
+            .contains(AGENT_MUTATION_CONFIRMATION_REQUIRED)
+    );
+    assert!(!app.agent_execution_log.last().expect("auto log entry").ok);
+
+    app.execute_agent_suggested_command(1, "set-param max_fragments_per_container 123", "manual");
+
+    assert!(app.agent_execution_log.last().expect("manual log entry").ok);
+    assert!(
+        app.agent_execution_log
+            .last()
+            .expect("manual log entry")
+            .state_changed
+    );
 }
 
 fn synthetic_agent_fus_ensembl_gene_entry() -> EnsemblGeneEntry {

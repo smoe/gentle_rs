@@ -34,6 +34,47 @@
     "prerequisites": ["motif_logo_to_promoter_trace"],
     "next_steps": ["tss_regulatory_view_gui"]
   },
+  "agent_parity": {
+    "schema": "gentle.tutorial_agent_parity.v1",
+    "cases": [
+      {
+        "id": "preview_annotated_starts",
+        "command": "promoters tss-inventory @docs/examples/assets/tss_tutorial/inventory.request.json",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "materialize_reviewed_starts",
+        "command": "promoters tss-materialize @docs/examples/assets/tss_tutorial/materialize.request.json",
+        "execution": "ask",
+        "mutating": true
+      },
+      {
+        "id": "list_stored_collections",
+        "command": "promoters tss-list",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "validate_stored_collection",
+        "command": "promoters tss-collection tss_windows",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "open_collection_windows",
+        "command": "ui open tss-view --collection tss_windows",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "forget_collection_registry_entry",
+        "command": "promoters tss-forget tss_windows",
+        "execution": "ask",
+        "mutating": true
+      }
+    ]
+  },
   "generated_chapter": {
     "order": 40,
     "guide_path": "docs/tutorial/08-15_tss_collection_gui.md",

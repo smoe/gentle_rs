@@ -50074,6 +50074,8 @@ struct AgentSuggestedExecutionReport {
 
 pub(crate) const AGENT_HISTORY_CONFIRMATION_REQUIRED: &str =
     "Undo/redo suggestions require explicit user confirmation and cannot be auto-executed";
+pub(crate) const AGENT_MUTATION_CONFIRMATION_REQUIRED: &str =
+    "Mutating suggestions require explicit user confirmation and cannot be auto-executed";
 
 fn bind_agent_execution_reports(
     invocation: &crate::agent_bridge::AgentInvocationOutcome,
@@ -50165,7 +50167,10 @@ fn execute_agent_suggested_commands(
                     row.error = Some(format!("Could not parse suggested command: {err}"));
                 }
                 Ok(parsed) => {
-                    if trigger == Some("allow_auto_exec")
+                    if trigger == Some("allow_auto_exec") && parsed.is_state_mutating() {
+                        status = AgentExecutionStatus::Blocked;
+                        row.error = Some(AGENT_MUTATION_CONFIRMATION_REQUIRED.to_string());
+                    } else if trigger == Some("allow_auto_exec")
                         && matches!(
                             parsed,
                             ShellCommand::HistoryUndo | ShellCommand::HistoryRedo

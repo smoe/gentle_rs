@@ -42,5 +42,34 @@
     "group_position": 16,
     "prerequisites": ["tss_collection_gui"],
     "next_steps": ["tp73_dnp73_factor_curves"]
+  },
+  "agent_parity": {
+    "schema": "gentle.tutorial_agent_parity.v1",
+    "cases": [
+      {
+        "id": "load_synthetic_tss_record",
+        "command": "/open file docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.annotated-tss.gb --id synthetic_minus_tss",
+        "execution": "ask",
+        "mutating": true
+      },
+      {
+        "id": "open_synthetic_tss_window",
+        "command": "ui open sequence-window synthetic_minus_tss",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "open_native_tss_view",
+        "command": "ui open tss-view",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "attach_bound_profile_report",
+        "command": "ui open tss-view --report docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json",
+        "execution": "ask",
+        "mutating": false
+      }
+    ]
   }
 }

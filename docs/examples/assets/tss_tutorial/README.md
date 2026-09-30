@@ -24,9 +24,11 @@ genomic 1500, then increasing local coordinates decrease genomic coordinates.
 The two plus transcripts sharing base 601 form one window. The two gene IDs
 are never merged; their common label only selects both for this artificial demo.
 
-`inventory.request.json` fixes the preview request. The independent
-`tss_collection_gui_oracle` workflow stores the resulting explicit approval and
-selected IDs, not a general-purpose approval override. Reproduce/check it with
+`inventory.request.json` fixes the preview request, and
+`materialize.request.json` exposes the resulting explicit approval and selected
+IDs for parser-level tutorial/agent parity checks. The independent
+`tss_collection_gui_oracle` workflow stores the same bound approval, not a
+general-purpose approval override. Reproduce/check it with
 `cargo test --lib tss_tutorial_starter -- --nocapture`; compare the emitted
 request and IDs before updating the oracle after a deliberate fixture or
 grouping-contract change. The 2026-09-18 refresh uses resolved gene IDs rather
