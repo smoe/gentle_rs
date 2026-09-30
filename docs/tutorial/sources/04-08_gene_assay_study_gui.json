@@ -1,15 +1,64 @@
 {
   "schema": "gentle.tutorial_source.v4",
   "id": "gene_assay_study_gui",
-  "title": "Design Primer Pairs to Distinguish Real Human PATZ1 Transcripts",
+  "title": "Find Primer-Pair Markers for PATZ1 Isoforms",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/gene_assay_study_gui/G1-locus-and-source-comparison.context.svg",
+      "caption": "G1: compare 13 Ensembl design transcripts with four RefSeq records without silently merging their target sets.",
+      "illustrates_step": 1,
+      "capture_date": "2026-09-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/gene_assay_study_gui/G2-request-and-scope.context.svg",
+      "caption": "G2: review the all-annotated-cDNA, minimal-discrimination request and explicit best-effort policy before design.",
+      "illustrates_step": 2,
+      "capture_date": "2026-09-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/gene_assay_study_gui/G3-primer-matrix-and-sequences.context.svg",
+      "caption": "G3: seven selected pairs cover 13 cDNA classes but leave nine class pairs unresolved; inspect both oligos and the product matrix.",
+      "illustrates_step": 3,
+      "capture_date": "2026-09-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/gene_assay_study_gui/G4-study-plan.context.svg",
+      "caption": "G4: the separate study plan remains unexecuted and must not claim the exploratory panel as its result.",
+      "illustrates_step": 4,
+      "capture_date": "2026-09-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/gene_assay_study_gui/G5-specificity-gap.context.svg",
+      "caption": "G5: local cDNA products do not establish whole-reference specificity; the selected pair remains unassessed.",
+      "illustrates_step": 5,
+      "capture_date": "2026-09-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/gene_assay_study_gui/G6-pending-dossier.context.svg",
+      "caption": "G6: export controls await an explicit publication request and destination; this is not evidence of a completed dossier export.",
+      "illustrates_step": 6,
+      "capture_date": "2026-09-20"
+    }
+  ],
   "catalog": {
     "order": 63,
     "path": "docs/tutorial/04-08_gene_assay_study_gui.md",
     "type": "gui_cli_walkthrough",
     "status": "manual/hybrid",
     "source": "hand_written_markdown",
-    "audiences": ["gui_first", "primer_design", "transcript_analysis", "wet_lab_biologists"],
-    "notes": "Authentic human PATZ1: pinned Ensembl 116 and RefSeq genomic annotations, source/shared exon-chain inspection and primer-pair discrimination across all 13 Ensembl transcript records. Reference-wide specificity, Glen's live screenshots and human scientific acceptance remain pending. No synthetic expression or array evidence.",
+    "audiences": ["gui_first", "cli_first", "agent_users", "primer_design", "transcript_analysis", "wet_lab_biologists"],
+    "notes": "Find candidate PATZ1 isoform markers, not a unique assay for every transcript. G1-G3 compare pinned Ensembl 116/RefSeq annotations, review a SYBR minimal-discrimination request and interpret coverage versus unresolved cDNA-class pairs. RefSeq is comparison context; no five-pair budget, UniProt prioritization or expression/junction evidence is supplied. G4-G6 optionally inspect the separate unexecuted study, readiness blockers and pending dossier export. Retained G1-G6 Linux captures are bound to 3c1c32bc (2026-09-20), not current-candidate or live-agent acceptance. Codex source review 2026-09-30 covers readability, controls and command applicability; whole-reference specificity and human scientific approval remain pending.",
+    "difficulty": "intermediate",
+    "network": "offline after tool setup",
+    "interfaces": ["GUI", "CLI / GUI Shell", "Agent Assistant (reviewed drafts)"],
+    "starting_state": "Checkout public PATZ1 fixtures, matching GUI/CLI binaries and Python 3; prepare the project once and configure Primer3 before design",
+    "produces": ["saved exploratory primer panel and transcript-by-assay matrix", "optional readiness handoff and pending study dossier"],
     "group": "04",
     "group_position": 8,
     "prerequisites": ["transcript_assay_followup_gui_cli"]

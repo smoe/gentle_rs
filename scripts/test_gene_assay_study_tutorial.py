@@ -25,6 +25,11 @@ class StudyTutorialTests(unittest.TestCase):
                 self.assertNotEqual(other["catalog"]["order"], source["catalog"]["order"])
         guide = ROOT / source["catalog"]["path"]
         text = guide.read_text()
+        self.assertEqual(text.splitlines()[0], f'# {source["title"]}')
+        catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_text())
+        catalog_entry = next(row for row in catalog["entries"] if row["id"] == source["id"])
+        self.assertEqual(catalog_entry["title"], source["title"])
+        self.assertEqual(catalog_entry["graphics"], source["graphics"])
         for checkpoint in range(1, 7):
             self.assertIn(f"Checkpoint G{checkpoint}", text)
         for target in re.findall(r"\]\(([^)]+)\)", text):
@@ -33,6 +38,28 @@ class StudyTutorialTests(unittest.TestCase):
         for term in ("minus-strand", "not order", "Pending", "zero-based half-open",
                      "not a promised successful study", "not a tested provider"):
             self.assertIn(term, " ".join(text.split()).replace("**", ""))
+        # This SYBR request cannot use the endpoint/isoform-end-matrix preflight.
+        self.assertNotIn("primers inspect-transcript-assay-feasibility", " ".join(text.split()))
+
+    def test_discovery_graphics_match_the_six_retained_gui_checkpoints(self):
+        source = json.loads((ROOT / "docs/tutorial/sources/04-08_gene_assay_study_gui.json").read_text())
+        root = ROOT / "docs/screenshots/gene_assay_study_gui"
+        evidence = json.loads((root / "evidence.json").read_text())
+        guide = ROOT / source["catalog"]["path"]
+        text = guide.read_text()
+        image_paths = {
+            (guide.parent / target).resolve()
+            for target in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", text)
+        }
+        self.assertEqual(len(source["graphics"]), len(evidence["captures"]))
+        for step, (graphic, capture) in enumerate(zip(source["graphics"], evidence["captures"]), 1):
+            self.assertEqual(graphic["kind"], "screenshot")
+            self.assertEqual(graphic["illustrates_step"], step)
+            self.assertEqual(capture["id"], f"G{step}")
+            path = ROOT / graphic["path"]
+            self.assertEqual(path, root / capture["context_svg"])
+            self.assertIn(path.resolve(), image_paths)
+            self.assertEqual(sha(path), capture["context_svg_sha256"])
 
     def test_authentic_patz1_inputs_are_pinned_not_synthetic(self):
         manifest = json.loads((FIXTURE / "manifest.json").read_text())

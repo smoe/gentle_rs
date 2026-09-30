@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
+
+- Rework tutorial 04.08 as "Find Primer-Pair Markers for PATZ1 Isoforms",
+  retaining the interrupted draft's outcome-first orientation. Make G1-G3 the
+  core exercise and separate optional study planning, readiness and dossier
+  export. Explain cDNA classes, matrix cells and the retained seven-pair,
+  13-class result with nine unresolved class pairs; do not imply a five-pair
+  budget, UniProt prioritization or differential-expression evidence.
+- Add current GUI controls, matched CLI routes and review-only agent prompts.
+  Remove the inapplicable endpoint/isoform-end-matrix feasibility command from
+  the SYBR workflow. Distinguish Primer3 availability from biological feasibility
+  and an exploratory panel from the separately pending study.
+- Register the six existing, hash-bound G1-G6 teaching views in discovery
+  metadata without changing evidence bytes. Correct the stale screenshot-pending
+  statement and explicitly describe G6 as pre-export controls, not a completed
+  export. Refresh Codex source-review metadata, not human scientific approval.
+- Extend source guards for title/catalog/graphic consistency and the unsupported
+  command. No local builds, tests, GUI replay or agent invocation run; current
+  execution acceptance remains with CI and Glen.
+
 ## 2026-09-30 - Add Approval-Bound Outer Routing For TSS Collections
 
 - Add the descriptor-only `gentle-tss-collection` ClawBio/OpenClaw skill for
