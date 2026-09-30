@@ -13,6 +13,8 @@ fn catalog_entry(path: &Path, title: &str) -> crate::workflow_examples::Tutorial
         "status": "manual/reference",
         "source": "hand-written temporary test fixture",
         "audiences": ["agent_users"],
+        "prerequisites": ["before-help-test"],
+        "next_steps": ["after-help-test"],
         "group_label": "Getting Started & Interfaces",
         "group_order": 1,
         "group_position": 2,
@@ -63,6 +65,8 @@ fn lazy_tutorial_heading_preserves_precedence_and_fallbacks_without_images() {
             );
             assert_eq!(entry.decimal_id.as_deref(), Some("01.02"));
             assert_eq!(entry.audiences, ["agent_users"]);
+            assert_eq!(entry.prerequisites, ["before-help-test"]);
+            assert_eq!(entry.next_steps, ["after-help-test"]);
             assert!(entry.summary.contains("status: manual/reference"));
             assert_eq!(fs::read_to_string(&path).unwrap(), markdown);
         }
@@ -88,6 +92,88 @@ fn lazy_tutorial_heading_preserves_precedence_and_fallbacks_without_images() {
         );
     });
     assert_no_image_work(&trace);
+}
+
+#[test]
+fn tutorial_navigation_resolves_catalog_ids_to_compact_targets() {
+    let mut app = GENtleApp::default();
+    app.help_tutorial_entries = GENtleApp::discover_help_tutorial_entries();
+    let selected = app
+        .help_tutorial_entries
+        .iter()
+        .position(|entry| entry.tutorial_id == "tss_collection_gui")
+        .expect("TSS collection tutorial");
+    app.help_tutorial_selected = selected;
+    let entry = &app.help_tutorial_entries[selected];
+
+    let prerequisites = app.help_tutorial_navigation_targets(&entry.prerequisites);
+    let next_steps = app.help_tutorial_navigation_targets(&entry.next_steps);
+    assert_eq!(prerequisites.len(), 1);
+    assert_eq!(prerequisites[0].1, "08.13");
+    assert!(prerequisites[0].2.contains("PWM/PSSM"));
+    assert_eq!(next_steps.len(), 1);
+    assert_eq!(next_steps[0].1, "08.16");
+    assert!(next_steps[0].2.contains("Inspect TFBS"));
+}
+
+#[test]
+fn tutorial_navigation_switch_keeps_help_open_and_only_prepares_selected_page() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut app = GENtleApp::default();
+    for id in ["before", "after", "unselected"] {
+        let path = temp.path().join(format!("{id}.md"));
+        fs::write(&path, format!("# {id}\n\n![Example]({id}-missing.svg)\n")).unwrap();
+        let mut entry = catalog_entry(&path, id);
+        entry.id = id.to_string();
+        entry.prerequisites = if id == "after" {
+            vec!["before".into()]
+        } else {
+            vec![]
+        };
+        entry.next_steps = if id == "before" {
+            vec!["after".into()]
+        } else {
+            vec![]
+        };
+        app.help_tutorial_entries
+            .push(GENtleApp::help_tutorial_entry_from_catalog_entry(entry).unwrap());
+    }
+    app.open_help_tutorial_doc(0);
+    app.pending_focus_viewports.clear();
+    for (field, expected_index) in [("next_steps", 1), ("prerequisites", 0)] {
+        let (targets, resolution) = startup_trace::capture(|| {
+            let current = &app.help_tutorial_entries[app.help_tutorial_selected];
+            let ids = if field == "next_steps" {
+                &current.next_steps
+            } else {
+                &current.prerequisites
+            };
+            app.help_tutorial_navigation_targets(ids)
+        });
+        assert_no_image_work(&resolution);
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].0, expected_index);
+        let (_, switched) = startup_trace::capture(|| {
+            assert!(app.set_help_tutorial_selected(targets[0].0));
+        });
+        assert_eq!(app.help_tutorial_selected, expected_index);
+        assert_eq!(app.help_doc, HelpDoc::Tutorial);
+        assert!(app.show_help_dialog);
+        assert!(app.pending_focus_viewports.is_empty());
+        assert_eq!(switched["help_image_work"]["svg_references"], 1);
+        assert_eq!(switched["help_image_work"]["rasterization_failures"], 1);
+        let id = &app.help_tutorial_entries[expected_index].tutorial_id;
+        assert!(app.help_tutorial_markdown.starts_with(&format!("# {id}\n")));
+        assert!(
+            app.help_tutorial_markdown
+                .contains(&format!("{id}-missing.svg"))
+        );
+        assert!(!app.help_tutorial_markdown.contains("unselected"));
+    }
+    assert!(
+        app.help_tutorial_navigation_targets(&["missing".into()])
+            .is_empty()
+    );
 }
 
 #[test]

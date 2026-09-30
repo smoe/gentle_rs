@@ -46,6 +46,7 @@
     "starting_state": "Empty project and the retained public test_files/tp73.ncbi.gb RefSeq excerpt",
     "produces": ["interactive native TSS evidence view", "deterministic native TSS view SVG"],
     "group": "08",
-    "group_position": 17
+    "group_position": 17,
+    "prerequisites": ["tss_regulatory_view_gui"]
   }
 }

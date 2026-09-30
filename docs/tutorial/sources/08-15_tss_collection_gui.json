@@ -30,7 +30,9 @@
     ],
     "notes": "Synthetic core-path GUI acceptance plus a separate contributor lifecycle checklist. Glen source and native Linux/X11 review 2026-09-29 at 1fcee6c0: preview, explicit approval, concise validation and bounded-cascade window opening; native Windows/macOS, human scientific approval and live TP73 sign-off remain pending.",
     "group": "08",
-    "group_position": 15
+    "group_position": 15,
+    "prerequisites": ["motif_logo_to_promoter_trace"],
+    "next_steps": ["tss_regulatory_view_gui"]
   },
   "generated_chapter": {
     "order": 40,

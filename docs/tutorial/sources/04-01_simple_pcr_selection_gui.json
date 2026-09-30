@@ -44,7 +44,11 @@
     "starting_state": "Bundled TP73 tutorial project with an 800-base extract",
     "produces": ["primer-pair report"],
     "group": "04",
-    "group_position": 1
+    "group_position": 1,
+    "next_steps": [
+      "pcr_selection_batch_primer_pairs_offline",
+      "qpcr_exon_junctions_gui"
+    ]
   },
   "generated_chapter": {
     "order": 18,

@@ -4103,6 +4103,12 @@ The `Help` menu now includes:
     Opening Help or the tutorial-project menu does not render the whole catalog.
     Images use the existing shared SVG font configuration and PNG cache, with
     the same original-image fallback if conversion fails; no network is needed.
+  - when the selected catalog entry declares tutorial relationships, a compact
+    row below the topic selector shows **Prerequisite** and **Continue with**
+    buttons. Labels use the stable decimal tutorial id, hover text shows the
+    full title and summary, and selecting a pointer reuses the same Help window.
+    Each direction is limited to three explicit catalog ids; absent or fallback
+    catalog metadata produces no guessed navigation.
 - on macOS, app menu `GENtle -> GENtle Help...` opens the same help window
 - help now opens in its own native window (separate viewport), not as an overlay in the project window
 - re-selecting an already open help page, including via `GENtle -> GENtle Windows`, reuses the existing help viewport instead of reloading the manuals from disk

@@ -1087,6 +1087,12 @@ Practical rule:
     - learner-facing pages lead with outcome, prerequisites and the shortest
       path; detailed parameters, provenance and maintainer evidence follow the
       walkthrough rather than obstructing it
+    - light tutorial navigation is catalog-owned: each page may name at most
+      three prerequisite and three continuation tutorial ids. Generated
+      chapter prerequisites project into the same catalog fields, while manual
+      pages declare them in their catalog source. Consumers resolve ids against
+      the catalog rather than inferring a sequence from filenames or decimal
+      numbering
 - Screenshot bridge status (temporarily disabled by security policy):
   - historical implementation existed as a compile-time + runtime gated adapter
     bridge (`screenshot-capture` feature + `--allow-screenshots` startup flag)
