@@ -9,7 +9,12 @@
     "status": "manual/hybrid",
     "source": "hand_written_markdown",
     "audiences": ["mcp_users", "cli_first", "contributors"],
-    "notes": "Offline worked MCP discovery, explicit confirmation, typed operation and CLI/shared-shell report comparison on synthetic DNA. No model, API key or GUI acceptance claim.",
+    "notes": "Offline worked outer-agent/MCP discovery, explicit confirmation refusal, typed operation and CLI/shared-shell report comparison on synthetic DNA, with a bounded inner-agent reachability prompt. No model, API key or GUI acceptance claim; retained protocol evidence is more informative than a terminal screenshot.",
+    "interfaces": [
+      "MCP / outer agent",
+      "CLI / shared shell",
+      "Agent Assistant (review-only equivalent)"
+    ],
     "group": "01",
     "group_position": 3
   }

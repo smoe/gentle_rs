@@ -8,6 +8,10 @@
   capture and explain screenshot consent as a separate provider disclosure.
 - Document the outer-agent artifact/receipt expectation and delegated mutation
   proposal boundary without claiming current-HEAD GUI or model acceptance.
+- Review tutorial 01.03 as an outer-agent/MCP transport lesson. Add bounded
+  inner- and outer-agent prompts, separate shared capability reachability from
+  MCP evidence, and explain why protocol bytes and receipts—not a terminal
+  screenshot—are the informative acceptance artifacts.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
