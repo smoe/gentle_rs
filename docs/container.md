@@ -3,7 +3,7 @@
 The maintained Debian-first OCI image is **headless**: CLI, MCP, the examples
 helper and the Python CLI wrapper. It does not compile or redistribute the
 GENtle GUI or embedded JavaScript/Lua interfaces. Native installations retain
-those interfaces.
+the GUI; embedded JS/Lua are optional source builds, not packaged binaries.
 
 ## Build And Distribution
 
@@ -16,7 +16,7 @@ docker build --target runtime-cli -t gentle:cli-local .
 The builder uses Debian `forky` and `rust-all`. It runs:
 
 ```sh
-cargo build --locked --profile dev --no-default-features \
+cargo build --locked --profile package-opt1 --no-default-features \
   --bin gentle_cli --bin gentle_mcp --bin gentle_examples_docs -j1
 ```
 
@@ -26,13 +26,13 @@ those features before compilation and rejects desktop/V8/Lua dependencies in
 the resolved normal/build dependency graph.
 
 The optional build argument is `DEBIAN_SUITE` (default `forky`). During the
-[temporary optimization pause](release.md), the builder fixes the profile to
-`dev`, stages `target/debug`, and disables incremental compilation and debug
-information. The former `GENTLE_CARGO_PROFILE` override is removed. Pinned
-`rnapkin` also installs with `--debug -j1`. Assertions and overflow checks remain;
-serial, unoptimized compilation is not a guarantee that an individual compiler
-process fits the runner. Optimized packaging returns only after the first
-successful artifact cycle, as a separately verified recipe change.
+[first optimization step](release.md), the builder fixes the profile to
+`package-opt1`, stages `target/package-opt1`, and disables incremental compilation
+and debug information. Optimization is level 1, all LTO is off, and 256 codegen
+units, assertions, overflow checks and panic unwinding remain. The former
+`GENTLE_CARGO_PROFILE` override stays removed. Pinned `rnapkin` still installs
+with `--debug -j1`. This new recipe needs its own build/smoke verdict; it is not
+certified by `.11`'s successful `dev` image and does not guarantee lower RAM use.
 
 After an owner-approved publication, these tags name the same headless image:
 

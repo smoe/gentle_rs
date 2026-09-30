@@ -919,13 +919,15 @@ explicitly.
 
 Native latency acceptance uses the actual packaged GUI and its effective
 build recipe, not a Criterion harness, even if that harness inherits `release`.
-Since 2026-09-25, internal installers use `dev`. The owner's 2026-09-26
-[temporary optimization pause](release.md) extends this to every version label
-and the container until the first successful artifact cycle; final labels no
-longer select `release` automatically. Packaging disables incremental compilation
-and debug information; `dev` packages still retain debug assertions and overflow
-checks. Receipts must record the effective incremental/debug values, and older
-profile-only measurements remain a distinct recipe.
+The published `.11` baseline at `a51bbc06` used `dev` with incremental
+compilation/debug information disabled. After its successful native/container
+artifact cycle, the owner's 2026-10-01 first optimization step introduces
+`package-opt1` for `.12` packaging, independent of version label. It inherits
+`dev`, changes optimization to level 1 with all LTO off, and preserves 256
+codegen units, assertions, overflow checks, unwinding and no stripping.
+Receipts must bind those settings; neither this recipe nor higher optimization
+is certified by the successful `.11` build. Local `dev`, pinned build helpers
+and `bench-audit` remain unchanged.
 Keep those verdicts separate: an optimized measurement cannot certify an
 unoptimized package, nor can that package certify a future optimized release's
 latency. Historical "release-like" measurements still mean the release profile;

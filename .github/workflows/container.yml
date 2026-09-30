@@ -50,6 +50,8 @@ jobs:
       EXPECTED_LOCK_SHA256: ${{ needs.candidate.outputs.cargo_lock_sha256 }}
       WORKFLOW_REVISION: ${{ needs.candidate.outputs.workflow_revision }}
       CANDIDATE_MODE: ${{ needs.candidate.outputs.mode }}
+      NATIVE_PROFILE: ${{ needs.candidate.outputs.native_profile }}
+      NATIVE_TARGET_SUBDIR: ${{ needs.candidate.outputs.native_target_subdir }}
     steps:
       - name: Check out the repo
         uses: actions/checkout@v5
@@ -61,7 +63,9 @@ jobs:
           python-version: '3.12'
 
       - name: Verify immutable candidate identity
-        run: python3 scripts/release_candidate.py verify
+        run: |
+          python3 scripts/release_candidate.py verify
+          test "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" = "package-opt1:package-opt1"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -127,6 +131,7 @@ jobs:
           python3 scripts/release_candidate.py verify
           python3 - <<'PY'
           import hashlib, json, os, pathlib, subprocess
+          from scripts.release_candidate import PACKAGE_PROFILE, package_build_recipe
           rows = []
           for flavor in ("cli",):
               image_id = os.environ[f"{flavor.upper()}_IMAGE"]
@@ -141,7 +146,7 @@ jobs:
               "cargo_lock_sha256": os.environ["EXPECTED_LOCK_SHA256"],
               "workflow_revision": os.environ["WORKFLOW_REVISION"],
               "mode": os.environ["CANDIDATE_MODE"], "pushed": False,
-              "profile": "dev", "incremental": False, "debug": 0,
+              "profile": PACKAGE_PROFILE, **package_build_recipe(pathlib.Path(".")),
               "default_features": False, "features": [],
               "binaries": ["gentle_cli", "gentle_mcp", "gentle_examples_docs"],
               "helpers": {

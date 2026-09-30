@@ -28,7 +28,7 @@ members = [
 exclude = ["packages/snapgene-reader"]
 
 [workspace.package]
-version = "0.1.0-internal.11"
+version = "0.1.0-internal.12"
 edition = "2024"
 
 [workspace.dependencies]
@@ -209,8 +209,22 @@ codegen-units = 256
 [profile.dev.package."*"]
 debug = 0
 
+# First measured optimization step after the .11 dev package baseline.
+# Keep the cold recipe and runtime safety checks; do not enable local ThinLTO.
+[profile.package-opt1]
+inherits = "dev"
+opt-level = 1
+lto = "off"
+codegen-units = 256
+incremental = false
+debug = 0
+debug-assertions = true
+overflow-checks = true
+panic = "unwind"
+strip = "none"
+
 # Disable even within-crate LTO for native releases; keep other Cargo defaults.
-# Container and audit profiles explicitly retain their separate LTO policy.
+# Optional optimized and audit profiles retain their separate LTO policy.
 [profile.release]
 lto = "off"
 

@@ -122,10 +122,12 @@ held to the interactive timing table.
 ### Measurement Profiles
 
 For native acceptance, **measure the actual packaged GUI and declare its profile**,
-not the `bench-audit` harness. Since 2026-09-25, internal installers use `dev`;
-the owner's 2026-09-26 [optimization pause](release.md) extends this to all
-artifact builds until the first successful artifact cycle. Restoring optimized
-packaging is a separate recipe change, not a version-label side effect.
+not the `bench-audit` harness. Published `.11` packages use the cold `dev`
+recipe. Following their successful artifact cycle, the owner's 2026-10-01
+first optimization step selects `package-opt1` for `.12`: opt-level 1, all LTO
+off, 256 codegen units, no incremental/debug information, assertions/overflow
+checks on and panic unwinding. This is a new recipe awaiting package/runtime
+acceptance, not a relabeling of `.11` or a version-label side effect.
 The historical "release-like" label still means
 the optimized release profile, not an unoptimized interim package. Keep those
 evidence classes and their agreed budgets separate; neither certifies the
@@ -143,11 +145,11 @@ release-profile Criterion harness also remains a harness: its target, features
 and event/rendering environment differ from the packaged desktop application.
 Neither harness can satisfy native acceptance, even when its CPU timings pass.
 
-Glen has deferred native comparison while his identified `.11` package is
-unavailable; this does not block the next headless boundary diagnosis or waive
-native acceptance. Once a suitable package is available, retain a controlled
-**same-SHA native profile pair**:
-the packaged GUI (explicitly `dev` or `release`) and a native GUI built with `bench-audit`, keeping
+The `.11` package is now available. For `.12`, Glen should first compare cold
+`dev` (`incremental=false`, `debug=0`) and `package-opt1` at the same SHA,
+including build time, peak RSS and archive size as well as native timings.
+The separate audit-ladder comparison remains a **same-SHA native profile pair**:
+the packaged GUI (explicitly `dev`, `package-opt1` or `release`) and a native GUI built with `bench-audit`, keeping
 features and all other build inputs identical. Prebuild both outside timing;
 use the same host, toolchain, public PATZ1 project/report, window sizes, tracing
 settings and equivalent isolated application settings/cache state. Repeat open

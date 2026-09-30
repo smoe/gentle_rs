@@ -1,9 +1,10 @@
 # GENtle `v0.1.0-internal.11` Release Notes
 
-Status: historical prerelease ledger for 2026-09-24 at
-`ffe5c637d5dddaf2f48daa3fa529d6e9bafd4c7b`, then with no attached packages.
-Later tag revisions are not certified by these results. Exact-candidate package,
-scientific and GUI acceptance remain pending.
+Status: published prerelease with Linux, macOS and Windows artifacts on
+2026-09-30 at `a51bbc064ea29d4e7a03c559c5a6e0a6f8e1bd29`, confirmed by the
+owner and the published build receipts. Native installer and headless container
+publication passed at that SHA. Scientific and live GUI acceptance remain
+separate; the earlier September 24 failures below are preserved as history.
 
 This release centers on **gene-informed primer-pair studies**: inspect a gene's
 transcript models and supporting evidence, design and compare assay panels, and
@@ -89,7 +90,7 @@ preview hashes and receipts must not authorize the changed grouping.
 
 ## Packages And Portability
 
-The current native packaging recipe stages the same five GENtle entrypoints and tracked
+The published native packaging recipe stages the same five GENtle entrypoints and tracked
 resources on Windows, macOS and Linux, with revision/version/checksum records.
 It includes the GUI, CLI, MCP, examples/docs and publication-report tools.
 JavaScript/Lua remain optional source interfaces, not packaged binaries.
@@ -98,7 +99,10 @@ not fat LTO or a single codegen unit. The subsequent installer repair disables
 all native LTO (`lto="off"`), retaining other defaults and one build job, and
 retains compiler/resource diagnostics. This changed recipe
 requires fresh exact-candidate package checks; older artifacts and acceptance
-records retain their original build settings.
+records retain their original build settings. The successful September 30
+packages instead used the temporary `dev` recipe with `incremental=false`,
+`debug=0`, assertions/overflow checks enabled and one build job. Their names
+carry `-dev`. `.12` optimization experiments do not replace these artifacts.
 The workflow tests actual extracted ZIP/DMG/tarball contents outside the
 checkout, including CLI, MCP and tutorial-manifest entrypoints. These checks
 do not establish GUI usability, signing or external-tool availability.
@@ -131,6 +135,8 @@ re-creation is authorized by this ledger.
 
 | Evidence | Status and scope |
 | --- | --- |
+| Published September 30 baseline | [Installer run 36714939304](https://github.com/smoe/gentle_rs/actions/runs/36714939304) passed at `a51bbc06`, including collection/publication of the Linux tarball, macOS DMG and Windows ZIP. The [release assets](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.11) include three build receipts and the aggregate release-attributes receipt binding the source, lockfile and `dev` profile. |
+| September 30 container and push CI | [Container publication 36714939309](https://github.com/smoe/gentle_rs/actions/runs/36714939309) and [push CI 36686854112](https://github.com/smoe/gentle_rs/actions/runs/36686854112) passed at the same `a51bbc06`. These results establish the artifact baseline, not wet-lab, GUI usability or future-profile acceptance. |
 | Original installer publication run | [Run 35968255595](https://github.com/smoe/gentle_rs/actions/runs/35968255595) built `ad0338a7`. Windows job `107531770703` passed in 2h12m53s. macOS job `107531770716` ended after the root-library `rustc` received SIGKILL and Cargo returned 101. Ubuntu job `107531770722` ended with runner shutdown/exit 143. Package validation and publication jobs were skipped. The retained Windows artifact is not a package for the final tag revision. |
 | Final-tag installer publication run | [Run 36010984447](https://github.com/smoe/gentle_rs/actions/runs/36010984447) built `ffe5c637`. Windows job `107671439337` passed in 1h32m45s. macOS job `107671438533` again failed while compiling the root GENtle library (SIGKILL/Cargo 101); Ubuntu job `107671438797` again ended with exit 143. Package validation and publication jobs were skipped, so no native package was attached. Neither Unix result establishes OOM. |
 | Headless container | Tag-push [run 35995175749](https://github.com/smoe/gentle_rs/actions/runs/35995175749) passed at `ffe5c637`, including the no-network RNAPKIN SVG/PNG smoke. Release-event runs [35968255639](https://github.com/smoe/gentle_rs/actions/runs/35968255639) at `ad0338a7` and [36010984241](https://github.com/smoe/gentle_rs/actions/runs/36010984241) at `ffe5c637` both published the headless image to GHCR. Container publication is not native-package or GUI acceptance. |

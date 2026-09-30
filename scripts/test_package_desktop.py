@@ -368,12 +368,17 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn("scripts/package_desktop.py verify-macos-bundle --repo .", inspect)
         self.assertIn('--binary "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}/gentle"', inspect)
 
-    def test_native_release_disables_all_lto_without_changing_custom_profiles(self) -> None:
+    def test_package_opt1_preserves_safety_and_audit_profiles(self) -> None:
         repo = Path(__file__).resolve().parents[1]
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
         profiles = manifest["profile"]
         self.assertEqual(profiles["dev"].get("opt-level", 0), 0,
-                         "All installers must remain unoptimized during the packaging pause")
+                         "Local dev builds remain unoptimized")
+        self.assertEqual(profiles["package-opt1"], {
+            "inherits": "dev", "opt-level": 1, "lto": "off", "codegen-units": 256,
+            "incremental": False, "debug": 0, "debug-assertions": True,
+            "overflow-checks": True, "panic": "unwind", "strip": "none",
+        })
         self.assertEqual(profiles["release"], {"lto": "off"},
                          "Disable all native LTO; retain other Cargo defaults")
         self.assertEqual(profiles["release-fast"], {
@@ -422,7 +427,7 @@ class WorkflowWiringTests(unittest.TestCase):
             self.assertIn(f"value: ${{{{ jobs.resolve.outputs.{key} }}}}", resolver)
             self.assertIn(f"{key}: ${{{{ steps.identity.outputs.{key} }}}}", resolver)
         self.assertIn('case "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" in', workflow)
-        self.assertIn("dev:debug) ;;", workflow)
+        self.assertIn("package-opt1:package-opt1) ;;", workflow)
         self.assertNotIn("release:release)", workflow)
         self.assertIn("run: cargo install cargo-bundle --version 0.12.0 --locked --debug -j1", workflow)
         self.assertNotIn("script-interfaces", workflow)
@@ -431,8 +436,8 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn('"features": []', workflow)
         self.assertIn('"default_features": True, "binaries": list(BINARIES)', workflow)
         self.assertIn('"profile": os.environ["NATIVE_PROFILE"]', workflow)
-        self.assertIn('"incremental": os.environ["CARGO_INCREMENTAL"] != "0"', workflow)
-        self.assertIn('"debug": int(os.environ["CARGO_PROFILE_DEV_DEBUG"])', workflow)
+        self.assertIn('**package_build_recipe(pathlib.Path("."))', workflow)
+        self.assertIn("from scripts.release_candidate import package_build_recipe", workflow)
         self.assertIn("from scripts.package_desktop import BINARIES", workflow)
         for name in package.BINARIES:
             self.assertIn(f'/${{NATIVE_TARGET_SUBDIR}}/{name}${{suffix}}"', workflow)
@@ -443,7 +448,7 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertNotIn("CARGO_TARGET_DIR/release", workflow)
         self.assertEqual(workflow.count('--binaries "${CARGO_TARGET_DIR}/${NATIVE_TARGET_SUBDIR}"'), 3)
         self.assertIn('$env:CARGO_TARGET_DIR/$env:NATIVE_TARGET_SUBDIR/gentle.exe', workflow)
-        self.assertIn('profile_suffix="-dev"', workflow)
+        self.assertIn('profile_suffix="-${NATIVE_PROFILE}"', workflow)
 
         manifest = tomllib.loads((repo / "Cargo.toml").read_text())
         self.assertEqual(set(manifest["features"]["default"]), {"desktop-gui", "screenshot-capture"})
@@ -495,7 +500,7 @@ class WorkflowWiringTests(unittest.TestCase):
             )
             for name in ("cargo", "rustc"):
                 (root / name).chmod(0o755)
-            for profile, code in ((profile, code) for profile in ("dev", "release")
+            for profile, code in ((profile, code) for profile in ("dev", "package-opt1")
                                   for code in (0, 101, 143)):
                 with self.subTest(profile=profile, exit_code=code):
                     result = subprocess.run(
@@ -530,19 +535,19 @@ class WorkflowWiringTests(unittest.TestCase):
             cargo = root / "cargo"
             cargo.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\"\n")
             cargo.chmod(0o755)
-            for profile in ("dev", "release"):
+            for profile in ("dev", "package-opt1"):
                 with self.subTest(profile=profile):
                     result = subprocess.run(
                         [shutil.which("bash"), "-c", script], cwd=root,
                         env={**os.environ, "PATH": str(root) + os.pathsep + os.environ["PATH"],
                              "NATIVE_PROFILE": profile, "CARGO_TARGET_DIR": str(root / "target dir"),
-                             "NATIVE_TARGET_SUBDIR": "debug" if profile == "dev" else "release"},
+                             "NATIVE_TARGET_SUBDIR": "debug" if profile == "dev" else profile},
                         capture_output=True, text=True, check=True, timeout=30,
                     )
                     self.assertEqual(result.stdout.splitlines(),
                                      ["bundle", "--profile", profile, "--bin", "gentle", "--format", "osx",
                                       "--binary-path", str(root / "target dir" /
-                                                           ("debug" if profile == "dev" else "release") / "gentle")])
+                                                           ("debug" if profile == "dev" else profile) / "gentle")])
 
     def test_release_stages_and_checks_each_platform_after_extraction(self) -> None:
         repo = Path(__file__).resolve().parents[1]

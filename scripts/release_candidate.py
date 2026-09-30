@@ -23,6 +23,27 @@ else:
     from package_desktop import BINARIES
 
 
+PACKAGE_PROFILE = "package-opt1"
+PACKAGE_BUILD_RECIPE = {
+    "opt_level": 1, "lto": "off", "codegen_units": 256,
+    "incremental": False, "debug": 0, "debug_assertions": True,
+    "overflow_checks": True, "panic": "unwind", "strip": "none",
+}
+
+
+def package_build_recipe(root: Path) -> dict:
+    """Verify the candidate's explicit Cargo profile before recording its recipe."""
+    manifest = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+    actual = manifest.get("profile", {}).get(PACKAGE_PROFILE, {})
+    expected = {"inherits": "dev", **{
+        key.replace("_", "-"): value for key, value in PACKAGE_BUILD_RECIPE.items()
+    }}
+    if actual != expected or any(type(actual[key]) is not type(value)
+                                 for key, value in expected.items()):
+        raise ValueError(f"Cargo profile {PACKAGE_PROFILE} does not match the package recipe")
+    return dict(PACKAGE_BUILD_RECIPE)
+
+
 def full_sha(value: str) -> str:
     if not re.fullmatch(r"[0-9a-f]{40}", value):
         raise ValueError("candidate_sha must be a full, lowercase 40-character commit SHA")
@@ -36,11 +57,11 @@ def release_tag(value: str) -> str:
 
 
 def native_build_settings(tag: str) -> dict[str, str]:
-    """Pause optimized packaging until the first successful artifact cycle."""
+    """Select the opt-level=1 recipe independently of label/publication mode."""
     release_tag(tag)
     return {
-        "native_profile": "dev",
-        "native_target_subdir": "debug",
+        "native_profile": PACKAGE_PROFILE,
+        "native_target_subdir": PACKAGE_PROFILE,
     }
 
 
@@ -80,6 +101,7 @@ def validate_checkout(
     version = manifest["workspace"]["package"]["version"]
     if tag != f"v{version}":
         raise ValueError(f"Tag label {tag} does not match package version {version}")
+    package_build_recipe(root)
     lock_digest = hashlib.sha256((root / "Cargo.lock").read_bytes()).hexdigest()
     if expected_lock and lock_digest != expected_lock:
         raise ValueError("Cargo.lock no longer matches the candidate receipt")
@@ -133,8 +155,10 @@ def collect_installers(root: Path, candidate: dict) -> dict:
                 raise ValueError(f"Build receipt {key} does not match the selected candidate")
         if receipt.get("profile") != profile:
             raise ValueError("Build receipt profile does not match the selected candidate")
-        if receipt.get("incremental") is not False or receipt.get("debug") != 0:
-            raise ValueError("Build receipt does not describe the cold native package recipe")
+        for key, expected in PACKAGE_BUILD_RECIPE.items():
+            actual = receipt.get(key)
+            if type(actual) is not type(expected) or actual != expected:
+                raise ValueError(f"Build receipt {key} does not match the package recipe")
         if (receipt.get("features") != []
                 or receipt.get("default_features") is not True
                 or receipt.get("binaries") != list(BINARIES)):
@@ -144,7 +168,7 @@ def collect_installers(root: Path, candidate: dict) -> dict:
     artifacts = []
     for receipt in receipts:
         extension = platforms[receipt["platform"]]
-        profile_suffix = "-dev" if profile == "dev" else ""
+        profile_suffix = f"-{profile}"
         name = f"gentle-{candidate['tag']}-{receipt['platform']}-{receipt['arch']}{profile_suffix}.{extension}"
         paths = list(root.rglob(f"*.{extension}"))
         if len(paths) != 1 or paths[0].name != name or paths[0].stat().st_size == 0:
@@ -160,6 +184,7 @@ def collect_installers(root: Path, candidate: dict) -> dict:
         **{key: candidate[key] for key in ("tag", "revision", "cargo_lock_sha256", "workflow_revision", "mode")},
         "linux_distribution": "tarball",
         "profile": profile,
+        **PACKAGE_BUILD_RECIPE,
         "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "artifacts": sorted(artifacts, key=lambda item: item["name"]),
     }

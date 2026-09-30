@@ -7,7 +7,8 @@ Keep one Markdown file per internal tag in this directory.
 
 | Version | Release status / date | Primary focus |
 | --- | --- | --- |
-| [`v0.1.0-internal.11`](release_notes_v0.1.0-internal.11.md) | September 24 publication ledger at `ffe5c637`, then without packages; later tag revisions require fresh acceptance | Gene-informed primer-pair GUI, source-aware isoform comparison, TSS collections, vector reports and self-contained packages |
+| [`v0.1.0-internal.12`](release_notes_v0.1.0-internal.12.md) | Development draft; no tag or published packages | Measured responsiveness and staged opt-level=1 packaging; native/performance acceptance pending |
+| [`v0.1.0-internal.11`](release_notes_v0.1.0-internal.11.md) | Published with all three native packages and container at `a51bbc06`, 2026-09-30 | Gene-informed primer-pair GUI, source-aware isoform comparison, TSS collections, vector reports and self-contained packages |
 | [`v0.1.0-internal.10`](release_notes_v0.1.0-internal.10.md) | Published 2026-09-18; exact-candidate acceptance ledger remains pending | Genome evidence, corrected TFBS/TSS profiles, transcript-aware assays and annotated GenBank/EMBL export |
 | [`v0.1.0-internal.9`](release_notes_v0.1.0-internal.9.md) | 2026-06-05 | macOS child windows, GUI profiling, ClawBio envelopes, and rack/plate exports |
 | [`v0.1.0-internal.8`](release_notes_v0.1.0-internal.8.md) | 2026-05-28 | agent-surface formalization, workspace extraction, and interim stabilization |
@@ -20,8 +21,8 @@ Keep one Markdown file per internal tag in this directory.
 
 The `.10` historical ledger remains bound to `84f34a9e`; later development
 checks cannot certify it. The `.11` notes describe changes since that baseline
-and keep their own acceptance status. Publication without packages or the
-pending exact-candidate checks is not acceptance.
+and keep their own acceptance status. The successful `.11` artifact cycle does
+not close scientific/GUI acceptance or certify the changed `.12` build recipe.
 
 `v0.1.0-internal.1` predates this versioned release-note directory. Historical
 outcomes remain available in [`../CHANGELOG.md`](../CHANGELOG.md) and Git.

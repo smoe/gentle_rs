@@ -27,12 +27,12 @@ from scripts import check_tutorial_checkouts as checkouts
 
 
 class NativeBuildSettingsTests(unittest.TestCase):
-    def test_all_version_labels_temporarily_select_unoptimized_installers(self) -> None:
+    def test_all_version_labels_select_the_same_opt1_recipe(self) -> None:
         for tag in ("v0.1.0-internal.11", "v0.1.0-internal.12", "v2.3.4-internal.1+build.7",
                     "v0.1.0", "v2.3.4+internal.11", "v0.1.0-rc.1", "v0.1.0-notinternal.11"):
             with self.subTest(tag=tag):
                 self.assertEqual(policy.native_build_settings(tag), {
-                    "native_profile": "dev", "native_target_subdir": "debug",
+                    "native_profile": "package-opt1", "native_target_subdir": "package-opt1",
                 })
         for tag in ("main", "v0.1.0-internal.11\n", "../v0.1.0-internal.11"):
             with self.subTest(tag=tag), self.assertRaises(ValueError):
@@ -40,6 +40,24 @@ class NativeBuildSettingsTests(unittest.TestCase):
 
 
 class ReleaseCandidateTests(unittest.TestCase):
+    def write_manifest(self, version: str) -> None:
+        # Synthetic candidate manifest; spell out the recipe independently.
+        (self.root / "Cargo.toml").write_text(textwrap.dedent(f'''\
+            [workspace.package]
+            version = "{version}"
+            [profile.package-opt1]
+            inherits = "dev"
+            opt-level = 1
+            lto = "off"
+            codegen-units = 256
+            incremental = false
+            debug = 0
+            debug-assertions = true
+            overflow-checks = true
+            panic = "unwind"
+            strip = "none"
+        '''))
+
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -47,7 +65,7 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.git("init", "-q")
         self.git("config", "user.email", "synthetic@example.invalid")
         self.git("config", "user.name", "Synthetic release test")
-        (self.root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0-internal.10"\n')
+        self.write_manifest("0.1.0-internal.10")
         (self.root / "Cargo.lock").write_text("# Synthetic lockfile\nversion = 4\n")
         self.git("add", ".")
         self.git("commit", "-qm", "synthetic candidate")
@@ -114,8 +132,25 @@ class ReleaseCandidateTests(unittest.TestCase):
                     **self.env, "CANDIDATE_EVENT": event,
                     "CANDIDATE_ACTION": action, "PUBLISH_REQUESTED": publish,
                 })
-                self.assertEqual(record["native_profile"], "dev")
-                self.assertEqual(record["native_target_subdir"], "debug")
+                self.assertEqual(record["native_profile"], "package-opt1")
+                self.assertEqual(record["native_target_subdir"], "package-opt1")
+
+    def test_candidate_rejects_missing_or_changed_package_profile(self) -> None:
+        path = self.root / "Cargo.toml"
+        original = path.read_text()
+        for before, after in (
+            ('opt-level = 1', 'opt-level = 2'), ('lto = "off"', 'lto = false'),
+            ('inherits = "dev"', 'inherits = "release"'),
+            ('debug-assertions = true', 'debug-assertions = false'),
+            ('overflow-checks = true', 'overflow-checks = false'),
+            ('panic = "unwind"', 'panic = "abort"'),
+            ('codegen-units = 256', 'codegen-units = 1'),
+            ('[profile.package-opt1]', '[profile.other]'),
+        ):
+            with self.subTest(setting=before):
+                path.write_text(original.replace(before, after))
+                with self.assertRaisesRegex(ValueError, "package recipe"):
+                    policy.validate_checkout(self.root, self.tag, self.sha)
 
     def test_publication_requires_an_existing_tag(self) -> None:
         with self.assertRaises(subprocess.CalledProcessError):
@@ -205,8 +240,8 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.assertEqual(values["publish"], "false")
         self.assertEqual(values["revision"], self.sha)
         self.assertEqual(values["mode"], "validate_only")
-        self.assertEqual(values["native_profile"], "dev")
-        self.assertEqual(values["native_target_subdir"], "debug")
+        self.assertEqual(values["native_profile"], "package-opt1")
+        self.assertEqual(values["native_target_subdir"], "package-opt1")
         self.assertEqual(record["native_profile"], values["native_profile"])
         verify_env = {
             **env, "EXPECTED_REVISION": self.sha, "EXPECTED_LOCK_SHA256": record["cargo_lock_sha256"],
@@ -242,7 +277,7 @@ class ReleaseCandidateTests(unittest.TestCase):
         receipts = []
         for platform, extension in (("linux", "tar.gz"), ("macos", "dmg"), ("windows", "zip")):
             name = f"gentle-{self.tag}-{platform}-x64"
-            suffix = "-dev" if candidate["native_profile"] == "dev" else ""
+            suffix = f'-{candidate["native_profile"]}'
             artifact = folder / f"{name}{suffix}.{extension}"
             artifact.write_bytes(b"synthetic installer, not executable")
             receipt = {
@@ -250,6 +285,9 @@ class ReleaseCandidateTests(unittest.TestCase):
                 "schema": "gentle.release_build.v1", "platform": platform, "arch": "x64",
                 "features": [], "default_features": True, "profile": candidate["native_profile"],
                 "incremental": False, "debug": 0,
+                "opt_level": 1, "lto": "off", "codegen_units": 256,
+                "debug_assertions": True, "overflow_checks": True,
+                "panic": "unwind", "strip": "none",
                 "binaries": ["gentle", "gentle_cli", "gentle_mcp",
                              "gentle_examples_docs", "gentle_publication_report"],
                 "rustc": "synthetic rustc", "cargo": "synthetic cargo",
@@ -265,12 +303,14 @@ class ReleaseCandidateTests(unittest.TestCase):
         result = policy.collect_installers(folder, candidate)
         self.assertEqual(result["revision"], self.sha)
         self.assertEqual(result["mode"], "validate_only")
-        self.assertEqual(result["profile"], "dev")
+        self.assertEqual(result["profile"], "package-opt1")
+        self.assertEqual(result["opt_level"], 1)
+        self.assertEqual(result["lto"], "off")
         self.assertEqual(len(result["artifacts"]), 3)
         self.assertTrue(all(row["bytes"] > 0 for row in result["artifacts"]))
 
-    def test_final_version_label_cannot_bypass_unoptimized_packaging_policy(self) -> None:
-        (self.root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.1.0"\n')
+    def test_final_version_label_cannot_bypass_opt1_packaging_policy(self) -> None:
+        self.write_manifest("0.1.0")
         self.git("add", "Cargo.toml")
         self.git("commit", "-qm", "synthetic final release")
         self.sha = self.git("rev-parse", "HEAD")
@@ -278,10 +318,10 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.env.update(CANDIDATE_SHA=self.sha, CANDIDATE_EVENT_SHA=self.sha,
                         RELEASE_TAG=self.tag, WORKFLOW_REVISION=self.sha)
         folder, candidate, paths = self.installers()
-        self.assertEqual(candidate["native_profile"], "dev")
+        self.assertEqual(candidate["native_profile"], "package-opt1")
         result = policy.collect_installers(folder, candidate)
-        self.assertEqual(result["profile"], "dev")
-        self.assertTrue(all("-dev." in item["name"] for item in result["artifacts"]))
+        self.assertEqual(result["profile"], "package-opt1")
+        self.assertTrue(all("-package-opt1." in item["name"] for item in result["artifacts"]))
         for path in paths:
             receipt = json.loads(path.read_text())
             receipt["profile"] = "release"
@@ -301,11 +341,11 @@ class ReleaseCandidateTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaisesRegex(ValueError, key):
                 policy.collect_installers(folder, {**candidate, key: value})
 
-    def test_internal_archive_name_exposes_unoptimized_profile(self) -> None:
+    def test_internal_archive_name_exposes_package_profile(self) -> None:
         folder, candidate, _ = self.installers()
         path = next(folder.glob("*.zip"))
-        self.assertTrue(path.name.endswith("-dev.zip"))
-        path.rename(path.with_name(path.name.replace("-dev.zip", ".zip")))
+        self.assertTrue(path.name.endswith("-package-opt1.zip"))
+        path.rename(path.with_name(path.name.replace("-package-opt1.zip", ".zip")))
         with self.assertRaisesRegex(ValueError, "named"):
             policy.collect_installers(folder, candidate)
 
@@ -339,6 +379,9 @@ class ReleaseCandidateTests(unittest.TestCase):
             ("cargo_lock_sha256", "0" * 64), ("workflow_revision", "0" * 40),
             ("mode", "publish"), ("profile", "release-fast"), ("features", ["script-interfaces"]),
             ("incremental", True), ("incremental", None), ("debug", 1), ("debug", None),
+            ("opt_level", 0), ("opt_level", 2), ("opt_level", True), ("lto", "thin"),
+            ("codegen_units", 16), ("debug_assertions", False), ("debug_assertions", 1),
+            ("overflow_checks", False), ("panic", "abort"), ("strip", "symbols"),
             ("default_features", False), ("default_features", None),
             ("binaries", None), ("binaries", original["binaries"][:-1]),
             ("binaries", [*original["binaries"], "gentle_js", "gentle_lua"]),
@@ -349,7 +392,7 @@ class ReleaseCandidateTests(unittest.TestCase):
             paths[0].write_text(json.dumps(changed))
             with self.subTest(field=key), self.assertRaises(ValueError):
                 policy.collect_installers(folder, candidate)
-        for key in ("features", "default_features", "binaries", "incremental", "debug"):
+        for key in ("features", "default_features", "binaries", *policy.PACKAGE_BUILD_RECIPE):
             changed = copy.deepcopy(original)
             del changed[key]
             paths[0].write_text(json.dumps(changed))

@@ -125,7 +125,7 @@ class ContainerContractTests(unittest.TestCase):
         command = next(line for line in docker.splitlines() if line.startswith("RUN cargo build "))
         tokens = shlex.split(command)
         self.assertIn("--locked", tokens)
-        self.assertEqual(tokens[tokens.index("--profile") + 1], "dev")
+        self.assertEqual(tokens[tokens.index("--profile") + 1], "package-opt1")
         self.assertNotIn("--release", tokens)
         self.assertNotIn("GENTLE_CARGO_PROFILE", docker)
         self.assertIn("CARGO_INCREMENTAL=0", docker)
@@ -145,7 +145,7 @@ class ContainerContractTests(unittest.TestCase):
         self.assertIn("integrations/python", docker)
         for binary in BINARIES:
             self.assertIn(f"/opt/gentle-dist-cli/bin/{binary}", docker)
-            self.assertIn(f'install -Dm755 "target/debug/{binary}"', docker)
+            self.assertIn(f'install -Dm755 "target/package-opt1/{binary}"', docker)
 
     def test_dependency_guard_recognizes_desktop_and_scripting_packages(self) -> None:
         docker = (ROOT / "Dockerfile").read_text()
@@ -246,6 +246,8 @@ class ContainerContractTests(unittest.TestCase):
 
     def test_workflow_builds_and_publishes_only_the_headless_target(self) -> None:
         workflow = (ROOT / ".github/workflows/container.yml").read_text()
+        verify = workflow.split("- name: Verify immutable candidate identity\n", 1)[1].split("\n      - name:", 1)[0]
+        self.assertIn('test "$NATIVE_PROFILE:$NATIVE_TARGET_SUBDIR" = "package-opt1:package-opt1"', verify)
         self.assertEqual(workflow.count("target: runtime-cli"), 2)
         for old in ("runtime-gui", "check-gui", "push-gui", "GUI_IMAGE", "script-interfaces"):
             self.assertNotIn(old, workflow)
@@ -279,7 +281,13 @@ class ContainerContractTests(unittest.TestCase):
             exec(compile(script, "container-receipt", "exec"), {})
         read_bytes.assert_called_once()
         record, = records
-        self.assertEqual(record["profile"], "dev")
+        self.assertEqual(record["profile"], "package-opt1")
+        self.assertEqual(record["opt_level"], 1)
+        self.assertEqual(record["lto"], "off")
+        self.assertEqual(record["codegen_units"], 256)
+        self.assertIs(record["debug_assertions"], True)
+        self.assertIs(record["overflow_checks"], True)
+        self.assertEqual(record["panic"], "unwind")
         self.assertIs(record["incremental"], False)
         self.assertEqual(record["debug"], 0)
         self.assertFalse(record["default_features"])

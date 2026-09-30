@@ -634,20 +634,20 @@ Rules:
   adapter-only business logic
 
 Compile, bundle, smoke and staging paths must agree on the effective profile.
-During the owner's 2026-09-26 optimization pause, all native installers and the
-headless container use `dev` and `target/debug`, irrespective of version label
-or publication mode; optimized packaging returns only after the first successful
-artifact cycle, through a separately verified recipe change (see [release
-process](release.md)). Native archives carry a `-dev` suffix; receipt collection
-rejects profiles inconsistent with the current policy. Cold packaging forces
-`incremental=false` and `debug=0`, while retaining development assertions and
-overflow checks. Receipts bind both effective values. Rust-built package helpers
+After the successful `.11` `dev` artifact cycle, the owner's 2026-10-01 first
+optimization step selects `package-opt1` and `target/package-opt1` for native
+installers and the headless container, irrespective of label/publication mode
+(see [release process](release.md)). Archives carry `-package-opt1`; collection
+rejects recipes inconsistent with the current policy. The explicit profile
+inherits `dev`, sets `opt-level=1`, `lto="off"`, 256 codegen units,
+`incremental=false`, `debug=0`, assertions/overflow checks on, panic unwinding
+and no stripping. Receipts bind all these settings. Rust-built package helpers
 also use unoptimized installation; distribution-provided dependencies are unchanged.
 The unused release profile still disables all LTO with `lto="off"`, retaining
 other defaults rather than forcing a single codegen unit. Do not substitute
 `lto=false`, which permits within-crate thin LTO. The explicit `release-fast`
 and `bench-audit` profiles retain their definitions but are not artifact-build
-profiles during the pause. Package receipts bind
+profiles for this first optimization step. Package receipts bind
 the profile, default-feature selection, additional features and binary list;
 changing that recipe requires fresh exact-candidate package acceptance.
 

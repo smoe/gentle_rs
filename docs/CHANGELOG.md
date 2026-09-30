@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+## 2026-10-01 - Prepare `v0.1.0-internal.12` And Stage Package Optimization
+
+- Record the owner-confirmed `.11` publication at `a51bbc06`: native installer
+  run `36714939304`, container publication `36714939309` and push CI
+  `36686854112` passed. Preserve its tags, `-dev` assets, receipts and historical
+  failure ledger; do not promote pending GUI/scientific acceptance to passed.
+- Advance the workspace version and its seven local lockfile entries to `.12`,
+  without dependency updates. Synchronize README, roadmap and release-note
+  draft/index with the published baseline and the new development candidate.
+- Introduce `package-opt1` for native/container compilation and staging:
+  opt-level 1, all LTO off, 256 codegen units, assertions/overflow checks on,
+  panic unwinding, no stripping, incremental state or debug information. Keep
+  local dev, audit profiles, one-job limits, five native/three headless binaries
+  and unoptimized helper installations unchanged; JS/Lua remain excluded.
+- Bind the explicit Cargo recipe into receipts and archive names, reject old
+  or mismatched candidates before packaging, and expand source/policy guards.
+  Update DEC-039 and the latency plan: Glen compares same-SHA packaged profiles;
+  neither build success nor the historical benchmark ladder proves a speedup.
+- No local tests, package builds or benchmarks run. Version-bound tutorial
+  regeneration requires the separately requested focused generator rebuild;
+  until that is completed, the three retained `.11` reports will fail the fast
+  tutorial-version guard. Do not push this preparation as a CI-ready rollover.
+  Locked offline Cargo metadata, Python/TOML/YAML syntax and whitespace checks
+  passed; these are not substitutes for execution tests or native packaging.
+
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
 - Rework tutorial 04.08 as "Find Primer-Pair Markers for PATZ1 Isoforms",

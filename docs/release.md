@@ -15,18 +15,18 @@ The five native binaries are `gentle`, `gentle_cli`, `gentle_mcp`,
 and the two GUI reproduction binaries are not built or packaged by this
 workflow. JS/Lua remain optional source builds with separate CI checks.
 
-**Temporary optimization pause (owner decision, 2026-09-26):** all native
-installers and the headless Docker image use Cargo `dev`, regardless of version
-label or publication mode. The first priority is a successful release-artifact
-cycle; restore optimized packaging in a separate follow-up after the native
-artifacts and container pass their build and package-smoke gates at one candidate
-SHA. A green unit-test run alone is not that milestone. No automatic profile
-switch, tag move or publication is triggered by success.
+**Staged optimization (owner decision, 2026-10-01):** `.11` completed the
+temporary optimization pause with native artifacts and container publication at
+`a51bbc064ea29d4e7a03c559c5a6e0a6f8e1bd29` on 2026-09-30. Preserve those `dev`
+artifacts. `.12` introduces `package-opt1`, independently of version label or
+publication mode; it requires a new build-only artifact cycle before publication.
 
-Compilation and macOS bundling use `--profile dev`, one Cargo build job and
-`target/debug`; JS/Lua stay excluded. Both native and container cold builds use
-`incremental=false` and `debug=0`, retaining development assertions and overflow
-checks. The Rust-built packaging/rendering helpers (pinned `cargo-bundle` and
+Compilation and macOS bundling use `--profile package-opt1`, one Cargo build job
+and `target/package-opt1`; JS/Lua stay excluded. The profile inherits `dev`,
+sets `opt-level=1`, disables all LTO, and keeps 256 codegen units,
+`incremental=false`, `debug=0`, assertions/overflow checks enabled, panic
+unwinding and no stripping. Local `dev` is unchanged. The Rust-built
+packaging/rendering helpers (pinned `cargo-bundle` and
 `rnapkin`) also use `cargo install --debug -j1`, not the default optimized tool
 profile. Distribution-provided runtime dependencies are unchanged.
 
@@ -43,28 +43,30 @@ the real manifest with `/usr/bin/true` as a prebuilt stand-in, in a disposable
 target directory. `package_desktop.py verify-macos-bundle` checks the resulting
 plist, consent text, icon and exact copied binary. This is a packaging-contract
 preflight, not a GENtle launch or acceptance test. The final bundling call uses
-`--binary-path` for the already-built `target/debug/gentle`, avoiding another
+`--binary-path` for the already-built `target/package-opt1/gentle`, avoiding another
 Cargo build, and passes the same validation before staging. Keep the pin,
 metadata, extension and early packaging-policy tests aligned when upgrading
 the tool. Native extracted-package smokes remain required.
 
 The optimized `release`, `release-fast` and `bench-audit` definitions remain in
 `Cargo.toml`, but artifact workflows do not select them. Glen's benchmark ladder
-is unchanged and is not run as part of packaging. Restoring optimization must
+is unchanged and is not run as part of packaging. Further optimization must
 update native/container commands, profile guards, paths, receipts and regression
 tests together, with fresh exact-candidate acceptance; historical optimized
-results do not certify the new recipe. Unoptimized builds can still exhaust a
-runner's memory, and runtime work may be slower. This pause does not establish
+results do not certify the new recipe. Even unoptimized builds can exhaust a
+runner's memory, and runtime work may be slower. The successful baseline does not establish
 the cause or resolution of a compiler kill or runner shutdown.
-Platform receipts bind `incremental=false` and `debug=0` as well as the Cargo
-profile. Missing or different values fail collection rather than silently
-combining package recipes.
+Platform receipts bind the optimization level, LTO, codegen units, incremental,
+debug, assertions, overflow, panic and strip settings as well as the profile.
+Candidate verification checks the explicit Cargo profile before compiling;
+missing or different receipt values fail collection rather than silently
+combining recipes. Build-only runs do not create tags or replace `.11` assets.
 
-The unoptimized profile is not a separate user-interface mode: normal DNA-map
+The package profile is not a separate user-interface mode: normal DNA-map
 labels, view SVG exports and RNA-read progress policy are profile-independent.
 Do not disable assertions or overflow checks to obtain that presentation parity.
-Internal `dev` packages can still detect invariant/overflow bugs differently and
-run more slowly; explicit profiler receipts continue to identify the real build.
+Both `dev` and `package-opt1` retain the safety checks; explicit profiler
+receipts continue to identify the real build and its potentially different timing.
 This policy does not automatically change at version 1.0. See the
 [profile/content invariant](architecture.md#optional-embedded-scripting-adapters).
 
@@ -138,8 +140,8 @@ This is a packaging smoke, not validation of an RNA folding prediction.
 
 The current release workflow adds an actual Linux tarball; Debian, RPM and AppImage
 packaging remain deferred. `linux_distribution=tarball` records the artifact
-actually built, not a future intention. Until that workflow has passed on the
-tag candidate, Linux download packaging remains an unverified release gate.
+actually built. `.11` now supplies that download; the changed `.12` recipe
+still needs its own candidate-bound packaging verdict.
 
 ## Actions Runtime
 
@@ -192,9 +194,9 @@ The failure boundary is narrower than “GENtle does not compile on Unix”:
   build log, so its last crate and memory state are unavailable.
 
 Glen's original response to these historical failures was diagnostics-only.
-The integrated workflow retains those diagnostics with the temporary
-`dev` installer recipe described above; it does not restore the old optimized
-internal build. Features, targets, parallelism and the 360-minute allowance
+The integrated workflow retains those diagnostics for the `package-opt1` trial;
+it does not restore the old optimized release recipe.
+Features, targets, parallelism and the 360-minute allowance
 remain unchanged. Consider further repairs only after an approved build-only
 replay supplies samples for the actual selected profile:
 
@@ -234,11 +236,13 @@ recorded above as history, not as a claim about the current remote tag or asset
 inventory; recheck both before dispatch. Successful headless container
 publications do not supply native packages or acceptance for later candidates.
 
-Keep the published tags unchanged. Later `.11` fixes need a separately named
-candidate and receipts; the owner will decide whether repaired `.11` Unix
-packages justify a tag decision or packages first ship with `.12`. No tag
-change, version bump, workflow dispatch or publication is authorized by this
-document.
+The owner confirmed the completed `.11` release on 2026-09-30. At `a51bbc06`,
+[installer run 36714939304](https://github.com/smoe/gentle_rs/actions/runs/36714939304)
+and [container publication 36714939309](https://github.com/smoe/gentle_rs/actions/runs/36714939309)
+passed. The release carries all three native packages and four JSON receipts.
+This closes the artifact-cycle prerequisite, not scientific or GUI acceptance.
+Keep `.11` tags/assets unchanged and continue development as `.12`. No tag
+mutation, workflow dispatch or publication is authorized by this document.
 
 ## Build-Only Candidate Verification
 
@@ -248,8 +252,8 @@ explicit push/dispatch approval and when that commit is available on GitHub.
 The pushed `--ref` must contain workflow definitions with `candidate_sha` inputs
 and profile-aware packaging helpers. The selected source must also include
 `native_profile` and `native_target_subdir` outputs in `release_candidate.py`;
-the current installer workflow rejects helpers that do not select `dev:debug`
-before compilation. The selected source must include the unoptimized Dockerfile
+the current installer workflow rejects helpers that do not select
+`package-opt1:package-opt1` before compilation. The selected source must include the matching Dockerfile
 too; using a newer workflow does not rewrite an older candidate's Dockerfile.
 Rerunning an old tagged workflow does not import these changes from `main`.
 `--ref` selects the workflow definition;
@@ -268,17 +272,17 @@ every receipt, rather than treating a fork run as upstream evidence.
 CANDIDATE_SHA=$(git rev-parse HEAD)
 WORKFLOW_REF=main # must already be pushed at CANDIDATE_SHA
 gh workflow run release.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.11 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.12 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 gh workflow run container.yml -R smoe/gentle_rs --ref "$WORKFLOW_REF" \
-  -f tag=v0.1.0-internal.11 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
+  -f tag=v0.1.0-internal.12 -f candidate_sha="$CANDIDATE_SHA" -F publish=false
 ```
 
 Manual runs default to **build-only**. They require the full 40-character commit
 SHA and a version label matching `Cargo.toml`; branch names and abbreviated
 SHAs are rejected. The version label need not be an existing tag. Build-only
-verification can therefore test a corrected `.11` SHA even when an earlier
-`.11` tag points elsewhere. It does not certify, create or move that tag.
-These examples require `.11` in the candidate's committed Cargo metadata;
+verification can therefore test a `.12` SHA before a `.12` tag exists.
+It does not certify, create or move a tag.
+These examples require `.12` in the candidate's committed Cargo metadata;
 update the label for subsequent development versions, never only the tag.
 Build/check jobs have read-only repository permission;
 the write-capable publication jobs are skipped.
@@ -295,12 +299,12 @@ These are packaging/entrypoint checks, not graphical or scientific acceptance.
 The shared `gentle.release_candidate.v1` receipt records candidate SHA, lockfile
 hash, workflow revision, version label, `validate_only`/`publish` mode and the
 selected native profile/output subdirectory. Installer receipts also bind the
-actual archive digest, toolchain, actual `dev` profile,
+actual archive digest, toolchain, actual `package-opt1` profile and recipe,
 `default_features: true`, `features: []` (no additional features), and
 the five-binary inventory. Collection compares every receipt with the selected
 candidate, not merely with the other receipts; missing, stale, mixed-mode,
-wrong-profile or modified packages fail closed. Docker uses `dev` with
-`incremental=false`, `debug=0` and the Debian `forky` build argument.
+wrong-profile or modified packages fail closed. Docker uses `package-opt1`
+with the same optimization/safety settings and the Debian `forky` build argument.
 Its receipt records `default_features: false`, `features: []`
 and the explicit CLI/MCP/docs binary list; the build checks that desktop and
 embedded scripting dependencies are absent. Native installers use the default
@@ -394,27 +398,27 @@ tar -tf "$archive_path" | grep '^docs/tutorial/generated/' && echo "unexpected"
 
 ## Artifact Naming
 
-During the optimization pause, release assets are normalized to:
+For the first optimization step, release assets are normalized to:
 
-- `gentle-<tag>-macos-<arch>-dev.dmg`
-- `gentle-<tag>-windows-<arch>-dev.zip`
-- `gentle-<tag>-linux-x64-dev.tar.gz`
+- `gentle-<tag>-macos-<arch>-package-opt1.dmg`
+- `gentle-<tag>-windows-<arch>-package-opt1.zip`
+- `gentle-<tag>-linux-x64-package-opt1.tar.gz`
 - `gentle-<tag>-<platform>-<arch>.build.json`
 - `gentle-<tag>-release-attributes.json`
 
 Example:
 
-- `gentle-v0.1.0-macos-arm64-dev.dmg`
-- `gentle-v0.1.0-windows-x64-dev.zip`
-- `gentle-v0.1.0-linux-x64-dev.tar.gz`
+- `gentle-v0.1.0-macos-arm64-package-opt1.dmg`
+- `gentle-v0.1.0-windows-x64-package-opt1.zip`
+- `gentle-v0.1.0-linux-x64-package-opt1.tar.gz`
 - `gentle-v0.1.0-release-attributes.json`
 
-All installer archives currently append `-dev` before the extension, for example
-`gentle-v0.1.0-internal.11-linux-x64-dev.tar.gz`,
-`gentle-v0.1.0-internal.11-macos-arm64-dev.dmg` and
-`gentle-v0.1.0-internal.11-windows-x64-dev.zip`. Receipt filenames and inner
+New installer archives append `-package-opt1` before the extension, for example
+`gentle-v0.1.0-internal.12-linux-x64-package-opt1.tar.gz`,
+`gentle-v0.1.0-internal.12-macos-arm64-package-opt1.dmg` and
+`gentle-v0.1.0-internal.12-windows-x64-package-opt1.zip`. Receipt filenames and inner
 package layouts stay unchanged; both per-platform and aggregate receipts
-declare `profile: dev`. The collector rejects a missing suffix or a receipt
+declare `profile: package-opt1`. The collector rejects a missing suffix or a receipt
 claiming the wrong profile, even when all three platforms agree on that error.
 
 ## Local Pre-Tag Smoke Checklist
@@ -426,7 +430,7 @@ binary inventory.
 Required local matrix:
 
 ```bash
-TAG=v0.1.0-internal.11 # must match the candidate's Cargo version
+TAG=v0.1.0-internal.12 # must match the candidate's Cargo version
 PROFILE=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_profile"])' "$TAG")
 TARGET_SUBDIR=$(python3 -c 'import sys; from scripts.release_candidate import native_build_settings; print(native_build_settings(sys.argv[1])["native_target_subdir"])' "$TAG")
 cargo check -q --locked

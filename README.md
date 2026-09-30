@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml"><img src="https://github.com/smoe/gentle_rs/actions/workflows/ci.yml/badge.svg" alt="Build and test status"></a>
   <img src="https://img.shields.io/badge/status-internal%20preview-d18b3f" alt="Status: internal preview">
-  <img src="https://img.shields.io/badge/version-0.1.0--internal.11-4e91a0" alt="Version 0.1.0-internal.11">
+  <img src="https://img.shields.io/badge/version-0.1.0--internal.12-4e91a0" alt="Version 0.1.0-internal.12">
   <a href="copyright"><img src="https://img.shields.io/badge/license-GPL--2.0--or--later-0f5964" alt="License: GPL-2.0-or-later"></a>
 </p>
 
@@ -298,22 +298,22 @@ containers, and platform notes are centralized in [`INSTALL.md`](INSTALL.md).
 
 ## Project Status
 
-- Current package version: `0.1.0-internal.11`. The September 24 prerelease
-  ledger records `ffe5c637` without attached packages; it does not certify later
-  tag revisions. Exact-candidate package acceptance and Glen's readiness verdict
-  remain pending.
+- Current package version: `0.1.0-internal.12`. Development follows the
+  [published `.11` baseline](https://github.com/smoe/gentle_rs/releases/tag/v0.1.0-internal.11)
+  at `a51bbc06`, with Linux, macOS and Windows packages plus container publication.
+  The `.12` opt-level=1 package recipe needs fresh CI and Glen's runtime verdict.
 - Active release story: gene-informed primer-pair studies, source-aware isoform
   comparison, TSS collection workflows and auditable annotated/vector exports.
 - Default builds include GUI, CLI, MCP, and documentation paths.
-- Native release packaging enables JavaScript and Lua; the container is
-  headless, without GUI or embedded scripting runtimes.
+- Native packaging includes five GUI/CLI/MCP/docs/report binaries, without
+  JavaScript or Lua; the container is headless and also excludes scripting.
 - Generated showcase figures come from GENtle engine outputs and/or versioned
   deterministic repository tooling. Maintained explanatory diagrams are
   explicitly labelled and are not analysis outputs.
 
 See the [`roadmap`](docs/roadmap.md) for the current acceptance gate, the
 [`release guide`](docs/release.md), the
-[`v0.1.0-internal.11` release notes](docs/release_notes/release_notes_v0.1.0-internal.11.md),
+[`v0.1.0-internal.12` release-note draft](docs/release_notes/release_notes_v0.1.0-internal.12.md),
 and the complete [`release-note index`](docs/release_notes/) for notable
 user-facing changes.
 
