@@ -281,10 +281,18 @@
         "mcp_users",
         "contributors"
       ],
-      "notes": "Practical guide for the in-app Agent Assistant, provider quick starts including Mistral, bounded fact context, a fact-grounded agent exercise, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Practical guide that distinguishes the live-project inner Agent Assistant, explicit-state MCP/ClawBio outer agents and repository coding agents. Covers provider quick starts including Mistral, bounded fact context, screenshot consent, reviewed shared-shell suggestions, artifact/receipt expectations and delegated mutation approval.",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png",
+          "caption": "Agent Assistant keeps a publication-safe synthetic viewport local when the selected agent system cannot accept images; provider submission remains disabled.",
+          "illustrates_step": 4,
+          "capture_date": "2026-09-28"
+        }
+      ]
     },
     {
       "id": "metabion_external_service_handoff_gui_cli",

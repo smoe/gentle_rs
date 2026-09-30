@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-01 - Review Tutorial Interfaces And Agent Roles
+
+- Review tutorial 01.01 against current Agent Assistant, MCP and ClawBio
+  contracts. Distinguish the live-project inner agent, explicit-state outer
+  agents and repository coding agents; add a retained publication-safe GUI
+  capture and explain screenshot consent as a separate provider disclosure.
+- Document the outer-agent artifact/receipt expectation and delegated mutation
+  proposal boundary without claiming current-HEAD GUI or model acceptance.
+
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
 - Rework tutorial 04.08 as "Find Primer-Pair Markers for PATZ1 Isoforms",
