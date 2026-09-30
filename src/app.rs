@@ -1249,6 +1249,7 @@ struct TutorialCatalogRuntimePaths {
 
 #[derive(Clone, Debug)]
 struct HelpTutorialDocEntry {
+    tutorial_id: String,
     title: String,
     path: String,
     summary: String,
@@ -1257,6 +1258,8 @@ struct HelpTutorialDocEntry {
     group_order: Option<usize>,
     group_position: Option<usize>,
     decimal_id: Option<String>,
+    prerequisites: Vec<String>,
+    next_steps: Vec<String>,
     review_status: Option<String>,
     codex_reviewed_at: Option<String>,
     human_reviewed_at: Option<String>,
@@ -24535,6 +24538,44 @@ Error: `{err}`"
                     ));
                 }
             });
+
+            if self.help_doc == HelpDoc::Tutorial {
+                let (prerequisite_ids, next_step_ids) = self
+                    .help_tutorial_entries
+                    .get(self.help_tutorial_selected)
+                    .map(|entry| (entry.prerequisites.clone(), entry.next_steps.clone()))
+                    .unwrap_or_default();
+                let prerequisite_targets = self.help_tutorial_navigation_targets(&prerequisite_ids);
+                let next_step_targets = self.help_tutorial_navigation_targets(&next_step_ids);
+                if !prerequisite_targets.is_empty() || !next_step_targets.is_empty() {
+                    let mut navigation_selection = None;
+                    ui.horizontal_wrapped(|ui| {
+                        if !prerequisite_targets.is_empty() {
+                            ui.strong("Prerequisite:");
+                            for (index, label, summary) in &prerequisite_targets {
+                                if ui.small_button(label).on_hover_text(summary).clicked() {
+                                    navigation_selection = Some(*index);
+                                }
+                            }
+                        }
+                        if !next_step_targets.is_empty() {
+                            if !prerequisite_targets.is_empty() {
+                                ui.separator();
+                            }
+                            ui.strong("Continue with:");
+                            for (index, label, summary) in &next_step_targets {
+                                if ui.small_button(label).on_hover_text(summary).clicked() {
+                                    navigation_selection = Some(*index);
+                                }
+                            }
+                        }
+                    });
+                    if let Some(index) = navigation_selection {
+                        self.set_help_tutorial_selected(index);
+                        active_doc_changed = true;
+                    }
+                }
+            }
 
             if active_doc_changed {
                 self.help_markdown_cache = CommonMarkCache::default();

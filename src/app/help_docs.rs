@@ -78,6 +78,7 @@ impl GENtleApp {
             summary.push_str(entry.notes.trim());
         }
         Some(HelpTutorialDocEntry {
+            tutorial_id: entry.id,
             title,
             path: resolved_path.to_string_lossy().to_string(),
             summary,
@@ -86,6 +87,8 @@ impl GENtleApp {
             group_order: entry.group_order,
             group_position: entry.group_position,
             decimal_id: entry.decimal_id,
+            prerequisites: entry.prerequisites,
+            next_steps: entry.next_steps,
             review_status: entry.review_status,
             codex_reviewed_at: entry.codex_reviewed_at,
             human_reviewed_at: entry.human_reviewed_at,
@@ -665,6 +668,7 @@ impl GENtleApp {
                     .map(|value| value.to_string_lossy().replace('\\', "/"))
                     .unwrap_or_else(|_| path.to_string_lossy().to_string());
                 HelpTutorialDocEntry {
+                    tutorial_id: String::new(),
                     title,
                     path: path.to_string_lossy().to_string(),
                     summary: format!("docs/tutorial/{relative}"),
@@ -673,6 +677,8 @@ impl GENtleApp {
                     group_order: None,
                     group_position: None,
                     decimal_id: None,
+                    prerequisites: vec![],
+                    next_steps: vec![],
                     review_status: None,
                     codex_reviewed_at: None,
                     human_reviewed_at: None,
@@ -722,6 +728,7 @@ impl GENtleApp {
             .flatten()
             .unwrap_or_else(|| AGENT_INTERFACES_TUTORIAL_TITLE.to_string());
         entries.push(HelpTutorialDocEntry {
+            tutorial_id: "agent_interfaces".to_string(),
             title,
             path: resolved_string,
             summary: AGENT_INTERFACES_TUTORIAL_SUMMARY.to_string(),
@@ -734,6 +741,8 @@ impl GENtleApp {
             group_order: Some(1),
             group_position: Some(1),
             decimal_id: Some("01.01".to_string()),
+            prerequisites: vec![],
+            next_steps: vec![],
             review_status: Some("unreviewed".to_string()),
             codex_reviewed_at: None,
             human_reviewed_at: None,
@@ -774,6 +783,31 @@ impl GENtleApp {
             trace.finish(true);
         }
         changed
+    }
+
+    pub(super) fn help_tutorial_navigation_targets(
+        &self,
+        tutorial_ids: &[String],
+    ) -> Vec<(usize, String, String)> {
+        tutorial_ids
+            .iter()
+            .filter_map(|tutorial_id| {
+                self.help_tutorial_entries
+                    .iter()
+                    .enumerate()
+                    .find(|(_, entry)| entry.tutorial_id == *tutorial_id)
+                    .map(|(index, entry)| {
+                        (
+                            index,
+                            entry
+                                .decimal_id
+                                .clone()
+                                .unwrap_or_else(|| entry.title.clone()),
+                            format!("{}\n{}", entry.title, entry.summary),
+                        )
+                    })
+            })
+            .collect()
     }
 
     pub(super) fn open_help_tutorial_doc(&mut self, tutorial_index: usize) {
@@ -850,6 +884,7 @@ impl GENtleApp {
                     fallback_summary.trim().to_string()
                 };
                 self.help_tutorial_entries.push(HelpTutorialDocEntry {
+                    tutorial_id: String::new(),
                     title,
                     path: resolved_string,
                     summary,
@@ -858,6 +893,8 @@ impl GENtleApp {
                     group_order: None,
                     group_position: None,
                     decimal_id: None,
+                    prerequisites: vec![],
+                    next_steps: vec![],
                     review_status: None,
                     codex_reviewed_at: None,
                     human_reviewed_at: None,

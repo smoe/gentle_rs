@@ -6847,6 +6847,7 @@ fn open_help_tutorial_doc_switches_to_tutorial_view_and_loads_markdown() {
 
     let mut app = GENtleApp::default();
     app.help_tutorial_entries = vec![HelpTutorialDocEntry {
+        tutorial_id: "tutorial_test".to_string(),
         title: "Tutorial Test".to_string(),
         path: tutorial_path.to_string_lossy().to_string(),
         summary: "docs/tutorial/tutorial.md".to_string(),
@@ -6855,6 +6856,8 @@ fn open_help_tutorial_doc_switches_to_tutorial_view_and_loads_markdown() {
         group_order: None,
         group_position: None,
         decimal_id: None,
+        prerequisites: vec![],
+        next_steps: vec![],
         review_status: None,
         codex_reviewed_at: None,
         human_reviewed_at: None,
@@ -6905,6 +6908,7 @@ fn tutorial_feedback_context_includes_id_and_source_path() {
 #[test]
 fn tutorial_audience_group_uses_catalog_audiences() {
     let entry = HelpTutorialDocEntry {
+        tutorial_id: "qpcr_exon_junctions_gui".to_string(),
         title: "qPCR".to_string(),
         path: "docs/tutorial/04-03_qpcr_exon_junctions_gui.md".to_string(),
         summary: String::new(),
@@ -6913,6 +6917,8 @@ fn tutorial_audience_group_uses_catalog_audiences() {
         group_order: None,
         group_position: None,
         decimal_id: None,
+        prerequisites: vec![],
+        next_steps: vec![],
         review_status: None,
         codex_reviewed_at: None,
         human_reviewed_at: None,

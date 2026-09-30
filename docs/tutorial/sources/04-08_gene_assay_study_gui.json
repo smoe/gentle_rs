@@ -11,6 +11,7 @@
     "audiences": ["gui_first", "primer_design", "transcript_analysis", "wet_lab_biologists"],
     "notes": "Authentic human PATZ1: pinned Ensembl 116 and RefSeq genomic annotations, source/shared exon-chain inspection and primer-pair discrimination across all 13 Ensembl transcript records. Reference-wide specificity, Glen's live screenshots and human scientific acceptance remain pending. No synthetic expression or array evidence.",
     "group": "04",
-    "group_position": 8
+    "group_position": 8,
+    "prerequisites": ["transcript_assay_followup_gui_cli"]
   }
 }

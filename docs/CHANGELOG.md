@@ -12,6 +12,33 @@
   tutorial content or generated artifacts change.
 - No local builds or tests run; CI must rerun the existing failing regression.
 
+## 2026-09-30 - Integrate Tutorial Navigation With Lazy Help
+
+- Merge Glen's complete `3f894777` tutorial-navigation commit without replacing
+  the existing lazy image preparation or TSS collection focus corrections.
+- Add catalog-loader regressions for both link directions, the three-link
+  boundary and legacy entries without navigation metadata, plus a same-window
+  forward/back test proving that link resolution prepares no images and a
+  transition prepares only the selected page, retaining missing-image fallback.
+- Glen's Linux/Xvfb review remains evidence for his exact commit; this merge
+  does not claim native Windows/macOS acceptance or Help latency improvements.
+
+## 2026-09-29 - Add Bounded Tutorial Learning Routes
+
+- Extend the canonical tutorial catalog with up to three explicit prerequisite
+  and continuation ids per page. Reuse generated chapters' existing
+  prerequisite declarations rather than creating a second relationship source;
+  reject blank, duplicate, self-referential and unknown targets.
+- Show catalog relationships as compact **Prerequisite** and **Continue with**
+  buttons below the in-app Help topic selector. Decimal ids keep the row small,
+  while hover text retains the full title and summary; file-discovery fallback
+  remains usable without inventing relationships.
+- Seed three bounded learning routes: Gibson preview through physical rack,
+  simple PCR through transcript-assay follow-up, and motif interpretation
+  through TSS collection, evidence attachment and local factor curves. This is
+  navigation only; tutorial execution, biological conclusions and agent
+  approval behavior are unchanged.
+
 ## 2026-09-29 - Integrate TSS Collection Usability And Preserve Mixed-Window Focus
 
 - Merge Glen's complete `504ae0f4` branch, retaining its code and exact
