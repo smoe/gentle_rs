@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-09-30 - Make TSS Tutorial Agent Parity Executable
+
+- Add a versioned outer-agent parity contract to tutorials 08.15, 08.16 and
+  08.17. Nineteen documented Agent Assistant/shared-shell drafts must remain in
+  their guides and parse through GENtle's shared command grammar; the five
+  project-mutating examples are explicitly `ask`-only. The test constructs the
+  host-facing agent response deterministically and does not contact a model.
+- Reject parser-classified mutating suggestions from both GUI and headless
+  automatic execution, even if a provider labels them `auto`. The proposal
+  remains visible and an explicit Run/index/all action can still execute it.
+  Preserve the stronger existing undo/redo wording and all recursion guards.
+- This proves tutorial command/admission parity, not model response quality,
+  live GUI behavior, biological correctness or human scientific approval.
+
 ## 2026-09-30 - Keep TSS Lifecycle Coverage Independent Of Tutorial Steps
 
 - Repair the TSS starter/oracle regression after tutorial 08.15 intentionally

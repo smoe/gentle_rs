@@ -6620,8 +6620,10 @@ Agent execution intent semantics:
 
 - `chat`: explain/ask only, never executed as shell command.
 - `ask`: executable suggestion requiring explicit user confirmation.
-- `auto`: executable suggestion eligible for automatic execution only when
-  caller enables `--allow-auto-exec`.
+- `auto`: executable suggestion eligible for automatic execution only when the
+  caller enables `--allow-auto-exec` and the shared parser classifies the
+  command as non-mutating. A provider cannot turn mutation into approval by
+  labelling it `auto`; explicit row/index/all selection is still required.
 - Suggested-command `title` is the short user-facing intent shown in GUI
   tables. `preconditions[]` lists state requirements such as "sequence
   `demo_seq` exists"; it is advisory text, while the command parser still owns

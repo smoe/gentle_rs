@@ -1600,8 +1600,10 @@ Execution safety model:
 - Execution is evaluated per returned suggestion:
   - explicit user-run by index (`--execute-index`, GUI per-row Run)
   - bulk explicit run (`--execute-all`)
-  - auto-only when caller enables `--allow-auto-exec` and suggestion intent is
-    `auto`
+  - auto-only when caller enables `--allow-auto-exec`, suggestion intent is
+    `auto`, and the shared parser classifies the command as non-mutating;
+    mutating suggestions remain reviewable but require an explicit row/index or
+    bulk execution action
 - Nested/recursive `agents ask` execution is blocked in suggested-command runs.
 - Suggested commands are executed through the same shared shell parser/executor
   used by GUI shell and `gentle_cli shell`.

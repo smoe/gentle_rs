@@ -1962,17 +1962,24 @@ impl GENtleApp {
                     "Suggestion #{index_1based} is not parseable by GENtle: {err}"
                 ));
             }
-            if suggestion.execution == AgentExecutionIntent::Auto
-                && parsed_command.as_ref().is_ok_and(|parsed| {
+            if suggestion.execution == AgentExecutionIntent::Auto {
+                if parsed_command
+                    .as_ref()
+                    .is_ok_and(ShellCommand::is_state_mutating)
+                {
+                    warnings.push(format!(
+                        "Suggestion #{index_1based} cannot auto-run: {AGENT_MUTATION_CONFIRMATION_REQUIRED}. Click Run to confirm it explicitly."
+                    ));
+                } else if parsed_command.as_ref().is_ok_and(|parsed| {
                     matches!(
                         parsed,
                         ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
                     )
-                })
-            {
-                warnings.push(format!(
-                    "Suggestion #{index_1based} cannot auto-run: {AGENT_HISTORY_CONFIRMATION_REQUIRED}. Click Run to confirm it explicitly."
-                ));
+                }) {
+                    warnings.push(format!(
+                        "Suggestion #{index_1based} cannot auto-run: {AGENT_HISTORY_CONFIRMATION_REQUIRED}. Click Run to confirm it explicitly."
+                    ));
+                }
             }
             if command.eq_ignore_ascii_case("/list") {
                 let described_text = format!(
@@ -2924,13 +2931,20 @@ impl GENtleApp {
                 return;
             }
         };
-        if trigger == "auto"
-            && matches!(
-                command,
-                ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
-            )
-        {
-            let summary = AGENT_HISTORY_CONFIRMATION_REQUIRED.to_string();
+        let auto_confirmation_required = if trigger != "auto" {
+            None
+        } else if command.is_state_mutating() {
+            Some(AGENT_MUTATION_CONFIRMATION_REQUIRED)
+        } else if matches!(
+            command,
+            ShellCommand::HistoryUndo | ShellCommand::HistoryRedo
+        ) {
+            Some(AGENT_HISTORY_CONFIRMATION_REQUIRED)
+        } else {
+            None
+        };
+        if let Some(summary) = auto_confirmation_required {
+            let summary = summary.to_string();
             self.agent_status = self.trf(
                 "agent.status.command_rejected",
                 &[("source", &display_source), ("reason", &summary)],

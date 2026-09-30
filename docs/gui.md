@@ -3551,6 +3551,8 @@ Behavior:
   - opening a Configuration section is navigation, not a silent settings
     mutation; existing Apply/Cancel and credential handling remain in force
 - optional `Allow auto execute` only applies to suggestions marked with `auto`
+  that the shared parser classifies as non-mutating; mutating suggestions stay
+  visible and require the user to click `Run`
 - suggestion cards with `precondition_expr` are evaluated against the live
   project fact graph plus the current GUI-host availability on every frame; an
   unmet or unknown precondition dims the complete card and disables `Run`
@@ -3681,8 +3683,8 @@ Behavior:
     cannot be run
   - `Copy Response JSON` for copying the latest strict agent-response JSON
     payload to the clipboard
-- execution is always per suggestion (row-run, explicit all, or explicit auto);
-  there is no global always-execute mode
+- execution is always per suggestion (row-run, explicit all, or guarded
+  non-mutating auto); there is no global always-execute mode
 - each executed suggestion is logged with status/output in the same window
 
 OpenAI setup (explicit):

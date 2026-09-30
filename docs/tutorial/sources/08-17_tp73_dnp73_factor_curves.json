@@ -47,5 +47,64 @@
     "produces": ["interactive native TSS evidence view", "deterministic native TSS view SVG"],
     "group": "08",
     "group_position": 17
+  },
+  "agent_parity": {
+    "schema": "gentle.tutorial_agent_parity.v1",
+    "cases": [
+      {
+        "id": "load_tp73_locus",
+        "command": "/open file test_files/tp73.ncbi.gb --id tp73_locus",
+        "execution": "ask",
+        "mutating": true
+      },
+      {
+        "id": "open_tp73_locus_window",
+        "command": "ui open sequence-window tp73_locus",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "preview_tp73_starts",
+        "command": "promoters tss-inventory @tp73-inventory.json",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "materialize_dnp73_start",
+        "command": "promoters tss-materialize @tp73-materialize.json",
+        "execution": "ask",
+        "mutating": true
+      },
+      {
+        "id": "open_materialized_tss_window",
+        "command": "ui open sequence-window TP73_WINDOW",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "open_tp73_tss_collection",
+        "command": "ui open tss-view --collection tp73_tss",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "compute_local_factor_curves",
+        "command": "ui open tss-view --local-score MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "export_factor_curves",
+        "command": "promoters tss-view-svg TP73_WINDOW tp73-dnp73-factors.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "export_proximal_factor_curves",
+        "command": "promoters tss-view-svg TP73_WINDOW tp73-dnp73-proximal.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10 --span 401..701 --width 1600",
+        "execution": "ask",
+        "mutating": false
+      }
+    ]
   }
 }

@@ -185,9 +185,9 @@ Session-local operation history:
   - reapplies the most recently undone operation-level checkpoint.
 - The shared parser also accepts `/history`, `/undo`, and `/redo` as concise
   aliases for the three commands above.
-- Agent-returned undo/redo suggestions are never executed solely by
-  `--allow-auto-exec`; use an explicit execution index or `--execute-all` after
-  reviewing the suggestion.
+- Agent-returned mutating suggestions, including undo/redo, are never executed
+  solely by `--allow-auto-exec`; use an explicit execution index or
+  `--execute-all` after reviewing the suggestion.
 - Undo/redo history is intentionally session-local and is not persisted into
   `.gentle.json` project files.
 
@@ -6743,8 +6743,10 @@ starting GENtle.
   - Unknown canonical response fields are rejected (extensions must use `x_` or `x-` prefix).
   - Adapter calls retry transient failures with exponential backoff before returning an error.
   - Suggested commands are executed only when explicitly selected
-    (`--execute-all`, `--execute-index`) or when `--allow-auto-exec` is enabled
-    and the suggestion intent is `auto`.
+    (`--execute-all`, `--execute-index`) or when `--allow-auto-exec` is enabled,
+    the suggestion intent is `auto`, and the shared parser classifies it as
+    non-mutating. Mutating `auto` suggestions remain unexecuted until an
+    explicit selection.
   - Recursive `agents ask`, `agents plan`, and `agents execute-plan` execution
     from suggested commands is blocked by design.
   - Failures use deterministic error prefixes for scripting, e.g.

@@ -68,9 +68,10 @@ The interfaces share one operation contract; they do not grant one another
 extra authority:
 
 - **Inspect starts (no changes)** corresponds to
-  `promoters tss-inventory REQUEST_JSON_OR_@FILE`.
+  `promoters tss-inventory @docs/examples/assets/tss_tutorial/inventory.request.json`.
 - **Approve and create selected windows** corresponds to
-  `promoters tss-materialize REQUEST_JSON_OR_@FILE`. The request must contain
+  `promoters tss-materialize @docs/examples/assets/tss_tutorial/materialize.request.json`.
+  The request must contain
   the preview's exact `approval_sha256` and the explicitly selected TSS IDs.
 - **Refresh collections** corresponds to `promoters tss-list`. It discovers
   registry metadata and deliberately reports entries as **not checked**.
