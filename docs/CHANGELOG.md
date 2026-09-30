@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-09-30 - Keep TSS Lifecycle Coverage Independent Of Tutorial Steps
+
+- Repair the TSS starter/oracle regression after tutorial 08.15 intentionally
+  moved Forget/Undo out of its ten-step learner contract. The test still looked
+  up the removed `confirm_forget` and `undo_forget` steps and panicked before
+  exercising registry recovery.
+- Assert the collection completion fact directly before/after recovery, keeping
+  the independent starter/oracle, report, reopen, sequence-preservation, exact
+  undo restoration and stale-member rejection checks. No production behavior,
+  tutorial content or generated artifacts change.
+- No local builds or tests run; CI must rerun the existing failing regression.
+
 ## 2026-09-29 - Integrate TSS Collection Usability And Preserve Mixed-Window Focus
 
 - Merge Glen's complete `504ae0f4` branch, retaining its code and exact

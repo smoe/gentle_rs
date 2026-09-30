@@ -8115,35 +8115,20 @@ mod tests {
             serde_json::to_value(reopened.get_tss_collection("tss_windows").unwrap()).unwrap(),
             json
         );
-        let forget = contract
-            .steps
-            .iter()
-            .find(|step| step.id == "confirm_forget")
-            .unwrap();
-        let undo = contract
-            .steps
-            .iter()
-            .find(|step| step.id == "undo_forget")
-            .unwrap();
+        // Registry recovery remains contributor coverage even though the
+        // learner tutorial no longer includes Forget/Undo interaction steps.
         let intact = serde_json::to_value(oracle.state()).unwrap();
         oracle
             .apply(Operation::ForgetTssCollection {
                 collection_id: "tss_windows".into(),
             })
             .unwrap();
-        for verifier in &forget.verifiers {
-            if let TutorialGuiVerifier::Facts { expression } = verifier {
-                assert_eq!(
-                    oracle.evaluate_fact_expression(expression, &[]).truth,
-                    crate::engine::protocol::FactTruth::Satisfied
-                );
-            }
-        }
         assert_eq!(
             oracle
-                .evaluate_fact_expression(undo.before.as_ref().unwrap(), &[])
+                .evaluate_fact_expression(&contract.completion_condition, &[])
                 .truth,
-            crate::engine::protocol::FactTruth::Unsatisfied
+            crate::engine::protocol::FactTruth::Unsatisfied,
+            "forget must remove the collection from the registry"
         );
         assert_eq!(
             serde_json::to_value(&oracle.state().sequences).unwrap(),
@@ -8153,9 +8138,10 @@ mod tests {
         assert_eq!(serde_json::to_value(oracle.state()).unwrap(), intact);
         assert_eq!(
             oracle
-                .evaluate_fact_expression(undo.after.as_ref().unwrap(), &[])
+                .evaluate_fact_expression(&contract.completion_condition, &[])
                 .truth,
-            crate::engine::protocol::FactTruth::Satisfied
+            crate::engine::protocol::FactTruth::Satisfied,
+            "undo must restore the collection's completion fact"
         );
         let member = &report.members[0].tss.output_seq_id;
         oracle
