@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-09-30 - Exercise Nested-Agent Protection After Explicit Macro Approval
+
+- Repair the nested-agent macro regression after mutating suggestions became
+  ineligible for automatic execution. The old test expected a dispatch error,
+  but the macro is now correctly blocked earlier by the confirmation gate.
+- Cover automatic rejection without project changes and both explicit approval
+  routes (`--execute-index` and `--execute-all`), which must still fail with the
+  nested-agent recursion guardrail. Assert dispatch/error counts and feedback
+  status separately; production safety rules remain unchanged.
+- No local builds or tests run; CI must execute the expanded regression.
+
 ## 2026-09-30 - Make TSS Tutorial Agent Parity Executable
 
 - Add a versioned outer-agent parity contract to tutorials 08.15, 08.16 and

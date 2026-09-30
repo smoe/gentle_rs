@@ -25099,43 +25099,74 @@ fn execute_agents_ask_blocks_nested_agent_call_inside_macro_suggestion() {
 }"#;
     fs::write(&catalog_path, catalog_json).expect("write catalog");
 
-    let mut engine = GentleEngine::from_state(ProjectState::default());
-    let out = execute_shell_command(
-        &mut engine,
-        &ShellCommand::AgentsAsk {
-            system_id: "builtin_echo".to_string(),
-            prompt: "auto: macros run 'agents ask builtin_echo --prompt \"ask: capabilities\"'"
-                .to_string(),
-            catalog_path: Some(catalog_path.display().to_string()),
-            base_url_override: None,
-            model_override: None,
-            timeout_seconds: None,
-            connect_timeout_seconds: None,
-            read_timeout_seconds: None,
-            max_retries: None,
-            max_response_bytes: None,
-            include_state_summary: true,
-            allow_auto_exec: true,
-            allow_web_research: false,
-            execute_all: false,
-            execute_indices: vec![],
-        },
-    )
-    .expect("execute agents ask");
-    assert!(!out.state_changed);
-    assert_eq!(out.output["summary"]["executed_count"].as_u64(), Some(1));
-    assert_eq!(
-        out.output["summary"]["executed_error_count"].as_u64(),
-        Some(1)
-    );
-    assert_eq!(out.output["executions"][0]["ok"].as_bool(), Some(false));
-    let error = out.output["executions"][0]["error"]
-        .as_str()
-        .expect("error string");
-    assert!(
-        error.contains("agent-to-agent recursion guardrail"),
-        "unexpected error: {error}"
-    );
+    // Auto admission stops mutating macros before dispatch. Explicit approval
+    // reaches the executor, but must never authorize a nested agent call.
+    for (trigger, execute_all, execute_indices) in [
+        ("allow_auto_exec", false, vec![]),
+        ("execute_index", false, vec![1]),
+        ("execute_all", true, vec![]),
+    ] {
+        let explicitly_selected = trigger != "allow_auto_exec";
+        let mut engine = GentleEngine::from_state(ProjectState::default());
+        let before = serde_json::to_value(engine.state()).expect("initial state");
+        let out = execute_shell_command(
+            &mut engine,
+            &ShellCommand::AgentsAsk {
+                system_id: "builtin_echo".to_string(),
+                prompt: "auto: macros run 'agents ask builtin_echo --prompt \"ask: capabilities\"'"
+                    .to_string(),
+                catalog_path: Some(catalog_path.display().to_string()),
+                base_url_override: None,
+                model_override: None,
+                timeout_seconds: None,
+                connect_timeout_seconds: None,
+                read_timeout_seconds: None,
+                max_retries: None,
+                max_response_bytes: None,
+                include_state_summary: true,
+                allow_auto_exec: true,
+                allow_web_research: false,
+                execute_all,
+                execute_indices,
+            },
+        )
+        .expect("execute agents ask");
+        assert!(!out.state_changed, "trigger: {trigger}");
+        assert!(engine.operation_log().is_empty(), "trigger: {trigger}");
+        assert_eq!(
+            out.output["summary"]["suggested_command_count"].as_u64(),
+            Some(1),
+            "trigger: {trigger}"
+        );
+        let executed_count = if explicitly_selected { 1 } else { 0 };
+        for field in ["executed_count", "executed_error_count"] {
+            assert_eq!(
+                out.output["summary"][field].as_u64(),
+                Some(executed_count),
+                "{field}, trigger: {trigger}"
+            );
+        }
+        let row = &out.output["executions"][0];
+        assert_eq!(row["trigger"].as_str(), Some(trigger));
+        assert_eq!(row["executed"].as_bool(), Some(explicitly_selected));
+        assert_eq!(row["ok"].as_bool(), Some(false));
+        let error = row["error"].as_str().expect("error string");
+        if explicitly_selected {
+            assert_eq!(row["feedback"]["status"].as_str(), Some("failed"));
+            assert!(
+                error.contains("agent-to-agent recursion guardrail"),
+                "trigger: {trigger}, unexpected error: {error}"
+            );
+        } else {
+            assert_eq!(row["feedback"]["status"].as_str(), Some("blocked"));
+            assert_eq!(error, AGENT_MUTATION_CONFIRMATION_REQUIRED);
+            assert_eq!(
+                serde_json::to_value(engine.state()).expect("blocked state"),
+                before,
+                "auto-blocked macro must not change project state"
+            );
+        }
+    }
 }
 
 #[test]
