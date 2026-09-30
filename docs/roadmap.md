@@ -129,7 +129,7 @@ backed by current engine records. For `.11`, Glen should validate explicit Splic
 For ClawBio/OpenClaw specifically, keep new integration work centered on
 descriptor/runtime parity (`INTENTS.json`, `mode=intents`, examples, and
 trigger-keyword drift checks) plus explicit scope/presentation contracts rather
-than adding more biology-specific wrapper modes. After the first GENtle-side
+than adding more biology-specific wrapper modes. Following 08.15's six TSS descriptor routes, extend the 13 cases from 08.16/08.17 through the same delegate with artifact-write/selection approvals; retain model-quality and GUI-host acceptance separately. After the first GENtle-side
 ClawBio panel, the next bridge work should stay contract-led: reserve any
 action-level `skill_alias` field on the ClawBio side before GENtle honors it,
 and avoid adding routing or planner semantics to GENtle.
