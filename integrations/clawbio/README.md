@@ -15,6 +15,11 @@ Current scaffold:
 - `skills/gentle-cloning/tests/*`
 - `skills/gentle-cloning/catalog_entry.json` (ready-to-paste
   `skills/catalog.json` entry)
+- `skills/gentle-pcr-primer-design/` (descriptor-only PCR/assay routing that
+  delegates execution to `gentle-cloning`)
+- `skills/gentle-tss-collection/` (descriptor-only tutorial 08.15 routing;
+  preview/list/inspection remain read-only while materialization and registry
+  removal use proposal-then-approved execution)
 - `experimental_followup_request_catalog.json` (machine-readable intent catalog
   for ClawBio planners, including optional decision contexts such as upstream
   variant-prioritization assumptions)
@@ -35,6 +40,10 @@ Current scaffold:
   runner instead of rediscovering or reimplementing the skill setup)
 
 Deployment into a ClawBio checkout:
+
+Install `gentle-cloning` as the execution delegate. Install either
+descriptor-only directory beside it when its focused natural-language routes
+are wanted; those directories contain no independent runner or biology.
 
 Choose one of these layouts:
 
@@ -112,6 +121,9 @@ Catalog registration:
    - `rsync`, tar, and copy setups place it under the ClawBio checkout
 2. Add the object under `skills[]` in `skills/catalog.json` (or regenerate
    catalog via ClawBio's `scripts/generate_catalog.py` flow).
+3. Repeat those two steps for each installed descriptor-only skill's own
+   `catalog_entry.json`; its `execution_delegate` must continue to resolve to
+   the co-installed `gentle-cloning` version declared by the contract.
 
 Shared skill-intent descriptor:
 

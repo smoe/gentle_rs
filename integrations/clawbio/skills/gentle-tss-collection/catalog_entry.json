@@ -1,0 +1,47 @@
+{
+  "name": "gentle-tss-collection",
+  "cli_alias": "gentle-tss-collection",
+  "description": "Focused OpenClaw/ClawBio routing for GENtle annotated-start preview, approval-bound TSS-window collections, validation, GUI handoff, and explicit registry removal.",
+  "version": "0.1.0",
+  "status": "mvp",
+  "has_script": false,
+  "has_tests": true,
+  "has_demo": false,
+  "demo_command": null,
+  "execution_delegate": "gentle-cloning",
+  "delegate_contract": {
+    "skill": "gentle-cloning",
+    "skill_version": "0.3.0",
+    "request_schema": "gentle.clawbio_skill_request.v1",
+    "result_schema": "gentle.clawbio_skill_result.v1",
+    "execution_manifest_schema": "gentle.clawbio_execution_manifest.v1"
+  },
+  "dependencies": [
+    "Registered gentle-cloning ClawBio skill",
+    "Configured GENtle CLI runtime for execution",
+    "Loaded anchored locus with transcript annotations"
+  ],
+  "tags": [
+    "tss",
+    "promoters",
+    "transcript-starts",
+    "sequence-collections",
+    "review-gated",
+    "provenance"
+  ],
+  "trigger_keywords": [
+    "gentle tss",
+    "transcription start sites",
+    "annotated transcript starts",
+    "tss collection",
+    "tss windows",
+    "inspect tss collection",
+    "open tss collection",
+    "forget tss collection"
+  ],
+  "chaining_partners": [
+    "gentle-cloning",
+    "bio-orchestrator"
+  ]
+}
+

@@ -1,5 +1,22 @@
 # GENtle Changelog
 
+## 2026-09-30 - Add Approval-Bound Outer Routing For TSS Collections
+
+- Add the descriptor-only `gentle-tss-collection` ClawBio/OpenClaw skill for
+  the six shared commands in tutorial 08.15. It delegates all execution to the
+  existing `gentle-cloning` runtime and adds no coordinate, sequence, storage
+  or interpretation logic.
+- Keep preview, registry listing, member validation and GUI handoff read-only.
+  Route materialization and explicit registry removal through the existing
+  content-addressed proposal/approval contract, binding the selected route,
+  request file, runtime and project state before execution.
+- Compare direct GENtle, the generic wrapper and the focused descriptor on the
+  public synthetic starter at merged `f70be167`: direct and wrapped preview
+  bytes match; generic structured materialization remains intentionally direct;
+  delegated materialization first leaves state unchanged, then executes only
+  the approved stored proposal. This is outer-route acceptance, not live
+  natural-language model, GUI-host, real-locus or biological validation.
+
 ## 2026-09-30 - Exercise Nested-Agent Protection After Explicit Macro Approval
 
 - Repair the nested-agent macro regression after mutating suggestions became
