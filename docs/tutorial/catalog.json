@@ -1106,10 +1106,31 @@
         "clawbio",
         "sequence_analysis"
       ],
-      "notes": "Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Parity walkthrough for direct restriction-site, TFBS hit, and TFBS score-track inspection from pasted or local DNA without first creating project state. RE/TFBS inspectors are captured; the whole-sequence GUI score-track action remains blocked by a reproducible native stack overflow on 2026-10-01.",
+      "interfaces": [
+        "native GUI",
+        "CLI / workflow",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/stateless_sequence_inspection_gui/01-tfbs-settings.raw.png",
+          "caption": "The publication-safe 46 bp fixture configured for SP1/TP73 hit scanning and unclipped background-tail score tracks in the native Sequence tools window.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/stateless_sequence_inspection_gui/02-direct-scan-inspectors.raw.png",
+          "caption": "The native Direct scan inspectors show EcoRI, SmaI and BamHI plus three retained SP1 hits from the shared reports; both SP1 and TP73 were scanned.",
+          "illustrates_step": 8,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "tfbs_similarity_ranking_gui",

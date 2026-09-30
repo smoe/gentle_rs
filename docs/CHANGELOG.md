@@ -20,6 +20,11 @@
 - Keep an explicit source-level opt-out for chapters whose editorial review is
   unresolved; tutorial 01.02 remains skipped rather than receiving misleading
   agent prose from the common generator.
+- Correct tutorial 02.02 to the actual 46 nt / `0..46` fixture span, add native
+  screenshots for the configured TFBS panel and populated RE/TFBS inspectors,
+  and distinguish review-first inner-agent help from explicit-state outer
+  replay. Record the twice-reproduced GUI score-track stack overflow as a
+  blocker instead of presenting the headless workflow pass as GUI acceptance.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
