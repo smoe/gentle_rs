@@ -11,6 +11,23 @@
   status separately; production safety rules remain unchanged.
 - No local builds or tests run; CI must execute the expanded regression.
 
+## 2026-09-30 - Pin Lazy Help Audit Pair And Heading-Image Regression
+
+- Bind S6 and Glen's handoff to `e723f46e -> 64baba4f`, whose dependencies,
+  tutorial content and instrumentation match. Separate current-main acceptance
+  and historical startup symptoms from attribution of this bounded change.
+- Clarify that first-use menu tracing does not measure subsequent menu frames;
+  font sharing and failed-image caching still require measured evidence.
+- Add an LF/CRLF catalog-loader regression for relative SVG images inside a
+  heading: retain raw title markup and source bytes, with zero image work.
+  No production behavior, tutorial artifacts or performance verdict changes.
+- Verification after rebasing onto `a51bbc06` and a clean macOS rebuild:
+  seven Help, five startup-trace and the updated nested-agent macro test pass;
+  39 Python checks pass with three expected platform skips. Locked offline
+  Cargo check, formatting and whitespace checks pass. Native timing and
+  Windows acceptance remain separate; the test linker retains its known
+  oversized unwind-table warning.
+
 ## 2026-09-30 - Make TSS Tutorial Agent Parity Executable
 
 - Add a versioned outer-agent parity contract to tutorials 08.15, 08.16 and

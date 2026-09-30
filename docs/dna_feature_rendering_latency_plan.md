@@ -587,7 +587,9 @@ Image counters cover the entire session, carry explicit loss/incompletion, and
 do not use the event budget. Handler timings do not include presented pixels.
 See the [counter contract](../benches/README.md#startup-phase-checkpoints).
 
-Glen's next evidence, in two stages:
+The original two-stage measurement design is retained below. The September 30
+comparison pair below supersedes the open-ended choice of an instrumented tip;
+rerunning historical stage A is optional, not a prerequisite for that pair.
 
 1. **A, existing binary:** keep exact `0467867c` binary identity and effective
    internal-`dev` recipe. Run three fresh-TMPDIR empty-project sessions and three
@@ -638,12 +640,45 @@ scientific renderer, worker or build profile changes. Regression counters requir
 zero image work during discovery and preserve selected-page success, cache reuse
 and failed-conversion fallback.
 
-Glen must still repeat the complete cold/warm matrix above on the before/after
-candidates, including first Help use, tutorial opening, Topic switch and the
+Glen must still repeat the complete cold/warm matrix above on the fixed pair
+below, including first Help use, tutorial opening, Topic switch and the
 tutorial-project menu. Do not subtract this rehearsal from a later sample or
 claim that first paint, selected-page font discovery or native responsiveness
 has been accepted. Profile fonts separately only if selected-page evidence
 still identifies material rasterization cost.
+
+#### Fixed Help comparison and current-candidate acceptance (2026-09-30)
+
+Use this parent/child pair to attribute the lazy-discovery change:
+
+| Role | Exact source revision |
+| --- | --- |
+| Before | `e723f46eb3fe58b15ba4bad5ff975024cd761437` |
+| After | `64baba4f1cd21c9df731b232d9f82ce55c9d6495` |
+
+Both contain `10f99df3`'s instrumentation. Their Cargo manifests/lockfile,
+tutorial content, startup-trace producer and SVG rasterizer are unchanged.
+Run three cold and three warm sessions **per revision**, excluding each warm
+cache-filling run. Use revision-separated caches with equivalent conditions;
+hold the host, toolchain, features, effective profile, fonts and interaction
+sequence fixed. Retain individual samples, medians/spread, all four subspans,
+root-workspace and first-use timings, image counters and loss/incompletion.
+Use one identified offline reader for both sides; do not sum nested spans.
+
+Keep current-candidate acceptance separate. The fetched main at this handoff is
+`a51bbc064ea29d4e7a03c559c5a6e0a6f8e1bd29`, which also changes dependencies,
+tutorial navigation and agent guard tests. Freeze and record whichever
+current candidate Glen actually tests. Comparing it with historical `0467867c`
+can describe overall change, not isolate lazy loading; neither replaces the
+fixed pair or establishes a release verdict.
+
+`HelpTutorialMenuDiscovery` uses `span_once`: it records the first call, while
+discovery still runs on subsequent menu frames. It cannot establish the cost
+of keeping that menu open. If repeated work is suspected, retain a separate
+profiler/frame observation before proposing caching. Likewise, shared font
+discovery and a negative SVG cache remain conditional on selected-page evidence.
+The heading-image regression freezes raw relative image markup in titles with
+LF/CRLF input and zero image preparation; it makes no rendering-speed claim.
 
 #### S6 guardrails and exit
 

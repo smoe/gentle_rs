@@ -95,6 +95,35 @@ fn lazy_tutorial_heading_preserves_precedence_and_fallbacks_without_images() {
 }
 
 #[test]
+fn lazy_tutorial_heading_keeps_relative_images_as_raw_text_without_preparation() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("heading_images.md");
+    let svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" height=\"2\"><rect width=\"2\" height=\"2\"/></svg>";
+    fs::write(temp.path().join("badge.svg"), svg).unwrap();
+    let title = "Example ![Badge](badge.svg) and ![Unavailable](missing.svg)";
+
+    let (_, trace) = startup_trace::capture(|| {
+        for newline in ["\n", "\r\n"] {
+            let markdown = format!("## {title}{newline}{newline}Tutorial body{newline}");
+            fs::write(&path, &markdown).unwrap();
+            let entry = GENtleApp::help_tutorial_entry_from_catalog_entry(catalog_entry(
+                &path,
+                "Catalog fallback",
+            ))
+            .unwrap();
+            // Discovery must not leak rewritten file/cache URLs into titles.
+            assert_eq!(entry.title, title);
+            assert_eq!(fs::read_to_string(&path).unwrap(), markdown);
+            assert_eq!(
+                fs::read_to_string(temp.path().join("badge.svg")).unwrap(),
+                svg
+            );
+        }
+    });
+    assert_no_image_work(&trace);
+}
+
+#[test]
 fn tutorial_navigation_resolves_catalog_ids_to_compact_targets() {
     let mut app = GENtleApp::default();
     app.help_tutorial_entries = GENtleApp::discover_help_tutorial_entries();

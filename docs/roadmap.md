@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-09-30 - Integrate Glen's catalog-owned tutorial navigation through `3f894777`, preserving lazy Help loading and TSS mixed-window focus. Recheck prerequisite/continuation links on the merged candidate, including native Windows/macOS; Glen's Linux review remains tied to his original commit. Lazy tutorial discovery still needs Glen's S6 cold/warm and first Help/tutorial/menu-use comparison. Preserve the temporary unoptimized artifact policy and historical `.11` ledger; no version rollover or release acceptance.
+Last session: 2026-09-30 - Glen's next S6 comparison is the isolated lazy-Help pair `e723f46e -> 64baba4f`, with three cold and three warm sessions per revision, separate from current-candidate acceptance. First-use menu tracing does not measure recurring menu frames; font sharing and negative caching await attribution. Recheck tutorial navigation on the merged candidate, including native Windows/macOS; Glen's Linux review remains tied to his original commit. Preserve the temporary unoptimized artifact policy and historical `.11` ledger; no version rollover or release acceptance.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
