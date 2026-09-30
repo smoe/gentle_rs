@@ -240,6 +240,11 @@ pub struct TutorialSourceGeneratedChapterSection {
     /// displayed for review and are never executed by tutorial generation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_steps: Vec<String>,
+    /// Whether generated prose should advertise the canonical workflow through
+    /// an outer-agent replay. `None` preserves the default for ordinary
+    /// executable tutorials; `Some(false)` is an explicit editorial opt-out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_agent_replay: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -600,6 +605,7 @@ impl TutorialSourceGeneratedChapterSection {
             step_titles: self.step_titles,
             cli_steps: self.cli_steps,
             agent_steps: self.agent_steps,
+            outer_agent_replay: self.outer_agent_replay,
             step_expectations: self.step_expectations,
             step_rationales: self.step_rationales,
             prerequisites: self.prerequisites,
@@ -794,6 +800,8 @@ pub struct TutorialChapter {
     pub cli_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_agent_replay: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -5128,6 +5136,32 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> St
     out
 }
 
+fn render_tutorial_outer_agent_replay(chapter: &TutorialChapter, workflow_path: &str) -> String {
+    let state_name = chapter.id.replace('_', "-");
+    let mut out = String::new();
+    out.push_str("\n## Ask an Outer Agent (MCP or ClawBio/OpenClaw)\n\n");
+    out.push_str("An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.\n\n");
+    out.push_str("> Use GENtle's `gentle-cloning` skill to replay `");
+    out.push_str(workflow_path);
+    out.push_str("` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.\n\n");
+    out.push_str("Equivalent direct structured request for the generic wrapper:\n\n");
+    out.push_str("```json\n");
+    out.push_str("{\n");
+    out.push_str("  \"schema\": \"gentle.clawbio_skill_request.v1\",\n");
+    out.push_str("  \"mode\": \"workflow\",\n");
+    out.push_str("  \"state_path\": \"/tmp/gentle-");
+    out.push_str(&state_name);
+    out.push_str(".state.json\",\n");
+    out.push_str("  \"workflow_path\": \"");
+    out.push_str(workflow_path);
+    out.push_str("\",\n");
+    out.push_str("  \"timeout_secs\": 300\n");
+    out.push_str("}\n");
+    out.push_str("```\n\n");
+    out.push_str("Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.\n");
+    out
+}
+
 fn tutorial_inline_artifact_steps(graphics: &[TutorialGraphic]) -> HashMap<String, usize> {
     let mut inline_steps = HashMap::new();
     for graphic in graphics {
@@ -5358,6 +5392,9 @@ fn render_tutorial_chapter_markdown(
         out.push_str(&workflow_path);
         out.push_str("'\n");
         out.push_str("```\n");
+    }
+    if chapter.outer_agent_replay.unwrap_or(true) {
+        out.push_str(&render_tutorial_outer_agent_replay(chapter, &workflow_path));
     }
     out.push_str("\n## Interpretation and Reference\n");
     out.push_str(&render_tutorial_parameters_that_matter(chapter));
@@ -6694,6 +6731,7 @@ mod tests {
             step_titles: vec![],
             cli_steps: vec![],
             agent_steps: vec![],
+            outer_agent_replay: None,
             step_expectations: vec![],
             step_rationales: vec![],
             prerequisites: vec![],
@@ -9660,6 +9698,21 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_outer_agent_replay_binds_workflow_and_separates_gui_state() {
+        let chapter = minimal_tutorial_chapter("outer_agent_contract");
+        let workflow_path = "docs/examples/workflows/minimal_example.json";
+        let markdown = render_tutorial_outer_agent_replay(&chapter, workflow_path);
+
+        assert!(markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"));
+        assert!(markdown.contains("does not inherit the unsaved GUI project"));
+        assert!(markdown.contains(workflow_path));
+        assert!(markdown.contains("/tmp/gentle-outer-agent-contract.state.json"));
+        assert!(markdown.contains("gentle.clawbio_skill_request.v1"));
+        assert!(markdown.contains("proposal/approval boundary"));
+        assert!(markdown.contains("does not invoke an agent or grant approval"));
+    }
+
+    #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
         let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
@@ -9688,6 +9741,21 @@ mod tests {
         assert!(markdown.contains("## Walkthrough: GUI, CLI and Inner Agent"));
         assert!(markdown.contains("**Ask the inner agent**"));
         assert!(markdown.contains("Do not execute it until I approve."));
+        assert!(markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"));
+        assert!(
+            markdown
+                .contains("docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json")
+        );
+        assert!(markdown.contains("does not inherit the unsaved GUI project"));
+
+        let contributor_chapter =
+            generated.join("chapters/01-02_contribute_to_gentle_development.md");
+        let contributor_markdown = std::fs::read_to_string(&contributor_chapter)
+            .expect("read contributor chapter markdown");
+        assert!(
+            !contributor_markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"),
+            "the explicitly opted-out contributor chapter must not advertise an outer-agent replay"
+        );
         assert!(markdown.contains("## Parameters That Matter"));
         assert!(
             markdown

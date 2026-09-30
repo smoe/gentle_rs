@@ -31,7 +31,10 @@ rather than perform the GUI action. In the GUI Shell, enter the shared command
 inside `gentle_cli shell '...'`, without that wrapper; other terminal commands
 are not automatically GUI Shell commands. UI intents open windows only in the
 GUI, and a separate CLI does not inherit unsaved GUI state. Inner-agent examples
-ask for a proposed command and expected result, not execution permission.
+ask for a proposed command and expected result, not execution permission. Each
+generated chapter also provides an **outer-agent replay** bound to its canonical
+workflow and an explicit disposable state path. That replay returns structured
+artifacts and receipts; it does not claim access to the unsaved GUI project.
 
 ## How This Guide Is Organized
 

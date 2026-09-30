@@ -1019,6 +1019,7 @@
         "cargo run --bin gentle_examples_docs -- --check",
         "cargo check -q\ncargo run --bin gentle_examples_docs -- tutorial-check"
       ],
+      "outer_agent_replay": false,
       "step_expectations": [
         "The baseline workflow creates `contrib_seed`, `contrib_branch`, and `contrib_branch_rc` through the shared engine.",
         "Example generation/checking confirms the canonical workflow JSON remains parseable and adapter snippets are current.",

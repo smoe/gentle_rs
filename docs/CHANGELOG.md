@@ -12,6 +12,14 @@
   inner- and outer-agent prompts, separate shared capability reachability from
   MCP evidence, and explain why protocol bytes and receipts—not a terminal
   screenshot—are the informative acceptance artifacts.
+- Generate one explicit outer-agent replay contract for every executable
+  tutorial chapter. Bind it to the chapter's canonical workflow and disposable
+  state, require structured artifacts/receipts, distinguish direct wrapper use
+  from approval-bound conversational delegation, and never imply access to an
+  unsaved GUI project.
+- Keep an explicit source-level opt-out for chapters whose editorial review is
+  unresolved; tutorial 01.02 remains skipped rather than receiving misleading
+  agent prose from the common generator.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
