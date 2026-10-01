@@ -90,6 +90,11 @@
   verify the shared guide/set/template/oligo values, and label the outputs as
   review artifacts rather than ordering approval or a validated laboratory
   SOP.
+- Review legacy tutorial 04.06 as a synthetic CLI regression course rather
+  than human PATZ1 biology. Correct its two-versus-three panel wording and
+  replace eleven generic agent prompts with separate fixture, panel, compose,
+  export and external-specificity approvals while retaining the three exact
+  report artifacts as its evidence.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

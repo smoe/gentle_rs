@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "262d3e28d14d0ced0425c1c6619e0057b6b3b6a7e94f4b01ba06700325752f78",
+    "README.md": "9a219e70a1d8c011793d82c53e659016ab3d4d836078bf93afbb50df60c987b8",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -113,7 +113,7 @@
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "a34952a16142faa839520430b40de90028452abee130555d01d633cac322c840",
     "chapters/04-04_guides_filter_and_generate_oligos.md": "5670774eb977ecb078901147b2252f4f372a4462d0194d8b4168bb2af7f32e7f",
     "chapters/04-05_guides_export_csv_and_protocol.md": "e889d98c0ba67ce43e4f85aeb03824f6c0c4ee489f323df1d2351c6d6c678571",
-    "chapters/04-06_patz1_transcript_assay_panels_cli.md": "b99670db11cda5d7b29962a0d89f69206f49419dd7236c943713c36933b73bcf",
+    "chapters/04-06_patz1_transcript_assay_panels_cli.md": "96009babcbaffc892fbb150d2273ee3c4aa41896604f25c55e27aa8e770cc6a5",
     "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "b3a859b770067ce4151d30dea7560df4880b2eac13728dce67bf7cc2eb4dab5b",
     "chapters/05-02_prepare_reference_genome_online.md": "9b370fb524cfc002d4507f87ae6dbb3a4e573f3fec9cf9583f54298740fdb511",
     "chapters/05-03_tp63_anchor_extension_online.md": "3046164b11935d309173a50619d1b0b68140575bab98d0b12b4b82cb5ad18b56",
@@ -819,7 +819,7 @@
       ],
       "executed": true,
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-07-21",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": [
         "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
         "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",

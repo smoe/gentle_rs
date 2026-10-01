@@ -57,7 +57,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 - `04.02` [Determine and review PCR primer pairs (offline)](./chapters/04-02_pcr_selection_batch_primer_pairs_offline.md) - `core` - example `pcr_selection_batch_primer_pairs_offline` - executed `yes` - review `codex_reviewed` - codex 2026-10-01
 - `04.04` [Filter declared guides and format cloning oligos](./chapters/04-04_guides_filter_and_generate_oligos.md) - `core` - example `guides_filter_and_generate_oligos` - executed `yes` - review `codex_reviewed` - codex 2026-10-01
 - `04.05` [Guide oligo export (CSV + protocol)](./chapters/04-05_guides_export_csv_and_protocol.md) - `advanced` - example `guides_export_csv_and_protocol` - executed `yes` - review `codex_reviewed` - codex 2026-10-01
-- `04.06` [Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)](./chapters/04-06_patz1_transcript_assay_panels_cli.md) - `core` - example `patz1_endpoint_sybr_transcript_assay_panel_offline` - executed `yes` - review `codex_reviewed` - codex 2026-07-21
+- `04.06` [Synthetic Transcript-Panel CLI Regression Walkthrough (Not PATZ1)](./chapters/04-06_patz1_transcript_assay_panels_cli.md) - `core` - example `patz1_endpoint_sybr_transcript_assay_panel_offline` - executed `yes` - review `codex_reviewed` - codex 2026-10-01
 
 ### Genome Context & Coordinates
 

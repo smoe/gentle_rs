@@ -14,7 +14,13 @@
       "transcript_analysis",
       "contributors"
     ],
-    "notes": "Historical synthetic regression walkthrough, not human PATZ1 biology. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
+    "notes": "Historical synthetic CLI regression walkthrough, not human PATZ1 biology. Three retained panel reports provide executable evidence; no typed GUI screenshot acceptance is claimed. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
+    "interfaces": [
+      "CLI / workflow",
+      "GUI Shell (compound routine only)",
+      "inner agent",
+      "ClawBio / outer agent"
+    ],
     "group": "04",
     "group_position": 6,
     "next_steps": ["transcript_assay_followup_gui_cli"]
@@ -62,6 +68,19 @@
       "jq '{schema, isoform_evidence_sha256, roles:[.assay_panels[].role], specificity_accepted:[.assay_panels[].specificity_accepted], experimental_sequence:.recommended_experimental_sequence}' /tmp/patz1_gene_transcript_assay_routine.report.json",
       "jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json"
     ],
+    "agent_steps": [
+      "Identify this as the committed synthetic PATZ1-like regression fixture, not human PATZ1 sequence or annotation. Propose replay of `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json` only in a new disposable state, list its three panel reports plus compound routine output, and wait for approval before the workflow mutates state or writes artifacts.",
+      "Propose `LoadFile` for `test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb` as `patz1_transcript_assay_demo`. Show the synthetic provenance and intended feature group; do not load it until I approve.",
+      "Read the canonical workflow and extract the three externally tagged `DesignTranscriptAssayPanel` payloads unchanged except for their explicitly redirected `/tmp` report paths. Return payload digests and distinguish endpoint, junction-SYBR and common-region objectives; do not execute any panel.",
+      "If Primer3 is being considered, run only the read-only `primers preflight --backend primer3` check and report executable/version availability. Do not change the tutorial's deterministic internal backend or imply that preflight designs primers.",
+      "Propose the endpoint `DesignTranscriptAssayPanel` payload with `endpoint_rt_pcr`, `isoform_end_matrix`, oligo-dT, `require_all` and the 10,000 bp ceiling. Show the full request and wait for approval; after execution return the complete reaction/band matrices and reverse-transcription warning without interpreting band intensity as quantitative abundance.",
+      "Propose the separate primer-only SYBR panel with `one_per_class`, required synthetic Clariom-JUC evidence and report id `patz1_sybr_juc_panel`. Wait for its own approval, then return the selected spanning assay and unresolved rows; do not claim human PATZ1 specificity.",
+      "Propose the separate `pan_transcript` routine common-region screen with report id `patz1_routine_common_region_screen`. Keep annotation-confirmed commonality distinct from synthetic PSR/JUC support, show preferred versus allowed product ranges, and wait for approval before design.",
+      "List and inspect all three persisted panel reports without rerunning them. If export is requested, propose the exact source report id and destination path as a separate file write; compare the exported digest with the persisted report.",
+      "Propose `ComposeGeneTranscriptAssayRoutine` over the exact three report ids and the committed isoform-evidence digest. State that composition reads existing evidence and does not redesign panels or run specificity; expose the `/tmp/patz1_gene_transcript_assay_routine.report.json` file write and wait for approval.",
+      "Inspect the compound routine without mutation. Report the three roles, evidence and panel digests, uncovered classes, selected-pair audit and `specificity_accepted=false` for every offline panel; do not convert missing or planned evidence into acceptance.",
+      "Inspect only the non-executing specificity follow-up templates. Replace `GENOME_ID` and `OUTPUT_DIR` only after a prepared reference and external runner are explicitly supplied; keep plan generation, external BLAST execution and manifest-bound finalization as separate approvals, and accept only a finalized `pass`."
+    ],
     "step_expectations": [
       "The canonical offline workflow writes complete endpoint, discriminating SYBR, and routine common-region `gentle.transcript_assay_panel.v2` reports from committed synthetic inputs.",
       "The explicit project state contains the minus-strand PATZ1-like locus under the deterministic sequence id used by both operations.",
@@ -70,7 +89,7 @@
       "The endpoint report is complete, primer-only, uses the 10,000 bp ceiling, and contains designed end reactions plus at least three distinct predicted band sizes.",
       "The SYBR report is primer-only and includes a selected assay spanning the required synthetic Clariom JUC junction.",
       "The routine report uses `pan_transcript`, records annotation-confirmed common-region evidence, and treats any overlapping PSR row only as independent support.",
-      "Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.",
+      "All three report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.",
       "The compound routine is a pure read over the exact evidence bytes and persisted panel reports; its three roles are common_control, junction_validation, and endpoint_structure.",
       "The compound routine keeps every panel's specificity acceptance false in this offline run instead of promoting a planned follow-up to a completed check.",
       "Every selected assay exposes a non-executing `primers specificity-plan` template, and the report honestly retains `genomic_confirmation_status: not_run` in this offline tutorial."
@@ -112,7 +131,7 @@
       },
       {
         "parameter": "coverage_policy=require_all",
-        "where_used": "Both tutorial operations",
+        "where_used": "All three tutorial operations",
         "why_it_matters": "Strict coverage refuses incomplete panels instead of silently dropping a mature-cDNA class or requested junction.",
         "how_to_derive": "Keep `require_all` for a claimed complete panel; choose `best_effort` only as an explicit exploratory decision and inspect every uncovered reason."
       },
@@ -171,8 +190,8 @@
       "The SYBR report has `assay_kind: sybr_qpcr`, no internal probes, and a non-empty short-junction assay table.",
       "At least one SYBR junction-evaluation row has `source_kind: clariom_juc` and `status: selected_spanning_assay`.",
       "The routine report has `assay_tier: routine_common_region_screen`; selected commonality is annotation-confirmed, and PSR/JUC evidence kinds remain distinct.",
-    "The compound report has `schema: gentle.gene_transcript_assay_routine.v1`, matches the committed isoform-evidence digest, and assigns common-control, junction-validation, and endpoint-structure roles.",
-    "A computed selected-pair audit names its method and target universe, keeps observation and projection counts separate, and carries the normalized panel-design operation digest; legacy missing audit fields are not interpreted as computed zeroes.",
+      "The compound report has `schema: gentle.gene_transcript_assay_routine.v1`, matches the committed isoform-evidence digest, and assigns common-control, junction-validation, and endpoint-structure roles.",
+      "A computed selected-pair audit names its method and target universe, keeps observation and projection counts separate, and carries the normalized panel-design operation digest; legacy missing audit fields are not interpreted as computed zeroes.",
       "Composition does not rerun assay design or specificity, and all three offline panel summaries retain `specificity_accepted: false`.",
       "Every selected assay has a `specificity-plan` follow-up template, while this offline run leaves genomic confirmation explicitly `not_run`.",
       "The fixture is identified as synthetic and is not presented as an order-ready human PATZ1 design.",

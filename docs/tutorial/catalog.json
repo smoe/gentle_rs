@@ -1415,7 +1415,13 @@
         "transcript_analysis",
         "contributors"
       ],
-      "notes": "Historical synthetic regression walkthrough, not human PATZ1 biology. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
+      "notes": "Historical synthetic CLI regression walkthrough, not human PATZ1 biology. Three retained panel reports provide executable evidence; no typed GUI screenshot acceptance is claimed. Use tutorial 04.08 for authentic Ensembl/RefSeq PATZ1 annotation and primer-pair design; legacy fixture identifiers remain for replay compatibility.",
+      "interfaces": [
+        "CLI / workflow",
+        "GUI Shell (compound routine only)",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "pcr_selection_batch_primer_pairs_offline"
       ],
@@ -1423,7 +1429,7 @@
         "transcript_assay_followup_gui_cli"
       ],
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-07-21"
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "cryptic_splicing_evidence_cli_gui",

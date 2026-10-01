@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: "2026-07-21"
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
@@ -94,7 +94,7 @@ gentle_cli workflow @docs/examples/workflows/patz1_endpoint_sybr_transcript_assa
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: No GUI is required. Optionally open the synthetic fixture in PCR Designer to inspect the same transcript classes and assay modes graphically. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Identify this as the committed synthetic PATZ1-like regression fixture, not human PATZ1 sequence or annotation. Propose replay of `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json` only in a new disposable state, list its three panel reports plus compound routine output, and wait for approval before the workflow mutates state or writes artifacts.
 
 **Expected**
 
@@ -114,7 +114,7 @@ gentle_cli --state /tmp/gentle-patz1-transcript-panels.json op '{"LoadFile":{"pa
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: If using the GUI for comparison, select the PATZ1-like gene feature and confirm that its transcript order follows mature 5-prime to 3-prime orientation despite the minus-strand genomic locus. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose `LoadFile` for `test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb` as `patz1_transcript_assay_demo`. Show the synthetic provenance and intended feature group; do not load it until I approve.
 
 **Expected**
 
@@ -134,7 +134,7 @@ jq '.workflow.ops[2] | .DesignTranscriptAssayPanel.path="/tmp/patz1_endpoint_end
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Use the endpoint mode with oligo-dT cDNA, `isoform_end_matrix`, strict coverage, and a 10,000 bp maximum product to mirror the first CLI operation. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Read the canonical workflow and extract the three externally tagged `DesignTranscriptAssayPanel` payloads unchanged except for their explicitly redirected `/tmp` report paths. Return payload digests and distinguish endpoint, junction-SYBR and common-region objectives; do not execute any panel.
 
 **Expected**
 
@@ -154,7 +154,7 @@ gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers preflight --
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Review Primer3 preflight only when using the external backend; the deterministic tutorial itself uses the internal backend. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> If Primer3 is being considered, run only the read-only `primers preflight --backend primer3` check and report executable/version availability. Do not change the tutorial's deterministic internal backend or imply that preflight designs primers.
 
 **Expected**
 
@@ -174,7 +174,7 @@ gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers design-trans
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Inspect the endpoint reaction and band-size matrices, including the reverse-transcription-completeness warning for long 5-prime reach. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose the endpoint `DesignTranscriptAssayPanel` payload with `endpoint_rt_pcr`, `isoform_end_matrix`, oligo-dT, `require_all` and the 10,000 bp ceiling. Show the full request and wait for approval; after execution return the complete reaction/band matrices and reverse-transcription warning without interpreting band intensity as quantitative abundance.
 
 **Expected**
 
@@ -194,7 +194,7 @@ gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers design-trans
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Use primer-only SYBR mode with required junction evidence to mirror the second CLI operation; no probe should be created. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose the separate primer-only SYBR panel with `one_per_class`, required synthetic Clariom-JUC evidence and report id `patz1_sybr_juc_panel`. Wait for its own approval, then return the selected spanning assay and unresolved rows; do not claim human PATZ1 specificity.
 
 **Expected**
 
@@ -214,7 +214,7 @@ gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers design-trans
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Use the routine common-region tier with a pan-transcript objective to mirror the third CLI operation; compare its annotation evidence, preferred-range classification, PSR/JUC rows, and rejected alternatives. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose the separate `pan_transcript` routine common-region screen with report id `patz1_routine_common_region_screen`. Keep annotation-confirmed commonality distinct from synthetic PSR/JUC support, show preferred versus allowed product ranges, and wait for approval before design.
 
 **Expected**
 
@@ -234,11 +234,11 @@ gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers list-transcr
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Inspect the persisted panel rows and export the same report JSON used by the CLI path. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> List and inspect all three persisted panel reports without rerunning them. If export is requested, propose the exact source report id and destination path as a separate file write; compare the exported digest with the persisted report.
 
 **Expected**
 
-> Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.
+> All three report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.
 
 ### Step 9: GENtle does not yet provide a dedicated GUI composer for the compound routine. Use the GUI Shell with primers compose-gene-assay-routine and the same JSON request when an in-application handoff is useful; this reaches the shared operation rather than GUI-local logic
 
@@ -254,7 +254,7 @@ gentle_cli --state /tmp/gentle-patz1-transcript-panels.json primers compose-gene
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: GENtle does not yet provide a dedicated GUI composer for the compound routine. Use the GUI Shell with `primers compose-gene-assay-routine` and the same JSON request when an in-application handoff is useful; this reaches the shared operation rather than GUI-local logic. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose `ComposeGeneTranscriptAssayRoutine` over the exact three report ids and the committed isoform-evidence digest. State that composition reads existing evidence and does not redesign panels or run specificity; expose the `/tmp/patz1_gene_transcript_assay_routine.report.json` file write and wait for approval.
 
 **Expected**
 
@@ -274,7 +274,7 @@ jq '{schema, isoform_evidence_sha256, roles:[.assay_panels[].role], specificity_
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Inspect the returned routine roles, evidence and panel digests, uncovered classes, and specificity status. Composition is review-only and must not alter the selected sequence or silently rerun a panel. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect the compound routine without mutation. Report the three roles, evidence and panel digests, uncovered classes, selected-pair audit and `specificity_accepted=false` for every offline panel; do not convert missing or planned evidence into acceptance.
 
 **Expected**
 
@@ -294,7 +294,7 @@ jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_a
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Inspect the per-assay specificity handoff templates; replace `GENOME_ID` and `OUTPUT_DIR` only when a prepared reference and an external BLAST runner are available. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect only the non-executing specificity follow-up templates. Replace `GENOME_ID` and `OUTPUT_DIR` only after a prepared reference and external runner are explicitly supplied; keep plan generation, external BLAST execution and manifest-bound finalization as separate approvals, and accept only a finalized `pass`.
 
 **Expected**
 
@@ -331,7 +331,7 @@ Submitting a direct structured request is an explicit wrapper invocation. If nat
 - `cdna_synthesis=oligo_dt / max_amplicon_bp=10000` (where used: Endpoint panel design and interpretation warnings)
   - Why it matters: PCR capacity can reach 10 kb, but oligo-dT reverse transcription may still underrepresent distant 5-prime sequence.
   - How to derive it: Set the PCR ceiling from the available long-range polymerase, then retain short end-specific assays or 5-prime RACE as confirmation for vulnerable long products.
-- `coverage_policy=require_all` (where used: Both tutorial operations)
+- `coverage_policy=require_all` (where used: All three tutorial operations)
   - Why it matters: Strict coverage refuses incomplete panels instead of silently dropping a mature-cDNA class or requested junction.
   - How to derive it: Keep `require_all` for a claimed complete panel; choose `best_effort` only as an explicit exploratory decision and inspect every uncovered reason.
 - `assay_tier / preferred and allowed amplicon ranges` (where used: All three transcript-panel operations)
@@ -405,7 +405,7 @@ cargo run --bin gentle_examples_docs -- tutorial-check
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `codex_reviewed`
-- Codex reviewed at: `2026-07-21`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 
