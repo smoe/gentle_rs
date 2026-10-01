@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "9a219e70a1d8c011793d82c53e659016ab3d4d836078bf93afbb50df60c987b8",
+    "README.md": "37372cc90de7e996e2918ee542c978ac1521dae73501408ea6bebd3030303792",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -114,7 +114,7 @@
     "chapters/04-04_guides_filter_and_generate_oligos.md": "5670774eb977ecb078901147b2252f4f372a4462d0194d8b4168bb2af7f32e7f",
     "chapters/04-05_guides_export_csv_and_protocol.md": "e889d98c0ba67ce43e4f85aeb03824f6c0c4ee489f323df1d2351c6d6c678571",
     "chapters/04-06_patz1_transcript_assay_panels_cli.md": "96009babcbaffc892fbb150d2273ee3c4aa41896604f25c55e27aa8e770cc6a5",
-    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "b3a859b770067ce4151d30dea7560df4880b2eac13728dce67bf7cc2eb4dab5b",
+    "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "14c77573500e299b24988d2e07b5fcd6125c3337839fec51bb2a9dfda9755e46",
     "chapters/05-02_prepare_reference_genome_online.md": "9b370fb524cfc002d4507f87ae6dbb3a4e573f3fec9cf9583f54298740fdb511",
     "chapters/05-03_tp63_anchor_extension_online.md": "3046164b11935d309173a50619d1b0b68140575bab98d0b12b4b82cb5ad18b56",
     "chapters/06-03_tp53_isoform_architecture_online.md": "a26e65edf259c492f2d4f63f4d6d527390e41ba3478be90cf8fc6f537615bbe0",
@@ -206,9 +206,8 @@
         "genome_catalog_targeting"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "retained_artifacts": []
     },
     {

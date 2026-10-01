@@ -723,13 +723,18 @@
         "gui_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked offline LocalProject fixture. The replay binds the gene-biotype `etpC` occurrence on `AB011549.2` and its strand-aware 5-prime extension; no typed GUI screenshot acceptance or broader organism annotation claim is made.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "load_and_digest_pgex",

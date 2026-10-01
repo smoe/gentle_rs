@@ -99,6 +99,10 @@
   inner/outer-agent prompts for RT-pool geometry, missing JUC-threshold
   provenance and the normalize/plan/execute approval sequence; keep external
   specificity, vendor submission and wet-lab work outside those approvals.
+- Review tutorial 05.01 against the prepared LocalProject fixture. Bind agents
+  to the gene rather than duplicate CDS occurrence of plus-strand `etpC`, the
+  exact `AB011549.2` coordinates and shared cache, and the 877-to-1127 bp
+  strand-aware 5-prime extension with its lineage edge.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
