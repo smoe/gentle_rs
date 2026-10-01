@@ -54,6 +54,10 @@
   that current outputs are 640 bp with duplicated overlap rather than a 620 bp
   Gibson product, and separate outer workflow preparation from macro-preflight
   evidence.
+- Review tutorial 03.05 as the full destination-first Gibson exercise. Correct
+  the six-section checklist, add exact review-before-apply inner/outer prompts,
+  and register the useful legacy lineage screenshot while stating that it
+  predates current exact-binary GUI evidence.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

@@ -2,6 +2,15 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "gibson_specialist_testing_gui",
   "title": "Gibson Specialist Testing Tutorial",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_gibson_specialist_testing_08_lineage_graph.png",
+      "caption": "Historical native lineage view after Gibson apply: destination and insert feed one Gibson operation that produces two primer sequences and the assembled product. Useful orientation only; the 2026-03-23 capture predates the current hash-bound GUI-acceptance format.",
+      "illustrates_step": 8,
+      "capture_date": "2026-03-23"
+    }
+  ],
   "catalog": {
     "order": 4,
     "path": "docs/tutorial/03-05_gibson_specialist_testing_gui.md",
@@ -13,7 +22,13 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity.",
+    "notes": "Hands-on test script for the destination-first Gibson specialist with shared CLI parity, review-before-apply agent boundaries and one legacy lineage screenshot. Current exact-binary GUI acceptance remains pending.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared Gibson preview",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent (explicit saved project)"
+    ],
     "group": "03",
     "group_position": 5,
     "prerequisites": ["gibson_specialist_testing_baseline"],
