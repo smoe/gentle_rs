@@ -336,10 +336,31 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "Hands-on batch workflow for interpreting many gzipped cDNA FASTA files, aligning saved reports, and exporting one target-gene cohort sample sheet. Native acceptance on 2026-10-01 used two bounded TP53 samples and explicitly separates seed filtering, alignment assignment, molecule completeness, and direct-transition evidence.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit state, file manifest, and approvals)"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/rna_read_batch_gene_support_cli/01-report-workspace.png",
+          "caption": "The native RNA-read Mapping workspace loads a persisted TP53 report and keeps phase-1 seed filtering separate from phase-2 alignment. In this bounded acceptance fixture all six retained reads align, while the seed-passed subset remains empty.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/rna_read_batch_gene_support_cli/02-gene-support-cohorts.png",
+          "caption": "The native cohort view reports six target-assigned fragments but no full-length or direct-transition evidence. Target assignment therefore must not be reported as seed-filter acceptance, complete molecules, or junction support.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "tutorial_landscape_overview",

@@ -169,6 +169,14 @@
   specific checks, keep the outer agent on a disposable canonical-workflow
   replay, and state explicitly that neither route converts synthetic layers
   into experimental PATZ1 regulation.
+- Review tutorial 07.01 through all five RNA-read batch routes and the native
+  mapping workspace. Retain two small TP53 acceptance captures showing six
+  aligned target-assigned fragments alongside zero seed-passed, complete and
+  direct-transition reads. Clarify that `selection=all`, target assignment,
+  molecule completeness and junction evidence are separate claims; bind the
+  inner agent to the selected persisted report and the outer agent to an
+  explicit state, sorted file/report manifest, approvals and structured
+  receipts while the one-shot batch-manifest operation remains absent.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
