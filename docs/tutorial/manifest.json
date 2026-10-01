@@ -1200,6 +1200,11 @@
         "cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'\ncargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'",
         "cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'"
       ],
+      "agent_steps": [
+        "Read `assets/genomes.json`, run a read-only status/preflight for exactly `Human GRCh38 Ensembl 116`, and report that catalog-relative `data/genomes` resolves beneath `assets`. Then propose the network/disk preparation and the separate TP53 occurrence-1 extraction as `grch38_tp53`; expose source URLs, cache writes and output id, and do not execute either mutation until I approve its exact scope.",
+        "Verify that `grch38_tp53` exists and inspect `assets/panels/tp53_isoforms_v1.json` as the seven-isoform TP53 panel before proposing `ImportIsoformPanel` with panel id `tp53_isoforms_v1`. Report strictness and any unresolved transcript mapping explicitly; do not turn panel curation into expression or functional evidence.",
+        "Inspect `tp53_isoforms_v1` first and require seven transcript lanes plus seven protein lanes before proposing the SVG write to `exports/tp53_isoform_architecture.svg`. Bind output path and current project state to the proposal, wait for approval before writing, and return the output hash and operation receipt separately from the native GUI screenshot."
+      ],
       "step_expectations": [
         "The reference is prepared if needed and TP53 is extracted into the stable anchored sequence id `grch38_tp53`.",
         "The panel import stores `tp53_isoforms_v1`; the inspect route returns the same isoform-architecture payload that the GUI expert view renders.",
@@ -1208,7 +1213,7 @@
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.",
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`. For a network-free renderer check only, load `docs/figures/tp53_ensembl116_panel_source.gb` as `grch38_tp53_readme`, import the panel with `strict=true`, and compare against `docs/figures/tp53_isoform_architecture.svg`; this does not validate online preparation or extraction.",
       "learning_objectives": [
         "Execute an end-to-end isoform-panel workflow using shared engine operations.",
         "Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.",
@@ -1226,7 +1231,7 @@
           "parameter": "ImportIsoformPanel.panel_path / panel_id / strict",
           "where_used": "operation 3",
           "why_it_matters": "Defines which curated panel is loaded and whether transcript mapping mismatches should fail hard.",
-          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked.",
+          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory online mapping so unresolved rows remain visible. The retained Ensembl-116 source maps all seven rows with `strict=true`; switch to strict mode only when source and panel are deliberately locked.",
           "omit_when": ""
         },
         {
@@ -1245,9 +1250,32 @@
         "exports/tp53_isoform_architecture.svg"
       ],
       "checkpoints": [
-        "Panel import reports mapped transcript lanes and any unresolved transcript warnings.",
-        "Isoform architecture SVG export succeeds with deterministic lane ordering.",
+        "Panel import reports seven transcript lanes and seven protein lanes; any unresolved transcript warning remains explicit.",
+        "Isoform architecture SVG export succeeds with deterministic lane ordering and exon-family colours linking coordinate-true transcript geometry to isoform-local protein products.",
         "Saved project contains TP53 sequence plus imported panel metadata for replay."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/01-isoform-panel-controls.png",
+          "caption": "The current native Sequence tools panel reopened on the retained Ensembl-116 TP53 source. Panel path and id are populated; the unchecked Strict control is the current GUI input state, not evidence about the earlier strict CLI import.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/02-isoform-expert.png",
+          "caption": "The native Isoform Expert after strict local import: seven mapped TP53 transcript lanes and seven protein-domain rows from the shared expert payload.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/figures/tp53_isoform_architecture.svg",
+          "caption": "Current deterministic 1200 by 1400 isoform architecture export from the retained Ensembl-116 source and strict seven-isoform panel. Exon-family colours connect coordinate-true transcript geometry with isoform-local protein products.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_cli -- --state /tmp/tp53-isoform-figure.state.json workflow docs/figures/tp53_isoform_architecture.workflow.json"
+        }
       ]
     },
     {

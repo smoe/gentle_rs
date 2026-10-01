@@ -1014,13 +1014,41 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "notes": "Machine-checked generated chapter requiring explicit online setup for full prepare/extract execution. The retained Ensembl-116 TP53 source was independently checked offline: strict panel import mapped 7/7 transcript and protein lanes without warnings, native Expert opening passed, and the current deterministic SVG was regenerated; this does not accept the skipped online download.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit disposable state)"
+      ],
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/01-isoform-panel-controls.png",
+          "caption": "The current native Sequence tools panel reopened on the retained Ensembl-116 TP53 source. Panel path and id are populated; the unchecked Strict control is the current GUI input state, not evidence about the earlier strict CLI import.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/02-isoform-expert.png",
+          "caption": "The native Isoform Expert after strict local import: seven mapped TP53 transcript lanes and seven protein-domain rows from the shared expert payload.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/figures/tp53_isoform_architecture.svg",
+          "caption": "Current deterministic 1200 by 1400 isoform architecture export from the retained Ensembl-116 source and strict seven-isoform panel. Exon-family colours connect coordinate-true transcript geometry with isoform-local protein products.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_cli -- --state /tmp/tp53-isoform-figure.state.json workflow docs/figures/tp53_isoform_architecture.workflow.json"
+        }
+      ]
     },
     {
       "id": "tp63_anchor_extension_online",

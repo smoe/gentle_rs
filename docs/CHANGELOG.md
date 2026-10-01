@@ -131,6 +131,15 @@
   expert lanes, preventing unrelated locus annotations from supplying the
   Protein Expert title. Keep the headless native save-dialog result explicitly
   unaccepted while recording the successful 1200×880 shared-shell SVG export.
+- Review tutorial 06.03 without conflating its skipped online preparation with
+  local panel acceptance. Reuse the retained Ensembl-116 TP53 source to verify
+  strict 7/7 transcript/protein mapping, open the native Isoform Expert and add
+  two exact GUI captures. Regenerate the canonical architecture SVG with the
+  current 1400-pixel renderer, preserving exon-family colour links between
+  coordinate-true transcript geometry and isoform-local protein products.
+  Replace generic inner-agent prose with cache-aware, separately approved
+  prepare/extract/import/export boundaries and keep outer replay bound to an
+  explicit disposable state, artifacts and receipt.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

@@ -1,16 +1,16 @@
-<svg height="846" viewBox="0 0 1200 846" width="1200" xmlns="http://www.w3.org/2000/svg">
-<rect fill="#ffffff" height="846" width="1200" x="0" y="0"/>
+<svg height="1400" viewBox="0 0 1200 1400" width="1200" xmlns="http://www.w3.org/2000/svg">
+<rect fill="#ffffff" height="1400" width="1200" x="0" y="0"/>
 <text fill="#111111" font-family="monospace" font-size="18" x="44" y="36">
 Isoform architecture: TP53 panel 'tp53_isoforms_v1' on grch38_tp53_readme
 </text>
 <text fill="#4b5563" font-family="monospace" font-size="12" x="44" y="58">
-genomic span 7834..14816 | isoforms=7 | protein max=393 aa
+genomic span 7834..14816 | isoforms=7 | longest local product=393 aa
 </text>
 <text fill="#4b5563" font-family="monospace" font-size="11" x="44" y="74">
-display orientation: transcript 5'-&gt;3' left-to-right (dominant strand -) | top-panel geometry: cds
+display orientation: transcript 5'-&gt;3' left-to-right (dominant strand -) | top-panel geometry: cds | lower panel: exon-chain transcript + isoform-local protein axis
 </text>
 <text fill="#111827" font-family="monospace" font-size="13" x="44" y="88">
-A) transcript exons (faint) + CDS (solid) architecture (coordinate-true)
+A) coordinate-true transcript architecture (faint transcript exons, colored CDS blocks)
 </text>
 <line stroke="#6b7280" stroke-width="1" x1="340" x2="1156" y1="98" y2="98"/>
 <text fill="#4b5563" font-family="monospace" font-size="10" text-anchor="start" x="340" y="94">
@@ -22,463 +22,832 @@ A) transcript exons (faint) + CDS (solid) architecture (coordinate-true)
 <text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="129.5">
 TAp53α (ENST00000269305.9)
 </text>
-<line stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="364.89017" x2="377.51053" y1="126" y2="126"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="348.64728" x2="362.20248" y1="126" y2="126"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="9.114624" x="1146.7684" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.386597" x="1026.9918" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.5303955" x="688.9297" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.892334" x="662.1698" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.737244" x="609.23444" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="13.087769" x="529.656" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="21.384521" x="498.6894" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="32.48575" x="377.62738" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="2.4539795" x="362.31934" y="118.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.530426" x="340" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="9.114624" x="1146.7684" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.386597" x="1026.9918" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.5303955" x="688.9297" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="15.892334" x="662.1698" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.737244" x="609.23444" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="13.087769" x="529.656" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="21.384521" x="498.6894" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="32.48575" x="377.62738" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="2.4539795" x="362.31934" y="118.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.530426" x="340" y="118.5"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="364.89017" x2="377.51053" y1="126" y2="126"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="348.64728" x2="362.20248" y1="126" y2="126"/>
+<rect data-exon-family="6624..7912" data-exon-key="6643..7912" data-track="coordinate-transcript-exon" fill="#2563eb" fill-opacity="0.25" height="15" stroke="#1d4ed8" stroke-width="0.35" width="9.114624" x="1146.7684" y="118.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="coordinate-transcript-exon" fill="#16a34a" fill-opacity="0.25" height="15" stroke="#15803d" stroke-width="0.35" width="12.386597" x="1026.9918" y="118.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="coordinate-transcript-exon" fill="#7c3aed" fill-opacity="0.25" height="15" stroke="#6d28d9" stroke-width="0.35" width="8.5303955" x="688.9297" y="118.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="coordinate-transcript-exon" fill="#db2777" fill-opacity="0.25" height="15" stroke="#be185d" stroke-width="0.35" width="15.892334" x="662.1698" y="118.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="coordinate-transcript-exon" fill="#0891b2" fill-opacity="0.25" height="15" stroke="#0e7490" stroke-width="0.35" width="12.737244" x="609.23444" y="118.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="coordinate-transcript-exon" fill="#65a30d" fill-opacity="0.25" height="15" stroke="#4d7c0f" stroke-width="0.35" width="13.087769" x="529.656" y="118.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="coordinate-transcript-exon" fill="#dc2626" fill-opacity="0.25" height="15" stroke="#b91c1c" stroke-width="0.35" width="21.384521" x="498.6894" y="118.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="coordinate-transcript-exon" fill="#d97706" fill-opacity="0.25" height="15" stroke="#b45309" stroke-width="0.35" width="32.48575" x="377.62738" y="118.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-track="coordinate-transcript-exon" fill="#0f766e" fill-opacity="0.25" height="15" stroke="#115e59" stroke-width="0.35" width="2.4539795" x="362.31934" y="118.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-track="coordinate-transcript-exon" fill="#0f766e" fill-opacity="0.25" height="15" stroke="#115e59" stroke-width="0.35" width="8.530426" x="340" y="118.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="coordinate-cds-block" fill="#0f766e" fill-opacity="0.88" height="15" stroke="#115e59" stroke-width="0.6" width="8.530426" x="340" y="118.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="coordinate-cds-block" fill="#0f766e" fill-opacity="0.88" height="15" stroke="#115e59" stroke-width="0.6" width="2.4539795" x="362.31934" y="118.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="coordinate-cds-block" fill="#d97706" fill-opacity="0.88" height="15" stroke="#b45309" stroke-width="0.6" width="32.48575" x="377.62738" y="118.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="coordinate-cds-block" fill="#dc2626" fill-opacity="0.88" height="15" stroke="#b91c1c" stroke-width="0.6" width="21.384521" x="498.6894" y="118.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="coordinate-cds-block" fill="#65a30d" fill-opacity="0.88" height="15" stroke="#4d7c0f" stroke-width="0.6" width="13.087769" x="529.656" y="118.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="coordinate-cds-block" fill="#0891b2" fill-opacity="0.88" height="15" stroke="#0e7490" stroke-width="0.6" width="12.737244" x="609.23444" y="118.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="coordinate-cds-block" fill="#db2777" fill-opacity="0.88" height="15" stroke="#be185d" stroke-width="0.6" width="15.892334" x="662.1698" y="118.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="coordinate-cds-block" fill="#7c3aed" fill-opacity="0.88" height="15" stroke="#6d28d9" stroke-width="0.6" width="8.5303955" x="688.9297" y="118.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="9" data-track="coordinate-cds-block" fill="#16a34a" fill-opacity="0.88" height="15" stroke="#15803d" stroke-width="0.6" width="12.386597" x="1026.9918" y="118.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6643..7912" data-segment-rank="10" data-track="coordinate-cds-block" fill="#2563eb" fill-opacity="0.88" height="15" stroke="#1d4ed8" stroke-width="0.6" width="9.114624" x="1146.7684" y="118.5"/>
 <text fill="#374151" font-family="monospace" font-size="9" x="1162" y="129">
 TA=full
 </text>
 <text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="163.5">
 TAp53β (ENST00000420246.7)
 </text>
-<line stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="720.2469" y1="160" y2="160"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="160" y2="160"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="160" y2="160"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="160" y2="160"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="160" y2="160"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="160" y2="160"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="364.89017" x2="377.51053" y1="160" y2="160"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="348.64728" x2="362.20248" y1="160" y2="160"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="9.114624" x="1146.7684" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.386597" x="1026.9918" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.424866" x="720.3638" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.5303955" x="688.9297" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.892334" x="662.1698" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.737244" x="609.23444" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="13.087769" x="529.656" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="21.384521" x="498.6894" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="32.48575" x="377.62738" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="2.4539795" x="362.31934" y="152.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.530426" x="340" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="3.388794" x="720.3638" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.5303955" x="688.9297" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="15.892334" x="662.1698" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.737244" x="609.23444" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="13.087769" x="529.656" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="21.384521" x="498.6894" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="32.48575" x="377.62738" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="2.4539795" x="362.31934" y="152.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.530426" x="340" y="152.5"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="720.2469" y1="160" y2="160"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="160" y2="160"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="160" y2="160"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="160" y2="160"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="160" y2="160"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="160" y2="160"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="364.89017" x2="377.51053" y1="160" y2="160"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="348.64728" x2="362.20248" y1="160" y2="160"/>
+<rect data-exon-family="6624..7912" data-exon-key="6626..7912" data-track="coordinate-transcript-exon" fill="#2563eb" fill-opacity="0.25" height="15" stroke="#1d4ed8" stroke-width="0.35" width="9.114624" x="1146.7684" y="152.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="coordinate-transcript-exon" fill="#16a34a" fill-opacity="0.25" height="15" stroke="#15803d" stroke-width="0.35" width="12.386597" x="1026.9918" y="152.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-track="coordinate-transcript-exon" fill="#ea580c" fill-opacity="0.25" height="15" stroke="#c2410c" stroke-width="0.35" width="15.424866" x="720.3638" y="152.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="coordinate-transcript-exon" fill="#7c3aed" fill-opacity="0.25" height="15" stroke="#6d28d9" stroke-width="0.35" width="8.5303955" x="688.9297" y="152.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="coordinate-transcript-exon" fill="#db2777" fill-opacity="0.25" height="15" stroke="#be185d" stroke-width="0.35" width="15.892334" x="662.1698" y="152.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="coordinate-transcript-exon" fill="#0891b2" fill-opacity="0.25" height="15" stroke="#0e7490" stroke-width="0.35" width="12.737244" x="609.23444" y="152.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="coordinate-transcript-exon" fill="#65a30d" fill-opacity="0.25" height="15" stroke="#4d7c0f" stroke-width="0.35" width="13.087769" x="529.656" y="152.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="coordinate-transcript-exon" fill="#dc2626" fill-opacity="0.25" height="15" stroke="#b91c1c" stroke-width="0.35" width="21.384521" x="498.6894" y="152.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="coordinate-transcript-exon" fill="#d97706" fill-opacity="0.25" height="15" stroke="#b45309" stroke-width="0.35" width="32.48575" x="377.62738" y="152.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-track="coordinate-transcript-exon" fill="#0f766e" fill-opacity="0.25" height="15" stroke="#115e59" stroke-width="0.35" width="2.4539795" x="362.31934" y="152.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-track="coordinate-transcript-exon" fill="#0f766e" fill-opacity="0.25" height="15" stroke="#115e59" stroke-width="0.35" width="8.530426" x="340" y="152.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="coordinate-cds-block" fill="#0f766e" fill-opacity="0.88" height="15" stroke="#115e59" stroke-width="0.6" width="8.530426" x="340" y="152.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="coordinate-cds-block" fill="#0f766e" fill-opacity="0.88" height="15" stroke="#115e59" stroke-width="0.6" width="2.4539795" x="362.31934" y="152.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="coordinate-cds-block" fill="#d97706" fill-opacity="0.88" height="15" stroke="#b45309" stroke-width="0.6" width="32.48575" x="377.62738" y="152.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="coordinate-cds-block" fill="#dc2626" fill-opacity="0.88" height="15" stroke="#b91c1c" stroke-width="0.6" width="21.384521" x="498.6894" y="152.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="coordinate-cds-block" fill="#65a30d" fill-opacity="0.88" height="15" stroke="#4d7c0f" stroke-width="0.6" width="13.087769" x="529.656" y="152.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="coordinate-cds-block" fill="#0891b2" fill-opacity="0.88" height="15" stroke="#0e7490" stroke-width="0.6" width="12.737244" x="609.23444" y="152.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="coordinate-cds-block" fill="#db2777" fill-opacity="0.88" height="15" stroke="#be185d" stroke-width="0.6" width="15.892334" x="662.1698" y="152.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="coordinate-cds-block" fill="#7c3aed" fill-opacity="0.88" height="15" stroke="#6d28d9" stroke-width="0.6" width="8.5303955" x="688.9297" y="152.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="9" data-track="coordinate-cds-block" fill="#ea580c" fill-opacity="0.88" height="15" stroke="#c2410c" stroke-width="0.6" width="3.388794" x="720.3638" y="152.5"/>
 <text fill="#374151" font-family="monospace" font-size="9" x="1162" y="163">
 TA=full
 </text>
 <text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="197.5">
 TAp53γ (ENST00000455263.7)
 </text>
-<line stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="728.77734" y1="194" y2="194"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="194" y2="194"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="194" y2="194"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="194" y2="194"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="194" y2="194"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="194" y2="194"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="364.89017" x2="377.51053" y1="194" y2="194"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="348.64728" x2="362.20248" y1="194" y2="194"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="9.114624" x="1146.7684" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.386597" x="1026.9918" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="6.89447" x="728.89417" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.5303955" x="688.9297" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.892334" x="662.1698" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.737244" x="609.23444" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="13.087769" x="529.656" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="21.384521" x="498.6894" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="32.48575" x="377.62738" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="2.4539795" x="362.31934" y="186.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.530426" x="340" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="5.1416016" x="728.89417" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.5303955" x="688.9297" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="15.892334" x="662.1698" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.737244" x="609.23444" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="13.087769" x="529.656" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="21.384521" x="498.6894" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="32.48575" x="377.62738" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="2.4539795" x="362.31934" y="186.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.530426" x="340" y="186.5"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="728.77734" y1="194" y2="194"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="194" y2="194"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="194" y2="194"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="194" y2="194"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="194" y2="194"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="194" y2="194"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="364.89017" x2="377.51053" y1="194" y2="194"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="348.64728" x2="362.20248" y1="194" y2="194"/>
+<rect data-exon-family="6624..7912" data-exon-key="6626..7912" data-track="coordinate-transcript-exon" fill="#2563eb" fill-opacity="0.25" height="15" stroke="#1d4ed8" stroke-width="0.35" width="9.114624" x="1146.7684" y="186.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="coordinate-transcript-exon" fill="#16a34a" fill-opacity="0.25" height="15" stroke="#15803d" stroke-width="0.35" width="12.386597" x="1026.9918" y="186.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11488" data-track="coordinate-transcript-exon" fill="#ea580c" fill-opacity="0.25" height="15" stroke="#c2410c" stroke-width="0.35" width="6.89447" x="728.89417" y="186.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="coordinate-transcript-exon" fill="#7c3aed" fill-opacity="0.25" height="15" stroke="#6d28d9" stroke-width="0.35" width="8.5303955" x="688.9297" y="186.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="coordinate-transcript-exon" fill="#db2777" fill-opacity="0.25" height="15" stroke="#be185d" stroke-width="0.35" width="15.892334" x="662.1698" y="186.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="coordinate-transcript-exon" fill="#0891b2" fill-opacity="0.25" height="15" stroke="#0e7490" stroke-width="0.35" width="12.737244" x="609.23444" y="186.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="coordinate-transcript-exon" fill="#65a30d" fill-opacity="0.25" height="15" stroke="#4d7c0f" stroke-width="0.35" width="13.087769" x="529.656" y="186.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="coordinate-transcript-exon" fill="#dc2626" fill-opacity="0.25" height="15" stroke="#b91c1c" stroke-width="0.35" width="21.384521" x="498.6894" y="186.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="coordinate-transcript-exon" fill="#d97706" fill-opacity="0.25" height="15" stroke="#b45309" stroke-width="0.35" width="32.48575" x="377.62738" y="186.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-track="coordinate-transcript-exon" fill="#0f766e" fill-opacity="0.25" height="15" stroke="#115e59" stroke-width="0.35" width="2.4539795" x="362.31934" y="186.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-track="coordinate-transcript-exon" fill="#0f766e" fill-opacity="0.25" height="15" stroke="#115e59" stroke-width="0.35" width="8.530426" x="340" y="186.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="coordinate-cds-block" fill="#0f766e" fill-opacity="0.88" height="15" stroke="#115e59" stroke-width="0.6" width="8.530426" x="340" y="186.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="coordinate-cds-block" fill="#0f766e" fill-opacity="0.88" height="15" stroke="#115e59" stroke-width="0.6" width="2.4539795" x="362.31934" y="186.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="coordinate-cds-block" fill="#d97706" fill-opacity="0.88" height="15" stroke="#b45309" stroke-width="0.6" width="32.48575" x="377.62738" y="186.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="coordinate-cds-block" fill="#dc2626" fill-opacity="0.88" height="15" stroke="#b91c1c" stroke-width="0.6" width="21.384521" x="498.6894" y="186.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="coordinate-cds-block" fill="#65a30d" fill-opacity="0.88" height="15" stroke="#4d7c0f" stroke-width="0.6" width="13.087769" x="529.656" y="186.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="coordinate-cds-block" fill="#0891b2" fill-opacity="0.88" height="15" stroke="#0e7490" stroke-width="0.6" width="12.737244" x="609.23444" y="186.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="coordinate-cds-block" fill="#db2777" fill-opacity="0.88" height="15" stroke="#be185d" stroke-width="0.6" width="15.892334" x="662.1698" y="186.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="coordinate-cds-block" fill="#7c3aed" fill-opacity="0.88" height="15" stroke="#6d28d9" stroke-width="0.6" width="8.5303955" x="688.9297" y="186.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11488" data-segment-rank="9" data-track="coordinate-cds-block" fill="#ea580c" fill-opacity="0.88" height="15" stroke="#c2410c" stroke-width="0.6" width="5.1416016" x="728.89417" y="186.5"/>
 <text fill="#374151" font-family="monospace" font-size="9" x="1162" y="197">
 TA=full
 </text>
 <text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="231.5">
 Δ40p53α (ENST00000610292.4)
 </text>
-<line stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="228" y2="228"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="228" y2="228"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="228" y2="228"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="228" y2="228"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="228" y2="228"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="228" y2="228"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="228" y2="228"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="9.114624" x="1146.7684" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.386597" x="1026.9918" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.5303955" x="688.9297" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.892334" x="662.1698" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.737244" x="609.23444" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="13.087769" x="529.656" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="21.384521" x="498.6894" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="32.48575" x="377.62738" y="220.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="24.773315" x="340" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="9.114624" x="1146.7684" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.386597" x="1026.9918" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.5303955" x="688.9297" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="15.892334" x="662.1698" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.737244" x="609.23444" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="13.087769" x="529.656" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="21.384521" x="498.6894" y="220.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="30.0318" x="380.08133" y="220.5"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="228" y2="228"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="228" y2="228"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="228" y2="228"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="228" y2="228"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="228" y2="228"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="228" y2="228"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="410.22998" x2="498.5725" y1="228" y2="228"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="coordinate-transcript-exon" fill="#2563eb" fill-opacity="0.25" height="15" stroke="#1d4ed8" stroke-width="0.35" width="9.114624" x="1146.7684" y="220.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="coordinate-transcript-exon" fill="#16a34a" fill-opacity="0.25" height="15" stroke="#15803d" stroke-width="0.35" width="12.386597" x="1026.9918" y="220.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="coordinate-transcript-exon" fill="#7c3aed" fill-opacity="0.25" height="15" stroke="#6d28d9" stroke-width="0.35" width="8.5303955" x="688.9297" y="220.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="coordinate-transcript-exon" fill="#db2777" fill-opacity="0.25" height="15" stroke="#be185d" stroke-width="0.35" width="15.892334" x="662.1698" y="220.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="coordinate-transcript-exon" fill="#0891b2" fill-opacity="0.25" height="15" stroke="#0e7490" stroke-width="0.35" width="12.737244" x="609.23444" y="220.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="coordinate-transcript-exon" fill="#65a30d" fill-opacity="0.25" height="15" stroke="#4d7c0f" stroke-width="0.35" width="13.087769" x="529.656" y="220.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="coordinate-transcript-exon" fill="#dc2626" fill-opacity="0.25" height="15" stroke="#b91c1c" stroke-width="0.35" width="21.384521" x="498.6894" y="220.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="coordinate-transcript-exon" fill="#d97706" fill-opacity="0.25" height="15" stroke="#b45309" stroke-width="0.35" width="32.48575" x="377.62738" y="220.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14844" data-track="coordinate-transcript-exon" fill="#0f766e" fill-opacity="0.25" height="15" stroke="#115e59" stroke-width="0.35" width="24.773315" x="340" y="220.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="1" data-track="coordinate-cds-block" fill="#d97706" fill-opacity="0.88" height="15" stroke="#b45309" stroke-width="0.6" width="30.0318" x="380.08133" y="220.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="2" data-track="coordinate-cds-block" fill="#dc2626" fill-opacity="0.88" height="15" stroke="#b91c1c" stroke-width="0.6" width="21.384521" x="498.6894" y="220.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="3" data-track="coordinate-cds-block" fill="#65a30d" fill-opacity="0.88" height="15" stroke="#4d7c0f" stroke-width="0.6" width="13.087769" x="529.656" y="220.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="4" data-track="coordinate-cds-block" fill="#0891b2" fill-opacity="0.88" height="15" stroke="#0e7490" stroke-width="0.6" width="12.737244" x="609.23444" y="220.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="5" data-track="coordinate-cds-block" fill="#db2777" fill-opacity="0.88" height="15" stroke="#be185d" stroke-width="0.6" width="15.892334" x="662.1698" y="220.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="6" data-track="coordinate-cds-block" fill="#7c3aed" fill-opacity="0.88" height="15" stroke="#6d28d9" stroke-width="0.6" width="8.5303955" x="688.9297" y="220.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="7" data-track="coordinate-cds-block" fill="#16a34a" fill-opacity="0.88" height="15" stroke="#15803d" stroke-width="0.6" width="12.386597" x="1026.9918" y="220.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="8" data-track="coordinate-cds-block" fill="#2563eb" fill-opacity="0.88" height="15" stroke="#1d4ed8" stroke-width="0.6" width="9.114624" x="1146.7684" y="220.5"/>
 <text fill="#374151" font-family="monospace" font-size="9" x="1162" y="231">
 TA=partial
 </text>
 <text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="265.5">
 Δ133p53α (ENST00000504937.5)
 </text>
-<line stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="262" y2="262"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="262" y2="262"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="262" y2="262"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="262" y2="262"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="262" y2="262"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="262" y2="262"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="9.114624" x="1146.7684" y="254.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.386597" x="1026.9918" y="254.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.5303955" x="688.9297" y="254.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.892334" x="662.1698" y="254.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.737244" x="609.23444" y="254.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="13.087769" x="529.656" y="254.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="51.41632" x="468.6576" y="254.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="9.114624" x="1146.7684" y="254.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.386597" x="1026.9918" y="254.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.5303955" x="688.9297" y="254.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="15.892334" x="662.1698" y="254.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.737244" x="609.23444" y="254.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="13.087769" x="529.656" y="254.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="18.930573" x="501.14334" y="254.5"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="262" y2="262"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="262" y2="262"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="262" y2="262"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="262" y2="262"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="262" y2="262"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="262" y2="262"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="coordinate-transcript-exon" fill="#2563eb" fill-opacity="0.25" height="15" stroke="#1d4ed8" stroke-width="0.35" width="9.114624" x="1146.7684" y="254.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="coordinate-transcript-exon" fill="#16a34a" fill-opacity="0.25" height="15" stroke="#15803d" stroke-width="0.35" width="12.386597" x="1026.9918" y="254.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="coordinate-transcript-exon" fill="#7c3aed" fill-opacity="0.25" height="15" stroke="#6d28d9" stroke-width="0.35" width="8.5303955" x="688.9297" y="254.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="coordinate-transcript-exon" fill="#db2777" fill-opacity="0.25" height="15" stroke="#be185d" stroke-width="0.35" width="15.892334" x="662.1698" y="254.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="coordinate-transcript-exon" fill="#0891b2" fill-opacity="0.25" height="15" stroke="#0e7490" stroke-width="0.35" width="12.737244" x="609.23444" y="254.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="coordinate-transcript-exon" fill="#65a30d" fill-opacity="0.25" height="15" stroke="#4d7c0f" stroke-width="0.35" width="13.087769" x="529.656" y="254.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-track="coordinate-transcript-exon" fill="#dc2626" fill-opacity="0.25" height="15" stroke="#b91c1c" stroke-width="0.35" width="51.41632" x="468.6576" y="254.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="coordinate-cds-block" fill="#dc2626" fill-opacity="0.88" height="15" stroke="#b91c1c" stroke-width="0.6" width="18.930573" x="501.14334" y="254.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="coordinate-cds-block" fill="#65a30d" fill-opacity="0.88" height="15" stroke="#4d7c0f" stroke-width="0.6" width="13.087769" x="529.656" y="254.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="coordinate-cds-block" fill="#0891b2" fill-opacity="0.88" height="15" stroke="#0e7490" stroke-width="0.6" width="12.737244" x="609.23444" y="254.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="coordinate-cds-block" fill="#db2777" fill-opacity="0.88" height="15" stroke="#be185d" stroke-width="0.6" width="15.892334" x="662.1698" y="254.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="coordinate-cds-block" fill="#7c3aed" fill-opacity="0.88" height="15" stroke="#6d28d9" stroke-width="0.6" width="8.5303955" x="688.9297" y="254.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="coordinate-cds-block" fill="#16a34a" fill-opacity="0.88" height="15" stroke="#15803d" stroke-width="0.6" width="12.386597" x="1026.9918" y="254.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="coordinate-cds-block" fill="#2563eb" fill-opacity="0.88" height="15" stroke="#1d4ed8" stroke-width="0.6" width="9.114624" x="1146.7684" y="254.5"/>
 <text fill="#374151" font-family="monospace" font-size="9" x="1162" y="265">
 TA=none
 </text>
 <text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="299.5">
 Δ133p53β (ENST00000510385.5)
 </text>
-<line stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="720.2469" y1="296" y2="296"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="296" y2="296"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="296" y2="296"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="296" y2="296"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="296" y2="296"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="9.114624" x="1146.7684" y="288.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.386597" x="1026.9918" y="288.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.424866" x="720.3638" y="288.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.5303955" x="688.9297" y="288.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.892334" x="662.1698" y="288.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.737244" x="609.23444" y="288.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="13.087769" x="529.656" y="288.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="51.41632" x="468.6576" y="288.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="3.388794" x="720.3638" y="288.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.5303955" x="688.9297" y="288.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="15.892334" x="662.1698" y="288.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.737244" x="609.23444" y="288.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="13.087769" x="529.656" y="288.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="18.930573" x="501.14334" y="288.5"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="720.2469" y1="296" y2="296"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="296" y2="296"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="296" y2="296"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="296" y2="296"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="296" y2="296"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="coordinate-transcript-exon" fill="#2563eb" fill-opacity="0.25" height="15" stroke="#1d4ed8" stroke-width="0.35" width="9.114624" x="1146.7684" y="288.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="coordinate-transcript-exon" fill="#16a34a" fill-opacity="0.25" height="15" stroke="#15803d" stroke-width="0.35" width="12.386597" x="1026.9918" y="288.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-track="coordinate-transcript-exon" fill="#ea580c" fill-opacity="0.25" height="15" stroke="#c2410c" stroke-width="0.35" width="15.424866" x="720.3638" y="288.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="coordinate-transcript-exon" fill="#7c3aed" fill-opacity="0.25" height="15" stroke="#6d28d9" stroke-width="0.35" width="8.5303955" x="688.9297" y="288.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="coordinate-transcript-exon" fill="#db2777" fill-opacity="0.25" height="15" stroke="#be185d" stroke-width="0.35" width="15.892334" x="662.1698" y="288.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="coordinate-transcript-exon" fill="#0891b2" fill-opacity="0.25" height="15" stroke="#0e7490" stroke-width="0.35" width="12.737244" x="609.23444" y="288.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="coordinate-transcript-exon" fill="#65a30d" fill-opacity="0.25" height="15" stroke="#4d7c0f" stroke-width="0.35" width="13.087769" x="529.656" y="288.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-track="coordinate-transcript-exon" fill="#dc2626" fill-opacity="0.25" height="15" stroke="#b91c1c" stroke-width="0.35" width="51.41632" x="468.6576" y="288.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="coordinate-cds-block" fill="#dc2626" fill-opacity="0.88" height="15" stroke="#b91c1c" stroke-width="0.6" width="18.930573" x="501.14334" y="288.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="coordinate-cds-block" fill="#65a30d" fill-opacity="0.88" height="15" stroke="#4d7c0f" stroke-width="0.6" width="13.087769" x="529.656" y="288.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="coordinate-cds-block" fill="#0891b2" fill-opacity="0.88" height="15" stroke="#0e7490" stroke-width="0.6" width="12.737244" x="609.23444" y="288.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="coordinate-cds-block" fill="#db2777" fill-opacity="0.88" height="15" stroke="#be185d" stroke-width="0.6" width="15.892334" x="662.1698" y="288.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="coordinate-cds-block" fill="#7c3aed" fill-opacity="0.88" height="15" stroke="#6d28d9" stroke-width="0.6" width="8.5303955" x="688.9297" y="288.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="6" data-track="coordinate-cds-block" fill="#ea580c" fill-opacity="0.88" height="15" stroke="#c2410c" stroke-width="0.6" width="3.388794" x="720.3638" y="288.5"/>
 <text fill="#374151" font-family="monospace" font-size="9" x="1162" y="299">
 TA=none
 </text>
 <text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="333.5">
 Δ160p53α (ENST00000619186.4)
 </text>
-<line stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="330" y2="330"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="330" y2="330"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="330" y2="330"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="330" y2="330"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="330" y2="330"/>
-<line stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="330" y2="330"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="9.114624" x="1146.7684" y="322.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.386597" x="1026.9918" y="322.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="8.5303955" x="688.9297" y="322.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="15.892334" x="662.1698" y="322.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="12.737244" x="609.23444" y="322.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="13.087769" x="529.656" y="322.5"/>
-<rect fill="#93c5fd" fill-opacity="0.25" height="15" stroke="#60a5fa" stroke-width="0.35" width="51.41632" x="468.6576" y="322.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="9.114624" x="1146.7684" y="322.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.386597" x="1026.9918" y="322.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="8.5303955" x="688.9297" y="322.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="15.892334" x="662.1698" y="322.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="12.737244" x="609.23444" y="322.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="13.087769" x="529.656" y="322.5"/>
-<rect fill="#2563eb" fill-opacity="0.85" height="15" stroke="#1f2937" stroke-width="0.5" width="9.465271" x="510.60864" y="322.5"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="1039.4954" x2="1146.6516" y1="330" y2="330"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="697.57697" x2="1026.875" y1="330" y2="330"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="678.179" x2="688.8128" y1="330" y2="330"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="622.0885" x2="662.053" y1="330" y2="330"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="542.86066" x2="609.11755" y1="330" y2="330"/>
+<line data-track="coordinate-intron" stroke="#6b7280" stroke-width="1.2" x1="520.19073" x2="529.5392" y1="330" y2="330"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="coordinate-transcript-exon" fill="#2563eb" fill-opacity="0.25" height="15" stroke="#1d4ed8" stroke-width="0.35" width="9.114624" x="1146.7684" y="322.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="coordinate-transcript-exon" fill="#16a34a" fill-opacity="0.25" height="15" stroke="#15803d" stroke-width="0.35" width="12.386597" x="1026.9918" y="322.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="coordinate-transcript-exon" fill="#7c3aed" fill-opacity="0.25" height="15" stroke="#6d28d9" stroke-width="0.35" width="8.5303955" x="688.9297" y="322.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="coordinate-transcript-exon" fill="#db2777" fill-opacity="0.25" height="15" stroke="#be185d" stroke-width="0.35" width="15.892334" x="662.1698" y="322.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="coordinate-transcript-exon" fill="#0891b2" fill-opacity="0.25" height="15" stroke="#0e7490" stroke-width="0.35" width="12.737244" x="609.23444" y="322.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="coordinate-transcript-exon" fill="#65a30d" fill-opacity="0.25" height="15" stroke="#4d7c0f" stroke-width="0.35" width="13.087769" x="529.656" y="322.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-track="coordinate-transcript-exon" fill="#dc2626" fill-opacity="0.25" height="15" stroke="#b91c1c" stroke-width="0.35" width="51.41632" x="468.6576" y="322.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="coordinate-cds-block" fill="#dc2626" fill-opacity="0.88" height="15" stroke="#b91c1c" stroke-width="0.6" width="9.465271" x="510.60864" y="322.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="coordinate-cds-block" fill="#65a30d" fill-opacity="0.88" height="15" stroke="#4d7c0f" stroke-width="0.6" width="13.087769" x="529.656" y="322.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="coordinate-cds-block" fill="#0891b2" fill-opacity="0.88" height="15" stroke="#0e7490" stroke-width="0.6" width="12.737244" x="609.23444" y="322.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="coordinate-cds-block" fill="#db2777" fill-opacity="0.88" height="15" stroke="#be185d" stroke-width="0.6" width="15.892334" x="662.1698" y="322.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="coordinate-cds-block" fill="#7c3aed" fill-opacity="0.88" height="15" stroke="#6d28d9" stroke-width="0.6" width="8.5303955" x="688.9297" y="322.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="coordinate-cds-block" fill="#16a34a" fill-opacity="0.88" height="15" stroke="#15803d" stroke-width="0.6" width="12.386597" x="1026.9918" y="322.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="coordinate-cds-block" fill="#2563eb" fill-opacity="0.88" height="15" stroke="#1d4ed8" stroke-width="0.6" width="9.114624" x="1146.7684" y="322.5"/>
 <text fill="#374151" font-family="monospace" font-size="9" x="1162" y="333">
 TA=none
 </text>
-<text fill="#4b5563" font-family="monospace" font-size="10" x="44" y="370">
-genome boundary rail
+<text fill="#111827" font-family="monospace" font-size="13" x="44" y="414">
+B) shared genomic-exon columns + isoform-local protein products (same colors = one genomic exon family and its translated peptide contribution)
 </text>
-<line stroke="#6b7280" stroke-width="1" x1="340" x2="1155.883" y1="366" y2="366"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="1155.883" x2="1155.883" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="1155.883" x2="1155.883" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="1155.883" x2="1155.883" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="1146.7684" x2="1146.7684" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="1039.3784" x2="1039.3784" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="1026.9918" x2="1026.9918" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="735.78864" x2="735.78864" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="728.89417" x2="728.89417" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="720.3638" x2="720.3638" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="697.4601" x2="697.4601" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="688.9297" x2="688.9297" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="678.06213" x2="678.06213" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="662.1698" x2="662.1698" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="621.9717" x2="621.9717" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="609.23444" x2="609.23444" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="542.7438" x2="542.7438" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="529.656" x2="529.656" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="520.0739" x2="520.0739" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="498.6894" x2="498.6894" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="468.6576" x2="468.6576" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="410.11313" x2="410.11313" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="377.62738" x2="377.62738" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="364.77332" x2="364.77332" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="362.31934" x2="362.31934" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="348.53043" x2="348.53043" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="340" x2="340" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="340" x2="340" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="340" x2="340" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="340" x2="340" y1="363" y2="369"/>
-<line stroke="#6b7280" stroke-opacity="0.8" stroke-width="0.8" x1="340" x2="340" y1="363" y2="369"/>
-<path d="M340,366.5 L348.53043,366.5 L389.83206,420.5 L340,420.5 z" fill="#64748b" fill-opacity="0.22" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M362.31934,366.5 L364.77332,366.5 L405.6877,420.5 L389.83206,420.5 z" fill="#64748b" fill-opacity="0.22" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M377.62738,366.5 L410.11313,366.5 L598.84985,420.5 L406.44275,420.5 z" fill="#64748b" fill-opacity="0.22" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M379.96448,366.5 L410.11313,366.5 L599.542,420.5 L420.9771,420.5 z" fill="#64748b" fill-opacity="0.14"/>
-<path d="M498.6894,366.5 L520.0739,366.5 L725.51013,420.5 L599.542,420.5 z" fill="#64748b" fill-opacity="0.26" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M501.0265,366.5 L520.0739,366.5 L726.1985,420.5 L614.0763,420.5 z" fill="#64748b" fill-opacity="0.18" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M510.49176,366.5 L520.0739,366.5 L726.1985,420.5 L670.1374,420.5 z" fill="#64748b" fill-opacity="0.14"/>
-<path d="M529.656,366.5 L542.7438,366.5 L804.401,420.5 L726.1985,420.5 z" fill="#64748b" fill-opacity="0.38" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M609.23444,366.5 L621.9717,366.5 L879.1678,420.5 L805.09924,420.5 z" fill="#64748b" fill-opacity="0.38" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M662.1698,366.5 L678.06213,366.5 L974.6616,420.5 L879.8473,420.5 z" fill="#64748b" fill-opacity="0.38" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M688.9297,366.5 L697.4601,366.5 L1026.5657,420.5 L975.35876,420.5 z" fill="#64748b" fill-opacity="0.38" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M720.3638,366.5 L723.75256,366.5 L1047.3384,420.5 L1027.2672,420.5 z" fill="#64748b" fill-opacity="0.18" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M728.89417,366.5 L734.03577,366.5 L1057.7201,420.5 L1027.2672,420.5 z" fill="#64748b" fill-opacity="0.14"/>
-<path d="M1026.9918,366.5 L1039.3784,366.5 L1099.2598,420.5 L1027.2672,420.5 z" fill="#64748b" fill-opacity="0.26" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<path d="M1146.7684,366.5 L1155.883,366.5 L1153.9236,420.5 L1099.939,420.5 z" fill="#64748b" fill-opacity="0.26" stroke="#475569" stroke-opacity="0.18" stroke-width="0.3"/>
-<text fill="#111827" font-family="monospace" font-size="13" x="44" y="402">
-B) protein domain architecture
+<text fill="#475569" font-family="monospace" font-size="10" x="44" y="430">
+Each lower protein rail is isoform-local (1..length aa), while the top panel keeps true genomic exon and intron positions.
 </text>
-<line stroke="#6b7280" stroke-width="1" x1="340" x2="1156" y1="420" y2="420"/>
-<text fill="#4b5563" font-family="monospace" font-size="10" text-anchor="start" x="340" y="416">
-1 aa
+<line stroke="#6b7280" stroke-width="1" x1="340" x2="1156" y1="436" y2="436"/>
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="468.5">
+TAp53α (ENST00000269305.9)
 </text>
-<text fill="#4b5563" font-family="monospace" font-size="10" text-anchor="end" x="1156" y="416">
-393 aa
-</text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="449.5">
-TAp53α
-</text>
-<line stroke="#94a3b8" stroke-width="2" x1="340" x2="1153.9236" y1="446" y2="446"/>
-<rect fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="80.97711" x="340" y="439"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="342" y="437">
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="394.9838" x2="412.20914" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="475.48825" x2="492.7136" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="559.49066" x2="576.716" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="656.2396" x2="673.46497" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="722.2255" x2="739.45087" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="787.79" x2="805.0153" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="856.9636" x2="874.18896" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="916.93384" x2="1002.82214" y1="465" y2="465"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="1050.7341" x2="1067.9594" y1="465" y2="465"/>
+<rect data-exon-family="25599..25760" data-exon-key="25599..25712" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="54.983795" x="340" y="458"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-track="compressed-transcript-exon" fill="#0f766e" fill-opacity="0.26" height="14" stroke="#115e59" stroke-width="0.5" width="63.279114" x="412.20914" y="458"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="compressed-transcript-exon" fill="#d97706" fill-opacity="0.26" height="14" stroke="#b45309" stroke-width="0.5" width="66.77707" x="492.7136" y="458"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="compressed-transcript-exon" fill="#dc2626" fill-opacity="0.26" height="14" stroke="#b91c1c" stroke-width="0.5" width="79.52362" x="576.716" y="458"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="compressed-transcript-exon" fill="#65a30d" fill-opacity="0.26" height="14" stroke="#4d7c0f" stroke-width="0.5" width="48.76056" x="673.46497" y="458"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="compressed-transcript-exon" fill="#0891b2" fill-opacity="0.26" height="14" stroke="#0e7490" stroke-width="0.5" width="48.33911" x="739.45087" y="458"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="compressed-transcript-exon" fill="#db2777" fill-opacity="0.26" height="14" stroke="#be185d" stroke-width="0.5" width="51.948303" x="805.0153" y="458"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="compressed-transcript-exon" fill="#7c3aed" fill-opacity="0.26" height="14" stroke="#6d28d9" stroke-width="0.5" width="42.744873" x="874.18896" y="458"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="compressed-transcript-exon" fill="#16a34a" fill-opacity="0.26" height="14" stroke="#15803d" stroke-width="0.5" width="47.911987" x="1002.82214" y="458"/>
+<rect data-exon-family="6624..7912" data-exon-key="6643..7912" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="88.04065" x="1067.9594" y="458"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="compressed-cds-block" fill="#0f766e" fill-opacity="0.88" height="14" stroke="#115e59" stroke-width="0.6" width="19.430115" x="419.56107" y="458"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="compressed-cds-block" fill="#0f766e" fill-opacity="0.88" height="14" stroke="#115e59" stroke-width="0.6" width="5.77652" x="469.71173" y="458"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="compressed-cds-block" fill="#d97706" fill-opacity="0.88" height="14" stroke="#b45309" stroke-width="0.6" width="66.77707" x="492.7136" y="458"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="compressed-cds-block" fill="#dc2626" fill-opacity="0.88" height="14" stroke="#b91c1c" stroke-width="0.6" width="33.17993" x="623.0597" y="458"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="compressed-cds-block" fill="#65a30d" fill-opacity="0.88" height="14" stroke="#4d7c0f" stroke-width="0.6" width="48.76056" x="673.46497" y="458"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="compressed-cds-block" fill="#0891b2" fill-opacity="0.88" height="14" stroke="#0e7490" stroke-width="0.6" width="48.33911" x="739.45087" y="458"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="compressed-cds-block" fill="#db2777" fill-opacity="0.88" height="14" stroke="#be185d" stroke-width="0.6" width="51.948303" x="805.0153" y="458"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="compressed-cds-block" fill="#7c3aed" fill-opacity="0.88" height="14" stroke="#6d28d9" stroke-width="0.6" width="42.744873" x="874.18896" y="458"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="9" data-track="compressed-cds-block" fill="#16a34a" fill-opacity="0.88" height="14" stroke="#15803d" stroke-width="0.6" width="47.911987" x="1002.82214" y="458"/>
+<rect data-exon-family="6624..7912" data-exon-key="6643..7912" data-segment-rank="10" data-track="compressed-cds-block" fill="#2563eb" fill-opacity="0.88" height="14" stroke="#1d4ed8" stroke-width="0.6" width="5.395874" x="1067.9594" y="458"/>
+<path d="M419.56107,472.5 L438.99118,472.5 L389.83206,496 L340,496 z" data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="transcript-product-link" fill="#0f766e" fill-opacity="0.12" stroke="none"/>
+<path d="M469.71173,472.5 L475.48825,472.5 L406.44275,496 L389.83206,496 z" data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="transcript-product-link" fill="#0f766e" fill-opacity="0.12" stroke="none"/>
+<path d="M492.7136,472.5 L559.49066,472.5 L599.542,496 L406.44275,496 z" data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="transcript-product-link" fill="#d97706" fill-opacity="0.12" stroke="none"/>
+<path d="M623.0597,472.5 L656.2396,472.5 L726.1985,496 L599.542,496 z" data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="transcript-product-link" fill="#dc2626" fill-opacity="0.12" stroke="none"/>
+<path d="M673.46497,472.5 L722.2255,472.5 L805.09924,496 L726.1985,496 z" data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="transcript-product-link" fill="#65a30d" fill-opacity="0.12" stroke="none"/>
+<path d="M739.45087,472.5 L787.79,472.5 L879.8473,496 L805.09924,496 z" data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="transcript-product-link" fill="#0891b2" fill-opacity="0.12" stroke="none"/>
+<path d="M805.0153,472.5 L856.9636,472.5 L975.35876,496 L879.8473,496 z" data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="transcript-product-link" fill="#db2777" fill-opacity="0.12" stroke="none"/>
+<path d="M874.18896,472.5 L916.93384,472.5 L1027.2672,496 L975.35876,496 z" data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="transcript-product-link" fill="#7c3aed" fill-opacity="0.12" stroke="none"/>
+<path d="M1002.82214,472.5 L1050.7341,472.5 L1099.939,496 L1027.2672,496 z" data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="9" data-track="transcript-product-link" fill="#16a34a" fill-opacity="0.12" stroke="none"/>
+<path d="M1067.9594,472.5 L1073.3552,472.5 L1156,496 L1099.939,496 z" data-exon-family="6624..7912" data-exon-key="6643..7912" data-segment-rank="10" data-track="transcript-product-link" fill="#2563eb" fill-opacity="0.12" stroke="none"/>
+<line data-track="protein-rail" stroke="#94a3b8" stroke-width="2" x1="340" x2="1156" y1="501" y2="501"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="protein-contribution" fill="#0f766e" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#115e59" stroke-width="0.45" width="49.83206" x="340" y="496.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="protein-contribution" fill="#0f766e" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#115e59" stroke-width="0.45" width="16.610687" x="389.83206" y="496.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="protein-contribution" fill="#d97706" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b45309" stroke-width="0.45" width="193.09924" x="406.44275" y="496.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="protein-contribution" fill="#dc2626" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b91c1c" stroke-width="0.45" width="126.656494" x="599.542" y="496.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="protein-contribution" fill="#65a30d" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#4d7c0f" stroke-width="0.45" width="78.90076" x="726.1985" y="496.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="protein-contribution" fill="#0891b2" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#0e7490" stroke-width="0.45" width="74.74805" x="805.09924" y="496.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="protein-contribution" fill="#db2777" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#be185d" stroke-width="0.45" width="95.511475" x="879.8473" y="496.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="protein-contribution" fill="#7c3aed" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#6d28d9" stroke-width="0.45" width="51.908447" x="975.35876" y="496.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="9" data-track="protein-contribution" fill="#16a34a" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#15803d" stroke-width="0.45" width="72.67175" x="1027.2672" y="496.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6643..7912" data-segment-rank="10" data-track="protein-contribution" fill="#2563eb" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#1d4ed8" stroke-width="0.45" width="56.061035" x="1099.939" y="496.5"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="49.83206" x="340" y="494"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="16.610687" x="389.83206" y="494"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="16.610687" x="406.44275" y="494"/>
+<rect data-feature-key="TAD2" data-track="protein-overlay" fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="43.603058" x="423.05344" y="494"/>
+<rect data-feature-key="PRR" data-track="protein-overlay" fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="72.67172" x="468.73282" y="494"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="49.83203" x="549.70996" y="494"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="126.656494" x="599.542" y="494"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="78.90076" x="726.1985" y="494"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="74.74805" x="805.09924" y="494"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="66.44275" x="879.8473" y="494"/>
+<rect data-feature-key="NLS" data-track="protein-overlay" fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="20.763306" x="994.04584" y="494"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="16.610718" x="1010.6565" y="494"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="49.83203" x="1027.2672" y="494"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="22.839722" x="1077.0992" y="494"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="56.061035" x="1099.939" y="494"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="381.52673" x2="381.52673" y1="509" y2="512"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="368.92673" y="513"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="371.92673" y="524">
 TAD1
 </text>
-<rect fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="41.526703" x="423.05344" y="439"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="425.05344" y="437">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="444.85498" x2="444.85498" y1="509" y2="512"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="432.25497" y="513"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="435.25497" y="524">
 TAD2
 </text>
-<rect fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="70.59543" x="468.73282" y="439"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="470.73282" y="437">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="505.06866" x2="505.06866" y1="509" y2="512"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="494.86865" y="513"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="497.86865" y="524">
 PRR
 </text>
-<rect fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="394.50378" x="549.70996" y="439"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="551.70996" y="437">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="748" x2="748" y1="509" y2="512"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="737.8" y="513"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="740.8" y="524">
 DBD
 </text>
-<rect fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.687012" x="994.04584" y="439"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="996.04584" y="437">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1004.4275" x2="1004.4275" y1="509" y2="512"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="994.2275" y="513"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="997.2275" y="524">
 NLS
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="64.366455" x="1010.6565" y="439"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1012.6565" y="437">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1043.8779" x2="1043.8779" y1="509" y2="512"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="15.599976" x="1036.0779" y="513"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1039.0779" y="524">
 OD
 </text>
-<rect fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="76.82434" x="1077.0992" y="439"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1079.0992" y="437">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1116.5496" x2="1116.5496" y1="509" y2="512"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="1106.3496" y="513"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1109.3496" y="524">
 CTD
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="449">
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="504">
+393 aa | ref 1..393
+</text>
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="468">
 TA=full
 </text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="483.5">
-TAp53β
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="580.5">
+TAp53β (ENST00000420246.7)
 </text>
-<line stroke="#94a3b8" stroke-width="2" x1="340" x2="1045.9542" y1="480" y2="480"/>
-<rect fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="80.97711" x="340" y="473"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="342" y="471">
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="394.9838" x2="412.20914" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="475.48825" x2="492.7136" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="559.49066" x2="576.716" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="656.2396" x2="673.46497" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="722.2255" x2="739.45087" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="787.79" x2="805.0153" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="856.9636" x2="874.18896" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="916.93384" x2="934.1592" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="985.59686" x2="1002.82214" y1="577" y2="577"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="1050.7341" x2="1067.9594" y1="577" y2="577"/>
+<rect data-exon-family="25599..25760" data-exon-key="25599..25760" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="54.983795" x="340" y="570"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-track="compressed-transcript-exon" fill="#0f766e" fill-opacity="0.26" height="14" stroke="#115e59" stroke-width="0.5" width="63.279114" x="412.20914" y="570"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="compressed-transcript-exon" fill="#d97706" fill-opacity="0.26" height="14" stroke="#b45309" stroke-width="0.5" width="66.77707" x="492.7136" y="570"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="compressed-transcript-exon" fill="#dc2626" fill-opacity="0.26" height="14" stroke="#b91c1c" stroke-width="0.5" width="79.52362" x="576.716" y="570"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="compressed-transcript-exon" fill="#65a30d" fill-opacity="0.26" height="14" stroke="#4d7c0f" stroke-width="0.5" width="48.76056" x="673.46497" y="570"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="compressed-transcript-exon" fill="#0891b2" fill-opacity="0.26" height="14" stroke="#0e7490" stroke-width="0.5" width="48.33911" x="739.45087" y="570"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="compressed-transcript-exon" fill="#db2777" fill-opacity="0.26" height="14" stroke="#be185d" stroke-width="0.5" width="51.948303" x="805.0153" y="570"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="compressed-transcript-exon" fill="#7c3aed" fill-opacity="0.26" height="14" stroke="#6d28d9" stroke-width="0.5" width="42.744873" x="874.18896" y="570"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-track="compressed-transcript-exon" fill="#ea580c" fill-opacity="0.26" height="14" stroke="#c2410c" stroke-width="0.5" width="51.437683" x="934.1592" y="570"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="compressed-transcript-exon" fill="#16a34a" fill-opacity="0.26" height="14" stroke="#15803d" stroke-width="0.5" width="47.911987" x="1002.82214" y="570"/>
+<rect data-exon-family="6624..7912" data-exon-key="6626..7912" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="88.04065" x="1067.9594" y="570"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="compressed-cds-block" fill="#0f766e" fill-opacity="0.88" height="14" stroke="#115e59" stroke-width="0.6" width="19.430115" x="419.56107" y="570"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="compressed-cds-block" fill="#0f766e" fill-opacity="0.88" height="14" stroke="#115e59" stroke-width="0.6" width="5.77652" x="469.71173" y="570"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="compressed-cds-block" fill="#d97706" fill-opacity="0.88" height="14" stroke="#b45309" stroke-width="0.6" width="66.77707" x="492.7136" y="570"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="compressed-cds-block" fill="#dc2626" fill-opacity="0.88" height="14" stroke="#b91c1c" stroke-width="0.6" width="33.17993" x="623.0597" y="570"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="compressed-cds-block" fill="#65a30d" fill-opacity="0.88" height="14" stroke="#4d7c0f" stroke-width="0.6" width="48.76056" x="673.46497" y="570"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="compressed-cds-block" fill="#0891b2" fill-opacity="0.88" height="14" stroke="#0e7490" stroke-width="0.6" width="48.33911" x="739.45087" y="570"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="compressed-cds-block" fill="#db2777" fill-opacity="0.88" height="14" stroke="#be185d" stroke-width="0.6" width="51.948303" x="805.0153" y="570"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="compressed-cds-block" fill="#7c3aed" fill-opacity="0.88" height="14" stroke="#6d28d9" stroke-width="0.6" width="42.744873" x="874.18896" y="570"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="9" data-track="compressed-cds-block" fill="#ea580c" fill-opacity="0.88" height="14" stroke="#c2410c" stroke-width="0.6" width="11.602478" x="934.1592" y="570"/>
+<path d="M419.56107,584.5 L438.99118,584.5 L397.4311,608 L340,608 z" data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="transcript-product-link" fill="#0f766e" fill-opacity="0.12" stroke="none"/>
+<path d="M469.71173,584.5 L475.48825,584.5 L416.57477,608 L397.4311,608 z" data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="transcript-product-link" fill="#0f766e" fill-opacity="0.12" stroke="none"/>
+<path d="M492.7136,584.5 L559.49066,584.5 L639.12024,608 L416.57477,608 z" data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="transcript-product-link" fill="#d97706" fill-opacity="0.12" stroke="none"/>
+<path d="M623.0597,584.5 L656.2396,584.5 L785.09094,608 L639.12024,608 z" data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="transcript-product-link" fill="#dc2626" fill-opacity="0.12" stroke="none"/>
+<path d="M673.46497,584.5 L722.2255,584.5 L876.0235,608 L785.09094,608 z" data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="transcript-product-link" fill="#65a30d" fill-opacity="0.12" stroke="none"/>
+<path d="M739.45087,584.5 L787.79,584.5 L962.1701,608 L876.0235,608 z" data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="transcript-product-link" fill="#0891b2" fill-opacity="0.12" stroke="none"/>
+<path d="M805.0153,584.5 L856.9636,584.5 L1072.2463,608 L962.1701,608 z" data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="transcript-product-link" fill="#db2777" fill-opacity="0.12" stroke="none"/>
+<path d="M874.18896,584.5 L916.93384,584.5 L1132.0704,608 L1072.2463,608 z" data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="transcript-product-link" fill="#7c3aed" fill-opacity="0.12" stroke="none"/>
+<path d="M934.1592,584.5 L945.76166,584.5 L1156,608 L1132.0704,608 z" data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="9" data-track="transcript-product-link" fill="#ea580c" fill-opacity="0.12" stroke="none"/>
+<line data-track="protein-rail" stroke="#94a3b8" stroke-width="2" x1="340" x2="1156" y1="613" y2="613"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="protein-contribution" fill="#0f766e" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#115e59" stroke-width="0.45" width="57.43109" x="340" y="608.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="protein-contribution" fill="#0f766e" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#115e59" stroke-width="0.45" width="19.143677" x="397.4311" y="608.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="protein-contribution" fill="#d97706" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b45309" stroke-width="0.45" width="222.54547" x="416.57477" y="608.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="protein-contribution" fill="#dc2626" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b91c1c" stroke-width="0.45" width="145.9707" x="639.12024" y="608.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="protein-contribution" fill="#65a30d" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#4d7c0f" stroke-width="0.45" width="90.932556" x="785.09094" y="608.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="protein-contribution" fill="#0891b2" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#0e7490" stroke-width="0.45" width="86.14661" x="876.0235" y="608.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="protein-contribution" fill="#db2777" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#be185d" stroke-width="0.45" width="110.07623" x="962.1701" y="608.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="protein-contribution" fill="#7c3aed" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#6d28d9" stroke-width="0.45" width="59.824097" x="1072.2463" y="608.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="9" data-track="protein-contribution" fill="#ea580c" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#c2410c" stroke-width="0.45" width="23.929565" x="1132.0704" y="608.5"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="57.43109" x="340" y="606"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="19.143677" x="397.4311" y="606"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="19.143707" x="416.57477" y="606"/>
+<rect data-feature-key="TAD2" data-track="protein-overlay" fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="50.252197" x="435.71848" y="606"/>
+<rect data-feature-key="PRR" data-track="protein-overlay" fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="83.75366" x="488.36365" y="606"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="57.43109" x="581.68915" y="606"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="145.9707" x="639.12024" y="606"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="90.932556" x="785.09094" y="606"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="86.14661" x="876.0235" y="606"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="76.57477" x="962.1701" y="606"/>
+<rect data-feature-key="β-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="33.501465" x="1038.7449" y="606"/>
+<rect data-feature-key="β-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="59.824097" x="1072.2463" y="606"/>
+<rect data-feature-key="β-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="23.929565" x="1132.0704" y="606"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="387.85925" x2="387.85925" y1="621" y2="624"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="375.25925" y="625"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="378.25925" y="636">
 TAD1
 </text>
-<rect fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="41.526703" x="423.05344" y="473"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="425.05344" y="471">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="460.84457" x2="460.84457" y1="621" y2="624"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="448.24457" y="625"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="451.24457" y="636">
 TAD2
 </text>
-<rect fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="70.59543" x="468.73282" y="473"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="470.73282" y="471">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="530.2405" x2="530.2405" y1="621" y2="624"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="520.04047" y="625"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="523.04047" y="636">
 PRR
 </text>
-<rect fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="394.50378" x="549.70996" y="473"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="551.70996" y="471">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="810.21704" x2="810.21704" y1="621" y2="624"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="800.017" y="625"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="803.017" y="636">
 DBD
 </text>
-<rect fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="99.664185" x="946.29004" y="473"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="948.29004" y="471">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1097.3724" x2="1097.3724" y1="621" y2="624"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.80005" x="1079.9724" y="625"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1082.9724" y="636">
 β-tail
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="483">
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="616">
+341 aa | ref 1..341
+</text>
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="580">
 TA=full
 </text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="517.5">
-TAp53γ
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="692.5">
+TAp53γ (ENST00000455263.7)
 </text>
-<line stroke="#94a3b8" stroke-width="2" x1="340" x2="1056.3359" y1="514" y2="514"/>
-<rect fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="80.97711" x="340" y="507"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="342" y="505">
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="394.9838" x2="412.20914" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="475.48825" x2="492.7136" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="559.49066" x2="576.716" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="656.2396" x2="673.46497" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="722.2255" x2="739.45087" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="787.79" x2="805.0153" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="856.9636" x2="874.18896" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="916.93384" x2="934.1592" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="985.59686" x2="1002.82214" y1="689" y2="689"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="1050.7341" x2="1067.9594" y1="689" y2="689"/>
+<rect data-exon-family="25599..25760" data-exon-key="25599..25760" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="54.983795" x="340" y="682"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-track="compressed-transcript-exon" fill="#0f766e" fill-opacity="0.26" height="14" stroke="#115e59" stroke-width="0.5" width="63.279114" x="412.20914" y="682"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="compressed-transcript-exon" fill="#d97706" fill-opacity="0.26" height="14" stroke="#b45309" stroke-width="0.5" width="66.77707" x="492.7136" y="682"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="compressed-transcript-exon" fill="#dc2626" fill-opacity="0.26" height="14" stroke="#b91c1c" stroke-width="0.5" width="79.52362" x="576.716" y="682"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="compressed-transcript-exon" fill="#65a30d" fill-opacity="0.26" height="14" stroke="#4d7c0f" stroke-width="0.5" width="48.76056" x="673.46497" y="682"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="compressed-transcript-exon" fill="#0891b2" fill-opacity="0.26" height="14" stroke="#0e7490" stroke-width="0.5" width="48.33911" x="739.45087" y="682"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="compressed-transcript-exon" fill="#db2777" fill-opacity="0.26" height="14" stroke="#be185d" stroke-width="0.5" width="51.948303" x="805.0153" y="682"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="compressed-transcript-exon" fill="#7c3aed" fill-opacity="0.26" height="14" stroke="#6d28d9" stroke-width="0.5" width="42.744873" x="874.18896" y="682"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11488" data-track="compressed-transcript-exon" fill="#ea580c" fill-opacity="0.26" height="14" stroke="#c2410c" stroke-width="0.5" width="51.437683" x="934.1592" y="682"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="compressed-transcript-exon" fill="#16a34a" fill-opacity="0.26" height="14" stroke="#15803d" stroke-width="0.5" width="47.911987" x="1002.82214" y="682"/>
+<rect data-exon-family="6624..7912" data-exon-key="6626..7912" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="88.04065" x="1067.9594" y="682"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="compressed-cds-block" fill="#0f766e" fill-opacity="0.88" height="14" stroke="#115e59" stroke-width="0.6" width="19.430115" x="419.56107" y="682"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="compressed-cds-block" fill="#0f766e" fill-opacity="0.88" height="14" stroke="#115e59" stroke-width="0.6" width="5.77652" x="469.71173" y="682"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="compressed-cds-block" fill="#d97706" fill-opacity="0.88" height="14" stroke="#b45309" stroke-width="0.6" width="66.77707" x="492.7136" y="682"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="compressed-cds-block" fill="#dc2626" fill-opacity="0.88" height="14" stroke="#b91c1c" stroke-width="0.6" width="33.17993" x="623.0597" y="682"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="compressed-cds-block" fill="#65a30d" fill-opacity="0.88" height="14" stroke="#4d7c0f" stroke-width="0.6" width="48.76056" x="673.46497" y="682"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="compressed-cds-block" fill="#0891b2" fill-opacity="0.88" height="14" stroke="#0e7490" stroke-width="0.6" width="48.33911" x="739.45087" y="682"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="compressed-cds-block" fill="#db2777" fill-opacity="0.88" height="14" stroke="#be185d" stroke-width="0.6" width="51.948303" x="805.0153" y="682"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="compressed-cds-block" fill="#7c3aed" fill-opacity="0.88" height="14" stroke="#6d28d9" stroke-width="0.6" width="42.744873" x="874.18896" y="682"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11488" data-segment-rank="9" data-track="compressed-cds-block" fill="#ea580c" fill-opacity="0.88" height="14" stroke="#c2410c" stroke-width="0.6" width="17.403687" x="962.3919" y="682"/>
+<path d="M419.56107,696.5 L438.99118,696.5 L396.60117,720 L340,720 z" data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="transcript-product-link" fill="#0f766e" fill-opacity="0.12" stroke="none"/>
+<path d="M469.71173,696.5 L475.48825,696.5 L415.4682,720 L396.60117,720 z" data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="transcript-product-link" fill="#0f766e" fill-opacity="0.12" stroke="none"/>
+<path d="M492.7136,696.5 L559.49066,696.5 L634.7977,720 L415.4682,720 z" data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="transcript-product-link" fill="#d97706" fill-opacity="0.12" stroke="none"/>
+<path d="M623.0597,696.5 L656.2396,696.5 L778.65894,720 L634.7977,720 z" data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="transcript-product-link" fill="#dc2626" fill-opacity="0.12" stroke="none"/>
+<path d="M673.46497,696.5 L722.2255,696.5 L868.27747,720 L778.65894,720 z" data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="transcript-product-link" fill="#65a30d" fill-opacity="0.12" stroke="none"/>
+<path d="M739.45087,696.5 L787.79,696.5 L953.1792,720 L868.27747,720 z" data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="transcript-product-link" fill="#0891b2" fill-opacity="0.12" stroke="none"/>
+<path d="M805.0153,696.5 L856.9636,696.5 L1061.6648,720 L953.1792,720 z" data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="transcript-product-link" fill="#db2777" fill-opacity="0.12" stroke="none"/>
+<path d="M874.18896,696.5 L916.93384,696.5 L1120.6243,720 L1061.6648,720 z" data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="transcript-product-link" fill="#7c3aed" fill-opacity="0.12" stroke="none"/>
+<path d="M962.3919,696.5 L979.7956,696.5 L1156,720 L1120.6243,720 z" data-exon-family="11429..11561" data-exon-key="11429..11488" data-segment-rank="9" data-track="transcript-product-link" fill="#ea580c" fill-opacity="0.12" stroke="none"/>
+<line data-track="protein-rail" stroke="#94a3b8" stroke-width="2" x1="340" x2="1156" y1="725" y2="725"/>
+<rect data-exon-family="14604..14844" data-exon-key="14743..14844" data-segment-rank="1" data-track="protein-contribution" fill="#0f766e" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#115e59" stroke-width="0.45" width="56.601166" x="340" y="720.5"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14625" data-segment-rank="2" data-track="protein-contribution" fill="#0f766e" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#115e59" stroke-width="0.45" width="18.867035" x="396.60117" y="720.5"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="3" data-track="protein-contribution" fill="#d97706" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b45309" stroke-width="0.45" width="219.32953" x="415.4682" y="720.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="4" data-track="protein-contribution" fill="#dc2626" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b91c1c" stroke-width="0.45" width="143.8612" x="634.7977" y="720.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="5" data-track="protein-contribution" fill="#65a30d" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#4d7c0f" stroke-width="0.45" width="89.61853" x="778.65894" y="720.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="6" data-track="protein-contribution" fill="#0891b2" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#0e7490" stroke-width="0.45" width="84.90173" x="868.27747" y="720.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="7" data-track="protein-contribution" fill="#db2777" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#be185d" stroke-width="0.45" width="108.485596" x="953.1792" y="720.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="8" data-track="protein-contribution" fill="#7c3aed" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#6d28d9" stroke-width="0.45" width="58.959473" x="1061.6648" y="720.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11488" data-segment-rank="9" data-track="protein-contribution" fill="#ea580c" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#c2410c" stroke-width="0.45" width="35.375732" x="1120.6243" y="720.5"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="56.601166" x="340" y="718"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.867035" x="396.60117" y="718"/>
+<rect data-feature-key="TAD1" data-track="protein-overlay" fill="#ef4444" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.867065" x="415.4682" y="718"/>
+<rect data-feature-key="TAD2" data-track="protein-overlay" fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="49.526" x="434.33527" y="718"/>
+<rect data-feature-key="PRR" data-track="protein-overlay" fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="82.543335" x="486.21967" y="718"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="56.601196" x="578.19653" y="718"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="143.8612" x="634.7977" y="718"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="89.61853" x="778.65894" y="718"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="84.90173" x="868.27747" y="718"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="75.46826" x="953.1792" y="718"/>
+<rect data-feature-key="γ-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="33.017334" x="1028.6475" y="718"/>
+<rect data-feature-key="γ-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="58.959473" x="1061.6648" y="718"/>
+<rect data-feature-key="γ-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="35.375732" x="1120.6243" y="718"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="387.16763" x2="387.16763" y1="733" y2="736"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="374.56763" y="737"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="377.56763" y="748">
 TAD1
 </text>
-<rect fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="41.526703" x="423.05344" y="507"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="425.05344" y="505">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="459.09827" x2="459.09827" y1="733" y2="736"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="446.49826" y="737"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="449.49826" y="748">
 TAD2
 </text>
-<rect fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="70.59543" x="468.73282" y="507"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="470.73282" y="505">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="527.49133" x2="527.49133" y1="733" y2="736"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="517.2913" y="737"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="520.2913" y="748">
 PRR
 </text>
-<rect fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="394.50378" x="549.70996" y="507"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="551.70996" y="505">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="803.422" x2="803.422" y1="733" y2="736"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="793.222" y="737"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="796.222" y="748">
 DBD
 </text>
-<rect fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="110.0459" x="946.29004" y="507"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="948.29004" y="505">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1092.3237" x2="1092.3237" y1="733" y2="736"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.80005" x="1074.9237" y="737"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1077.9237" y="748">
 γ-tail
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="517">
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="728">
+346 aa | ref 1..346
+</text>
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="692">
 TA=full
 </text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="551.5">
-Δ40p53α
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="804.5">
+Δ40p53α (ENST00000610292.4)
 </text>
-<line stroke="#94a3b8" stroke-width="2" x1="420.9771" x2="1153.9236" y1="548" y2="548"/>
-<rect fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="41.526703" x="423.05344" y="541"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="425.05344" y="539">
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="394.9838" x2="412.20914" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="475.48825" x2="492.7136" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="559.49066" x2="576.716" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="656.2396" x2="673.46497" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="722.2255" x2="739.45087" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="787.79" x2="805.0153" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="856.9636" x2="874.18896" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="916.93384" x2="1002.82214" y1="801" y2="801"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="1050.7341" x2="1067.9594" y1="801" y2="801"/>
+<rect data-exon-family="25599..25760" data-exon-key="25599..25703" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="54.983795" x="340" y="794"/>
+<rect data-exon-family="14604..14844" data-exon-key="14604..14844" data-track="compressed-transcript-exon" fill="#0f766e" fill-opacity="0.26" height="14" stroke="#115e59" stroke-width="0.5" width="63.279114" x="412.20914" y="794"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-track="compressed-transcript-exon" fill="#d97706" fill-opacity="0.26" height="14" stroke="#b45309" stroke-width="0.5" width="66.77707" x="492.7136" y="794"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-track="compressed-transcript-exon" fill="#dc2626" fill-opacity="0.26" height="14" stroke="#b91c1c" stroke-width="0.5" width="79.52362" x="576.716" y="794"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="compressed-transcript-exon" fill="#65a30d" fill-opacity="0.26" height="14" stroke="#4d7c0f" stroke-width="0.5" width="48.76056" x="673.46497" y="794"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="compressed-transcript-exon" fill="#0891b2" fill-opacity="0.26" height="14" stroke="#0e7490" stroke-width="0.5" width="48.33911" x="739.45087" y="794"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="compressed-transcript-exon" fill="#db2777" fill-opacity="0.26" height="14" stroke="#be185d" stroke-width="0.5" width="51.948303" x="805.0153" y="794"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="compressed-transcript-exon" fill="#7c3aed" fill-opacity="0.26" height="14" stroke="#6d28d9" stroke-width="0.5" width="42.744873" x="874.18896" y="794"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="compressed-transcript-exon" fill="#16a34a" fill-opacity="0.26" height="14" stroke="#15803d" stroke-width="0.5" width="47.911987" x="1002.82214" y="794"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="88.04065" x="1067.9594" y="794"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="1" data-track="compressed-cds-block" fill="#d97706" fill-opacity="0.88" height="14" stroke="#b45309" stroke-width="0.6" width="61.750824" x="497.73984" y="794"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="2" data-track="compressed-cds-block" fill="#dc2626" fill-opacity="0.88" height="14" stroke="#b91c1c" stroke-width="0.6" width="33.17993" x="623.0597" y="794"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="3" data-track="compressed-cds-block" fill="#65a30d" fill-opacity="0.88" height="14" stroke="#4d7c0f" stroke-width="0.6" width="48.76056" x="673.46497" y="794"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="4" data-track="compressed-cds-block" fill="#0891b2" fill-opacity="0.88" height="14" stroke="#0e7490" stroke-width="0.6" width="48.33911" x="739.45087" y="794"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="5" data-track="compressed-cds-block" fill="#db2777" fill-opacity="0.88" height="14" stroke="#be185d" stroke-width="0.6" width="51.948303" x="805.0153" y="794"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="6" data-track="compressed-cds-block" fill="#7c3aed" fill-opacity="0.88" height="14" stroke="#6d28d9" stroke-width="0.6" width="42.744873" x="874.18896" y="794"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="7" data-track="compressed-cds-block" fill="#16a34a" fill-opacity="0.88" height="14" stroke="#15803d" stroke-width="0.6" width="47.911987" x="1002.82214" y="794"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="8" data-track="compressed-cds-block" fill="#2563eb" fill-opacity="0.88" height="14" stroke="#1d4ed8" stroke-width="0.6" width="5.395874" x="1067.9594" y="794"/>
+<path d="M497.73984,808.5 L559.49066,808.5 L538.2373,832 L340,832 z" data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="1" data-track="transcript-product-link" fill="#d97706" fill-opacity="0.12" stroke="none"/>
+<path d="M623.0597,808.5 L656.2396,808.5 L678.8474,832 L538.2373,832 z" data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="2" data-track="transcript-product-link" fill="#dc2626" fill-opacity="0.12" stroke="none"/>
+<path d="M673.46497,808.5 L722.2255,808.5 L766.4407,832 L678.8474,832 z" data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="3" data-track="transcript-product-link" fill="#65a30d" fill-opacity="0.12" stroke="none"/>
+<path d="M739.45087,808.5 L787.79,808.5 L849.4237,832 L766.4407,832 z" data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="4" data-track="transcript-product-link" fill="#0891b2" fill-opacity="0.12" stroke="none"/>
+<path d="M805.0153,808.5 L856.9636,808.5 L955.45764,832 L849.4237,832 z" data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="5" data-track="transcript-product-link" fill="#db2777" fill-opacity="0.12" stroke="none"/>
+<path d="M874.18896,808.5 L916.93384,808.5 L1013.0848,832 L955.45764,832 z" data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="6" data-track="transcript-product-link" fill="#7c3aed" fill-opacity="0.12" stroke="none"/>
+<path d="M1002.82214,808.5 L1050.7341,808.5 L1093.7627,832 L1013.0848,832 z" data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="7" data-track="transcript-product-link" fill="#16a34a" fill-opacity="0.12" stroke="none"/>
+<path d="M1067.9594,808.5 L1073.3552,808.5 L1156,832 L1093.7627,832 z" data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="8" data-track="transcript-product-link" fill="#2563eb" fill-opacity="0.12" stroke="none"/>
+<line data-track="protein-rail" stroke="#94a3b8" stroke-width="2" x1="340" x2="1156" y1="837" y2="837"/>
+<rect data-exon-family="14216..14494" data-exon-key="14216..14494" data-segment-rank="1" data-track="protein-contribution" fill="#d97706" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b45309" stroke-width="0.45" width="198.2373" x="340" y="832.5"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13458" data-segment-rank="2" data-track="protein-contribution" fill="#dc2626" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b91c1c" stroke-width="0.45" width="140.6101" x="538.2373" y="832.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="3" data-track="protein-contribution" fill="#65a30d" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#4d7c0f" stroke-width="0.45" width="87.59326" x="678.8474" y="832.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="4" data-track="protein-contribution" fill="#0891b2" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#0e7490" stroke-width="0.45" width="82.98303" x="766.4407" y="832.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="5" data-track="protein-contribution" fill="#db2777" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#be185d" stroke-width="0.45" width="106.033936" x="849.4237" y="832.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="6" data-track="protein-contribution" fill="#7c3aed" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#6d28d9" stroke-width="0.45" width="57.627136" x="955.45764" y="832.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="7" data-track="protein-contribution" fill="#16a34a" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#15803d" stroke-width="0.45" width="80.67792" x="1013.0848" y="832.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="8" data-track="protein-contribution" fill="#2563eb" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#1d4ed8" stroke-width="0.45" width="62.237305" x="1093.7627" y="832.5"/>
+<rect data-feature-key="TAD2" data-track="protein-overlay" fill="#f97316" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="48.40677" x="342.30508" y="830"/>
+<rect data-feature-key="PRR" data-track="protein-overlay" fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="80.67798" x="393.01694" y="830"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="55.322052" x="482.91525" y="830"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="140.6101" x="538.2373" y="830"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="87.59326" x="678.8474" y="830"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="82.98303" x="766.4407" y="830"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="73.762695" x="849.4237" y="830"/>
+<rect data-feature-key="NLS" data-track="protein-overlay" fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="23.050842" x="976.20337" y="830"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.440735" x="994.64404" y="830"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="55.32196" x="1013.0848" y="830"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="25.355957" x="1068.4067" y="830"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="62.237305" x="1093.7627" y="830"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="366.50848" x2="366.50848" y1="845" y2="848"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="25.200012" x="353.90848" y="849"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="356.90848" y="860">
 TAD2
 </text>
-<rect fill="#f59e0b" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="70.59543" x="468.73282" y="541"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="470.73282" y="539">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="433.35593" x2="433.35593" y1="845" y2="848"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.399994" x="423.1559" y="849"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="426.1559" y="860">
 PRR
 </text>
-<rect fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="394.50378" x="549.70996" y="541"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="551.70996" y="539">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="703.05084" x2="703.05084" y1="845" y2="848"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="692.8508" y="849"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="695.8508" y="860">
 DBD
 </text>
-<rect fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.687012" x="994.04584" y="541"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="996.04584" y="539">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="987.72876" x2="987.72876" y1="845" y2="848"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="977.52875" y="849"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="980.52875" y="860">
 NLS
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="64.366455" x="1010.6565" y="541"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1012.6565" y="539">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1031.5254" x2="1031.5254" y1="845" y2="848"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="15.600037" x="1023.7254" y="849"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1026.7253" y="860">
 OD
 </text>
-<rect fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="76.82434" x="1077.0992" y="541"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1079.0992" y="539">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1112.2034" x2="1112.2034" y1="845" y2="848"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="1102.0034" y="849"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1105.0034" y="860">
 CTD
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="551">
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="840">
+354 aa | ref 40..393
+</text>
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="804">
 TA=partial
 </text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="585.5">
-Δ133p53α
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="916.5">
+Δ133p53α (ENST00000504937.5)
 </text>
-<line stroke="#94a3b8" stroke-width="2" x1="614.0763" x2="1153.9236" y1="582" y2="582"/>
-<rect fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="330.13745" x="614.0763" y="575"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="616.0763" y="573">
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="656.2396" x2="673.46497" y1="913" y2="913"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="722.2255" x2="739.45087" y1="913" y2="913"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="787.79" x2="805.0153" y1="913" y2="913"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="856.9636" x2="874.18896" y1="913" y2="913"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="916.93384" x2="1002.82214" y1="913" y2="913"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="1050.7341" x2="1067.9594" y1="913" y2="913"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-track="compressed-transcript-exon" fill="#dc2626" fill-opacity="0.26" height="14" stroke="#b91c1c" stroke-width="0.5" width="79.52362" x="576.716" y="906"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="compressed-transcript-exon" fill="#65a30d" fill-opacity="0.26" height="14" stroke="#4d7c0f" stroke-width="0.5" width="48.76056" x="673.46497" y="906"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="compressed-transcript-exon" fill="#0891b2" fill-opacity="0.26" height="14" stroke="#0e7490" stroke-width="0.5" width="48.33911" x="739.45087" y="906"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="compressed-transcript-exon" fill="#db2777" fill-opacity="0.26" height="14" stroke="#be185d" stroke-width="0.5" width="51.948303" x="805.0153" y="906"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="compressed-transcript-exon" fill="#7c3aed" fill-opacity="0.26" height="14" stroke="#6d28d9" stroke-width="0.5" width="42.744873" x="874.18896" y="906"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="compressed-transcript-exon" fill="#16a34a" fill-opacity="0.26" height="14" stroke="#15803d" stroke-width="0.5" width="47.911987" x="1002.82214" y="906"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="88.04065" x="1067.9594" y="906"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="compressed-cds-block" fill="#dc2626" fill-opacity="0.88" height="14" stroke="#b91c1c" stroke-width="0.6" width="29.393066" x="626.84656" y="906"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="compressed-cds-block" fill="#65a30d" fill-opacity="0.88" height="14" stroke="#4d7c0f" stroke-width="0.6" width="48.76056" x="673.46497" y="906"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="compressed-cds-block" fill="#0891b2" fill-opacity="0.88" height="14" stroke="#0e7490" stroke-width="0.6" width="48.33911" x="739.45087" y="906"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="compressed-cds-block" fill="#db2777" fill-opacity="0.88" height="14" stroke="#be185d" stroke-width="0.6" width="51.948303" x="805.0153" y="906"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="compressed-cds-block" fill="#7c3aed" fill-opacity="0.88" height="14" stroke="#6d28d9" stroke-width="0.6" width="42.744873" x="874.18896" y="906"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="compressed-cds-block" fill="#16a34a" fill-opacity="0.88" height="14" stroke="#15803d" stroke-width="0.6" width="47.911987" x="1002.82214" y="906"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="compressed-cds-block" fill="#2563eb" fill-opacity="0.88" height="14" stroke="#1d4ed8" stroke-width="0.6" width="5.395874" x="1067.9594" y="906"/>
+<path d="M626.84656,920.5 L656.2396,920.5 L508.82758,944 L340,944 z" data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="transcript-product-link" fill="#dc2626" fill-opacity="0.12" stroke="none"/>
+<path d="M673.46497,920.5 L722.2255,920.5 L627.6322,944 L508.82758,944 z" data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="transcript-product-link" fill="#65a30d" fill-opacity="0.12" stroke="none"/>
+<path d="M739.45087,920.5 L787.79,920.5 L740.1839,944 L627.6322,944 z" data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="transcript-product-link" fill="#0891b2" fill-opacity="0.12" stroke="none"/>
+<path d="M805.0153,920.5 L856.9636,920.5 L884,944 L740.1839,944 z" data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="transcript-product-link" fill="#db2777" fill-opacity="0.12" stroke="none"/>
+<path d="M874.18896,920.5 L916.93384,920.5 L962.16095,944 L884,944 z" data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="transcript-product-link" fill="#7c3aed" fill-opacity="0.12" stroke="none"/>
+<path d="M1002.82214,920.5 L1050.7341,920.5 L1071.5862,944 L962.16095,944 z" data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="transcript-product-link" fill="#16a34a" fill-opacity="0.12" stroke="none"/>
+<path d="M1067.9594,920.5 L1073.3552,920.5 L1156,944 L1071.5862,944 z" data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="transcript-product-link" fill="#2563eb" fill-opacity="0.12" stroke="none"/>
+<line data-track="protein-rail" stroke="#94a3b8" stroke-width="2" x1="340" x2="1156" y1="949" y2="949"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="protein-contribution" fill="#dc2626" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b91c1c" stroke-width="0.45" width="168.82758" x="340" y="944.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="protein-contribution" fill="#65a30d" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#4d7c0f" stroke-width="0.45" width="118.80463" x="508.82758" y="944.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="protein-contribution" fill="#0891b2" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#0e7490" stroke-width="0.45" width="112.5517" x="627.6322" y="944.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="protein-contribution" fill="#db2777" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#be185d" stroke-width="0.45" width="143.8161" x="740.1839" y="944.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="protein-contribution" fill="#7c3aed" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#6d28d9" stroke-width="0.45" width="78.16095" x="884" y="944.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="protein-contribution" fill="#16a34a" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#15803d" stroke-width="0.45" width="109.42523" x="962.16095" y="944.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="protein-contribution" fill="#2563eb" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#1d4ed8" stroke-width="0.45" width="84.41382" x="1071.5862" y="944.5"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="168.82758" x="340" y="942"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="118.80463" x="508.82758" y="942"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="112.5517" x="627.6322" y="942"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="100.04596" x="740.1839" y="942"/>
+<rect data-feature-key="NLS" data-track="protein-overlay" fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="31.264404" x="912.13794" y="942"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="25.011475" x="937.1495" y="942"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="75.03436" x="962.16095" y="942"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="34.39087" x="1037.1953" y="942"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="84.41382" x="1071.5862" y="942"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="590.1149" x2="590.1149" y1="957" y2="960"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="579.9149" y="961"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="582.9149" y="972">
 DBD
 </text>
-<rect fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.687012" x="994.04584" y="575"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="996.04584" y="573">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="927.77014" x2="927.77014" y1="957" y2="960"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="917.5701" y="961"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="920.5701" y="972">
 NLS
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="64.366455" x="1010.6565" y="575"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1012.6565" y="573">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="987.17236" x2="987.17236" y1="957" y2="960"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="15.599976" x="979.3724" y="961"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="982.3724" y="972">
 OD
 </text>
-<rect fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="76.82434" x="1077.0992" y="575"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1079.0992" y="573">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1096.5977" x2="1096.5977" y1="957" y2="960"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="1086.3977" y="961"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1089.3977" y="972">
 CTD
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="585">
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="952">
+261 aa | ref 133..393
+</text>
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="916">
 TA=none
 </text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="619.5">
-Δ133p53β
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="1028.5">
+Δ133p53β (ENST00000510385.5)
 </text>
-<line stroke="#94a3b8" stroke-width="2" x1="614.0763" x2="1045.9542" y1="616" y2="616"/>
-<rect fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="330.13745" x="614.0763" y="609"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="616.0763" y="607">
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="656.2396" x2="673.46497" y1="1025" y2="1025"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="722.2255" x2="739.45087" y1="1025" y2="1025"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="787.79" x2="805.0153" y1="1025" y2="1025"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="856.9636" x2="874.18896" y1="1025" y2="1025"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="916.93384" x2="934.1592" y1="1025" y2="1025"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="985.59686" x2="1002.82214" y1="1025" y2="1025"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="1050.7341" x2="1067.9594" y1="1025" y2="1025"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-track="compressed-transcript-exon" fill="#dc2626" fill-opacity="0.26" height="14" stroke="#b91c1c" stroke-width="0.5" width="79.52362" x="576.716" y="1018"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="compressed-transcript-exon" fill="#65a30d" fill-opacity="0.26" height="14" stroke="#4d7c0f" stroke-width="0.5" width="48.76056" x="673.46497" y="1018"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="compressed-transcript-exon" fill="#0891b2" fill-opacity="0.26" height="14" stroke="#0e7490" stroke-width="0.5" width="48.33911" x="739.45087" y="1018"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="compressed-transcript-exon" fill="#db2777" fill-opacity="0.26" height="14" stroke="#be185d" stroke-width="0.5" width="51.948303" x="805.0153" y="1018"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="compressed-transcript-exon" fill="#7c3aed" fill-opacity="0.26" height="14" stroke="#6d28d9" stroke-width="0.5" width="42.744873" x="874.18896" y="1018"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-track="compressed-transcript-exon" fill="#ea580c" fill-opacity="0.26" height="14" stroke="#c2410c" stroke-width="0.5" width="51.437683" x="934.1592" y="1018"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="compressed-transcript-exon" fill="#16a34a" fill-opacity="0.26" height="14" stroke="#15803d" stroke-width="0.5" width="47.911987" x="1002.82214" y="1018"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="88.04065" x="1067.9594" y="1018"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="compressed-cds-block" fill="#dc2626" fill-opacity="0.88" height="14" stroke="#b91c1c" stroke-width="0.6" width="29.393066" x="626.84656" y="1018"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="compressed-cds-block" fill="#65a30d" fill-opacity="0.88" height="14" stroke="#4d7c0f" stroke-width="0.6" width="48.76056" x="673.46497" y="1018"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="compressed-cds-block" fill="#0891b2" fill-opacity="0.88" height="14" stroke="#0e7490" stroke-width="0.6" width="48.33911" x="739.45087" y="1018"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="compressed-cds-block" fill="#db2777" fill-opacity="0.88" height="14" stroke="#be185d" stroke-width="0.6" width="51.948303" x="805.0153" y="1018"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="compressed-cds-block" fill="#7c3aed" fill-opacity="0.88" height="14" stroke="#6d28d9" stroke-width="0.6" width="42.744873" x="874.18896" y="1018"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="6" data-track="compressed-cds-block" fill="#ea580c" fill-opacity="0.88" height="14" stroke="#c2410c" stroke-width="0.6" width="11.602478" x="934.1592" y="1018"/>
+<path d="M626.84656,1032.5 L656.2396,1032.5 L550.8325,1056 L340,1056 z" data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="transcript-product-link" fill="#dc2626" fill-opacity="0.12" stroke="none"/>
+<path d="M673.46497,1032.5 L722.2255,1032.5 L699.19617,1056 L550.8325,1056 z" data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="transcript-product-link" fill="#65a30d" fill-opacity="0.12" stroke="none"/>
+<path d="M739.45087,1032.5 L787.79,1032.5 L839.7512,1056 L699.19617,1056 z" data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="transcript-product-link" fill="#0891b2" fill-opacity="0.12" stroke="none"/>
+<path d="M805.0153,1032.5 L856.9636,1032.5 L1019.34924,1056 L839.7512,1056 z" data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="transcript-product-link" fill="#db2777" fill-opacity="0.12" stroke="none"/>
+<path d="M874.18896,1032.5 L916.93384,1032.5 L1116.9569,1056 L1019.34924,1056 z" data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="transcript-product-link" fill="#7c3aed" fill-opacity="0.12" stroke="none"/>
+<path d="M934.1592,1032.5 L945.76166,1032.5 L1156,1056 L1116.9569,1056 z" data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="6" data-track="transcript-product-link" fill="#ea580c" fill-opacity="0.12" stroke="none"/>
+<line data-track="protein-rail" stroke="#94a3b8" stroke-width="2" x1="340" x2="1156" y1="1061" y2="1061"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="protein-contribution" fill="#dc2626" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b91c1c" stroke-width="0.45" width="210.83252" x="340" y="1056.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="protein-contribution" fill="#65a30d" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#4d7c0f" stroke-width="0.45" width="148.36365" x="550.8325" y="1056.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="protein-contribution" fill="#0891b2" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#0e7490" stroke-width="0.45" width="140.55505" x="699.19617" y="1056.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="protein-contribution" fill="#db2777" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#be185d" stroke-width="0.45" width="179.59802" x="839.7512" y="1056.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="protein-contribution" fill="#7c3aed" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#6d28d9" stroke-width="0.45" width="97.607666" x="1019.34924" y="1056.5"/>
+<rect data-exon-family="11429..11561" data-exon-key="11429..11561" data-segment-rank="6" data-track="protein-contribution" fill="#ea580c" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#c2410c" stroke-width="0.45" width="39.04309" x="1116.9569" y="1056.5"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="210.83252" x="340" y="1054"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="148.36365" x="550.8325" y="1054"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="140.55505" x="699.19617" y="1054"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="124.937805" x="839.7512" y="1054"/>
+<rect data-feature-key="β-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="54.660217" x="964.689" y="1054"/>
+<rect data-feature-key="β-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="97.607666" x="1019.34924" y="1054"/>
+<rect data-feature-key="β-tail" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="39.04309" x="1116.9569" y="1054"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="652.3445" x2="652.3445" y1="1069" y2="1072"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="642.1445" y="1073"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="645.1445" y="1084">
 DBD
 </text>
-<rect fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="99.664185" x="946.29004" y="609"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="948.29004" y="607">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1060.3445" x2="1060.3445" y1="1069" y2="1072"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="34.80005" x="1042.9445" y="1073"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1045.9445" y="1084">
 β-tail
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="619">
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="1064">
+209 aa | ref 133..341
+</text>
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="1028">
 TA=none
 </text>
-<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="653.5">
-Δ160p53α
+<text fill="#111827" font-family="monospace" font-size="10" text-anchor="end" x="328" y="1140.5">
+Δ160p53α (ENST00000619186.4)
 </text>
-<line stroke="#94a3b8" stroke-width="2" x1="670.1374" x2="1153.9236" y1="650" y2="650"/>
-<rect fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="274.07635" x="670.1374" y="643"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="672.1374" y="641">
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="656.2396" x2="673.46497" y1="1137" y2="1137"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="722.2255" x2="739.45087" y1="1137" y2="1137"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="787.79" x2="805.0153" y1="1137" y2="1137"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="856.9636" x2="874.18896" y1="1137" y2="1137"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="916.93384" x2="1002.82214" y1="1137" y2="1137"/>
+<line data-track="compressed-intron" stroke="#94a3b8" stroke-dasharray="4 3" stroke-width="1.1" x1="1050.7341" x2="1067.9594" y1="1137" y2="1137"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-track="compressed-transcript-exon" fill="#dc2626" fill-opacity="0.26" height="14" stroke="#b91c1c" stroke-width="0.5" width="79.52362" x="576.716" y="1130"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-track="compressed-transcript-exon" fill="#65a30d" fill-opacity="0.26" height="14" stroke="#4d7c0f" stroke-width="0.5" width="48.76056" x="673.46497" y="1130"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-track="compressed-transcript-exon" fill="#0891b2" fill-opacity="0.26" height="14" stroke="#0e7490" stroke-width="0.5" width="48.33911" x="739.45087" y="1130"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-track="compressed-transcript-exon" fill="#db2777" fill-opacity="0.26" height="14" stroke="#be185d" stroke-width="0.5" width="51.948303" x="805.0153" y="1130"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-track="compressed-transcript-exon" fill="#7c3aed" fill-opacity="0.26" height="14" stroke="#6d28d9" stroke-width="0.5" width="42.744873" x="874.18896" y="1130"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-track="compressed-transcript-exon" fill="#16a34a" fill-opacity="0.26" height="14" stroke="#15803d" stroke-width="0.5" width="47.911987" x="1002.82214" y="1130"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-track="compressed-transcript-exon" fill="#2563eb" fill-opacity="0.26" height="14" stroke="#1d4ed8" stroke-width="0.5" width="88.04065" x="1067.9594" y="1130"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="compressed-cds-block" fill="#dc2626" fill-opacity="0.88" height="14" stroke="#b91c1c" stroke-width="0.6" width="14.786682" x="641.45294" y="1130"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="compressed-cds-block" fill="#65a30d" fill-opacity="0.88" height="14" stroke="#4d7c0f" stroke-width="0.6" width="48.76056" x="673.46497" y="1130"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="compressed-cds-block" fill="#0891b2" fill-opacity="0.88" height="14" stroke="#0e7490" stroke-width="0.6" width="48.33911" x="739.45087" y="1130"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="compressed-cds-block" fill="#db2777" fill-opacity="0.88" height="14" stroke="#be185d" stroke-width="0.6" width="51.948303" x="805.0153" y="1130"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="compressed-cds-block" fill="#7c3aed" fill-opacity="0.88" height="14" stroke="#6d28d9" stroke-width="0.6" width="42.744873" x="874.18896" y="1130"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="compressed-cds-block" fill="#16a34a" fill-opacity="0.88" height="14" stroke="#15803d" stroke-width="0.6" width="47.911987" x="1002.82214" y="1130"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="compressed-cds-block" fill="#2563eb" fill-opacity="0.88" height="14" stroke="#1d4ed8" stroke-width="0.6" width="5.395874" x="1067.9594" y="1130"/>
+<path d="M641.45294,1144.5 L656.2396,1144.5 L434.15384,1168 L340,1168 z" data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="transcript-product-link" fill="#dc2626" fill-opacity="0.12" stroke="none"/>
+<path d="M673.46497,1144.5 L722.2255,1144.5 L566.6667,1168 L434.15384,1168 z" data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="transcript-product-link" fill="#65a30d" fill-opacity="0.12" stroke="none"/>
+<path d="M739.45087,1144.5 L787.79,1144.5 L692.20514,1168 L566.6667,1168 z" data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="transcript-product-link" fill="#0891b2" fill-opacity="0.12" stroke="none"/>
+<path d="M805.0153,1144.5 L856.9636,1144.5 L852.61536,1168 L692.20514,1168 z" data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="transcript-product-link" fill="#db2777" fill-opacity="0.12" stroke="none"/>
+<path d="M874.18896,1144.5 L916.93384,1144.5 L939.79486,1168 L852.61536,1168 z" data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="transcript-product-link" fill="#7c3aed" fill-opacity="0.12" stroke="none"/>
+<path d="M1002.82214,1144.5 L1050.7341,1144.5 L1061.8462,1168 L939.79486,1168 z" data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="transcript-product-link" fill="#16a34a" fill-opacity="0.12" stroke="none"/>
+<path d="M1067.9594,1144.5 L1073.3552,1144.5 L1156,1168 L1061.8462,1168 z" data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="transcript-product-link" fill="#2563eb" fill-opacity="0.12" stroke="none"/>
+<line data-track="protein-rail" stroke="#94a3b8" stroke-width="2" x1="340" x2="1156" y1="1173" y2="1173"/>
+<rect data-exon-family="13275..13715" data-exon-key="13275..13715" data-segment-rank="1" data-track="protein-contribution" fill="#dc2626" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#b91c1c" stroke-width="0.45" width="94.15384" x="340" y="1168.5"/>
+<rect data-exon-family="13081..13193" data-exon-key="13081..13193" data-segment-rank="2" data-track="protein-contribution" fill="#65a30d" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#4d7c0f" stroke-width="0.45" width="132.51285" x="434.15384" y="1168.5"/>
+<rect data-exon-family="12403..12512" data-exon-key="12403..12512" data-segment-rank="3" data-track="protein-contribution" fill="#0891b2" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#0e7490" stroke-width="0.45" width="125.53845" x="566.6667" y="1168.5"/>
+<rect data-exon-family="11923..12059" data-exon-key="11923..12059" data-segment-rank="4" data-track="protein-contribution" fill="#db2777" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#be185d" stroke-width="0.45" width="160.41022" x="692.20514" y="1168.5"/>
+<rect data-exon-family="11757..11830" data-exon-key="11757..11830" data-segment-rank="5" data-track="protein-contribution" fill="#7c3aed" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#6d28d9" stroke-width="0.45" width="87.179504" x="852.61536" y="1168.5"/>
+<rect data-exon-family="8831..8937" data-exon-key="8831..8937" data-segment-rank="6" data-track="protein-contribution" fill="#16a34a" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#15803d" stroke-width="0.45" width="122.05133" x="939.79486" y="1168.5"/>
+<rect data-exon-family="6624..7912" data-exon-key="6624..7912" data-segment-rank="7" data-track="protein-contribution" fill="#2563eb" fill-opacity="0.32" height="9" rx="1.5" ry="1.5" stroke="#1d4ed8" stroke-width="0.45" width="94.15381" x="1061.8462" y="1168.5"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="94.15384" x="340" y="1166"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="132.51285" x="434.15384" y="1166"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="125.53845" x="566.6667" y="1166"/>
+<rect data-feature-key="DBD" data-track="protein-overlay" fill="#2563eb" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="111.58972" x="692.20514" y="1166"/>
+<rect data-feature-key="NLS" data-track="protein-overlay" fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="34.871826" x="884" y="1166"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="27.8974" x="911.89746" y="1166"/>
+<rect data-feature-key="OD" data-track="protein-overlay" fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="83.69232" x="939.79486" y="1166"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="38.35901" x="1023.4872" y="1166"/>
+<rect data-feature-key="CTD" data-track="protein-overlay" fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="94.15381" x="1061.8462" y="1166"/>
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="571.89746" x2="571.89746" y1="1181" y2="1184"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="561.69745" y="1185"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="564.69745" y="1196">
 DBD
 </text>
-<rect fill="#16a34a" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="18.687012" x="994.04584" y="643"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="996.04584" y="641">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="901.4359" x2="901.4359" y1="1181" y2="1184"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="891.2359" y="1185"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="894.2359" y="1196">
 NLS
 </text>
-<rect fill="#0f766e" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="64.366455" x="1010.6565" y="643"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1012.6565" y="641">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="967.6923" x2="967.6923" y1="1181" y2="1184"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="15.599976" x="959.89233" y="1185"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="962.89233" y="1196">
 OD
 </text>
-<rect fill="#6b7280" fill-opacity="0.82" height="14" stroke="#1f2937" stroke-width="0.5" width="76.82434" x="1077.0992" y="643"/>
-<text fill="#334155" font-family="monospace" font-size="8" x="1079.0992" y="641">
+<line stroke="#94a3b8" stroke-opacity="0.9" stroke-width="0.8" x1="1089.7437" x2="1089.7437" y1="1181" y2="1184"/>
+<rect fill="#ffffff" fill-opacity="0.96" height="12" rx="2" ry="2" stroke="#cbd5e1" stroke-width="0.5" width="20.400024" x="1079.5437" y="1185"/>
+<text fill="#334155" font-family="monospace" font-size="8" x="1082.5437" y="1196">
 CTD
 </text>
-<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="653">
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="1176">
+234 aa | ref 160..393
+</text>
+<text fill="#374151" font-family="monospace" font-size="9" x="1162" y="1140">
 TA=none
 </text>
-<text fill="#334155" font-family="monospace" font-size="10" x="44" y="726">
+<text fill="#334155" font-family="monospace" font-size="10" x="44" y="1280">
 panel source: Curated TP53 isoform panel inspired by DCD Figure-1 style transcript/protein architecture
 </text>
-<text fill="#374151" font-family="monospace" font-size="11" x="44" y="782">
+<text fill="#374151" font-family="monospace" font-size="11" x="44" y="1336">
 Isoform architecture view: top panel shows transcript/exon or transcript/CDS structure on genomic coordinates with 5'-&gt;3' orientation
 </text>
-<text fill="#374151" font-family="monospace" font-size="11" x="44" y="796">
+<text fill="#374151" font-family="monospace" font-size="11" x="44" y="1350">
 left-to-right (strand-aware axis), bottom panel shows per-isoform protein-domain architecture on amino-acid coordinates. Row order is shared
 </text>
-<text fill="#374151" font-family="monospace" font-size="11" x="44" y="810">
+<text fill="#374151" font-family="monospace" font-size="11" x="44" y="1364">
 across both panels; CDS-to-protein guide lines indicate which coding segments contribute to which amino-acid spans.
 </text>
 </svg>

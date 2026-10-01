@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "7f83ea4b06d1fad688fdbbfd3f8cf4bd238fb22ed002c8b822909796c6dbab23",
+    "README.md": "86b50f4cab5288f703bec53a9f79c01dacc9f28ae6ab06e04b42ebe08c17515a",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -117,7 +117,7 @@
     "chapters/05-01_find_and_extend_genomic_target_local_catalog.md": "14c77573500e299b24988d2e07b5fcd6125c3337839fec51bb2a9dfda9755e46",
     "chapters/05-02_prepare_reference_genome_online.md": "d5779430ac042286aa80d3b4e5d4c4093549a10a97ad8e363664bb46cfd99092",
     "chapters/05-03_tp63_anchor_extension_online.md": "c405dbcb8ff7aa24247ae4c8995c12527614bd9587433e298f3b7d5924eb9ea3",
-    "chapters/06-03_tp53_isoform_architecture_online.md": "a26e65edf259c492f2d4f63f4d6d527390e41ba3478be90cf8fc6f537615bbe0",
+    "chapters/06-03_tp53_isoform_architecture_online.md": "743997135aeee48a10b36a1bf76eac3906fbca754bd674d3c775749f14138603",
     "chapters/06-04_tp53_uniprot_projection_online.md": "2acada8018fb8c4f94bf68139f87c0e87513cd4de8ae0e3ce2f4ea5e45b5e93c",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "6d2f38422e0f83206ebe2252a2f57ea0d0a7527177c2dc722ec1718c223c4c6e",
     "chapters/06-06_patz1_gene_locus_evidence_offline.md": "178ac7271d6cbdfdcb238500c8ddb4d9431c8dd55b39d67838a57e8bc88f631d",
@@ -408,9 +408,31 @@
         "artifact_exports"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/01-isoform-panel-controls.png",
+          "caption": "The current native Sequence tools panel reopened on the retained Ensembl-116 TP53 source. Panel path and id are populated; the unchecked Strict control is the current GUI input state, not evidence about the earlier strict CLI import.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/02-isoform-expert.png",
+          "caption": "The native Isoform Expert after strict local import: seven mapped TP53 transcript lanes and seven protein-domain rows from the shared expert payload.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/figures/tp53_isoform_architecture.svg",
+          "caption": "Current deterministic 1200 by 1400 isoform architecture export from the retained Ensembl-116 source and strict seven-isoform panel. Exon-family colours connect coordinate-true transcript geometry with isoform-local protein products.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_cli -- --state /tmp/tp53-isoform-figure.state.json workflow docs/figures/tp53_isoform_architecture.workflow.json"
+        }
+      ],
       "retained_artifacts": []
     },
     {
