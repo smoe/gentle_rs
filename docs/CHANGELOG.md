@@ -33,6 +33,14 @@
   useful TP73/GRCh38 orientation evidence while stating their missing
   exact-binary provenance, and add an explicit outer-agent workflow request
   with network, genome-cache and approval boundaries.
+- Keep tutorial 02.04 as the executable online companion to 02.03 rather than
+  duplicating its screenshots. Bind inner-agent proposals to the public
+  accession, Ensembl catalog/cache boundary, exact dotplot parameters and
+  review-before-mutation contract; reserve structured artifacts and the
+  reproducibility receipt as the online execution evidence.
+- Give generated outer-agent requests for online tutorials a 7200-second
+  wrapper budget so reference-cache preparation cannot be cut off by the old
+  300-second offline default.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

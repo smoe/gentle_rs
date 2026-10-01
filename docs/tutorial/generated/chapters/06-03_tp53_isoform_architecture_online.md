@@ -126,7 +126,7 @@ Equivalent direct structured request for the generic wrapper:
   "mode": "workflow",
   "state_path": "/tmp/gentle-tp53-isoform-architecture-online.state.json",
   "workflow_path": "docs/examples/workflows/tp53_isoform_architecture_online.json",
-  "timeout_secs": 300
+  "timeout_secs": 7200
 }
 ```
 

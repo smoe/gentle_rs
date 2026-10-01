@@ -22,16 +22,21 @@
     "example_id": "tp73_cdna_genomic_dotplot_online",
     "tier": "online",
     "summary": "Fetch TP73 cDNA, extract TP73 from GRCh38, and compute a pair-forward dotplot with high-sensitivity defaults (`word=7`, `step=1`, `mismatches=0`).",
-    "narrative": "This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces.",
+    "narrative": "This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces. Use tutorial 02.03 for the retained visual orientation sequence; this chapter adds the executable online workflow, pinned public identifiers, cache boundary and reproducibility receipt instead of duplicating those screenshots.",
     "use_cases": [
       "You want a deterministic cDNA-vs-genomic control for exon/intron-aware interpretation.",
       "You need a reproducible TP73 baseline for demonstrating dotplot settings to collaborators.",
-      "You want one canonical workflow file that mirrors your GUI tutorial run."
+      "You want one canonical workflow file that mirrors your GUI tutorial run and records exactly which online inputs were requested."
     ],
     "gui_steps": [
       "Fetch GenBank accession `NM_001126241.3` as `tp73_cdna`.",
       "Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`.",
       "Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`."
+    ],
+    "agent_steps": [
+      "Check that network access is explicitly allowed, then propose the exact `FetchGenBankAccession` operation for accession `NM_001126241.3` with output id `tp73_cdna`. Report the accession and intended project state; do not fetch or mutate the project until I approve.",
+      "Inspect `assets/genomes.json` and the selected cache directory, then propose `PrepareGenome` for `Human GRCh38 Ensembl 116` followed by `ExtractGenomeGene` for the first `TP73` occurrence as `tp73_genomic`. State whether the reference is already cached and which remote/cache boundary would be crossed; do not download, extract or mutate state until I approve.",
+      "Verify that `tp73_cdna` and `tp73_genomic` exist, then propose `ComputeDotplot` in `pair_forward` mode with `word_size=7`, `step_bp=1`, `max_mismatches=0` and output id `tp73_cdna_vs_genomic_dotplot`. Show the exact bound parameters and expected artifact before execution; do not compute or store it until I approve."
     ],
     "cli_steps": [
       "cargo run --bin gentle_cli -- shell 'genbank fetch NM_001126241.3 --as-id tp73_cdna'",
@@ -80,7 +85,8 @@
     "checkpoints": [
       "Dotplot artifact is created and can be listed/shown by id (`tp73_cdna_vs_genomic_dotplot`).",
       "Pair-forward map shows exon-block style structure rather than one continuous full-length diagonal.",
-      "GUI tutorial and workflow JSON describe the same parameter baseline."
+      "GUI tutorial and workflow JSON describe the same parameter baseline.",
+      "The retained visual sequence remains in tutorial 02.03; this online replay records accession, assembly/catalog/cache choices, structured outputs and a reproducibility receipt rather than treating a screenshot as execution evidence."
     ]
   }
 }

@@ -122,7 +122,7 @@ Equivalent direct structured request for the generic wrapper:
   "mode": "workflow",
   "state_path": "/tmp/gentle-prepare-reference-genome-online.state.json",
   "workflow_path": "docs/examples/workflows/prepare_reference_genome_online.json",
-  "timeout_secs": 300
+  "timeout_secs": 7200
 }
 ```
 

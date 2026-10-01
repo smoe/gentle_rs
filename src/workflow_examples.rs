@@ -5138,6 +5138,13 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> St
 
 fn render_tutorial_outer_agent_replay(chapter: &TutorialChapter, workflow_path: &str) -> String {
     let state_name = chapter.id.replace('_', "-");
+    // Online chapters may need to populate multi-gigabyte reference caches.
+    // Keep the wrapper alive longer than the inner genome-prepare timeout;
+    // offline/core replays retain the tighter feedback loop.
+    let timeout_secs = match chapter.tier {
+        TutorialTier::Online => 7_200,
+        TutorialTier::Core | TutorialTier::Advanced => 300,
+    };
     let mut out = String::new();
     out.push_str("\n## Ask an Outer Agent (MCP or ClawBio/OpenClaw)\n\n");
     out.push_str("An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.\n\n");
@@ -5155,7 +5162,7 @@ fn render_tutorial_outer_agent_replay(chapter: &TutorialChapter, workflow_path: 
     out.push_str("  \"workflow_path\": \"");
     out.push_str(workflow_path);
     out.push_str("\",\n");
-    out.push_str("  \"timeout_secs\": 300\n");
+    out.push_str(&format!("  \"timeout_secs\": {timeout_secs}\n"));
     out.push_str("}\n");
     out.push_str("```\n\n");
     out.push_str("Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.\n");
@@ -9710,6 +9717,19 @@ mod tests {
         assert!(markdown.contains("gentle.clawbio_skill_request.v1"));
         assert!(markdown.contains("proposal/approval boundary"));
         assert!(markdown.contains("does not invoke an agent or grant approval"));
+        assert!(markdown.contains("\"timeout_secs\": 300"));
+    }
+
+    #[test]
+    fn tutorial_outer_agent_replay_allows_online_cache_preparation() {
+        let mut chapter = minimal_tutorial_chapter("online_outer_agent_contract");
+        chapter.tier = TutorialTier::Online;
+        let markdown = render_tutorial_outer_agent_replay(
+            &chapter,
+            "docs/examples/workflows/prepare_reference_genome_online.json",
+        );
+
+        assert!(markdown.contains("\"timeout_secs\": 7200"));
     }
 
     #[test]

@@ -41,7 +41,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 ### Sequence Basics & Lineage
 
 - `02.01` [Load FASTA, branch, and reverse-complement](./chapters/02-01_load_branch_reverse_complement_pgex_fasta.md) - `core` - example `load_branch_reverse_complement_pgex_fasta` - executed `yes` - review `human_reviewed` `stale` - human 2026-05-18 by smoe - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
-- `02.04` [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./chapters/02-04_tp73_cdna_genomic_dotplot_online.md) - `online` - example `tp73_cdna_genomic_dotplot_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `02.04` [Compare TP73 cDNA against TP73 genomic context via dotplot (online)](./chapters/02-04_tp73_cdna_genomic_dotplot_online.md) - `online` - example `tp73_cdna_genomic_dotplot_online` - executed `no` - review `codex_reviewed` - codex 2026-10-01
 
 ### Cloning & Assembly
 

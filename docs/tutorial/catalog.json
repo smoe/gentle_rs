@@ -1001,9 +1001,8 @@
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "gibson_specialist_testing_baseline",

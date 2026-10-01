@@ -182,7 +182,7 @@ Equivalent direct structured request for the generic wrapper:
   "mode": "workflow",
   "state_path": "/tmp/gentle-tp73-uniprot-projection-audit-cli.state.json",
   "workflow_path": "docs/examples/workflows/tp73_uniprot_projection_audit_online.json",
-  "timeout_secs": 300
+  "timeout_secs": 7200
 }
 ```
 

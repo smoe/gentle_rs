@@ -126,7 +126,7 @@ Equivalent direct structured request for the generic wrapper:
   "mode": "workflow",
   "state_path": "/tmp/gentle-tp63-anchor-extension-online.state.json",
   "workflow_path": "docs/examples/workflows/tp63_extend_anchor_online.json",
-  "timeout_secs": 300
+  "timeout_secs": 7200
 }
 ```
 
