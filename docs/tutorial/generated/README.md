@@ -63,7 +63,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 - `05.01` [Find and extend the right genomic target (local catalog)](./chapters/05-01_find_and_extend_genomic_target_local_catalog.md) - `core` - example `prepare_extract_extend_localproject_gene` - executed `yes` - review `codex_reviewed` - codex 2026-10-01
 - `05.02` [Prepare a reference genome cache (online)](./chapters/05-02_prepare_reference_genome_online.md) - `online` - example `prepare_reference_genome_online` - executed `no` - review `codex_reviewed` - codex 2026-10-01
-- `05.03` [Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./chapters/05-03_tp63_anchor_extension_online.md) - `online` - example `tp63_extend_anchor_online` - executed `no` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `05.03` [Retrieve TP63 and extend the displayed region by +/-2 kb (online)](./chapters/05-03_tp63_anchor_extension_online.md) - `online` - example `tp63_extend_anchor_online` - executed `no` - review `codex_reviewed` - codex 2026-10-01
 
 ### Transcript, Protein & Projection
 

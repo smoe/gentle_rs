@@ -1270,24 +1270,29 @@
         "You want a reproducible +/-2 kb extension workflow that can be replayed by GUI and CLI users."
       ],
       "gui_steps": [
-        "Open `File -> Prepare Reference Genome...` and prepare `Human GRCh38 Ensembl 116` from `assets/genomes.json`.",
-        "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
-        "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
+        "Confirm that chapter 05.02 completed for exactly `Human GRCh38 Ensembl 116`; in `File -> Prepare Reference Genome...`, inspect the prepared status and effective cache without starting another download.",
+        "Open `File -> Retrieve Genome Sequence...`, filter to exact symbol `TP63`, and bind the candidate before extraction: `ENSG00000073282`, GRCh38 chromosome 3, plus strand, 189631252..189897276 (1-based inclusive), protein coding.",
+        "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, verify start 189629252, then use `Extend 3'` with `2000 bp` and verify final anchor 3:189629252..189899276 with length 270025 bp."
       ],
       "cli_steps": [
-        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600",
-        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --biotype protein_coding --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
         "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes\ncargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
       ],
+      "agent_steps": [
+        "Run only `genomes status` for exact catalog key `Human GRCh38 Ensembl 116` with catalog `assets/genomes.json` and cache `data/genomes`. Report `prepared`, lifecycle, effective cache and source identities. If it is not prepared, stop and point to chapter 05.02; do not start a download or silently use Ensembl 113/RefSeq.",
+        "On the same prepared reference, list exact-symbol, protein-coding TP63 candidates before proposing extraction. Bind the proposal to `ENSG00000073282`, chromosome 3, plus strand and 189631252..189897276 (1-based inclusive), occurrence 1 and output `grch38_tp63`; if the installed annotation disagrees, stop for review rather than selecting by row order. Execute only after approval.",
+        "For approved `grch38_tp63`, propose two ordered `ExtendGenomeAnchor` operations: five-prime 2000 to `grch38_tp63_ext5_2kb`, then three-prime 2000 to `grch38_tp63_ext5_ext3_2kb`. Explain that plus-strand 5' lowers the genomic start and 3' raises the end. After approval, verify final anchor 3:189629252..189899276, length 270025 bp, parent chain and verified-anchor provenance; do not describe genomic left/right as 5'/3' without the strand."
+      ],
       "step_expectations": [
-        "The reference-preparation status becomes ready or reports a reusable prepared cache for GRCh38.",
-        "The gene listing shows the TP63 coordinate candidate(s), and extraction creates the anchored sequence id `grch38_tp63`.",
-        "The final extension step creates or refreshes `grch38_tp63_ext5_ext3_2kb` while preserving genome-anchor provenance."
+        "The exact Ensembl-116 reference is already prepared in the reported effective cache; this chapter does not hide preparation inside retrieval.",
+        "The listing binds `ENSG00000073282` on chromosome 3, plus strand, 189631252..189897276 before extraction creates anchored sequence `grch38_tp63`.",
+        "The five-prime result starts at 189629252; the final three-prime result ends at 189899276, has 270025 bp and preserves verified genome-anchor provenance."
       ],
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.",
+      "local_execution_note": "Complete chapter 05.02 first, then run from the repository root with the same catalog and effective cache. `GENTLE_TEST_ONLINE=1` permits the canonical all-in-one workflow to prepare a missing reference, so prefer the explicit status/list/extract/extend commands when reviewing approval boundaries. Current acceptance is offline/`skipped_online`: public TP63 metadata and local extension semantics were checked, but no large reference download or typed GUI capture was performed.",
       "learning_objectives": [
         "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
         "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",
@@ -1304,14 +1309,14 @@
           "parameter": "ExtractGenomeGene.gene_query / occurrence",
           "where_used": "operation 2 and Retrieve Genome Sequence dialog",
           "why_it_matters": "Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.",
-          "how_to_derive": "Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit.",
+          "how_to_derive": "Require the reviewed Ensembl-116 gene row `ENSG00000073282`, chromosome 3, plus strand, 189631252..189897276. Treat `occurrence=1` as a replay selector only after those fields match; never use row order as biological identity.",
           "omit_when": ""
         },
         {
           "parameter": "ExtendGenomeAnchor.side / length_bp",
           "where_used": "operations 3 and 4 + DNA window Extend controls",
           "why_it_matters": "Defines biological flank direction and exact context length added around the anchored region.",
-          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion.",
+          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000`. For this plus-strand anchor, five-prime lowers start from 189631252 to 189629252 and three-prime raises end from 189897276 to 189899276; reverse-strand targets invert that genomic direction.",
           "omit_when": ""
         }
       ],
@@ -1323,9 +1328,9 @@
       ],
       "retain_outputs": [],
       "checkpoints": [
-        "TP63 coordinate candidates are visible before extraction in Retrieve Genome Sequence workflows.",
-        "ExtractGenomeGene produces `grch38_tp63` as anchored sequence context.",
-        "Sequential 5'/3' extension by 2000 bp yields `grch38_tp63_ext5_ext3_2kb` with preserved anchor provenance."
+        "The exact prepared Ensembl-116 cache and TP63 gene identity are visible before extraction; a missing or mismatched prerequisite stops the route.",
+        "ExtractGenomeGene produces `grch38_tp63` anchored to plus-strand `ENSG00000073282` at 3:189631252..189897276.",
+        "Sequential 5'/3' extension yields `grch38_tp63_ext5_ext3_2kb` at 3:189629252..189899276, length 270025 bp, with preserved verified-anchor provenance."
       ]
     },
     {

@@ -997,13 +997,18 @@
         "genome_catalog_targeting",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "notes": "Online opt-in chapter. Current review verified the catalog/status contract, the public TP63 anchor metadata and GENtle's strand-aware extension semantics, but did not prepare the large reference or claim typed GUI screenshot acceptance.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "tp53_multi_gene_sparse_mapping_online",

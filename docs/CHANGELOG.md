@@ -109,6 +109,11 @@
   catalog, replace the broken `/release-116/vertebrates/` human and mouse source
   URLs with Ensembl's published release tree, and keep current acceptance
   explicitly offline/`skipped_online`.
+- Review tutorial 05.03 without hiding its large online prerequisite. Bind TP63
+  to `ENSG00000073282` and its Ensembl-116 chromosome/strand/coordinate row,
+  explain the strand-aware 5-prime/3-prime coordinate changes and final 270025
+  bp anchor, split status, extraction and ordered extension proposals for the
+  inner agent, and retain an exact workflow/digest boundary for outer replay.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
