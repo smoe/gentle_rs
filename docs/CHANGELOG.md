@@ -29,6 +29,10 @@
   captures: each inner-agent prompt now binds the exact input/output IDs,
   lineage expectation and approval boundary, while catalog metadata names the
   existing GUI, CLI/shared-shell and explicit-state outer-agent surfaces.
+- Register all nine legacy screenshots used by tutorial 02.03, retain them as
+  useful TP73/GRCh38 orientation evidence while stating their missing
+  exact-binary provenance, and add an explicit outer-agent workflow request
+  with network, genome-cache and approval boundaries.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
