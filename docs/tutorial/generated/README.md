@@ -45,7 +45,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 ### Cloning & Assembly
 
-- `03.01` [Load pGEX and digest with BamHI/EcoRI](./chapters/03-01_load_and_digest_pgex.md) - `core` - example `load_and_digest_pgex` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
+- `03.01` [Load pGEX and digest with BamHI/EcoRI](./chapters/03-01_load_and_digest_pgex.md) - `core` - example `load_and_digest_pgex` - executed `yes` - review `codex_reviewed` - codex 2026-10-01
 - `03.02` [Digest -> Ligation -> ExtractRegion minimal slice](./chapters/03-02_digest_ligation_extract_region_minimal.md) - `core` - example `digest_ligation_extract_region_minimal` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 - `03.03` [Gibson two-fragment overlap planning baseline](./chapters/03-03_gibson_two_fragment_overlap_preview.md) - `core` - example `gibson_two_fragment_overlap_preview` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 - `03.04` [Gibson Specialist Starter Project (offline)](./chapters/03-04_gibson_specialist_testing_baseline.md) - `core` - example `gibson_specialist_testing_baseline` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)

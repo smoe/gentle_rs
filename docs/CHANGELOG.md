@@ -45,6 +45,10 @@
   Location and Create previews bound to the display revision, GUI binary and
   fixture hashes; describe inner proposals and explicit-state outer replay
   without claiming full Apply/Undo/Redo GUI acceptance.
+- Review tutorial 03.01 against its typed GUI-acceptance package. Replace
+  generic inner-agent prose with exact load/digest proposals, make `frag_1`
+  and `frag_2` plus their pool/lineage the checkpoint, and distinguish the
+  deterministic in-silico digest from physical digest or gel validation.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

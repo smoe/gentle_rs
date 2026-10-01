@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "aa52922a9367e9df7b61c76ba16a180ec04ac13f07bd72c7441ab82b1b6c24c4",
+    "README.md": "4009d595209722cca1a0ccf38d9a8379a1097d2be172afcd62e26f6fb03098b3",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -104,7 +104,7 @@
     "chapters/01-02_contribute_to_gentle_development.md": "84c01b3f89c704c9c05a709a0b2918d1483b89a64343877766f835aa8524361a",
     "chapters/02-01_load_branch_reverse_complement_pgex_fasta.md": "ad2f1318e1c8c1a763cfed84dd7379f734745713365f6d5defbe82591ae96de4",
     "chapters/02-04_tp73_cdna_genomic_dotplot_online.md": "97fc3aea689a001cdcd692e39b5c02423fec5a0491d822f6944428e7c425ce04",
-    "chapters/03-01_load_and_digest_pgex.md": "0ff4594e5eac9badd300244c5a55059569fbcc59f976bc1d3ca1d40f9da3f360",
+    "chapters/03-01_load_and_digest_pgex.md": "af9d30eb5634e8444b258a86b0791816b47104625a0c0edc3f6da1178e822e82",
     "chapters/03-02_digest_ligation_extract_region_minimal.md": "8344555dce9f7d749805d87367dd79783b007ae68c68e331b79d90ea3d6ff668",
     "chapters/03-03_gibson_two_fragment_overlap_preview.md": "a4479ab2b60325f09f984fcc6c3b2dfc1065724047823da0dfdc373d45310774",
     "chapters/03-04_gibson_specialist_testing_baseline.md": "4886304a6fd61b2315ec6067d30ba7179649a1e05a2f84255b70f91e9645a653",
@@ -228,9 +228,8 @@
         "sequence_lineage"
       ],
       "executed": true,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "graphics": [
         {
           "kind": "screenshot",

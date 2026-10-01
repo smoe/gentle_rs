@@ -700,13 +700,18 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked generated chapter with typed GUI-acceptance views for Sequence Tools and Digest; listed in Tutorials for explicit human scientific confirmation.",
+      "interfaces": [
+        "native GUI (typed acceptance)",
+        "CLI / shared engine",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
       "graphics": [
         {
           "kind": "screenshot",
