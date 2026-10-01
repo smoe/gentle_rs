@@ -1,0 +1,29 @@
+{
+  "result": {
+    "changed_seq_ids": [],
+    "created_seq_ids": [],
+    "jaspar_entry_presentation": null,
+    "messages": [
+      "Projected UniProt entry 'P04637' onto 'grch38_tp53' as 'tp53_uniprot_p04637' (transcripts=6)"
+    ],
+    "op_id": "op-2",
+    "warnings": [
+      "Transcript 'ENST00000445888.6' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000503591.2' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000504290.5' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000508793.6' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000509690.6' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000610538.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000619485.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000620739.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000622645.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000714357.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000714359.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000905353.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000923566.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000923567.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000923568.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+      "Transcript 'ENST00000923569.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'"
+    ]
+  }
+}

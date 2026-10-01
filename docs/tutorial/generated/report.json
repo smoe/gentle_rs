@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "86b50f4cab5288f703bec53a9f79c01dacc9f28ae6ab06e04b42ebe08c17515a",
+    "README.md": "9cf218ef8aaf593446146f42ba57e021dae67157e0e424efdba49dd53208f067",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -118,7 +118,7 @@
     "chapters/05-02_prepare_reference_genome_online.md": "d5779430ac042286aa80d3b4e5d4c4093549a10a97ad8e363664bb46cfd99092",
     "chapters/05-03_tp63_anchor_extension_online.md": "c405dbcb8ff7aa24247ae4c8995c12527614bd9587433e298f3b7d5924eb9ea3",
     "chapters/06-03_tp53_isoform_architecture_online.md": "743997135aeee48a10b36a1bf76eac3906fbca754bd674d3c775749f14138603",
-    "chapters/06-04_tp53_uniprot_projection_online.md": "2acada8018fb8c4f94bf68139f87c0e87513cd4de8ae0e3ce2f4ea5e45b5e93c",
+    "chapters/06-04_tp53_uniprot_projection_online.md": "ff59bc6e3ea0882b40aa025e6597ed04bcbcf03e7eb00af56b491d3681c90ff2",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "6d2f38422e0f83206ebe2252a2f57ea0d0a7527177c2dc722ec1718c223c4c6e",
     "chapters/06-06_patz1_gene_locus_evidence_offline.md": "178ac7271d6cbdfdcb238500c8ddb4d9431c8dd55b39d67838a57e8bc88f631d",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "c41511a5771a5ccad4b103ae766d06a8adfea0c3afa5122595645c96291cffa4",
@@ -602,9 +602,24 @@
         "artifact_exports"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/01-protein-expert.png",
+          "caption": "The native Protein Expert on the provenance-bound GRCh38/Ensembl-116 acceptance locus. Six UniProt-linked transcript projections are stored; the expert also keeps the broader transcript-native architecture and 16 missing UniProt transcript references explicit instead of hiding partial coverage.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/02-feature-coding-dna.png",
+          "caption": "The expanded native coding-DNA result for the P04637 DNA-binding match on ENST00000269305.9: amino acids 368-387, exon 11, 60 bases of exact genomic coding DNA and a separately labelled translation-speed-oriented alternative.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ],
       "retained_artifacts": []
     },
     {

@@ -140,6 +140,16 @@
   Replace generic inner-agent prose with cache-aware, separately approved
   prepare/extract/import/export boundaries and keep outer replay bound to an
   explicit disposable state, artifacts and receipt.
+- Review tutorial 06.04 through a live P04637 fetch and a bounded,
+  provenance-bound GRCh38/Ensembl-116 TP53 locus while Ensembl's sequence REST
+  endpoint returned HTTP 500. Retain two native GUI captures plus the exact
+  mapping and coding-DNA read-backs: six mapped transcripts, 16 explicit
+  missing-transcript warnings and one exon-11 DNA-binding match spanning amino
+  acids 368-387 and 60 genomic bases. Replace generic inner-agent prompts with
+  network/cache/mutation approvals and honest partial-coverage boundaries.
+  Preserve every valid IUPAC ambiguity code during complement operations so an
+  N-only geometry fixture yields visible `N` bases rather than spaces; keep
+  such placeholder DNA explicitly non-interpretable.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
