@@ -566,10 +566,31 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen.",
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "notes": "GUI-first manual check for Ensembl protein import, reverse translation, provenance inspection, and lineage reopen. Review-blocked on 2026-10-01: the corrected Ensembl action survived after a 16 MiB worker-stack fix but failed its provider request after 45.1 seconds; CLI provider calls were also unstable, so no successful downstream outcome is claimed.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/protein_reverse_translation_gui/01-protein-evidence-before-fetch.png",
+          "caption": "The current native Protein Evidence window before online mutation, oriented at its upper evidence and coding-query controls. It is layout evidence only; the Ensembl route is lower in the same scrollable window.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/protein_reverse_translation_gui/02-ensembl-fetch-provider-failure.png",
+          "caption": "The actual Ensembl protein subsection after the patched worker survived the request but the provider path failed after 45.1 seconds. No recent Ensembl entry or first-class protein was created, so downstream reverse translation remains unaccepted.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "vkorc1_variant_followup_expert_gui",

@@ -7,6 +7,8 @@
 
 use super::*;
 
+const SEQUENCE_INGRESS_WORKER_STACK_SIZE: usize = 16 * 1024 * 1024;
+
 impl GENtleApp {
     pub(super) fn uniprot_optional_trimmed(value: &str) -> Option<String> {
         let trimmed = value.trim();
@@ -272,24 +274,39 @@ impl GENtleApp {
         runtime_frame.update_phase("running");
         let engine = self.engine.clone();
         let worker_cancel = cancel_requested.clone();
-        std::thread::spawn(move || {
-            let result =
-                crate::background_engine::execute_on_engine_snapshot(&engine, move |snapshot| {
-                    if worker_cancel.load(Ordering::Relaxed) {
-                        return Err(EngineError::invalid_input(
-                            "Network request was stopped before execution",
-                        ));
-                    }
-                    let result = snapshot.apply(operation)?;
-                    if worker_cancel.load(Ordering::Relaxed) {
-                        return Err(EngineError::invalid_input(
-                            "Network request finished after stop-waiting; result ignored",
-                        ));
-                    }
-                    Ok(result)
-                });
-            let _ = tx.send(SequenceIngressTaskMessage::Done { job_id, result });
-        });
+        let spawn_result = std::thread::Builder::new()
+            .name(format!("gentle-sequence-ingress-{job_id}"))
+            .stack_size(SEQUENCE_INGRESS_WORKER_STACK_SIZE)
+            .spawn(move || {
+                let result = crate::background_engine::execute_on_engine_snapshot(
+                    &engine,
+                    move |snapshot| {
+                        if worker_cancel.load(Ordering::Relaxed) {
+                            return Err(EngineError::invalid_input(
+                                "Network request was stopped before execution",
+                            ));
+                        }
+                        let result = snapshot.apply(operation)?;
+                        if worker_cancel.load(Ordering::Relaxed) {
+                            return Err(EngineError::invalid_input(
+                                "Network request finished after stop-waiting; result ignored",
+                            ));
+                        }
+                        Ok(result)
+                    },
+                );
+                let _ = tx.send(SequenceIngressTaskMessage::Done { job_id, result });
+            });
+        if let Err(error) = spawn_result {
+            runtime_frame.update_phase("failed");
+            let status = format!("Could not start {label}: {error}");
+            if kind.uses_genbank_status() {
+                self.genbank_status = status;
+            } else {
+                self.uniprot_status = status;
+            }
+            return;
+        }
 
         let status = format!("{label} running in background...");
         if kind.uses_genbank_status() {

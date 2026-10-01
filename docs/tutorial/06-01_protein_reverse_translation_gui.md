@@ -6,6 +6,18 @@
 > current `Protein Evidence...` specialist, the persisted reverse-translation
 > report, and the lineage reopen flow.
 
+> **Review status (2026-10-01): blocked at online provider fetch.** Early
+> coordinate automation accidentally clicked the upper generic UniProt `Fetch`
+> button with the ENSP id and exposed a separate default-worker stack overflow.
+> This review gives that ingress worker the established 16 MiB GENtle worker
+> stack. The corrected `Fetch Ensembl` action then remained alive but failed
+> after 45.1 seconds while sending its lookup request. Direct Ensembl REST
+> requests returned the lookup and 806-aa protein; GENtle CLI fetches returned
+> transient HTTP 500 errors and later exceeded a 30-second smoke limit. The
+> focused reverse-translation engine test also passes with a 16 MiB stack.
+> No successful end-to-end provider/import/reverse-translation acceptance is
+> claimed.
+
 This tutorial is meant as the second **manual check** for the newer
 protein-design path.
 
@@ -40,11 +52,15 @@ Known live smoke-check identifier already used in this codebase:
 
 - `ENSP00000288602`
 
+This identifier resolves in Ensembl 116 to the 806-aa translation of
+`ENST00000288602` (`BRAF-201`, gene `ENSG00000157764`). The TP73 fixture is only
+a disposable project container here; the fetched protein is not TP73 evidence.
+
 ## Fastest Path
 
 1. open [`test_files/tp73.project.gentle.json`](../../test_files/tp73.project.gentle.json)
 2. open `File -> Protein Evidence...`
-3. in the Ensembl section, fetch `ENSP00000288602`
+3. in **Online fetch**, enter `ENSP00000288602` and click `Fetch Ensembl`
 4. import it as a first-class protein sequence
 5. in `Reverse translate protein`, select that protein
 6. choose a speed profile / speed mark and run reverse translation
@@ -68,13 +84,30 @@ reverse-translated coding DNA.
 GUI:
 
 1. `File -> Protein Evidence...`
-2. in the Ensembl section, enter `ENSP00000288602`
+2. in **Online fetch**, enter `ENSP00000288602`
 3. click `Fetch Ensembl`
+
+![Protein Evidence before the blocked Ensembl fetch](../screenshots/protein_reverse_translation_gui/01-protein-evidence-before-fetch.png)
+
+The screenshot is a real 728×476 Linux/X11 capture of the current dialog before
+the network mutation. Scroll down to the dedicated Ensembl subsection; do not
+use the upper generic UniProt `Fetch` button for an ENSP identifier.
+
+![Dedicated Ensembl subsection after the provider request failed](../screenshots/protein_reverse_translation_gui/02-ensembl-fetch-provider-failure.png)
+
+The second capture shows the correctly targeted action and its 45.1-second
+provider error. Both images are orientation/failure evidence, not proof that
+fetch/import or reverse translation completed. See the adjacent screenshot
+README for hashes and the exact blocker.
 
 Expected result:
 
 - the recent Ensembl table gains one entry
 - the selected-entry panel shows transcript/gene/species context
+
+Current review result: **not reached** because the correctly targeted Ensembl
+request failed after 45.1 seconds. Stop here if you reproduce that failure; do
+not infer a stored entry from the public REST response alone.
 
 ### Step 3: Import the Protein Sequence
 
@@ -168,16 +201,56 @@ This walkthrough is the practical sanity pass for:
 - visible provenance for translation-table and translation-speed resolution
 - lineage persistence of the reverse-translation artifact
 
-## Command Equivalent (After GUI)
+## Shared-Engine Commands (After the Blocker Is Fixed)
 
-The GUI path is the main point here, but the same engine route is shared.
+Use a new disposable state, not the tutorial fixture itself:
 
-If you want a follow-up parity check later, use the same operation through
-`gentle_cli op ...` once dedicated shell sugar lands.
+```bash
+GENTLE_TUTORIAL_STATE=/tmp/gentle-protein-reverse-translation.state.json
+gentle_cli --state "$GENTLE_TUTORIAL_STATE" shell 'ensembl-protein fetch ENSP00000288602 --entry-id ensp00000288602_evidence'
+gentle_cli --state "$GENTLE_TUTORIAL_STATE" shell 'ensembl-protein show ensp00000288602_evidence'
+gentle_cli --state "$GENTLE_TUTORIAL_STATE" shell 'ensembl-protein import-sequence ensp00000288602_evidence --output-id ensp00000288602_protein'
+gentle_cli --state "$GENTLE_TUTORIAL_STATE" shell 'reverse-translate run ensp00000288602_protein --output-id ensp00000288602_coding --speed-profile human --speed-mark slow --target-anneal-tm-c 58 --anneal-window-bp 9'
+gentle_cli --state "$GENTLE_TUTORIAL_STATE" shell 'reverse-translate list-reports ensp00000288602_protein'
+```
+
+These direct shell invocations are explicit mutations. A public Ensembl reply
+does not approve project mutation, and a successful reverse translation is a
+synthetic synonymous design—not evidence that the coding DNA will express well.
+
+## Ask the Inner Agent
+
+Paste this into GENtle's Agent Assistant:
+
+> Review tutorial 06.01 for `ENSP00000288602`. First propose only the read-only
+> Ensembl identity check and report that it is BRAF-201, not TP73. Then propose
+> separate `ensembl-protein fetch`, `import-sequence`, and `reverse-translate
+> run` commands using the exact ids in this tutorial. Explain every state or
+> network mutation, wait for approval before each mutating phase, and stop if
+> the provider response or stored entry disagrees. After execution, show the
+> persisted reverse-translation report and lineage link; do not claim expression
+> optimization from codon-speed heuristics.
+
+## Ask an Outer Agent (ClawBio/OpenClaw)
+
+An outer agent does not inherit the open GUI project. Give it a new disposable
+state and the five commands above:
+
+> In a new disposable GENtle state, assess tutorial 06.01 without touching my
+> open GUI project. Preflight `ENSP00000288602` as BRAF-201/806 aa, then propose
+> the exact fetch, import and reverse-translation mutations separately. Preserve
+> structured results and the persisted report. Do not approve on my behalf; if
+> fetch fails, times out or differs from the bound identity, return the blocker
+> and leave later phases unexecuted.
+
+The outer agent can validate the shared engine/CLI mapping without GENtle's
+inner model. It cannot replace native GUI acceptance: the provider path must
+still succeed and the import/reverse-translation/lineage sequence must be
+retested in the actual `Protein Evidence` window.
 
 ## Checkpoints
 
-- Ensembl fetch succeeds for `ENSP00000288602`.
+- Ensembl fetch succeeds for `ENSP00000288602` and binds BRAF-201/806 aa.
 - Importing that entry creates one first-class protein sequence.
 - Reverse translation creates one coding DNA sequence and opens it.
 - The provenance panel states the resolved translation-table and
@@ -197,6 +270,11 @@ Report these separately because they indicate different failure classes:
    - likely persisted-report or lineage-materialization regression
 4. `Open Coding Sequence from lineage points to the wrong product`
    - likely analysis-artifact linkage regression
+5. `Fetch Ensembl reports a provider/send failure and creates no recent entry`
+   - current Linux/X11 blocker; no downstream GUI result is valid
+6. `The upper generic Fetch button stack-overflows on a network error`
+   - separate worker-stack defect found by the review and fixed with an explicit
+     16 MiB ingress-worker stack; it is not the Ensembl button
 
 ## Related Tutorial
 

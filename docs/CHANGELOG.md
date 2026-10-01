@@ -114,6 +114,14 @@
   explain the strand-aware 5-prime/3-prime coordinate changes and final 270025
   bp anchor, split status, extraction and ordered extension proposals for the
   inner agent, and retain an exact workflow/digest boundary for outer replay.
+- Review tutorial 06.01 against the live native Protein Evidence window and
+  current shared-shell routes. Add a hash-bound pre-fetch orientation capture,
+  identify the nominal protein as BRAF-201 rather than TP73, add copyable
+  inner/outer-agent boundaries, and record the correctly targeted Ensembl
+  provider failure plus unstable CLI path without claiming downstream success.
+  A separate mistargeted generic-fetch smoke exposed a default-worker stack
+  overflow; give the sequence-ingress worker the same explicit 16 MiB stack
+  used by other heavy engine workers and retain both real GUI evidence states.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

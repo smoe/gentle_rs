@@ -20398,10 +20398,7 @@ mod tests {
         assert_eq!(local.sequence_source_type, "local");
         assert_eq!(local.annotation_source_type, "local");
 
-        for genome_id in [
-            "Human GRCh38 Ensembl 116",
-            "Mouse GRCm39 Ensembl 116",
-        ] {
+        for genome_id in ["Human GRCh38 Ensembl 116", "Mouse GRCm39 Ensembl 116"] {
             let plan = catalog.source_plan(genome_id, None).unwrap();
             for source in [&plan.sequence_source, &plan.annotation_source] {
                 assert!(
