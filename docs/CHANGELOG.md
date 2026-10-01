@@ -62,6 +62,10 @@
   Embed the deterministic arrangement-gel SVG, explain why it is stronger than
   a dialog screenshot, and bind inner/outer agents to exact arrangement IDs,
   lane order, disposable state and separately approved file export.
+- Review tutorial 03.08 as the physical projection layer. Embed the canonical
+  isometric rack SVG and bind agents to the exact rack, arrangement, occupied
+  positions, template and output path while separating digital placement from
+  real tube occupancy, fabrication fitness and print safety.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

@@ -251,13 +251,27 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, README-grade isometric SVG, carrier labels, and OpenSCAD export.",
+      "notes": "Hands-on walkthrough for turning one arrangement-ready Gibson result into a linked physical rack, deterministic isometric SVG, carrier labels and OpenSCAD export, with explicit agent state/file-write boundaries.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared rack exports",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit disposable state)"
+      ],
       "prerequisites": [
         "gibson_arrangements_gui"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/figures/gibson_single_insert_rack_isometric.svg",
+          "caption": "Deterministic isometric export of rack-1 with the pipetting PCR tube rack template: five occupied positions preserve the linked Gibson arrangement and flanking ladder references.",
+          "illustrates_step": 5,
+          "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run racks isometric-svg for rack-1 with --template pipetting_pcr_tube_rack as shown in this tutorial."
+        }
+      ]
     },
     {
       "id": "sequencing_confirmation_trace_cli",
