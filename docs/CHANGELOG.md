@@ -58,6 +58,10 @@
   the six-section checklist, add exact review-before-apply inner/outer prompts,
   and register the useful legacy lineage screenshot while stating that it
   predates current exact-binary GUI evidence.
+- Review tutorial 03.07 as the semantic lane-order layer after Gibson apply.
+  Embed the deterministic arrangement-gel SVG, explain why it is stronger than
+  a dialog screenshot, and bind inner/outer agents to exact arrangement IDs,
+  lane order, disposable state and separately approved file export.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

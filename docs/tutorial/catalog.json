@@ -209,16 +209,30 @@
         "cloning_planning",
         "contributors"
       ],
-      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
+      "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection and deterministic arrangement-level gel export, with explicit inner/outer-agent state and file-write boundaries.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared arrangement export",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit disposable state)"
+      ],
       "prerequisites": [
         "gibson_arrangements_baseline"
       ],
       "next_steps": [
         "gibson_physical_rack_gui"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/figures/gibson_single_insert_arrangement_gel.svg",
+          "caption": "Deterministic arrangement-level gel export with flanking DNA ladders and the vector, insert and assembled-product sample lanes in stored serial order.",
+          "illustrates_step": 5,
+          "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run render-pool-gel-svg with --arrangement arrangement-1 as shown in this tutorial."
+        }
+      ]
     },
     {
       "id": "gibson_physical_rack_gui",
