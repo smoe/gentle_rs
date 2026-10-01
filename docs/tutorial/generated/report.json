@@ -119,7 +119,7 @@
     "chapters/05-03_tp63_anchor_extension_online.md": "c405dbcb8ff7aa24247ae4c8995c12527614bd9587433e298f3b7d5924eb9ea3",
     "chapters/06-03_tp53_isoform_architecture_online.md": "743997135aeee48a10b36a1bf76eac3906fbca754bd674d3c775749f14138603",
     "chapters/06-04_tp53_uniprot_projection_online.md": "ff59bc6e3ea0882b40aa025e6597ed04bcbcf03e7eb00af56b491d3681c90ff2",
-    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "6d2f38422e0f83206ebe2252a2f57ea0d0a7527177c2dc722ec1718c223c4c6e",
+    "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "1b9b01d3e38cbbdf58a6aadef1dd690566ad9f5fe1abd4595cfff38ccb5b2bca",
     "chapters/06-06_patz1_gene_locus_evidence_offline.md": "178ac7271d6cbdfdcb238500c8ddb4d9431c8dd55b39d67838a57e8bc88f631d",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "c41511a5771a5ccad4b103ae766d06a8adfea0c3afa5122595645c96291cffa4",
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "bbee7efedd1bbd3f8dce86b518b6e059579101a155d48e5adf2174fbfb4583d2",
@@ -690,6 +690,22 @@
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/01-audit-mismatch-vs-missing-evidence.png",
+          "caption": "The native Protein Evidence audit separates six protein-length mismatches from four rows whose remaining limitation is missing Ensembl evidence. Expanded rows show corrected genomic CDS accounting, and the text box is explicitly an unsent local draft.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/02-direct-vs-composed-parity.png",
+          "caption": "The native parity summary reports zero divergent rows out of ten and confirms that the direct and composed paths selected the same transcript set for the local draft.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ],
       "retained_artifacts": []
     },
     {

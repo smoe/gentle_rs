@@ -150,6 +150,17 @@
   Preserve every valid IUPAC ambiguity code during complement operations so an
   N-only geometry fixture yields visible `N` bases rather than spaces; keep
   such placeholder DNA explicitly non-interpretable.
+- Repair and review tutorial 06.05 against the fully prepared Ensembl-116 TP73
+  locus. Replace the biologically wrong TP63 accession `Q9H3D4` with reviewed
+  TP73 `O15350`, remove the retired hard-coded Ensembl protein dependency, and
+  require full exon/CDS annotation. Fix transcript accounting to intersect
+  genomic exons with the already mapped genomic CDS ranges instead of
+  transcript-local coordinates; all ten reviewed rows now satisfy
+  `translated_nt / 3 = derived_aa`. Retain native audit/parity captures and a
+  compact evidence bundle: six real protein-length mismatches, four rows
+  limited by Ensembl REST HTTP-500 missing evidence, and zero direct-vs-composed
+  divergences. Keep the maintainer-email text explicitly local and unsent, and
+  bind inner/outer agents to identity, evidence and approval boundaries.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

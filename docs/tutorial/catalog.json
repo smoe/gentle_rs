@@ -653,13 +653,35 @@
         "agent_users",
         "contributors"
       ],
-      "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.",
+      "notes": "CLI-first walkthrough validated with Ensembl-116 TP73, reviewed UniProt O15350 and full exon/CDS annotation. The 2026-10-01 review corrected a TP63 accession, a retired protein id and a transcript-local/genomic CDS accounting bug. Ensembl REST comparison evidence was unavailable (HTTP 500), so missing-evidence rows and the unsent-draft boundary remain explicit.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (explicit online opt-in and disposable state)"
+      ],
       "prerequisites": [
         "tp53_uniprot_projection_online"
       ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/01-audit-mismatch-vs-missing-evidence.png",
+          "caption": "The native Protein Evidence audit separates six protein-length mismatches from four rows whose remaining limitation is missing Ensembl evidence. Expanded rows show corrected genomic CDS accounting, and the text box is explicitly an unsent local draft.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/02-direct-vs-composed-parity.png",
+          "caption": "The native parity summary reports zero divergent rows out of ten and confirms that the direct and composed paths selected the same transcript set for the local draft.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "qpcr_exon_junctions_gui",

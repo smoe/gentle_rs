@@ -2,6 +2,22 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "tp73_uniprot_projection_audit_cli",
   "title": "Audit a TP73 UniProt Projection Against Ensembl and Derived Coding Sequence (CLI Tutorial)",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tp73_uniprot_projection_audit_online/01-audit-mismatch-vs-missing-evidence.png",
+      "caption": "The native Protein Evidence audit separates six protein-length mismatches from four rows whose remaining limitation is missing Ensembl evidence. Expanded rows show corrected genomic CDS accounting, and the text box is explicitly an unsent local draft.",
+      "illustrates_step": 3,
+      "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tp73_uniprot_projection_audit_online/02-direct-vs-composed-parity.png",
+      "caption": "The native parity summary reports zero divergent rows out of ten and confirms that the direct and composed paths selected the same transcript set for the local draft.",
+      "illustrates_step": 4,
+      "capture_date": "2026-10-01"
+    }
+  ],
   "catalog": {
     "order": 22,
     "path": "docs/tutorial/06-05_tp73_uniprot_projection_audit_cli.md",
@@ -14,7 +30,13 @@
       "agent_users",
       "contributors"
     ],
-    "notes": "CLI-first walkthrough for the integrated TP73 UniProt/Ensembl projection audit, the reusable low-level primitives, parity comparison, and the unsent maintainer-email draft.",
+    "notes": "CLI-first walkthrough validated with Ensembl-116 TP73, reviewed UniProt O15350 and full exon/CDS annotation. The 2026-10-01 review corrected a TP63 accession, a retired protein id and a transcript-local/genomic CDS accounting bug. Ensembl REST comparison evidence was unavailable (HTTP 500), so missing-evidence rows and the unsent-draft boundary remain explicit.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent (explicit online opt-in and disposable state)"
+    ],
     "group": "06",
     "group_position": 5
   },
@@ -23,38 +45,49 @@
     "example_id": "tp73_uniprot_projection_audit_online",
     "tier": "online",
     "guide_path": "docs/tutorial/06-05_tp73_uniprot_projection_audit_cli.md",
-    "summary": "Build a TP73 locus project, fetch UniProt and Ensembl protein evidence, persist the integrated audit plus parity report, and keep the matching expert SVG as an inspectable artifact.",
-    "narrative": "This executable chapter turns the TP73 UniProt/Ensembl audit into a reproducible online workflow. It prepares GRCh38, extracts TP73, fetches the reviewed UniProt entry and matching Ensembl protein evidence, projects the protein onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG export alongside the stored report artifacts. The companion hand-written tutorial then explains how to inspect the same outcome through the public primitive commands.",
+    "summary": "Build a fully annotated TP73 locus, fetch reviewed UniProt O15350, persist the integrated audit plus parity report, and keep the matching expert SVG as an inspectable artifact.",
+    "narrative": "This executable chapter turns the TP73 UniProt audit into a reproducible online workflow. It prepares GRCh38, extracts TP73 with full exon/CDS annotation, fetches reviewed UniProt O15350, projects p73 onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG. The companion guide explains the public primitives, the optional Ensembl-protein comparison, and why missing evidence must not be reported as a UniProt error.",
     "use_cases": [
       "You want one canonical online starter project that proves the TP73 UniProt/Ensembl audit path still runs end to end.",
       "You want a persisted TP73 audit report plus parity report before following the shell-level primitive walkthrough.",
       "You want a deterministic bridge from locus extraction and UniProt projection into audit, parity, and expert-view artifact export."
     ],
     "gui_steps": [
-      "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73`.",
-      "Fetch UniProt `Q9H3D4` and Ensembl protein `ENSP00000264724` from `Protein Evidence...`, then project the UniProt entry onto the TP73 locus.",
-      "Run the high-level audit and parity actions from `Protein Evidence...` so the stored audit rows and local unsent email draft are persisted.",
+      "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73` with annotation scope `full`.",
+      "Fetch reviewed UniProt `O15350` as `TP73_UNIPROT` from `Protein Evidence...`, then project it onto the TP73 locus as `tp73_uniprot_o15350`.",
+      "Run the high-level audit from `Protein Evidence...`; distinguish protein mismatch from `missing_evidence`, and keep the maintainer-email text local and unsent.",
+      "Run and reopen the parity report; verify that the native summary reports `0 / 10` divergent rows before trusting the outer primitive composition.",
       "Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.",
-      "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`."
+      "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`; fetch optional Ensembl protein evidence only when its REST service is healthy."
     ],
     "cli_steps": [
-      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id grch38_tp73 --catalog assets/genomes.json --cache-dir data/genomes",
-      "cargo run --bin gentle_cli -- shell 'uniprot fetch Q9H3D4 --entry-id Q9H3D4'\ncargo run --bin gentle_cli -- shell 'ensembl-protein fetch ENSP00000264724 --entry-id TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot map Q9H3D4 grch38_tp73 --projection-id tp73_uniprot_q9h3d4'",
-      "cargo run --bin gentle_cli -- shell 'uniprot audit-projection tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit'\ncargo run --bin gentle_cli -- shell 'uniprot audit-parity tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit_parity'",
-      "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4 exports/tp73_uniprot_projection.svg",
-      "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'"
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 7200\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id grch38_tp73 --annotation-scope full --catalog assets/genomes.json --cache-dir data/genomes",
+      "cargo run --bin gentle_cli -- shell 'uniprot fetch O15350 --entry-id TP73_UNIPROT'\ncargo run --bin gentle_cli -- shell 'uniprot map TP73_UNIPROT grch38_tp73 --projection-id tp73_uniprot_o15350'",
+      "cargo run --bin gentle_cli -- shell 'uniprot audit-projection tp73_uniprot_o15350 --report-id tp73_projection_audit'",
+      "cargo run --bin gentle_cli -- shell 'uniprot audit-parity tp73_uniprot_o15350 --report-id tp73_projection_audit_parity'",
+      "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_o15350\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot_o15350 exports/tp73_uniprot_projection.svg",
+      "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_o15350'\ncargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_o15350'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_o15350'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_o15350'"
+    ],
+    "agent_steps": [
+      "Read `assets/genomes.json`, preflight exactly `Human GRCh38 Ensembl 116`, and propose preparation plus TP73 occurrence-1 extraction with `annotation_scope=full`. Expose the Ensembl URLs, cache writes, timeout and state mutation separately; core annotation is insufficient for this audit.",
+      "Verify gene symbol TP73 and reviewed UniProt identity `O15350` / `P73_HUMAN` before proposing fetch and projection. Reject `Q9H3D4` because it is TP63, then report the fetched source URL and ten projected transcript ids.",
+      "Run the stored audit only after confirming every accounting row satisfies translated_nt/3=derived_aa. Separate six protein-length mismatches from four rows limited by missing Ensembl evidence, and never send or present the local draft as a validated complaint.",
+      "Run direct-vs-composed parity and require zero divergent rows across status, accounting, mismatch reasons, comparison mode and draft transcript set. Preserve the structured parity payload instead of replacing it with prose.",
+      "Inspect or render the persisted projection without claiming that an SVG or screenshot supplies missing Ensembl evidence.",
+      "Rebuild the report from the four public primitives. Treat an optional Ensembl protein fetch as a separate network action and retain `missing_evidence` when the provider fails."
     ],
     "step_expectations": [
-      "The reference is prepared if needed and TP73 is extracted into the anchored sequence id `grch38_tp73`.",
-      "The UniProt, Ensembl protein, and projection records persist under the ids used by the audit workflow.",
-      "The integrated audit and parity reports are stored as `tp73_projection_audit` and `tp73_projection_audit_parity`.",
+      "The reference is prepared if needed and TP73 is extracted into `grch38_tp73` with non-zero transcript, exon and CDS feature counts.",
+      "Reviewed UniProt O15350 persists as `TP73_UNIPROT`, and its ten linked transcript projections persist as `tp73_uniprot_o15350`.",
+      "The integrated audit is stored as `tp73_projection_audit`; all ten accounting rows use genomic CDS coordinates and separate mismatch from missing evidence.",
+      "The parity report is stored as `tp73_projection_audit_parity` and reports zero divergent rows out of ten.",
       "Expert inspection and SVG export show the same projected TP73 feature geometry used by the GUI.",
       "The primitive CLI commands rebuild the audit evidence path behind the integrated reports."
     ],
     "prerequisites": [
       "tp53_uniprot_projection_online"
     ],
-    "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.",
+    "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares GRCh38 Ensembl 116, extracts TP73 with full exon/CDS annotation, fetches reviewed UniProt `O15350`, and writes audit/parity reports plus SVG locally. A separate Ensembl-protein fetch is optional; during the 2026-10-01 review Ensembl lookup and sequence endpoints returned HTTP 500, so no external sequence was fabricated.",
     "learning_objectives": [
       "Use one executable chapter as the reproducible setup layer behind the TP73 UniProt/Ensembl audit walkthrough.",
       "Understand that the high-level audit and parity report are built on the same reusable primitive record families exposed to shell/CLI and future AI callers.",
@@ -70,45 +103,46 @@
     ],
     "parameter_notes": [
       {
+        "parameter": "ExtractGenomeGene.annotation_scope",
+        "where_used": "operation 2",
+        "why_it_matters": "The audit intersects transcript exons with genomic CDS ranges; core scope omits those exon/CDS features and makes the accounting uninterpretable.",
+        "how_to_derive": "Use `full` for this audit and verify that the extraction result reports non-zero exon and CDS counts."
+      },
+      {
         "parameter": "FetchUniprotSwissProt.query / entry_id",
         "where_used": "operation 3",
         "why_it_matters": "Pins the reviewed UniProt TP73 entry that drives the protein-coordinate system for projection and audit.",
-        "how_to_derive": "Use the stable reviewed TP73 accession `Q9H3D4` for this canonical chapter."
-      },
-      {
-        "parameter": "FetchEnsemblProtein.query / entry_id",
-        "where_used": "operation 4",
-        "why_it_matters": "Keeps the Ensembl protein evidence explicit and reusable for exon/CDS and peptide comparison during audit.",
-        "how_to_derive": "Use `ENSP00000264724` with a stable project-local id such as `TP73_ENS`."
+        "how_to_derive": "Use reviewed TP73 accession `O15350` (`P73_HUMAN`). `Q9H3D4` is TP63 and is biologically invalid here."
       },
       {
         "parameter": "ProjectUniprotToGenome.projection_id",
-        "where_used": "operation 5",
+        "where_used": "operation 4",
         "why_it_matters": "The stored projection id is the durable handle reused by the expert SVG export, the integrated audit, and the parity report.",
-        "how_to_derive": "Use a stable intent-bearing id such as `tp73_uniprot_q9h3d4`."
+        "how_to_derive": "Use a stable intent-bearing id such as `tp73_uniprot_o15350`."
       },
       {
         "parameter": "AuditUniprotProjectionConsistency.report_id / AuditUniprotProjectionParity.report_id",
-        "where_used": "operations 7 and 8",
+        "where_used": "operations 6 and 7",
         "why_it_matters": "Stable report ids make the saved audit/parity artifacts easy to reopen from GUI, CLI, or future AI orchestration.",
         "how_to_derive": "Use descriptive ids like `tp73_projection_audit` and `tp73_projection_audit_parity`."
       }
     ],
     "follow_up_commands": [
       "cargo run --bin gentle_cli -- shell 'uniprot audit-show tp73_projection_audit'",
-      "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'",
-      "cargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'",
-      "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'",
-      "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'",
+      "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_o15350'",
+      "cargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_o15350'",
+      "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_o15350'",
+      "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_o15350'",
       "cargo run --bin gentle_cli -- shell 'uniprot audit-parity-show tp73_projection_audit_parity'"
     ],
     "retain_outputs": [
       "exports/tp73_uniprot_projection.svg"
     ],
     "checkpoints": [
-      "The TP73 locus, UniProt entry, and Ensembl protein evidence all persist under stable ids in one project state.",
-      "The integrated audit stores `tp73_projection_audit` with per-transcript accounting and a local unsent maintainer-email draft.",
-      "The parity report stores `tp73_projection_audit_parity` and confirms whether the integrated Rust audit matches the public primitive composition.",
+      "The Ensembl-116 TP73 locus carries full annotation, reviewed UniProt O15350 persists as `TP73_UNIPROT`, and ten linked transcripts persist in `tp73_uniprot_o15350`.",
+      "Every accounting row satisfies translated_nt/3=derived_aa; the integrated audit separates six protein-length mismatches from four otherwise matching rows limited by missing Ensembl evidence.",
+      "The local maintainer-email text remains explicitly unsent and is never treated as a validated complaint while external evidence is missing.",
+      "The parity report stores `tp73_projection_audit_parity` with zero divergent rows out of ten and a matching draft transcript set.",
       "The shared expert SVG export succeeds so the projected TP73 feature geometry remains inspectable outside the live GUI."
     ]
   }

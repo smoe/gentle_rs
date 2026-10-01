@@ -2861,7 +2861,10 @@ fn uniprot_projection_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid dna");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
-        location: gb_io::seq::Location::simple_range(99, 360),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(99, 180),
+            gb_io::seq::Location::simple_range(299, 360),
+        ]),
         qualifiers: vec![
             ("gene".into(), Some("TOY1".to_string())),
             ("transcript_id".into(), Some("TX1".to_string())),
@@ -24595,7 +24598,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         UNIPROT_PROJECTION_TRANSCRIPT_ACCOUNTING_SCHEMA
     );
     assert_eq!(accounting.rows.len(), 1);
-    assert!(accounting.rows[0].translated_nt > 0);
+    assert_eq!(accounting.rows[0].translated_nt, 142);
+    assert_eq!(accounting.rows[0].expected_aa_count, 47);
 
     let exon_compare = engine
         .compare_uniprot_projection_to_ensembl_exons(

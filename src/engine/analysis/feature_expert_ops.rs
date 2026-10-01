@@ -2044,11 +2044,13 @@ impl GentleEngine {
         is_reverse: bool,
         derivation: Option<&TranscriptProteinDerivation>,
         transcript_exons_1based: &[(usize, usize)],
+        genomic_cds_ranges_1based: Option<&[(usize, usize)]>,
         entry: &UniprotEntry,
     ) -> UniprotProjectionTranscriptAccountingRow {
         let strand = if is_reverse { "-" } else { "+" }.to_string();
-        let cds_ranges_1based = derivation
-            .map(|value| value.cds_ranges_1based.clone())
+        let cds_ranges_1based = genomic_cds_ranges_1based
+            .map(<[_]>::to_vec)
+            .or_else(|| derivation.map(|value| value.cds_ranges_1based.clone()))
             .unwrap_or_default();
         let contributions = Self::build_transcript_exon_contributions(
             transcript_exons_1based,
@@ -2325,6 +2327,7 @@ impl GentleEngine {
                 warnings: vec![],
             }),
             &transcript_exons,
+            None,
             uniprot_entry,
         ))
     }
@@ -3090,6 +3093,7 @@ impl GentleEngine {
                     derived.is_reverse,
                     derived.derivation.as_ref(),
                     &derived.transcript_exons_1based,
+                    Some(&derived.genomic_cds_ranges_1based),
                     &entry,
                 )),
                 Err(err) => warnings.push(format!(
