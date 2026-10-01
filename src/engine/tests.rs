@@ -24698,6 +24698,13 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
             .collect(),
     });
     dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("standard_name".into(), Some("UNRELATED_REGION".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
         location: gb_io::seq::Location::simple_range(0, 180),
         qualifiers: vec![
@@ -24727,6 +24734,7 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
         panic!("expected isoform-architecture payload for transcript protein expert");
     };
     assert_eq!(view.seq_id, "toy_tx_only");
+    assert_eq!(view.gene_symbol, "TPROT");
     assert_eq!(view.protein_lanes.len(), 1);
     let comparison = view.protein_lanes[0]
         .comparison

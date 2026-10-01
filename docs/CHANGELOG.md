@@ -122,6 +122,15 @@
   A separate mistargeted generic-fetch smoke exposed a default-worker stack
   overflow; give the sequence-ingress worker the same explicit 16 MiB stack
   used by other heavy engine workers and retain both real GUI evidence states.
+- Review tutorial 06.02 against the local TP73 project, native Protein Expert
+  and shared shell. Bind the unfiltered 15-row view and the filtered
+  `NM_005427.4` 636-aa result, expose missing-CDS ORF inference instead of
+  presenting it as curated protein truth, repair the incomplete CLI examples,
+  and add bounded inner/outer-agent requests plus two exact GUI captures.
+  Prefer gene metadata from the transcript features actually present in the
+  expert lanes, preventing unrelated locus annotations from supplying the
+  Protein Expert title. Keep the headless native save-dialog result explicitly
+  unaccepted while recording the successful 1200×880 shared-shell SVG export.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

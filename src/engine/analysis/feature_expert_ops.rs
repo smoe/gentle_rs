@@ -7354,6 +7354,18 @@ impl GentleEngine {
         let gene_symbol = external_source
             .and_then(|external_source| external_source.gene_symbol_hint.clone())
             .or_else(|| {
+                transcript_lanes.iter().find_map(|lane| {
+                    lane.transcript_feature_id
+                        .and_then(|feature_id| features.get(feature_id))
+                        .and_then(|feature| {
+                            Self::first_nonempty_feature_qualifier(
+                                feature,
+                                &["gene", "gene_id", "locus_tag", "standard_name", "name"],
+                            )
+                        })
+                })
+            })
+            .or_else(|| {
                 features.iter().find_map(|feature| {
                     Self::first_nonempty_feature_qualifier(
                         feature,
