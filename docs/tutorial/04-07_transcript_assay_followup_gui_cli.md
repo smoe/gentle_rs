@@ -302,6 +302,42 @@ catalog notes through the existing interest-guided retrieval. Retrieval score
 is not scientific confidence. Keep provider configuration, model suggestions,
 execution confirmation and human scientific approval separate.
 
+## 7. Agent Review Sequence
+
+For the inner agent, use bounded prompts that match the two approval stages:
+
+> Inspect the open synthetic PATZ1-like project and the committed RT-pool
+> request. Propose `DesignTerminalExonRtPrimerPool` for PATZ1-201 followed by
+> PATZ1-202, preserving the adapter, 22 nt variable segment, 40 nt terminal
+> window and five retained candidates per target. Show the full request and
+> minus-strand geometry; do not execute it.
+
+> Inspect the three existing panel reports and the JUC evidence without
+> rerunning design. Separate the one source observation from its transcript
+> projection, report `incomplete_missing_threshold`, and do not invent
+> `min_abs_logfc`, `threshold_source` or `policy_sha256`.
+
+> Normalize the supplied gene-isoform study request only. Return the complete
+> normalized bytes, hashes, effective defaults, missing evidence and profile
+> override for Approval 1; do not plan or execute operations.
+
+> After Approval 1, create the study plan and workflow files. Return the exact
+> ordered operations, `operation_batch_sha256` and
+> `approved_workflow_sha256` for Approval 2; do not execute the workflow.
+
+An outer agent starts from a new disposable state and the same committed
+fixture/request files; it does not inherit Splicing Expert or PCR Designer
+selection. Require structured RT/report/normalization/plan artifacts and a
+reproducibility receipt at each boundary. Approval to normalize is not
+approval to plan; approval to plan is not approval to execute; none of these
+approves external specificity commands, vendor submission or wet-lab work.
+
+For a real panel, specificity remains a separate three-part handoff: review
+the generated plan, execute every exact external command while recording its
+manifest, then finalize that manifest in GENtle. Only a finalized `pass` is a
+specificity acceptance for the declared reference and policy, not experimental
+validation.
+
 ## Reproducibility and Review
 
 ```bash

@@ -1740,6 +1740,12 @@
         "wet_lab_biologists"
       ],
       "notes": "Offline synthetic PATZ1 follow-up after qPCR exon junctions and transcript panels: terminal-exon RT primer pool geometry, differential junction selection and missing threshold provenance, transcript-assay specificity planning/finalization, and gene-isoform study orchestration with two separate approval stages. GUI PCR Designer and shared Shell continuation; deterministic Python fixture checks and optional supplied-binary replay. External manifest-backed specificity is optional and not executed; no vendor submission, validated assay, or human scientific/GUI approval is claimed.",
+      "interfaces": [
+        "GUI / PCR Designer",
+        "CLI / shared shell",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "patz1_transcript_assay_panels_cli"
       ],
@@ -1747,7 +1753,7 @@
         "gene_assay_study_gui"
       ],
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-11"
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "promoter_cofactor_browser",

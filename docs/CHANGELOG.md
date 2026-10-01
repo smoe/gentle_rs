@@ -95,6 +95,10 @@
   replace eleven generic agent prompts with separate fixture, panel, compose,
   export and external-specificity approvals while retaining the three exact
   report artifacts as its evidence.
+- Review tutorial 04.07 with its dedicated real-binary replay. Add copyable
+  inner/outer-agent prompts for RT-pool geometry, missing JUC-threshold
+  provenance and the normalize/plan/execute approval sequence; keep external
+  specificity, vendor submission and wet-lab work outside those approvals.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
