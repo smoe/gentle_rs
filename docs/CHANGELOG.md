@@ -49,6 +49,11 @@
   generic inner-agent prose with exact load/digest proposals, make `frag_1`
   and `frag_2` plus their pool/lineage the checkpoint, and distinguish the
   deterministic in-silico digest from physical digest or gel validation.
+- Reframe tutorial 03.03 as overlap preflight plus concatenation preview. Bind
+  inner-agent proposals to exact 320 bp inputs and the 20 bp shared span, state
+  that current outputs are 640 bp with duplicated overlap rather than a 620 bp
+  Gibson product, and separate outer workflow preparation from macro-preflight
+  evidence.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

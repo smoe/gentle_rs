@@ -738,7 +738,7 @@
     },
     {
       "id": "gibson_two_fragment_overlap_preview",
-      "title": "Gibson two-fragment overlap planning baseline",
+      "title": "Gibson two-fragment overlap preflight and concatenation preview",
       "path": "docs/tutorial/generated/chapters/03-03_gibson_two_fragment_overlap_preview.md",
       "group": "03",
       "group_label": "Cloning & Assembly",
@@ -750,19 +750,23 @@
       "source": "generated_from_tutorial_sources",
       "audiences": [
         "cloning_planning",
-        "gui_first",
+        "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked preflight/reference chapter. The emitted 640 bp sequences are concatenation previews with the 20 bp overlap duplicated, not overlap-elided Gibson products; no typed GUI acceptance is claimed.",
+      "interfaces": [
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (workflow preparation only)"
+      ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
       ],
       "next_steps": [
         "gibson_specialist_testing_baseline"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "guides_filter_and_generate_oligos",

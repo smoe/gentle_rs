@@ -34,7 +34,7 @@ See also: guided walkthrough [docs/tutorial/03-05_gibson_specialist_testing_gui.
 
 ## Before You Start
 
-**Prerequisites:** Read [Chapter 4: Gibson two-fragment overlap planning baseline](./03-03_gibson_two_fragment_overlap_preview.md) first.
+**Prerequisites:** Read [Chapter 4: Gibson two-fragment overlap preflight and concatenation preview](./03-03_gibson_two_fragment_overlap_preview.md) first.
 
 **Useful when:**
 
