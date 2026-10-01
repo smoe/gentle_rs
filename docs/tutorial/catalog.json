@@ -1125,7 +1125,7 @@
     },
     {
       "id": "tp53_multi_gene_sparse_mapping_online",
-      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "title": "Probe TP53-family sparse indexing from a TP53 locus (online)",
       "path": "docs/tutorial/generated/chapters/07-02_tp53_multi_gene_sparse_mapping_online.md",
       "group": "07",
       "group_label": "RNA Reads, Splicing & Expression",
@@ -1140,13 +1140,34 @@
         "sequence_analysis",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+      "notes": "Reviewed online boundary chapter. The Ensembl-116 TP53 extraction contains only TP53 annotations, so multi_gene_sparse matches TP53, reports TP63/TP73 missing, and adds no extra lanes; it is not a completed three-locus family comparison.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (online opt-in, explicit cache and disposable state)"
+      ],
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/01-project-graph.png",
+          "caption": "The native project graph retains the Ensembl-116 TP53 locus, its exon-concatenated derivative, and the 10,000-read sparse-origin report as separate provenance nodes. The report records 11 seed-passed reads and zero aligned reads because this workflow runs phase 1 only.",
+          "illustrates_step": 1,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/02-sparse-report-warnings.png",
+          "caption": "The native RNA-read Mapping workspace opens the report through TP53 mRNA feature 1 and shows that multi_gene_sparse added no local lanes beyond TP53. The structured report additionally records TP63 and TP73 as absent from the extracted sequence's local annotation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "pcr_selection_batch_primer_pairs_offline",

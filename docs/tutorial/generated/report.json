@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "7872858c3ed6cf32061087c559b94f779ae75834f55f88ebeb2b3f92d37d830b",
+    "README.md": "b1bacd3ef3b53bbf003a1687572f623c28a7f7a73efdf06e317750617f153328",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -121,7 +121,7 @@
     "chapters/06-04_tp53_uniprot_projection_online.md": "ff59bc6e3ea0882b40aa025e6597ed04bcbcf03e7eb00af56b491d3681c90ff2",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "1b9b01d3e38cbbdf58a6aadef1dd690566ad9f5fe1abd4595cfff38ccb5b2bca",
     "chapters/06-06_patz1_gene_locus_evidence_offline.md": "527cff170fe361039fd62a6d4bd0bc1382278de20d7d17da32f2f7c9669c5476",
-    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "c41511a5771a5ccad4b103ae766d06a8adfea0c3afa5122595645c96291cffa4",
+    "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "2b288b15197cab3dc74af50cc6a2ffec3196438e9f523523cdbdece251ac4c99",
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "bbee7efedd1bbd3f8dce86b518b6e059579101a155d48e5adf2174fbfb4583d2",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "af82ca8399df8a546eec6fdcea5d359c625a0a9cb61f08cb3e8578209872088a",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "d19238a127d5c7de32f085228aeb58985f9dc3e9ed32a3222ca9adfedbb8dafe",
@@ -461,7 +461,7 @@
     {
       "id": "tp53_multi_gene_sparse_mapping_online",
       "order": 12,
-      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "title": "Probe TP53-family sparse indexing from a TP53 locus (online)",
       "group": "07",
       "group_label": "RNA Reads, Splicing & Expression",
       "group_order": 7,
@@ -477,9 +477,24 @@
         "online_opt_in"
       ],
       "executed": false,
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/01-project-graph.png",
+          "caption": "The native project graph retains the Ensembl-116 TP53 locus, its exon-concatenated derivative, and the 10,000-read sparse-origin report as separate provenance nodes. The report records 11 seed-passed reads and zero aligned reads because this workflow runs phase 1 only.",
+          "illustrates_step": 1,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/02-sparse-report-warnings.png",
+          "caption": "The native RNA-read Mapping workspace opens the report through TP53 mRNA feature 1 and shows that multi_gene_sparse added no local lanes beyond TP53. The structured report additionally records TP63 and TP73 as absent from the extracted sequence's local annotation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
+      ],
       "retained_artifacts": []
     },
     {

@@ -177,6 +177,14 @@
   inner agent to the selected persisted report and the outer agent to an
   explicit state, sorted file/report manifest, approvals and structured
   receipts while the one-shot batch-manifest operation remains absent.
+- Repair and review tutorial 07.02 against a cached Ensembl-116 TP53 extraction
+  and the committed 10,000-read fixture. Bind the report to mRNA feature `1`
+  instead of the gene row at feature `0`, restoring native GUI report access.
+  Reframe the chapter as an explicit local-annotation boundary: TP53 matches,
+  TP63/TP73 remain missing, no additional sparse lanes are added, 11 reads pass
+  phase 1 and none are aligned. Retain two native captures and require inner and
+  outer agents to preserve cache/network approval, feature identity,
+  requested-versus-matched genes and phase-1-only nonclaims.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

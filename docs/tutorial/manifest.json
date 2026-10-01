@@ -1364,7 +1364,7 @@
     {
       "id": "tp53_multi_gene_sparse_mapping_online",
       "order": 12,
-      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "title": "Probe TP53-family sparse indexing from a TP53 locus (online)",
       "group": "07",
       "group_label": "RNA Reads, Splicing & Expression",
       "group_order": 7,
@@ -1373,36 +1373,46 @@
       "example_id": "tp53_multi_gene_sparse_mapping_online",
       "tier": "online",
       "guide_path": null,
-      "summary": "Prepare GRCh38, extract TP53, then map RNA reads with origin_mode=multi_gene_sparse against TP53-family targets.",
-      "narrative": "This chapter extends the TP53 genome-targeting path toward read-origin mapping in one deterministic route. After extracting the TP53 locus from GRCh38, you run `InterpretRnaReads` with `multi_gene_sparse` so the index can include additional target genes (for example TP53/TP63/TP73) in one run. The goal is to keep genome anchoring and multi-gene interpretation in the same reproducible workflow contract.",
+      "summary": "Prepare GRCh38, extract TP53, and inspect how a multi_gene_sparse request reports TP63/TP73 as unavailable in the local TP53-only annotation.",
+      "narrative": "This chapter extends the TP53 genome-targeting path toward read-origin mapping in one deterministic route. It also documents an important current boundary: `multi_gene_sparse` expands transcript templates only from annotations attached to the selected DNA sequence; target-gene ids are not a request to download or join other loci. The canonical workflow extracts TP53 alone, so the reviewed Ensembl-116 run matches TP53, reports TP63 and TP73 as absent from local annotation, and adds no extra transcript lanes. This is therefore a reproducible warning/provenance exercise, not a completed TP53/TP63/TP73 family comparison.\n\nThe 2026-10-01 acceptance run reused a prepared Ensembl-116 cache, processed the committed 10,000-read fixture, seed-passed 11 reads, and aligned none because the workflow stops after phase 1. It also exposed and repaired a real parity defect: seed feature 0 was the gene row and produced a report that the documented mRNA workspace could not open. The workflow now binds feature 1, the first TP53 mRNA, so the native report view and CLI address the same saved report.",
       "use_cases": [
-        "You want one TP53-based run that can contrast seed support across TP53-family targets.",
-        "You need a reproducible baseline for comparing single-gene vs multi-gene sparse indexing behavior.",
-        "You want GUI and CLI routes to produce the same multi-gene request payload."
+        "You want to verify that target-gene ids do not silently fetch or merge annotations from other loci.",
+        "You need a reproducible TP53 baseline for comparing single-gene and sparse-origin request provenance.",
+        "You want GUI and CLI routes to expose the same missing-local-annotation boundary before constructing a true multi-locus fixture."
       ],
       "gui_steps": [
-        "Prepare `Human GRCh38 Ensembl 116` and extract `TP53` into `grch38_tp53`.",
-        "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
-        "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
+        "Prepare or explicitly reuse `Human GRCh38 Ensembl 116`, verify the cache manifest, and extract `TP53` into `grch38_tp53`.",
+        "Open Splicing Expert for TP53 mRNA feature `1` (`ENST00000269305` in the reviewed Ensembl-116 extraction), set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
+        "Run Nanopore phase-1 interpretation, load report `tp53_family_sparse_template`, and inspect the counts and sparse-origin warnings. Confirm that TP53 matched locally, TP63/TP73 did not, no extra lanes were added, 11/10,000 reads seed-passed, and alignment remains deferred."
+      ],
+      "step_titles": [
+        "Prepare or reuse the Ensembl-116 TP53 locus",
+        "Bind the report to TP53 mRNA feature 1",
+        "Inspect the sparse-origin boundary and phase-1 counts"
       ],
       "cli_steps": [
         "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
         "cargo run --bin gentle_cli -- shell 'rna-reads list-reports grch38_tp53'",
         "cargo run --bin gentle_cli -- shell 'rna-reads show-report tp53_family_sparse_template'"
       ],
+      "agent_steps": [
+        "Inspect the exact `Human GRCh38 Ensembl 116` catalog entry and requested cache path before proposing preparation. Report whether GENtle will reuse a checksum-verified manifest or perform network downloads; do not treat a similarly named cache at another path as reusable without verification.",
+        "After extraction, query the TP53 features and verify that feature `1` is mRNA `ENST00000269305` in this pinned release. Propose the interpretation request with `origin_mode=multi_gene_sparse` and requested targets TP53, TP63 and TP73; never substitute the gene feature at index `0` for the documented mRNA workspace.",
+        "Inspect the saved structured report before making a biological statement. Keep requested genes separate from matched genes and missing local annotations; report 11 seed-passed of 10,000, zero aligned, and phase-1-only status. Do not call this a TP53-family comparison or infer TP63/TP73 absence from the reads."
+      ],
       "step_expectations": [
-        "The workflow prepares/extracts TP53 and runs the read interpretation template with `origin_mode=multi_gene_sparse`.",
-        "The report list includes `tp53_family_sparse_template` after the interpretation step has stored its report.",
-        "The report detail exposes target-gene provenance, sparse-origin warnings, and seed/align summary fields for review."
+        "The workflow reuses or prepares the exact Ensembl-116 cache, extracts 41 TP53 features, and binds interpretation to mRNA feature `1` rather than the gene row.",
+        "The report list includes `tp53_family_sparse_template` with `origin_mode=multi_gene_sparse`, three requested target ids, 10,000 total reads, 11 seed-passed reads, and zero aligned reads.",
+        "The report warns that no additional lanes were added, TP53 matched, and TP63/TP73 were not found in the selected sequence's local annotation."
       ],
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.",
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The default workflow may download and prepare roughly 1 GB of compressed GRCh38 sequence plus annotation unless the exact cache directory already contains a valid Ensembl-116 manifest. A relocated prepared cache must be supplied through an explicitly reviewed workflow/cache path; do not assume that matching files at a different path will be reused. The run indexes TP53-local transcripts only and reports TP63/TP73 missing.",
       "learning_objectives": [
-        "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",
-        "Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).",
-        "Interpret deterministic report provenance for `origin_mode`, target-gene set, and planned ROI capture flag."
+        "Map one TP53 locus from reference-genome preparation through phase-1 read interpretation in a single operation chain.",
+        "Understand that `multi_gene_sparse` expands only from transcript annotations already attached to the selected sequence.",
+        "Interpret deterministic report provenance for the seed feature, requested/matched/missing genes, phase-1 counts, and planned ROI capture flag."
       ],
       "concepts": [
         "shared_engine_contract",
@@ -1415,14 +1425,14 @@
           "parameter": "InterpretRnaReads.seed_feature_id",
           "where_used": "operation 3",
           "why_it_matters": "Defines which feature seeds the splicing view and baseline transcript scope for sparse expansion.",
-          "how_to_derive": "In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id.",
+          "how_to_derive": "Query the pinned extracted sequence. In the reviewed Ensembl-116 result feature 0 is the gene and feature 1 is mRNA ENST00000269305; the canonical workflow must use 1 so the native mRNA workspace can reopen the report.",
           "omit_when": ""
         },
         {
           "parameter": "InterpretRnaReads.origin_mode / target_gene_ids",
           "where_used": "operation 3",
           "why_it_matters": "Controls whether indexing stays baseline (`single_gene`) or is expanded with matched target-gene transcripts (`multi_gene_sparse`).",
-          "how_to_derive": "Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question.",
+          "how_to_derive": "Use TP53, TP63 and TP73 here to exercise provenance and missing-local-annotation reporting. A true contrast requires those transcript annotations on the selected sequence; ids alone do not fetch or combine loci.",
           "omit_when": ""
         },
         {
@@ -1440,9 +1450,25 @@
       ],
       "retain_outputs": [],
       "checkpoints": [
-        "TP53 locus extraction and RNA-read interpretation operations are both present in one workflow run history.",
-        "Report summary shows `origin_mode=multi_gene_sparse` and target-gene provenance fields.",
-        "Warnings remain explicit for any missing target genes and for ROI-capture requests when enabled."
+        "TP53 locus extraction and RNA-read interpretation operations are both present in one workflow run history, and the report is bound to mRNA feature 1.",
+        "Report summary shows `origin_mode=multi_gene_sparse`, requested targets TP53/TP63/TP73, 10,000 total reads, 11 seed-passed reads and zero aligned reads.",
+        "Warnings explicitly state that TP53 matched, TP63/TP73 were absent from local annotation, and no additional transcript lanes were added."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/01-project-graph.png",
+          "caption": "The native project graph retains the Ensembl-116 TP53 locus, its exon-concatenated derivative, and the 10,000-read sparse-origin report as separate provenance nodes. The report records 11 seed-passed reads and zero aligned reads because this workflow runs phase 1 only.",
+          "illustrates_step": 1,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/02-sparse-report-warnings.png",
+          "caption": "The native RNA-read Mapping workspace opens the report through TP53 mRNA feature 1 and shows that multi_gene_sparse added no local lanes beyond TP53. The structured report additionally records TP63 and TP73 as absent from the extracted sequence's local annotation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
       ]
     },
     {
