@@ -16,8 +16,8 @@
   "Human GRCh38 Ensembl 116": {
     "ncbi_taxonomy_id": 9606,
     "description": "Human GRCh38 Ensembl 116",
-    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz",
     "cache_dir": "data/genomes",
     "ensembl_template": {
       "provider": "ensembl",
@@ -63,8 +63,8 @@
   "Mouse GRCm39 Ensembl 116": {
     "ncbi_taxonomy_id": 10090,
     "description": "Mouse GRCm39 Ensembl 116",
-    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
-    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/vertebrates/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
+    "sequence_remote": "https://ftp.ensembl.org/pub/release-116/fasta/mus_musculus/dna/Mus_musculus.GRCm39.dna_sm.toplevel.fa.gz",
+    "annotations_remote": "https://ftp.ensembl.org/pub/release-116/gtf/mus_musculus/Mus_musculus.GRCm39.116.gtf.gz",
     "cache_dir": "data/genomes",
     "ensembl_template": {
       "provider": "ensembl",

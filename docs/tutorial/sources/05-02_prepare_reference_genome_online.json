@@ -54,7 +54,7 @@
       "Only the explicitly opted-in workflow prepares the selected cache target; offline tutorial generation leaves it skipped.",
       "Postflight status reports `prepared=true` and component metadata before extraction or promoter chapters depend on this reference."
     ],
-    "local_execution_note": "Run `genomes status` first and read `effective_cache_dir`; with catalog `assets/genomes.json`, relative cache `data/genomes` currently resolves to `assets/data/genomes`. Only then set `GENTLE_TEST_ONLINE=1`. The workflow downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; ensure the effective cache filesystem has enough space and interrupted downloads can be retried.",
+    "local_execution_note": "Run `genomes status` first and read `effective_cache_dir`; with catalog `assets/genomes.json`, relative cache `data/genomes` currently resolves to `assets/data/genomes`. Only then set `GENTLE_TEST_ONLINE=1`. The workflow downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from the standard `https://ftp.ensembl.org/pub/release-116/` FASTA/GTF trees; ensure the effective cache filesystem has enough space and interrupted downloads can be retried.",
     "learning_objectives": [
       "Recognize which tutorial flows require network access and external tools.",
       "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",

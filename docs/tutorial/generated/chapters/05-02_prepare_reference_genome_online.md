@@ -33,7 +33,7 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 ## Before You Start
 
 > **How to Run This Locally**
-> Run `genomes status` first and read `effective_cache_dir`; with catalog `assets/genomes.json`, relative cache `data/genomes` currently resolves to `assets/data/genomes`. Only then set `GENTLE_TEST_ONLINE=1`. The workflow downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; ensure the effective cache filesystem has enough space and interrupted downloads can be retried.
+> Run `genomes status` first and read `effective_cache_dir`; with catalog `assets/genomes.json`, relative cache `data/genomes` currently resolves to `assets/data/genomes`. Only then set `GENTLE_TEST_ONLINE=1`. The workflow downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from the standard `https://ftp.ensembl.org/pub/release-116/` FASTA/GTF trees; ensure the effective cache filesystem has enough space and interrupted downloads can be retried.
 
 **Useful when:**
 

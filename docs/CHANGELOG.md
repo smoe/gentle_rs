@@ -106,7 +106,9 @@
 - Repair tutorial 05.02's status/prepare ordering. Require a read-only
   Ensembl-116 source and effective-cache preflight before network/disk approval,
   document that `data/genomes` resolves to `assets/data/genomes` for the asset
-  catalog, and keep current acceptance explicitly offline/`skipped_online`.
+  catalog, replace the broken `/release-116/vertebrates/` human and mouse source
+  URLs with Ensembl's published release tree, and keep current acceptance
+  explicitly offline/`skipped_online`.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
