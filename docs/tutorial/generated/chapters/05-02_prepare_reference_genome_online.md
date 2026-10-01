@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/prepare_reference_genome_online.json"
 example_test_mode: "online"
 executed_during_generation: false
 automated_status: "skipped_online"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/prepare_reference_genome_online"
 ---
 
@@ -33,7 +33,7 @@ Reference-genome preparation is crucial for genome-anchored cloning interpretati
 ## Before You Start
 
 > **How to Run This Locally**
-> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.
+> Run `genomes status` first and read `effective_cache_dir`; with catalog `assets/genomes.json`, relative cache `data/genomes` currently resolves to `assets/data/genomes`. Only then set `GENTLE_TEST_ONLINE=1`. The workflow downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; ensure the effective cache filesystem has enough space and interrupted downloads can be retried.
 
 **Useful when:**
 
@@ -47,11 +47,31 @@ Each step pairs GUI instructions with related terminal commands or guidance and 
 
 In the **GUI Shell**, enter only the shared command inside `gentle_cli shell '...'`, without the executable prefix or outer quotes. Run UI-opening commands there to open windows: a headless CLI returns the UI intent but does not open a GUI. Other terminal commands are not automatically GUI Shell commands. Inner-agent examples request a proposal for review; they are not executed during tutorial generation.
 
-### Step 1: Open prepared-reference controls from the GUI menus
+### Step 1: Open File -> Prepare Reference Genome..., select catalog assets/genomes.json and inspect the status for Human GRCh38 Ensembl 116, including both remote sources and the effective cache directory
 
 **GUI**
 
-Open prepared-reference controls from the GUI menus.
+Open `File -> Prepare Reference Genome...`, select catalog `assets/genomes.json` and inspect the status for `Human GRCh38 Ensembl 116`, including both remote sources and the effective cache directory.
+
+**CLI (terminal)**
+
+```bash
+gentle_cli genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
+```
+
+**Ask the inner agent**
+
+> Read `assets/genomes.json` and run only `genomes status` for `Human GRCh38 Ensembl 116` with cache `data/genomes`. Return the exact Ensembl-116 soft-masked FASTA and GTF URLs, lifecycle state and `effective_cache_dir`; explain that the relative cache is resolved against the catalog location. Do not download anything.
+
+**Expected**
+
+> The preflight status names `Human GRCh38 Ensembl 116`, the exact Ensembl-116 FASTA/GTF sources and the effective cache directory without downloading.
+
+### Step 2: After explicit approval for network transfer, disk use and cache writes, prepare exactly Human GRCh38 Ensembl 116 with the reviewed catalog/cache settings
+
+**GUI**
+
+After explicit approval for network transfer, disk use and cache writes, prepare exactly `Human GRCh38 Ensembl 116` with the reviewed catalog/cache settings.
 
 **CLI (terminal)**
 
@@ -61,17 +81,17 @@ GENTLE_TEST_ONLINE=1 gentle_cli workflow @docs/examples/workflows/prepare_refere
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open prepared-reference controls from the GUI menus. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> If the status is missing, propose exactly one `PrepareGenome` operation for `Human GRCh38 Ensembl 116`, catalog `assets/genomes.json`, cache `data/genomes` and timeout 3600 seconds. Estimate the network/disk boundary from the catalog/status, expose all cache writes, and wait for explicit approval before network access or mutation; do not substitute Ensembl 113, NCBI RefSeq or another GRCh38 family member.
 
 **Expected**
 
-> The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.
+> Only the explicitly opted-in workflow prepares the selected cache target; offline tutorial generation leaves it skipped.
 
-### Step 2: Select the target genome and start preparation with explicit cache settings
+### Step 3: Query status again and confirm prepared component metadata before attempting extraction workflows
 
 **GUI**
 
-Select the target genome and start preparation with explicit cache settings.
+Query status again and confirm prepared component metadata before attempting extraction workflows.
 
 **CLI (terminal)**
 
@@ -81,31 +101,11 @@ gentle_cli genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.js
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Select the target genome and start preparation with explicit cache settings. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> After preparation completes, run the same read-only status request. Confirm `prepared=true`, the exact requested catalog key, effective cache, source URLs and component metadata before proposing any gene extraction; a successful transfer alone is not evidence that a later biological target is correct.
 
 **Expected**
 
-> The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.
-
-### Step 3: Confirm prepared status in the GUI before attempting extraction workflows
-
-**GUI**
-
-Confirm prepared status in the GUI before attempting extraction workflows.
-
-**CLI (terminal)**
-
-```bash
-gentle_cli genomes status "Human GRCh38 Ensembl 116" --catalog assets/genomes.json --cache-dir data/genomes
-```
-
-**Ask the inner agent**
-
-> In the current GENtle project, help me perform this tutorial step: Confirm prepared status in the GUI before attempting extraction workflows. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
-
-**Expected**
-
-> Prepared status becomes visible before extraction or promoter chapters depend on this reference.
+> Postflight status reports `prepared=true` and component metadata before extraction or promoter chapters depend on this reference.
 
 
 ## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
@@ -153,8 +153,9 @@ GENTLE_TEST_ONLINE=1 cargo run --bin gentle_examples_docs -- tutorial-generate
 
 ## Checkpoints
 
-- Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.
-- Offline generation still emits the chapter with execution status noted.
+- Preflight status resolves the requested Ensembl-116 sources and effective cache path without network mutation.
+- Genome preparation runs only when `GENTLE_TEST_ONLINE` is enabled.
+- Offline generation still emits the chapter as `skipped_online`; a later online run must prove `prepared=true` and component metadata separately.
 
 ## Tutorial Provenance
 
@@ -167,8 +168,8 @@ GENTLE_TEST_ONLINE=1 cargo run --bin gentle_examples_docs -- tutorial-generate
 - Example test_mode: `online`
 - Executed during generation: `no`
 - Automated status: `skipped_online`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
 - Inspect the source JSON when you need full option-level detail.

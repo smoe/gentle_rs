@@ -103,6 +103,10 @@
   to the gene rather than duplicate CDS occurrence of plus-strand `etpC`, the
   exact `AB011549.2` coordinates and shared cache, and the 877-to-1127 bp
   strand-aware 5-prime extension with its lineage edge.
+- Repair tutorial 05.02's status/prepare ordering. Require a read-only
+  Ensembl-116 source and effective-cache preflight before network/disk approval,
+  document that `data/genomes` resolves to `assets/data/genomes` for the asset
+  catalog, and keep current acceptance explicitly offline/`skipped_online`.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

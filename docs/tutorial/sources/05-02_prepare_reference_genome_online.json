@@ -13,7 +13,13 @@
       "genome_catalog_targeting",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation. Requires explicit online setup for full execution.",
+    "notes": "Online opt-in chapter. Offline generation checks the contract but does not download GRCh38; current review verified the status/catalog boundary only and claims no typed GUI screenshot or online execution acceptance.",
+    "interfaces": [
+      "GUI",
+      "CLI / workflow",
+      "inner agent",
+      "ClawBio / outer agent"
+    ],
     "group": "05",
     "group_position": 2
   },
@@ -29,21 +35,26 @@
       "You need to understand which routines are intentionally online-only in CI defaults."
     ],
     "gui_steps": [
-      "Open prepared-reference controls from the GUI menus.",
-      "Select the target genome and start preparation with explicit cache settings.",
-      "Confirm prepared status in the GUI before attempting extraction workflows."
+      "Open `File -> Prepare Reference Genome...`, select catalog `assets/genomes.json` and inspect the status for `Human GRCh38 Ensembl 116`, including both remote sources and the effective cache directory.",
+      "After explicit approval for network transfer, disk use and cache writes, prepare exactly `Human GRCh38 Ensembl 116` with the reviewed catalog/cache settings.",
+      "Query status again and confirm prepared component metadata before attempting extraction workflows."
     ],
     "cli_steps": [
-      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json",
       "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes",
+      "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json",
       "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes"
     ],
-    "step_expectations": [
-      "The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.",
-      "The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.",
-      "Prepared status becomes visible before extraction or promoter chapters depend on this reference."
+    "agent_steps": [
+      "Read `assets/genomes.json` and run only `genomes status` for `Human GRCh38 Ensembl 116` with cache `data/genomes`. Return the exact Ensembl-116 soft-masked FASTA and GTF URLs, lifecycle state and `effective_cache_dir`; explain that the relative cache is resolved against the catalog location. Do not download anything.",
+      "If the status is missing, propose exactly one `PrepareGenome` operation for `Human GRCh38 Ensembl 116`, catalog `assets/genomes.json`, cache `data/genomes` and timeout 3600 seconds. Estimate the network/disk boundary from the catalog/status, expose all cache writes, and wait for explicit approval before network access or mutation; do not substitute Ensembl 113, NCBI RefSeq or another GRCh38 family member.",
+      "After preparation completes, run the same read-only status request. Confirm `prepared=true`, the exact requested catalog key, effective cache, source URLs and component metadata before proposing any gene extraction; a successful transfer alone is not evidence that a later biological target is correct."
     ],
-    "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.",
+    "step_expectations": [
+      "The preflight status names `Human GRCh38 Ensembl 116`, the exact Ensembl-116 FASTA/GTF sources and the effective cache directory without downloading.",
+      "Only the explicitly opted-in workflow prepares the selected cache target; offline tutorial generation leaves it skipped.",
+      "Postflight status reports `prepared=true` and component metadata before extraction or promoter chapters depend on this reference."
+    ],
+    "local_execution_note": "Run `genomes status` first and read `effective_cache_dir`; with catalog `assets/genomes.json`, relative cache `data/genomes` currently resolves to `assets/data/genomes`. Only then set `GENTLE_TEST_ONLINE=1`. The workflow downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; ensure the effective cache filesystem has enough space and interrupted downloads can be retried.",
     "learning_objectives": [
       "Recognize which tutorial flows require network access and external tools.",
       "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
@@ -73,8 +84,9 @@
     ],
     "retain_outputs": [],
     "checkpoints": [
-      "Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.",
-      "Offline generation still emits the chapter with execution status noted."
+      "Preflight status resolves the requested Ensembl-116 sources and effective cache path without network mutation.",
+      "Genome preparation runs only when `GENTLE_TEST_ONLINE` is enabled.",
+      "Offline generation still emits the chapter as `skipped_online`; a later online run must prove `prepared=true` and component metadata separately."
     ]
   }
 }
