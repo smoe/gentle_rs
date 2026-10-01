@@ -563,9 +563,15 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked generated chapter with typed GUI acceptance and retained Branch/ReverseComplement screenshots. Inner-agent prompts are review-first; the outer-agent replay uses explicit disposable state.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "MCP / ClawBio outer agent"
+      ],
       "review_status": "human_reviewed",
-      "codex_reviewed_at": "2026-08-29",
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,

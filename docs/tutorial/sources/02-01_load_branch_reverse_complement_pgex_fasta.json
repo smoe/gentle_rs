@@ -36,7 +36,13 @@
       "cli_first",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "notes": "Machine-checked generated chapter with typed GUI acceptance and retained Branch/ReverseComplement screenshots. Inner-agent prompts are review-first; the outer-agent replay uses explicit disposable state.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first)",
+      "MCP / ClawBio outer agent"
+    ],
     "group": "02",
     "group_position": 1
   },
@@ -188,6 +194,11 @@
       "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX_3X.fa\",\"as_id\":\"pgex_fasta\"}}'",
       "cargo run --bin gentle_cli -- op '{\"Branch\":{\"input\":\"pgex_fasta\",\"output_id\":\"pgex_fasta_branch\"}}'",
       "cargo run --bin gentle_cli -- op '{\"ReverseComplement\":{\"input\":\"pgex_fasta_branch\",\"output_id\":\"pgex_fasta_branch_rc\"}}'"
+    ],
+    "agent_steps": [
+      "Check whether `test_files/pGEX_3X.fa` is available, then propose the exact `LoadFile` operation that would load it as `pgex_fasta`. State the project context and expected provenance fields. Do not execute it until I approve.",
+      "Verify that `pgex_fasta` exists in the current project, then propose a `Branch` operation producing `pgex_fasta_branch` while preserving the source record. Show the expected lineage edge and do not execute it until I approve.",
+      "Verify that `pgex_fasta_branch` exists, then propose a `ReverseComplement` operation producing `pgex_fasta_branch_rc`. Explain that the GUI auto-suffix `_revcomp` differs from this explicit scripted ID, and do not execute it until I approve."
     ],
     "step_expectations": [
       "The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.",

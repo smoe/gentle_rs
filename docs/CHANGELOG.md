@@ -25,6 +25,10 @@
   and distinguish review-first inner-agent help from explicit-state outer
   replay. Record the twice-reproduced GUI score-track stack overflow as a
   blocker instead of presenting the headless workflow pass as GUI acceptance.
+- Refresh tutorial 02.01 without duplicating its retained GUI-acceptance
+  captures: each inner-agent prompt now binds the exact input/output IDs,
+  lineage expectation and approval boundary, while catalog metadata names the
+  existing GUI, CLI/shared-shell and explicit-state outer-agent surfaces.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

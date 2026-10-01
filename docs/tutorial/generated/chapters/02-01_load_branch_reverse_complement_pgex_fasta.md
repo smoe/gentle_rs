@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "human_reviewed"
 review_stale: true
-codex_reviewed_at: "2026-08-29"
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
 review_stale_reason: "source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18"
@@ -58,7 +58,7 @@ gentle_cli op '{"LoadFile":{"path":"test_files/pGEX_3X.fa","as_id":"pgex_fasta"}
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open GENtle and load `test_files/pGEX_3X.fa` via `File -> Open`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Check whether `test_files/pGEX_3X.fa` is available, then propose the exact `LoadFile` operation that would load it as `pgex_fasta`. State the project context and expected provenance fields. Do not execute it until I approve.
 
 **Expected**
 
@@ -78,7 +78,7 @@ gentle_cli op '{"Branch":{"input":"pgex_fasta","output_id":"pgex_fasta_branch"}}
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: In the DNA window, create a branch copy from the loaded sequence (Branch action). Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Verify that `pgex_fasta` exists in the current project, then propose a `Branch` operation producing `pgex_fasta_branch` while preserving the source record. Show the expected lineage edge and do not execute it until I approve.
 
 **Expected**
 
@@ -102,7 +102,7 @@ gentle_cli op '{"ReverseComplement":{"input":"pgex_fasta_branch","output_id":"pg
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Apply reverse-complement to the branch and confirm a new sequence entry appears in lineage/table views. The GUI uses the suffix _revcomp; the scripted example below explicitly chooses _rc instead. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Verify that `pgex_fasta_branch` exists, then propose a `ReverseComplement` operation producing `pgex_fasta_branch_rc`. Explain that the GUI auto-suffix `_revcomp` differs from this explicit scripted ID, and do not execute it until I approve.
 
 **Expected**
 
@@ -172,7 +172,7 @@ Submitting a direct structured request is an explicit wrapper invocation. If nat
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `human_reviewed`
-- Codex reviewed at: `2026-08-29`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `2026-05-18`
 - Inspect the source JSON when you need full option-level detail.
 
