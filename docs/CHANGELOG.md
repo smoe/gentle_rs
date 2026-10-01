@@ -66,6 +66,11 @@
   isometric rack SVG and bind agents to the exact rack, arrangement, occupied
   positions, template and output path while separating digital placement from
   real tube occupancy, fabrication fitness and print safety.
+- Review tutorial 04.01 without replacing its current typed GUI-acceptance
+  evidence. State that outer agents cannot inherit the unsaved map selection
+  and that the canonical workflow prepares only the starter sequence and
+  backend; require a separately reviewed `DesignPrimerPairs` payload and a
+  persisted report before treating outer replay as design evidence.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

@@ -36,11 +36,16 @@
       "new_users",
       "primer_design"
     ],
-    "notes": "Beginner-friendly selection-first PCR walkthrough centered on the must-cover core ROI, deterministic left/right primer-search windows, and a visibly verified saved report.",
+    "notes": "Beginner-friendly selection-first PCR walkthrough centered on the must-cover core ROI, deterministic left/right primer-search windows, and a visibly verified saved report. The typed GUI path is acceptance-tested; the canonical outer-agent workflow prepares only the starter sequence and backend, not a primer-design result.",
     "estimated_minutes": 20,
     "difficulty": "beginner",
     "network": "offline",
-    "interfaces": ["GUI", "CLI / GUI Shell", "inner agent"],
+    "interfaces": [
+      "GUI",
+      "CLI / GUI Shell",
+      "inner agent",
+      "ClawBio / outer agent (starter preparation only)"
+    ],
     "starting_state": "Bundled TP73 tutorial project with an 800-base extract",
     "produces": ["primer-pair report"],
     "group": "04",

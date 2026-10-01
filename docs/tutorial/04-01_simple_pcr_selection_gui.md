@@ -306,6 +306,29 @@ while the first reverse primer begins at or after it.
 That establishes tutorial consistency and flanking geometry for this fixture;
 it does **not** establish whole-genome specificity or validate a wet-lab assay.
 
+## Outer-Agent Boundary
+
+An outer agent does not inherit the unsaved selection in an open GENtle
+window. The canonical workflow for this chapter prepares the 800-base starter
+sequence and selects the internal backend; its receipt is therefore setup
+evidence, **not** evidence that primers were designed.
+
+To reproduce the design outside the GUI, ask the outer agent to propose a
+fully typed `DesignPrimerPairs` request with:
+
+- core ROI `[200, 600)`
+- forward search window `[50, 200)`
+- reverse search window `[600, 750)`
+- the chosen maximum amplicon length and all remaining primer constraints
+
+Review that exact payload before approving mutation of the disposable state,
+then require a persisted `gentle.primer_design_report.v1` report rather than a
+prose summary. Tutorial 04.02 is the fully scripted companion when you want
+that payload and its deterministic replay already supplied.
+
+Neither a successful setup receipt nor a saved primer report establishes
+whole-genome specificity, wet-lab performance or assay fitness.
+
 ## If Your Screen Does Not Match
 
 - No `Simple PCR from selection`: apply a non-empty selection and right-click

@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "6570ab9b759b74415c8f23ab937075809240188ccd305786f6268bf6552f1d6d",
+    "README.md": "017cc25b686aa0e959e289dad0f1cb6bb580fe439a6099ff62969352e2eb03b9",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -109,7 +109,7 @@
     "chapters/03-03_gibson_two_fragment_overlap_preview.md": "b6f2eed799af01377ce38e250c2ea64a1a75a153021d70a2e1f81365ae69d881",
     "chapters/03-04_gibson_specialist_testing_baseline.md": "818dad81837f0382c087f1998cfaeb3e40a58a4f82318d70bea31965b98873ae",
     "chapters/03-06_gibson_arrangements_baseline.md": "77705b3f99c8d030c5969fe1a4fa34506aa800ca935d30733bfbf33006946f1d",
-    "chapters/04-01_simple_pcr_selection_gui.md": "ffea6ee924e7b3f90ff2d7610b2f90aeb289cb95f553f397d8d32d5e60f55d71",
+    "chapters/04-01_simple_pcr_selection_gui.md": "fbad7e28fe80eb7dea406ad4654d724a7cc05e9b5f4f3ed503f8f347a684035f",
     "chapters/04-02_pcr_selection_batch_primer_pairs_offline.md": "0c0084eac334bdbc0788bc1fdff0ae1e32331c541654ccb72c90286719c35153",
     "chapters/04-04_guides_filter_and_generate_oligos.md": "446973f76d46010ae999001a3aeb2d146e0b367f8dfc4f8cf72e94533073f5f1",
     "chapters/04-05_guides_export_csv_and_protocol.md": "40c43d70e2823979bfe8518d4d1b756eb7776eb1382c67495ffcc6e7b26fa1e7",
@@ -608,7 +608,7 @@
       ],
       "executed": true,
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-28",
+      "codex_reviewed_at": "2026-10-01",
       "graphics": [
         {
           "kind": "screenshot",

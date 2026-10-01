@@ -53,7 +53,7 @@ Online execution was disabled (`GENTLE_TEST_ONLINE=0` during generation).
 
 ### Primers, PCR & qPCR
 
-- `04.01` [Simple PCR From a Selected Core Region](./chapters/04-01_simple_pcr_selection_gui.md) - `core` - example `simple_pcr_selection_gui` - executed `yes` - review `codex_reviewed` - codex 2026-09-28
+- `04.01` [Simple PCR From a Selected Core Region](./chapters/04-01_simple_pcr_selection_gui.md) - `core` - example `simple_pcr_selection_gui` - executed `yes` - review `codex_reviewed` - codex 2026-10-01
 - `04.02` [Determine and review PCR primer pairs (offline)](./chapters/04-02_pcr_selection_batch_primer_pairs_offline.md) - `core` - example `pcr_selection_batch_primer_pairs_offline` - executed `yes` - review `codex_reviewed` - codex 2026-07-28
 - `04.04` [Guide practical filtering and oligo generation](./chapters/04-04_guides_filter_and_generate_oligos.md) - `core` - example `guides_filter_and_generate_oligos` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
 - `04.05` [Guide oligo export (CSV + protocol)](./chapters/04-05_guides_export_csv_and_protocol.md) - `advanced` - example `guides_export_csv_and_protocol` - executed `yes` - review `unreviewed` - [file feedback](../../../.github/ISSUE_TEMPLATE/tutorial-confusion.md)
