@@ -953,10 +953,10 @@
       "example_id": "guides_export_csv_and_protocol",
       "tier": "advanced",
       "guide_path": null,
-      "summary": "Export representative machine-readable and human-readable artifacts.",
-      "narrative": "Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.",
+      "summary": "Export one declared guide's template-formatted oligos as a retained CSV and a human-readable protocol draft, then compare both artifacts with their source set.",
+      "narrative": "Operational work becomes reviewable when exact output bytes can be handed to collaborators. This routine declares one synthetic guide record, formats it with `lenti_bsmbi_u6_default`, and retains one CSV plus one protocol text file. The CSV proves deterministic tabular export and the text proves checklist-bearing protocol rendering. Neither file validates the declared target coordinates, authorizes ordering, or turns the generated suggestions into a laboratory-approved SOP.",
       "use_cases": [
-        "You need oligo tables for ordering and a protocol summary for bench execution.",
+        "You need an oligo table and protocol draft for review before any ordering or bench authorization.",
         "You want reproducible artifacts tied to explicit operation history.",
         "You need a concise output bundle for review without committing redundant files."
       ],
@@ -970,16 +970,21 @@
         "cargo run --bin gentle_cli -- guides oligos-export demo_guides exports/demo_guides.csv --format csv_table --oligo-set demo_lenti\ncargo run --bin gentle_cli -- guides protocol-export demo_guides exports/demo_guides.protocol.txt --oligo-set demo_lenti",
         "cargo run --bin gentle_cli -- guides oligos-show demo_lenti"
       ],
+      "agent_steps": [
+        "Propose `UpsertGuideSet` for the single declared record `demo_1` under `demo_guides`, followed by `GenerateGuideOligos` with template `lenti_bsmbi_u6_default`, 5-prime-G extension enabled and output id `demo_lenti`. Show the exact record and predicted forward/reverse oligos; state that no target reference is loaded, and wait for approval before mutating the registry.",
+        "Propose two separate file writes: `ExportGuideOligos` in `csv_table` format to `exports/demo_guides.csv`, and `ExportGuideProtocolText` with the QC checklist to `exports/demo_guides.protocol.txt`. Show both resolved paths and source set ids before execution; do not treat approval to export as approval to order or run the protocol.",
+        "Read the retained CSV and protocol text without modifying state. Confirm exactly one `demo_1` row, oligo set `demo_lenti`, template `lenti_bsmbi_u6_default`, matching forward/reverse sequences and the checklist. Return checksums or exact bytes for handoff, and label the text a protocol draft rather than a validated SOP."
+      ],
       "step_expectations": [
         "The guide set `demo_guides` and oligo set `demo_lenti` are stored with deterministic ids.",
-        "The CSV and protocol text files are written under `exports/` for machine and bench-facing review.",
-        "The oligo-set inspection output matches the exported set id and guide provenance."
+        "The CSV and protocol text files are written under `exports/` for machine-readable and human-readable review.",
+        "The oligo-set inspection output and both retained files match set id `demo_lenti`, guide `demo_1`, template `lenti_bsmbi_u6_default` and the exact oligo sequences."
       ],
       "prerequisites": [
         "guides_filter_and_generate_oligos"
       ],
       "learning_objectives": [
-        "Export guide outputs in machine-readable and human-readable forms.",
+        "Export guide outputs in machine-readable and human-readable forms without confusing export with ordering or bench authorization.",
         "Understand selective artifact retention for tutorial readability.",
         "Map retained artifacts back to the operation chain that produced them."
       ],
@@ -1009,8 +1014,9 @@
         "exports/demo_guides.protocol.txt"
       ],
       "checkpoints": [
-        "CSV export file exists and contains guide rows.",
-        "Protocol text export exists and contains checklist content."
+        "CSV export contains exactly one `demo_1` row with the generated forward and reverse oligos.",
+        "Protocol text names `demo_guides`, `demo_lenti` and `lenti_bsmbi_u6_default`, repeats the same oligos and contains checklist content.",
+        "The chapter labels both files as review artifacts rather than target validation, ordering approval or a laboratory-approved SOP."
       ]
     },
     {

@@ -887,13 +887,18 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked export demonstration with retained CSV and protocol-text bytes. The files are review/handoff artifacts, not an ordering authorization, target-validation record or validated laboratory SOP; no typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "guides_filter_and_generate_oligos"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "contribute_to_gentle_development",

@@ -85,6 +85,11 @@
   proof of target identity or cloning readiness. Record the real `g1`/`g3`
   pass and `g2` U6-terminator failure, explain why `passed_only` reads the
   source-set filter report, and bind each mutating agent step separately.
+- Review tutorial 04.05 against its retained CSV and protocol-text bytes.
+  Require agents to expose registry mutation and both file writes separately,
+  verify the shared guide/set/template/oligo values, and label the outputs as
+  review artifacts rather than ordering approval or a validated laboratory
+  SOP.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
