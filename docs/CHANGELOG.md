@@ -2,6 +2,12 @@
 
 ## 2026-10-01 - Review Tutorial Interfaces And Agent Roles
 
+- Review tutorial 08.01 with exact native setup captures and direct/outer-agent
+  artifact parity. Record the whole-sequence GUI stack overflow instead of
+  presenting headless success as GUI acceptance, and frame the 46 bp fixture
+  with 25 bp smoothing as deterministic software evidence rather than TF
+  binding, motif-equivalence or co-occupancy evidence.
+
 - Review tutorial 01.01 against current Agent Assistant, MCP and ClawBio
   contracts. Distinguish the live-project inner agent, explicit-state outer
   agents and repository coding agents; add a retained publication-safe GUI
