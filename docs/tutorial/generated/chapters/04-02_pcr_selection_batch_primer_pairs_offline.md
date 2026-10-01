@@ -9,7 +9,7 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: "2026-07-28"
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
@@ -78,7 +78,7 @@ gentle_cli --state /tmp/gentle-primer-pair-tutorial.json workflow @docs/examples
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Load `test_files/tp73.ncbi.gb`, then open `Patterns -> PCR Designer...` (or command palette `PCR Designer`) and keep the map in linear mode. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Check that `test_files/tp73.ncbi.gb` is available, then propose `LoadFile` as `tp73_locus` and `SetParameter` with `primer_design_backend=internal`. Treat loading and parameter mutation as the approval boundary; do not execute either operation until I approve.
 
 **Expected**
 
@@ -98,7 +98,7 @@ jq '{report_id,template,required_roi:[.roi_start_0based,.roi_end_0based]}' docs/
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: For the first example, paint only the indispensable core `61820..61920` as the green ROI. The broader copied context `61720..62120` is not the ROI. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect `tp73_locus` without changing it. Propose the first indispensable core ROI as `[61820,61920)` and distinguish it from the broader copied context `[61720,62120)`. Return the coordinates for review; do not run primer design.
 
 **Expected**
 
@@ -118,7 +118,7 @@ jq '{required_roi:[.roi_start_0based,.roi_end_0based],forward_window:[.forward.s
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Paint the upstream search window `61720..61745` red and the downstream search window `62000..62040` blue. Confirm in the live cartoon that both primer windows lie outside and flank the ROI. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> For the first ROI, propose forward window `[61720,61745)` and reverse window `[62000,62040)` with `require_roi_flanking=true`. Verify that both windows lie outside the core and show the exact typed fields; do not mutate state.
 
 **Expected**
 
@@ -138,7 +138,7 @@ jq '{primer_length:[.forward.min_length,.forward.max_length],primer_tm_c:[.forwa
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Set primer length `18..24 nt`, Tm `55..78 C`, GC fraction `0.30..0.80`, maximum local annealing hits `1`, amplicon length `90..350 bp`, maximum pair Tm difference `5 C`, backend `internal`, and maximum returned pairs `5`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Complete the first `DesignPrimerPairs` proposal with primer length 18..24 nt, Tm 55..78 C, GC fraction 0.30..0.80, `max_anneal_hits=1`, amplicon length 90..350 bp, `max_tm_delta_c=5`, `max_pairs=5`, backend `internal` and report id `tp73_as2_promoter_batch_r01`. Show the full payload and wait for approval.
 
 **Expected**
 
@@ -158,7 +158,7 @@ jq '{pair_count,backend,rejection_summary}' docs/tutorial/generated/artifacts/pc
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Run the first design and inspect report `tp73_as2_promoter_batch_r01`. Confirm that it contains five pairs, records the internal backend, and did not skip candidate combinations because of the evaluation limit. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> After approval, run only the bound first design. Return the structured `gentle.primer_design_report.v1` result and confirm five pairs, the internal backend and `pair_evaluation_limit_skipped=0`; do not export files or start the second design.
 
 **Expected**
 
@@ -178,7 +178,7 @@ jq '{top_pair:(.pairs[0]|{rank,score,amplicon:[.amplicon_start_0based,.amplicon_
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open rank 1 and review both oligos plus the pair: sequences and binding coordinates, 310 bp amplicon, Tm/GC values, one local annealing hit per primer, 3-prime clamps, homopolymer/self-complementary runs, pair-complementary runs, score, and every rule flag. Compare ranks 1-3 instead of treating rank 1 as automatically order-ready. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect ranks 1 through 3 of `tp73_as2_promoter_batch_r01` without rerunning design. Compare amplicon geometry, both oligos, Tm/GC, local hits, clamps, self- and pair-complementarity and every rule flag. State explicitly that local ranking is not an order recommendation or genome-wide specificity result.
 
 **Expected**
 
@@ -198,7 +198,7 @@ jq '{pair_count,rejection_summary,top_forward:(.pairs[0].forward|{sequence,tm_c,
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Repeat with ROI `62040..62140`, upstream `61940..61965`, and downstream `62158..62188`. In `tp73_as2_promoter_batch_r02`, notice that the top forward primer has a five-base homopolymer and `forward_secondary_structure_ok: false`; the report preserves this advisory even though the pair ranks first. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose a separate second `DesignPrimerPairs` request with ROI `[62040,62140)`, forward window `[61940,61965)`, reverse window `[62158,62188)` and report id `tp73_as2_promoter_batch_r02`, retaining the first request's remaining constraints. Wait for approval, then report the five-base forward homopolymer and `forward_secondary_structure_ok=false` rather than hiding the advisory behind rank 1.
 
 **Expected**
 
@@ -218,7 +218,7 @@ gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers export-r
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Use `Export` to retain each full JSON report. Record why you selected or rejected a candidate, then perform the separate genomic-specificity handoff and wet-lab validation before procurement. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose export paths for both complete JSON reports and show the exact file writes before execution. Keep candidate selection rationale, whole-genome specificity planning, procurement and wet-lab validation as separate decisions; do not claim them from these local reports.
 
 **Expected**
 
@@ -310,7 +310,7 @@ gentle_cli --state /tmp/gentle-primer-pair-tutorial.json shell 'primers specific
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `codex_reviewed`
-- Codex reviewed at: `2026-07-28`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

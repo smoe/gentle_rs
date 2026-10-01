@@ -71,6 +71,11 @@
   and that the canonical workflow prepares only the starter sequence and
   backend; require a separately reviewed `DesignPrimerPairs` payload and a
   persisted report before treating outer replay as design evidence.
+- Review tutorial 04.02 against both retained primer-design reports. Replace
+  generic inner-agent prompts with exact, separately approved ROI/window,
+  design, inspection and export requests; preserve the second report's real
+  homopolymer/secondary-structure advisory and avoid claiming GUI screenshot,
+  genome-wide specificity or wet-lab acceptance from local ranking.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

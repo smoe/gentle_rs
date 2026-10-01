@@ -1022,7 +1022,13 @@
         "primer_design",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked generated chapter with two retained full primer-design reports. The reports are the executable evidence; no current typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
       ],
@@ -1030,7 +1036,7 @@
         "patz1_transcript_assay_panels_cli"
       ],
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-07-28"
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "tp73_cdna_genomic_dotplot_online",
