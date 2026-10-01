@@ -161,6 +161,14 @@
   limited by Ensembl REST HTTP-500 missing evidence, and zero direct-vs-composed
   divergences. Keep the maintainer-email text explicitly local and unsent, and
   bind inner/outer agents to identity, evidence and approval boundaries.
+- Review tutorial 06.06 through its complete offline PATZ1 fixture and native
+  Splicing Expert. Retain Evidence- and Locus-figure captures that expose the
+  deliberate GRCh37 mismatch, three negative-strand transcript models, four
+  projected synthetic tracks, two occupancy groups, one TP73 motif track and
+  two probe-effect rows. Replace generic inner-agent prompts with evidence-
+  specific checks, keep the outer agent on a disposable canonical-workflow
+  replay, and state explicitly that neither route converts synthetic layers
+  into experimental PATZ1 regulation.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

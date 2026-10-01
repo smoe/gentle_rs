@@ -4,6 +4,20 @@
   "title": "PATZ1 Gene-Locus Evidence Composition (Offline Synthetic Demo)",
   "graphics": [
     {
+      "kind": "screenshot",
+      "path": "docs/screenshots/patz1_gene_locus_evidence_offline/01-evidence-ledger.png",
+      "caption": "The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support.",
+      "illustrates_step": 2,
+      "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/patz1_gene_locus_evidence_offline/02-locus-composition.png",
+      "caption": "The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation.",
+      "illustrates_step": 6,
+      "capture_date": "2026-10-01"
+    },
+    {
       "kind": "generated",
       "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
       "caption": "A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.",
@@ -23,7 +37,13 @@
       "isoform_analysis",
       "contributors"
     ],
-    "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer; all plotted values are synthetic.",
+    "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer. Native Evidence and Locus-figure captures were reviewed on 2026-10-01; all plotted values remain synthetic software fixtures rather than experimental PATZ1 evidence.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent (canonical workflow in disposable state)"
+    ],
     "group": "06",
     "group_position": 6
   },
@@ -32,7 +52,7 @@
     "example_id": "patz1_gene_locus_evidence_offline",
     "tier": "core",
     "summary": "Compose one reproducible, strand-aware locus figure from PATZ1-like transcript models, cDNA/EST and array constraints, condition-wise abundance, differential probe activity, grouped occupancy tracks, and a TP73 motif score track without network access.",
-    "narrative": "Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, abundance, differential activity, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.\n\nRead the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus. Its abundance cells report condition-wise probe-set signal, while separately scaled differential cells report raw activity changes rather than statistical significance. Signal can prioritize assay regions but does not prove PCR-primer binding. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.",
+    "narrative": "Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, abundance, differential activity, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.\n\nRead the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus. Its abundance cells report condition-wise probe-set signal, while separately scaled differential cells report raw activity changes rather than statistical significance. Signal can prioritize assay regions but does not prove PCR-primer binding. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.\n\nThe inner agent works against the currently open project and should propose each GUI-equivalent operation for review while preserving these evidence classes. The outer agent starts from no GUI state: give it the canonical workflow plus an explicit disposable project path, then compare its structured receipt and artifact digest with the local result. Neither agent may turn the synthetic fixture into a claim about biological PATZ1 regulation.",
     "use_cases": [
       "You want to inspect transcript architecture and multiple evidence layers in one gene-centered figure.",
       "You need a deterministic negative-strand example before loading a full Ensembl locus.",
@@ -51,6 +71,14 @@
     "cli_steps": [
       "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json"
     ],
+    "agent_steps": [
+      "Verify that the selected input is the committed 240 bp synthetic PATZ1 fixture, not a live PATZ1 locus. Propose loading it and importing panel `patz1_synthetic_v1`; report the GRCh38.p14 anchor, negative strand, three transcript ids, and any unverified-anchor warning separately.",
+      "Inspect the Evidence ledger with the committed probe, cDNA/EST, and expression resources. Preserve observed evidence, candidate association, design constraint, and unresolved evidence as distinct states; explicitly report that the GRCh37 cDNA/EST negative control is rejected against GRCh38.p14.",
+      "Propose importing exactly the four committed synthetic BED tracks with their workflow-declared names. Report their source paths, projected intervals, and track identities; do not describe the invented intervals as CUT&RUN measurements or isoform-specific regulation.",
+      "Build the locus-composition request from the committed probe-effect table and occupancy layout. Confirm one PSR row, one JUC row, three abundance columns, three differential columns, two separately scaled occupancy groups, and the GRCh38.p14 coordinate binding before composition.",
+      "Verify the 19 bp flanks from the fixture geometry and resolve TP73 through the local JASPAR registry with `llr_background_tail_log10`, clipping enabled, and five retained hits. Explain that motif scores rank sequence-model sites and do not establish binding, affinity, or causality.",
+      "Compose and inspect the shared-engine report before proposing any export. Return the transcript, evidence-layer, warning, provenance, and artifact summaries separately; treat SVG/PDF/JSON writes as explicit outputs and never replace the structured report with a screenshot-derived interpretation."
+    ],
     "step_expectations": [
       "The loaded 240 bp sequence reports a GRCh38.p14 chromosome-22 anchor and the gene/transcript rows remain on the negative strand.",
       "The evidence ledger keeps cDNA/EST observations separate from array design constraints and retains the synthetic missing/mismatched evidence warnings.",
@@ -63,6 +91,7 @@
       "tp53_isoform_architecture_online",
       "pcr_selection_batch_primer_pairs_offline"
     ],
+    "local_execution_note": "Run from the repository root; the canonical workflow is fully offline and uses only committed synthetic fixtures. For native inspection, open the generated disposable project, double-click an mRNA row to open Splicing Expert, then use the Evidence and Locus figure tabs. The inner agent operates on that open project; the outer agent must receive the workflow plus an explicit disposable project path and return its structured receipt and artifact digest.",
     "learning_objectives": [
       "Distinguish transcript 5'-to-3' display order from ascending genomic coordinates on a negative-strand gene.",
       "Read PSR intervals and JUC junction markers as different array geometries.",

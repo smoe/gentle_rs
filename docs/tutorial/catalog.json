@@ -1508,14 +1508,34 @@
         "isoform_analysis",
         "contributors"
       ],
-      "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer; all plotted values are synthetic.",
+      "notes": "Machine-checked offline chapter for the shared Gene Locus Evidence composer. Native Evidence and Locus-figure captures were reviewed on 2026-10-01; all plotted values remain synthetic software fixtures rather than experimental PATZ1 evidence.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent (canonical workflow in disposable state)"
+      ],
       "prerequisites": [
         "tp53_isoform_architecture_online",
         "pcr_selection_batch_primer_pairs_offline"
       ],
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-02",
+      "codex_reviewed_at": "2026-10-01",
       "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/01-evidence-ledger.png",
+          "caption": "The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/02-locus-composition.png",
+          "caption": "The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        },
         {
           "kind": "generated",
           "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",

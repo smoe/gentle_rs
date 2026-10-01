@@ -69,7 +69,7 @@
     "report.json"
   ],
   "file_checksums": {
-    "README.md": "9cf218ef8aaf593446146f42ba57e021dae67157e0e424efdba49dd53208f067",
+    "README.md": "7872858c3ed6cf32061087c559b94f779ae75834f55f88ebeb2b3f92d37d830b",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_cohort.json": "a3a9093760934082e5e9ea8c06b2528978908de49e59a6142766d90f8baad5a5",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.gene_set_promoter_comparison.json": "501f94bfbccec23266de94815be2dadefbd5a945764e3ce3a7317d6a73234230",
     "artifacts/gene_set_ortholog_promoter_cohorts_offline/artifacts/promoter_cohort_tutorial.ortholog_promoter_cohort.json": "e415893e3a32ed0ed4fc75d5e637bb7f19ac0552d0f671d5a5d0421db17f079d",
@@ -120,7 +120,7 @@
     "chapters/06-03_tp53_isoform_architecture_online.md": "743997135aeee48a10b36a1bf76eac3906fbca754bd674d3c775749f14138603",
     "chapters/06-04_tp53_uniprot_projection_online.md": "ff59bc6e3ea0882b40aa025e6597ed04bcbcf03e7eb00af56b491d3681c90ff2",
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "1b9b01d3e38cbbdf58a6aadef1dd690566ad9f5fe1abd4595cfff38ccb5b2bca",
-    "chapters/06-06_patz1_gene_locus_evidence_offline.md": "178ac7271d6cbdfdcb238500c8ddb4d9431c8dd55b39d67838a57e8bc88f631d",
+    "chapters/06-06_patz1_gene_locus_evidence_offline.md": "527cff170fe361039fd62a6d4bd0bc1382278de20d7d17da32f2f7c9669c5476",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "c41511a5771a5ccad4b103ae766d06a8adfea0c3afa5122595645c96291cffa4",
     "chapters/08-03_promoter_design_artifact_slice_offline.md": "bbee7efedd1bbd3f8dce86b518b6e059579101a155d48e5adf2174fbfb4583d2",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "af82ca8399df8a546eec6fdcea5d359c625a0a9cb61f08cb3e8578209872088a",
@@ -835,8 +835,22 @@
       ],
       "executed": true,
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-02",
+      "codex_reviewed_at": "2026-10-01",
       "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/01-evidence-ledger.png",
+          "caption": "The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/02-locus-composition.png",
+          "caption": "The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        },
         {
           "kind": "generated",
           "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
