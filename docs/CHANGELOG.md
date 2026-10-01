@@ -41,6 +41,10 @@
 - Give generated outer-agent requests for online tutorials a 7200-second
   wrapper budget so reference-cache preparation cannot be cut off by the old
   300-second offline default.
+- Review tutorial 02.05 with the exact synthetic 120 bp fixture. Retain native
+  Location and Create previews bound to the display revision, GUI binary and
+  fixture hashes; describe inner proposals and explicit-state outer replay
+  without claiming full Apply/Undo/Redo GUI acceptance.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

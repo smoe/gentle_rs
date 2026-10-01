@@ -1615,9 +1615,31 @@
         "cli_first",
         "sequence_analysis"
       ],
-      "notes": "Synthetic Feature Editor exercise covering Location, Create, Split, Merge and Delete, review-only overlaps/shared identifiers, stale previews and unchanged DNA. CLI regressions do not substitute for live GUI acceptance.",
+      "notes": "Synthetic Feature Editor exercise covering Location, Create, Split, Merge and Delete, review-only overlaps/shared identifiers, stale previews and unchanged DNA. Native Location/Create previews are retained; CLI regressions do not substitute for complete live GUI apply/undo/redo acceptance.",
+      "interfaces": [
+        "native GUI",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)",
+        "ClawBio / outer agent"
+      ],
       "review_status": "codex_reviewed",
-      "codex_reviewed_at": "2026-09-10"
+      "codex_reviewed_at": "2026-10-01",
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/feature_editor_gui_cli/01-location-preview.raw.png",
+          "caption": "The native Feature Editor previews the exact 21..40 to 21..45 boundary change, keeps Apply tied to the current request and lists related annotations without modifying them.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/feature_editor_gui_cli/02-create-overlap-preview.raw.png",
+          "caption": "The Create preview retains ordered label/gene qualifiers and identifies the overlapping gene and segment_A records as review-only candidates, explicitly not modifications.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
+      ]
     },
     {
       "id": "transcript_assay_followup_gui_cli",

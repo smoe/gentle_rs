@@ -7,6 +7,7 @@ skip explicitly. No network, external model, references or pytest dependency.
 """
 
 import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -26,6 +27,19 @@ BIN_DIR = os.environ.get("GENTLE_TUTORIAL_BIN_DIR")
 
 
 class WalkthroughSourceTests(unittest.TestCase):
+    def test_feature_editor_manual_gui_evidence_is_hash_bound(self):
+        evidence_path = ROOT / "docs/screenshots/feature_editor_gui_cli/evidence.json"
+        evidence = json.loads(evidence_path.read_text())
+        self.assertEqual(evidence["schema"], "gentle.manual_feature_editor_gui_evidence.v1")
+        self.assertFalse(evidence["automated_gui_acceptance"])
+        self.assertEqual(evidence["input"]["length_nt"], 120)
+        self.assertEqual(len(evidence["captures"]), 2)
+        for capture in evidence["captures"]:
+            png = ROOT / capture["raw_png"]["path"]
+            payload = png.read_bytes()
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), capture["raw_png"]["sha256"])
+            self.assertEqual(len(payload), capture["raw_png"]["size_bytes"])
+
     def test_guides_are_registered_without_becoming_generated_chapters(self):
         catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_text())
         manifest = json.loads((ROOT / "docs/tutorial/manifest.json").read_text())
