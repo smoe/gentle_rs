@@ -637,13 +637,18 @@
         "primer_design",
         "contributors"
       ],
-      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including junction-only transcript evidence and shared-shell parity commands.",
+      "notes": "GUI-first walkthrough for seeding shared-transcript or transcript-specific qPCR from Splicing Expert, including a verified TP73 feature/transcript seed and shared-shell parity commands. Current acceptance is source/seed level; no typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / shared shell",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "simple_pcr_selection_gui"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "load_branch_reverse_complement_pgex_fasta",

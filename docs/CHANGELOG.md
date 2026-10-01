@@ -76,6 +76,11 @@
   design, inspection and export requests; preserve the second report's real
   homopolymer/secondary-structure advisory and avoid claiming GUI screenshot,
   genome-wide specificity or wet-lab acceptance from local ranking.
+- Repair tutorial 04.03's fastest path: the compact 800-base PCR extract has
+  no TP73 transcript lanes, while retained `simple_pcr_source_locus` supports
+  the verified feature-3 / `NM_005427.4` junction-only seed with 15
+  transcripts and 18 unique exons. Replace shell placeholders with discovered
+  ids and bind inner/outer agents to seed review before design or export.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

@@ -61,7 +61,8 @@ from Splicing Expert so the qPCR request carries transcript identity.
 ## Fastest Path
 
 1. Open `File -> Open Tutorial Project... -> Core -> 18. Simple PCR From a Selected Core Region`.
-2. Open the loaded `tp73_locus` sequence window.
+2. Open the retained full locus `simple_pcr_source_locus`, **not** the compact
+   800-base `tp73_locus` PCR extract.
 3. In the feature tree, select the TP73 gene or one TP73 transcript feature.
 4. Open `Splicing Expert`.
 5. For total/group-level TP73 qPCR, click `Design shared-transcript qPCR`.
@@ -84,7 +85,7 @@ If you prefer to start from a file rather than the tutorial menu, use
 
 ## Step-by-Step
 
-### Step 1: Open the TP73 Locus
+### Step 1: Open the Full TP73 Locus
 
 GUI:
 
@@ -93,7 +94,10 @@ GUI:
 3. keep the map in linear mode
 4. make sure `Gene` and `mRNA` feature layers are visible
 
-You should see TP73 as the main gene/group on the loaded locus.
+You should see TP73 as the main gene/group on the loaded locus. If you entered
+through the Simple PCR tutorial project, use `simple_pcr_source_locus`; the
+800-base `tp73_locus` extract does not retain TP73 transcript lanes and cannot
+support this exon-junction walkthrough.
 
 ### Step 2: Open Splicing Expert
 
@@ -257,20 +261,30 @@ cargo run --quiet --bin gentle_cli -- \
   workflow @docs/examples/workflows/simple_pcr_selection_gui.json
 ```
 
-Then ask the shell to build a qPCR seed request from a splicing feature:
+First discover the committed TP73 group and transcript ids rather than guessing
+them:
 
 ```bash
 cargo run --quiet --bin gentle_cli -- \
   --state "$STATE" \
-  shell 'primers seed-qpcr-from-splicing tp73_locus FEATURE_ID --mode distinguish_transcript --transcript-id TRANSCRIPT_ID --specificity-evidence junction_only' \
+  shell 'features query simple_pcr_source_locus --label TP73 --limit 20 --include-qualifiers'
+```
+
+For the bundled file, the TP73 splicing group is feature `3` and transcript
+variant 1 is `NM_005427.4`. Ask the shell to build the junction-only seed:
+
+```bash
+cargo run --quiet --bin gentle_cli -- \
+  --state "$STATE" \
+  shell 'primers seed-qpcr-from-splicing simple_pcr_source_locus 3 --mode distinguish_transcript --transcript-id NM_005427.4 --specificity-evidence junction_only' \
   > /tmp/tp73_junction_qpcr_seed.json
 ```
 
-Replace:
-
-- `FEATURE_ID` with the GENtle feature index for the TP73 splicing group
-- `TRANSCRIPT_ID` with the transcript id selected in Splicing Expert, for
-  example an `NM_...` id from the TP73 transcript table
+The read-only seed should report 15 transcripts, 18 unique exons, ROI
+`[0,83686)`, `specificity_evidence=junction_only`, and a proposed
+`DesignQpcrAssays` operation. Re-run discovery if the bundled annotation is
+updated; feature indices are state-local and must not be guessed for another
+input.
 
 Run the design:
 
@@ -302,6 +316,26 @@ cargo run --quiet --bin gentle_cli -- \
 The shared-shell command emits the same transcript-aware
 `DesignQpcrAssays` request that the GUI uses. That keeps GUI, CLI, ClawBio,
 JS, and Lua on the same deterministic engine contract.
+
+## Inner And Outer Agents
+
+Ask the inner agent, which can inspect the open project:
+
+> Confirm that `simple_pcr_source_locus` rather than the compact `tp73_locus`
+> is open. Discover the TP73 splicing group and transcript `NM_005427.4`, then
+> propose the junction-only qPCR seed. Show the full `DesignQpcrAssays`
+> operation and its transcript evidence for review; do not run the design.
+
+An outer agent does not inherit the open Splicing Expert lane. Give it the
+canonical starter workflow and a new disposable state, require it to run the
+read-only feature query and seed command above, and retain the structured seed
+as the proposal artifact. Approve only the exact `DesignQpcrAssays` payload;
+report persistence and JSON/SVG file writes are mutations and exports that
+must remain separately visible.
+
+Neither the seed nor a locally ranked report proves transcript abundance,
+whole-genome specificity, absence of genomic-DNA amplification or wet-lab
+performance. Those remain separate evidence and validation steps.
 
 ## Troubleshooting
 
