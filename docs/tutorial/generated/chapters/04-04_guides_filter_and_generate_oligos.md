@@ -1,33 +1,33 @@
 ---
 chapter_id: "guides_filter_and_generate_oligos"
-title: "Guide practical filtering and oligo generation"
+title: "Filter declared guides and format cloning oligos"
 tier: "core"
 example_id: "guides_filter_and_generate_oligos"
 source_example: "docs/examples/workflows/guides_filter_and_generate_oligos.json"
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/guides_filter_and_generate_oligos"
 ---
 
-# Guide practical filtering and oligo generation
+# Filter declared guides and format cloning oligos
 
-Apply practical guide constraints and produce cloning-ready oligo candidates.
+Apply explicit practical filters to three declared guide candidates and format only the passing guides with one named cloning template.
 
-For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.
+For CRISPR-style cloning, practical sequence filtering can prevent avoidable downstream failures, but it is only one review layer. This offline registry demonstration declares three guide records without loading or validating a TP73 reference sequence. It then records why `g2` fails the U6 `TTTT` rule, retains `g1` and `g3`, and formats those two candidates with `lenti_bsmbi_u6_default`. The resulting oligos are deterministic template-formatted candidates, not proof of target identity, genome-wide specificity, nuclease activity, cloning success or order readiness.
 
 ## What You Will Accomplish
 
 - Create and filter guide sets through explicit engine operations.
-- Generate oligo records from filtered guide candidates.
+- Generate template-formatted oligo records from filtered guide candidates without confusing formatting with target validation.
 - Connect guide workflows to the same deterministic operation model used for cloning steps.
 
 ## Before You Start
@@ -60,7 +60,7 @@ gentle_cli guides put tp73_guides --json '[{"guide_id":"g1","seq_id":"tp73","sta
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open the guides workflow controls in GENtle and create/import a guide set for a target region. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose `UpsertGuideSet` for exactly `g1`, `g2` and `g3` as declared demo records under `tp73_guides`. State that no TP73 reference is loaded and that the supplied `seq_id` and coordinates are not validated in this chapter; show the full records and wait for approval before registry mutation.
 
 **Expected**
 
@@ -80,11 +80,11 @@ gentle_cli guides filter tp73_guides --config '{"gc_min":0.3,"gc_max":0.7,"max_h
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Apply practical filters (GC range, homopolymer limits, U6 terminator avoidance). Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose `FilterGuidesPractical` on `tp73_guides` with GC 0.30..0.70, maximum homopolymer 4, ambiguous-base rejection, U6 `TTTT` avoidance over `spacer_plus_tail`, required 5-prime G and allowed G extension, writing subset `tp73_guides_pass`. Show the configuration first; after approval, report that `g1` and `g3` pass while `g2` fails `u6_terminator_t4`.
 
 **Expected**
 
-> The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.
+> The filter report records that `g1` and `g3` pass and `g2` fails `u6_terminator_t4`, and writes the passing subset as `tp73_guides_pass`.
 
 ### Step 3: Generate oligos from passed guides and inspect the resulting oligo set IDs
 
@@ -100,11 +100,11 @@ gentle_cli guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5pr
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Generate oligos from passed guides and inspect the resulting oligo set IDs. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose `GenerateGuideOligos` from `tp73_guides` with template `lenti_bsmbi_u6_default`, `passed_only=true`, 5-prime-G extension enabled and output id `tp73_lenti`. Explain that `passed_only` reads the stored filter report on the source set, predict records only for `g1` and `g3`, and wait for separate approval. Return the exact oligo records without calling them target-validated or order-ready.
 
 **Expected**
 
-> The oligo registry contains `tp73_lenti`, generated only from guides that passed the practical filter.
+> The oligo registry contains two `tp73_lenti` records, generated only for `g1` and `g3` by consulting the filter report stored on `tp73_guides`.
 
 
 ## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
@@ -146,7 +146,8 @@ Submitting a direct structured request is an explicit wrapper invocation. If nat
 ## Checkpoints
 
 - Guide set and passed guide set are present in metadata.
-- Oligo set generation succeeds for passed guides.
+- Oligo set generation yields exactly two records for `g1` and `g3`; `g2` remains excluded by its U6 `TTTT` failure.
+- The chapter explicitly states that its declared coordinates are not checked against a loaded TP73 reference and that local filtering does not establish off-target safety, activity, cloning success or order readiness.
 
 ## Tutorial Provenance
 
@@ -159,8 +160,8 @@ Submitting a direct structured request is an explicit wrapper invocation. If nat
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 
@@ -168,7 +169,7 @@ Submitting a direct structured request is an explicit wrapper invocation. If nat
 
 If this tutorial is confusing, execution-stale, biologically suspect, or missing a useful figure, please open the matching tutorial issue template and include the context below.
 
-- Tutorial title: `Guide practical filtering and oligo generation`
+- Tutorial title: `Filter declared guides and format cloning oligos`
 - Tutorial/chapter id: `guides_filter_and_generate_oligos`
 - Step reached:
 - Expected vs. actual:

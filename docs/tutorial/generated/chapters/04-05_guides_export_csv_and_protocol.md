@@ -32,7 +32,7 @@ Operational work is only useful if outputs can be shared with collaborators and 
 
 ## Before You Start
 
-**Prerequisites:** Read [Chapter 5: Guide practical filtering and oligo generation](./04-04_guides_filter_and_generate_oligos.md) first.
+**Prerequisites:** Read [Chapter 5: Filter declared guides and format cloning oligos](./04-04_guides_filter_and_generate_oligos.md) first.
 
 **Useful when:**
 

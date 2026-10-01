@@ -818,7 +818,7 @@
     },
     {
       "id": "guides_filter_and_generate_oligos",
-      "title": "Guide practical filtering and oligo generation",
+      "title": "Filter declared guides and format cloning oligos",
       "path": "docs/tutorial/generated/chapters/04-04_guides_filter_and_generate_oligos.md",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
@@ -833,13 +833,18 @@
         "cli_first",
         "contributors"
       ],
-      "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+      "notes": "Machine-checked registry demonstration with declared guide candidates. It verifies practical filter decisions and template formatting, not target identity, off-target safety, cloning success or order readiness; no typed GUI screenshot acceptance is claimed.",
+      "interfaces": [
+        "GUI",
+        "CLI / workflow",
+        "inner agent",
+        "ClawBio / outer agent"
+      ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
       ],
-      "review_status": "unreviewed",
-      "review_issue_template": "Tutorial confusion",
-      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-01"
     },
     {
       "id": "digest_ligation_extract_region_minimal",

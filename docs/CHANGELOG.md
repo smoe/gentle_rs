@@ -81,6 +81,10 @@
   the verified feature-3 / `NM_005427.4` junction-only seed with 15
   transcripts and 18 unique exons. Replace shell placeholders with discovered
   ids and bind inner/outer agents to seed review before design or export.
+- Reframe tutorial 04.04 as an offline registry/filter/formatting lesson, not
+  proof of target identity or cloning readiness. Record the real `g1`/`g3`
+  pass and `g2` U6-terminator failure, explain why `passed_only` reads the
+  source-set filter report, and bind each mutating agent step separately.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 
