@@ -12,9 +12,9 @@ review_stale: true
 codex_reviewed_at: "2026-10-01"
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
-review_stale_reason: "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png' changed after human review date 2026-05-18"
-review_issue_template: "Tutorial artifact/figure problem"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md"
+review_stale_reason: "source JSON 'docs/tutorial/sources/08-03_promoter_design_artifact_slice_offline.json' changed after human review date 2026-05-18"
+review_issue_template: "Tutorial confusion"
+review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
 generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline"
 ---
 
@@ -26,7 +26,7 @@ Promoter design begins by asking where transcription is likely to start for each
 
 This tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.
 
-The 2026-10-01 review found two operational boundaries worth teaching. Opening Promoter design from an mRNA seeds `Transcript id`; clear that field before expecting the chapter-wide three-to-two promoter collapse. Native grouping and evidence-matrix views then pass. The native TF score-track and similarity actions still terminate the exact reviewed GUI build with a stack overflow, so the generated SVG/JSON prove the shared headless engine only, not GUI acceptance. The same review repaired direct-workflow manifest resolution so a fresh run reports all six just-written artifacts as present instead of accidentally checking `artifacts/artifacts/...`.
+The 2026-10-01 review found two operational boundaries worth teaching. Opening Promoter design from an mRNA seeds `Transcript id`; clear that field before expecting the chapter-wide three-to-two promoter collapse. Native grouping and evidence-matrix views then pass. The native TF score-track and similarity actions still terminate the exact reviewed GUI build with a stack overflow, so the generated SVG/JSON prove the shared headless engine only, not GUI acceptance. The same review repaired direct-workflow manifest resolution so a fresh run reports all six just-written artifacts as present instead of accidentally checking `artifacts/artifacts/...`. A real ClawBio wrapper replay then completed with status `ok`, collected all seven declared artifacts plus a derived PNG, and retained its execution manifest and checksums.
 
 ## What You Will Accomplish
 
@@ -350,6 +350,7 @@ gentle_cli shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --a
 - `promoter_artifact_manifest.json` reports all required promoter component artifacts as present.
 - `tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.
 - `tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`.
+- A real outer-wrapper replay exits zero, collects the seven declared artifacts plus the derived score-track PNG, and retains a reproducibility receipt.
 - Native alternative-promoter and evidence-matrix views pass after clearing the seeded transcript filter; native TFBS score/similarity actions remain blocked by the recorded stack overflow.
 
 ## What This Chapter Produces

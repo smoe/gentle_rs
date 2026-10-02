@@ -2,6 +2,11 @@
 
 ## 2026-10-02 - Separate Historical Baselines From Current Replay
 
+- Refresh the generated 08.03 chapter, tutorial hub and generation ledger after
+  the merged source review changed its stale-review metadata, outer-wrapper
+  evidence and feedback route. Preserve the three historical panel baselines;
+  this removes the macOS/Windows tutorial-drift failure without regenerating
+  their version-bound bytes.
 - Keep the three synthetic transcript-panel tutorial reports' original `.11`
   provenance and unchanged bytes/checksums. A package-version bump alone no
   longer requires regenerating historical reference results.
