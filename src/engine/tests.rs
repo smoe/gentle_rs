@@ -59011,6 +59011,48 @@ fn export_promoter_artifact_manifest_marks_present_and_missing_required_artifact
 }
 
 #[test]
+fn export_promoter_artifact_manifest_accepts_cwd_relative_paths_with_manifest_base() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_relative_artifact_manifest".to_string(), dna);
+    let engine = GentleEngine::from_state(state);
+    let dir = tempfile::tempdir_in(".").expect("relative tempdir");
+    let artifact_dir = dir.path().join("artifacts");
+    fs::create_dir_all(&artifact_dir).expect("create artifact directory");
+    let present_path = artifact_dir.join("present.json");
+    fs::write(&present_path, "{}").expect("write present artifact");
+    let current_dir = std::env::current_dir().expect("current directory");
+    let relative_present_path = present_path
+        .strip_prefix(&current_dir)
+        .expect("tempdir should be inside current directory");
+    assert!(
+        relative_present_path.is_relative(),
+        "test path must stay cwd-relative"
+    );
+
+    let report = engine
+        .export_promoter_artifact_manifest(
+            "tp73_relative_artifact_manifest",
+            Some("TP73"),
+            &[PromoterArtifactManifestEntry {
+                artifact_id: "present".to_string(),
+                artifact_kind: "promoter_evidence_matrix".to_string(),
+                path: relative_present_path.to_string_lossy().to_string(),
+                required: true,
+                ..PromoterArtifactManifestEntry::default()
+            }],
+            Some(&artifact_dir),
+        )
+        .expect("promoter artifact manifest");
+
+    assert_eq!(report.present_artifact_count, 1);
+    assert_eq!(report.missing_required_artifact_count, 0);
+    assert!(report.warnings.is_empty());
+}
+
+#[test]
 fn build_construct_reasoning_graph_derives_promoter_assay_from_generated_promoter_window() {
     let mut dna = DNAsequence::from_sequence(&"A".repeat(6001)).expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {

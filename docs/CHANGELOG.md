@@ -2,6 +2,12 @@
 
 ## 2026-10-01 - Review Tutorial Interfaces And Agent Roles
 
+- Review tutorial 08.03 with native three-to-two promoter-collapse and
+  two-candidate evidence-matrix captures. Teach that an mRNA launch seeds a
+  one-transcript filter, record the still-blocked native TFBS actions, and fix
+  fresh direct-workflow manifest resolution so all six just-written artifacts
+  are reported present instead of being looked up below `artifacts/artifacts`.
+
 - Review tutorial 08.01 with exact native setup captures and direct/outer-agent
   artifact parity. Record the whole-sequence GUI stack overflow instead of
   presenting headless success as GUI acceptance, and frame the 46 bp fixture

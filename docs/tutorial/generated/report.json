@@ -122,7 +122,7 @@
     "chapters/06-05_tp73_uniprot_projection_audit_cli.md": "1b9b01d3e38cbbdf58a6aadef1dd690566ad9f5fe1abd4595cfff38ccb5b2bca",
     "chapters/06-06_patz1_gene_locus_evidence_offline.md": "527cff170fe361039fd62a6d4bd0bc1382278de20d7d17da32f2f7c9669c5476",
     "chapters/07-02_tp53_multi_gene_sparse_mapping_online.md": "2b288b15197cab3dc74af50cc6a2ffec3196438e9f523523cdbdece251ac4c99",
-    "chapters/08-03_promoter_design_artifact_slice_offline.md": "bbee7efedd1bbd3f8dce86b518b6e059579101a155d48e5adf2174fbfb4583d2",
+    "chapters/08-03_promoter_design_artifact_slice_offline.md": "4e4d98f5aaccb67794f014930cd589816e22f56c55ffa0a61d105425ad69beef",
     "chapters/08-07_promoter_gene_set_ortholog_cohort_offline.md": "af82ca8399df8a546eec6fdcea5d359c625a0a9cb61f08cb3e8578209872088a",
     "chapters/08-08_gene_set_ortholog_promoter_cohorts_offline.md": "d19238a127d5c7de32f085228aeb58985f9dc3e9ed32a3222ca9adfedbb8dafe",
     "chapters/08-09_promoter_reporter_panel_planning_offline.md": "7d34fc09183e0f5bafec379f537e288d3cdf850e913e84852107883fba41dd4a",
@@ -133,7 +133,7 @@
   },
   "warnings": [
     "Tutorial 'load_branch_reverse_complement_pgex_fasta' review is stale because source JSON 'docs/tutorial/sources/02-01_load_branch_reverse_complement_pgex_fasta.json' changed after human review date 2026-05-18",
-    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
+    "Tutorial 'promoter_design_artifact_slice_offline' review is stale because declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png' changed after human review date 2026-05-18"
   ],
   "chapters": [
     {
@@ -744,11 +744,11 @@
       ],
       "executed": true,
       "review_status": "human_reviewed",
-      "codex_reviewed_at": "2026-08-29",
+      "codex_reviewed_at": "2026-10-01",
       "human_reviewed_at": "2026-05-18",
       "human_reviewer": "smoe",
       "review_stale": true,
-      "review_stale_reason": "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18",
+      "review_stale_reason": "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png' changed after human review date 2026-05-18",
       "review_issue_template": "Tutorial artifact/figure problem",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md",
       "graphics": [
@@ -758,6 +758,20 @@
           "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
           "illustrates_step": 8,
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png",
+          "caption": "The native Promoter design window shows all three transcript interpretations collapsed into two DNA-level promoter windows after clearing the mRNA-seeded transcript filter.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/02-evidence-matrix.png",
+          "caption": "The native evidence matrix contains the two collapsed promoter candidates and their promoter geometry, transcript, TFBS, repeat, variant and CUT&RUN-style evidence summaries.",
+          "illustrates_step": 5,
+          "capture_date": "2026-10-01"
         }
       ],
       "retained_artifacts": [

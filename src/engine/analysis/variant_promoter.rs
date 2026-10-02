@@ -2172,7 +2172,7 @@ impl GentleEngine {
                     artifact_path.exists()
                 } else {
                     artifact_path_base
-                        .map(|base| base.join(artifact_path).exists())
+                        .map(|base| base.join(artifact_path).exists() || artifact_path.exists())
                         .unwrap_or_else(|| artifact_path.exists())
                 };
                 let status = if artifact.path.trim().is_empty() {
