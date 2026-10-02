@@ -42,17 +42,20 @@ first step, not a return to the former fully optimized release recipe.
 
 ## Acceptance Before Publication
 
-**Preparation blocker:** three retained PATZ1 panel reports still bind `.11`.
-The fast tutorial-version guard will reject this intermediate tree until they
-are regenerated with a `.12` binary. No local build/test permission is inferred
-from this draft; do not push or dispatch it as a complete rollover meanwhile.
-The [Glen regeneration prompt](../internal_12_tutorial_regeneration_glen_prompt.md)
-binds the task to integration `a2a88995` and includes the unrun path/checkout
-regressions. This handoff does not close the blocker.
+**Validation pending:** historical synthetic transcript-panel reports retain
+their true `.11` provenance. That is no longer a rollover error: the revised
+contract checks historical integrity separately from a fresh `.12` result
+replay, allowing only the two scoped generator fields and their verified ledger
+hashes to differ. No stored report bytes or hashes were changed. The
+[updated Glen handoff](../internal_12_tutorial_regeneration_glen_prompt.md)
+requires the post-integration contract change and execution of the still-unrun
+comparison, path and checkout regressions. Policy changes are not a passing
+replay, package build or scientific acceptance.
 
-1. Regenerate version-bound tutorial reports with a `.12` generator; never
-   relabel `.11` provenance by hand. Run the version, tutorial, LF/CRLF and
-   packaging-policy gates on the committed candidate.
+1. Build the `.12` generator and verify replay against the unchanged historical
+   baselines. Regenerate only for a reviewed result change, never merely to
+   relabel `.11` provenance. Run version, tutorial, LF/CRLF and packaging-policy
+   gates on the committed candidate.
 2. Run build-only macOS, Windows, Linux and container jobs at one frozen SHA.
    Retain recipe-bound receipts and extracted-package smokes before considering
    publication. No workflow dispatch, push or tag mutation is implied here.

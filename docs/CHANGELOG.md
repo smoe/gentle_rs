@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-02 - Separate Historical Baselines From Current Replay
+
+- Keep the three synthetic transcript-panel tutorial reports' original `.11`
+  provenance and unchanged bytes/checksums. A package-version bump alone no
+  longer requires regenerating historical reference results.
+- Replace current-version assertions for retained files with schema,
+  generator-identity and raw-hash validation. Replay still requires the running
+  binary's version/source revision and compares all result data except two
+  explicitly scoped generator fields. Validate both original hashes before
+  comparing the three corresponding generation-ledger entries; unrelated
+  provenance, input hashes, result fields and ledger content stay guarded.
+- Stop overwriting the generator revision during retained-output copying.
+  Pin the baseline files to LF and add checkout negative controls plus focused
+  malformed-provenance, stale-generator, changed-result and corrupt-hash tests.
+- Update the release checklist, architecture/testing contract, `.12` status
+  and Glen handoff. These supersede the mandatory-regeneration handoff below.
+  No local builds or tests run; current replay and platform acceptance remain
+  pending, rather than being inferred from the policy change.
+
 ## 2026-10-02 - Integrate Glen's Tutorial Review With Portability Repairs
 
 - Integrate the 34-commit tutorial review through `ae21fc05` while preserving

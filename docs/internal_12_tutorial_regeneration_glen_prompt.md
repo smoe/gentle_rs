@@ -1,37 +1,36 @@
-# Glen Prompt: Close The Internal.12 Tutorial Regeneration Blocker
+# Glen Prompt: Verify Internal.12 Against Historical Tutorial Baselines
 
-Prepared 2026-10-02, after integrating the tutorial review into local `main`.
-This is a handoff prompt, not an executed job or an acceptance record.
+Updated 2026-10-02. This replaces the previous mandatory-regeneration request.
+The filename remains stable for existing handoff links. This is a prompt, not
+an executed job or an acceptance record.
 
-## Request
+## Request And Source
 
-Please close the version-bound tutorial regeneration gap in `smoe/gentle_rs`
-on your Linux machine, in a separate bot branch/worktree. Do not run builds on
-Steffen's Mac. Keep this task limited to regeneration, the integration
-regressions below and their evidence; no installer build or benchmarking.
+Please verify the revised tutorial-baseline contract in `smoe/gentle_rs` on
+your Linux machine, in a separate bot branch/worktree. Do not build on
+Steffen's Mac. No installer build, benchmarks or unrelated tutorial repairs.
 
-Use the integrated source, not your old review branch or a stale upstream main:
+The source must include both:
 
-- Integration: `a2a88995616e64795a7ec024951d97617f5e6c1b`.
-- Rollover parent: `e89a6932c655b9af93e88c363447d77ba3514755`.
-- Your merged review head: `ae21fc0542a030132658a828ad43ffcac0006839`.
-- Workspace version: `0.1.0-internal.12`.
+- Integration `a2a88995616e64795a7ec024951d97617f5e6c1b`, which merged your
+  `ae21fc0542a030132658a828ad43ffcac0006839` series onto the `.12` rollover.
+- The subsequent historical-baseline contract change described here, including
+  `tutorial_panel_comparison_value`, `tutorial_generation_ledger_equal` and the
+  renamed historical-provenance Python/Rust guards. The integration SHA alone
+  is no longer sufficient.
 
-Codex has not pushed this integration. First establish that the integration
-commit is available through an owner-provided/published ref. If it is not,
-report that prerequisite rather than substituting the old `4e7adf6e` main or
-your `ae21fc05` branch. Record the actual full source SHA and verify that the
-integration is its ancestor. A subsequent documentation-only handoff commit
-may be included; do not silently incorporate other new work.
+Codex has not pushed this work. Obtain the exact owner-provided/published ref
+including the follow-up, verify the integration is its ancestor, and record
+the full actual source SHA. If unavailable, report that prerequisite; do not
+substitute stale upstream main, your old review branch or an old executable.
 
-Read `AGENTS.md`, `docs/release.md` (Post-Release Development Version),
-`docs/testing.md`, `docs/roadmap.md` and the `.12` release-note draft first.
+Read `AGENTS.md`, the historical tutorial baseline rule in
+`docs/architecture.md`, `docs/testing.md`, the post-release checklist in
+`docs/release.md`, the roadmap and the `.12` release-note draft.
 
-## Known Failure
+## What Changed
 
-Cargo and the release metadata already declare `.12`, but these retained
-reports still contain `.11` in `selection_audit_generator_revision` and
-`gentle_version` (including nested occurrences):
+These reports are historical synthetic references, not real PATZ1 acceptance:
 
 ```text
 docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json
@@ -39,64 +38,47 @@ docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/pa
 docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json
 ```
 
-The fast guard
-`scripts.test_release_candidate.WorkflowWiringTests.test_replayed_tutorial_reports_use_current_package_version`
-rejects this intermediate tree. This is a known preparation blocker, not
-evidence that the new build profile or the scientific calculation failed.
-Confirm and retain that initial failure before changing generated files.
+Their true `.11` generator identities and original raw hashes remain intact.
+The previous current-version assertion conflated historical provenance with
+current compatibility. The new contract separates them:
 
-## Regenerate, Do Not Relabel
+- The fast gate checks historical schemas, consistent nonempty generator
+  identities and the original raw hashes; it does not demand today's version.
+- Fresh replay output must identify the currently executing package and source
+  revision. Only `selection_audit_generator_revision` and
+  `provenance.gentle_version` inside assay `primer_pair_summary` records in
+  `selected_assays` and `short_sybr_junction_assays` may differ for these three
+  allowlisted files. Everything else must match, including scientific data,
+  input hashes, schemas, settings, warnings and selection decisions.
+- Before projecting the three associated checksum entries for ledger
+  comparison, validate each original checksum against its own file bytes.
+  Other ledger fields and checksums are not excluded.
+- Fresh exports preserve their real source revision. Comparison is in-memory;
+  it must not rewrite either baseline or fresh output. No general recursive
+  ignore list, provenance relabeling or hash normalization is authorized.
 
-1. Record source SHA, clean worktree status, Cargo.lock SHA-256, Rust/Cargo
-   versions, build profile and explicit environment overrides. Use a dedicated
-   local target directory, not network storage. Do not run `cargo update` or
-   accept lockfile drift.
-2. Build `gentle_examples_docs` from the integrated `.12` source, locked and
-   with one job. A cold dev build is sufficient for this narrowly scoped
-   regeneration; it is not `package-opt1` acceptance. Do not reuse an old `.11`
-   executable. For example, with an explicitly chosen absolute target path:
+## Build And Check
+
+Use a clean worktree and an explicit local target directory, not network
+storage. Record Cargo.lock SHA-256, Rust/Cargo versions, source/binary hashes,
+profile and environment overrides. Do not run `cargo update` or accept lock
+drift. A cold dev generator is sufficient for this scope and is not packaged
+`package-opt1` acceptance:
 
 ```bash
-export CARGO_TARGET_DIR=/absolute/local/path/gentle-internal12-regeneration-target
+export CARGO_TARGET_DIR=/absolute/local/path/gentle-internal12-baseline-target
 export CARGO_BUILD_JOBS=1
 export CARGO_INCREMENTAL=0
 export CARGO_PROFILE_DEV_DEBUG=0
 cargo build --locked -j1 --bin gentle_examples_docs
 BIN="$CARGO_TARGET_DIR/debug/gentle_examples_docs"
-GENERATED_DIR=$(mktemp -d)
-"$BIN" tutorial-generate --tutorial-output "$GENERATED_DIR"
-```
-
-3. Compare the complete generated tree with `docs/tutorial/generated` before
-   copying anything back. Copy the legitimately regenerated affected reports
-   and generator-produced `report.json` checksum ledger. No search-and-replace
-   of version strings, manual provenance edits, changed expected hashes to
-   conceal drift, or normalization of raw hash-bound inputs.
-4. Compare primer sequences/coordinates, scores, class coverage and selection
-   decisions before and after regeneration. Explain any scientific difference;
-   do not dismiss it as version churn. Investigate any additional generated-file
-   changes and keep only those required by the integrated source. Preserve the
-   reviewed tutorial prose, screenshots and their historical evidence.
-
-## Verify The Integration Repairs Too
-
-The merge corrected two review findings which have not been execution-tested
-locally. Keep these fixes rather than reintroducing the former behavior:
-
-- Four TP53/TP73 GenBank/JSON/SVG evidence files now have scoped `text eol=lf`
-  rules. Their original hashes are unchanged. The fast checkout regression
-  verifies LF/CRLF and includes a missing-rule negative control.
-- Promoter component paths are relative only to the output manifest directory
-  (or explicitly absolute). The canonical workflow now uses sibling filenames;
-  the tutorial path adapter preserves these references. There is no fallback
-  to a same-named file under cwd. Missing artifacts must remain missing.
-
-Run and retain the following focused checks, keeping the same build environment:
-
-```bash
-python3 -m unittest scripts.test_tutorial_checkouts -v
 python3 -m unittest scripts.test_release_candidate -v
+python3 -m unittest scripts.test_tutorial_checkouts -v
 cargo test --locked -j1 --test release_version_consistency
+cargo test --locked -j1 --lib historical_panel_
+cargo test --locked -j1 --lib retained_panel_baselines_keep_valid_historical_provenance_and_hashes
+cargo test --locked -j1 --lib retained_tutorial_artifact_normalization_preserves_generator_identity
+cargo test --locked -j1 --lib workflow_examples_patz1_endpoint_and_sybr_panels_are_explicit_and_primer_only
 cargo test --locked -j1 --lib export_promoter_artifact_manifest_
 cargo test --locked -j1 --lib promoter_manifest_paths_match_in_direct_and_tutorial_replay
 cargo test --locked -j1 --lib rewrite_example_paths_handles_promoter_and_handoff_outputs
@@ -108,42 +90,43 @@ cargo check -q --locked -j1
 git diff --check
 ```
 
-Also execute the real canonical promoter workflow through its normal CLI route
-in a disposable working directory, with the documented fixture prerequisites.
-Confirm six present components, zero missing required components, and that each
-returned relative path resolves beside the saved manifest. Keep this separate
-from the new synthetic path regression, which uses placeholder content and
-does not validate the biological artifacts.
+The expected outcome is a successful current replay against unchanged `.11`
+baselines. Do not regenerate them merely to make version numbers agree.
+If replay exposes actual result drift, generate into a temporary directory,
+retain the before/after diff and explain the scientific changes before proposing
+replacement baselines. Never broaden the comparison exclusion to hide them.
 
-After committing the regenerated files, run the exact-committed checkout gate,
-without an attributes overlay:
+The integration also fixed LF protection for four TP53/TP73 evidence files and
+manifest-relative promoter paths. Run the real canonical promoter workflow in
+a disposable directory through its normal CLI route with documented fixture
+prerequisites. Require six present components, zero missing required components
+and references resolving beside the manifest. A cwd file must not mask a missing
+manifest-relative component. The synthetic path unit test is not biological
+artifact acceptance.
+
+On the final committed candidate, run without an attributes overlay:
 
 ```bash
 python3 scripts/check_tutorial_checkouts.py --binary "$BIN" --timeout-seconds 1800
 python3 scripts/maintenance_chore.py session-close --plan docs/internal_12_tutorial_regeneration_glen_prompt.md
 ```
 
-Record both the executable's source SHA and the final artifact-commit SHA. If
-executable sources change while fixing a failure, rebuild before claiming
-acceptance. A generated-files/docs-only commit is not a new binary build; say
-so explicitly. LF/CRLF simulation on Linux is not native Windows acceptance.
+## Delivery And Boundaries
 
-## Scope And Delivery
+- Report the exact source/executable/final-commit SHAs, lock hash, profile and
+  environment, commands/results, failures/skips and whether baseline bytes
+  stayed unchanged. A stale executable is not current-replay acceptance.
+- If code changes while resolving a failure, rebuild and rerun affected gates.
+  A later documentation-only commit is not a fresh executable build; identify
+  both revisions rather than claiming exact-binary equivalence silently.
+- Only after successful execution, update the pending replay verdict in the
+  roadmap/release notes and add evidence to the changelog on a reviewable bot
+  branch. Return the commit and comparison link; never push Steffen's main.
+- Leave `.11` tags/assets and `.12` `package-opt1` unchanged. No dependency or
+  optimization changes, release publication, tag moves or workflow dispatch.
+- Native Windows/macOS, package smoke, GUI/scientific acceptance and unrelated
+  tutorial/GUI issues remain separate. Linux LF/CRLF simulation is not native
+  Windows acceptance.
 
-- Preserve the `.12` `package-opt1` recipe: opt-level 1, LTO off, 256 codegen
-  units, assertions and overflow checks on, unwinding, no stripping,
-  incremental=false, debug=0. No further optimization or dependency updates.
-- Leave the published `.11` tag, assets and receipts unchanged. Do not push to
-  Steffen's main, move tags, publish a release or dispatch packaging workflows.
-- Do not fold in 08.02, glossary/decision changes, GUI stack-overflow fixes,
-  sibling worktree edits or unrelated tutorial improvements.
-- Only after the relevant gates pass, replace the pending blocker in the
-  roadmap and `.12` release notes with the precise regeneration verdict, and
-  add a changelog entry. Leave package/native GUI/scientific acceptance pending.
-- Return a reviewable bot-branch commit and comparison link, the complete
-  regeneration diff summary, exact commands/results, source/binary/lock hashes,
-  profile/environment, remaining failures/skips and native-platform gaps.
-
-Codex's integration checks were static only: formatting, Python/JSON syntax,
-Git attributes, the four unchanged evidence hashes and whitespace. No local
-Rust/Python test suite, Cargo check/build, GUI run or benchmark was executed.
+Codex has only made static source, syntax, formatting, attribute and hash
+checks. No local tests, builds, Cargo check, GUI runs or benchmarks were run.

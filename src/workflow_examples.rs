@@ -9,6 +9,7 @@ use crate::tutorial_gui_semantics::{
 };
 use gentle_protocol::FeatureExpertTarget;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap, HashSet},
@@ -4121,20 +4122,6 @@ fn normalize_retained_tutorial_artifact_line(line: &str) -> String {
             return normalized;
         }
     }
-    if let Some((prefix, suffix)) = line.split_once("\"selection_audit_generator_revision\":") {
-        let whitespace_len = suffix.len() - suffix.trim_start().len();
-        let value = &suffix[whitespace_len..];
-        if let Some(value) = value.strip_prefix('"')
-            && let Some(end_quote) = value.find('"')
-        {
-            return format!(
-                "{prefix}\"selection_audit_generator_revision\":{}\"{}\"{}",
-                &suffix[..whitespace_len],
-                env!("CARGO_PKG_VERSION"),
-                &value[end_quote + 1..]
-            );
-        }
-    }
     if let Some(prefix) = line.strip_prefix("- Generated (Unix ms): `")
         && let Some((_, suffix)) = prefix.split_once('`')
     {
@@ -5679,7 +5666,134 @@ fn normalize_crlf(bytes: &[u8]) -> Cow<'_, [u8]> {
     Cow::Owned(normalized)
 }
 
+const HISTORICAL_PANEL_REPORTS: [&str; 3] = [
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json",
+    "artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json",
+];
+
+fn tutorial_panel_comparison_value(bytes: &[u8], require_current_generator: bool) -> Option<Value> {
+    static VERSION: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?\z",
+        )
+        .expect("literal generator version pattern")
+    });
+    let mut report: Value = serde_json::from_slice(bytes).ok()?;
+    if report.get("schema")?.as_str()? != "gentle.transcript_assay_panel.v2" {
+        return None;
+    }
+    let mut generator_identity = None;
+    for field in ["selected_assays", "short_sybr_junction_assays"] {
+        let assays = report.get_mut(field)?.as_array_mut()?;
+        if field == "selected_assays" && assays.is_empty() {
+            return None;
+        }
+        for assay in assays {
+            let summary = assay.get_mut("primer_pair_summary")?;
+            if summary.get("schema")?.as_str()? != "gentle.primer_pair_summary.v2" {
+                return None;
+            }
+            let version = summary
+                .pointer("/provenance/gentle_version")?
+                .as_str()?
+                .to_string();
+            let revision = summary
+                .get("selection_audit_generator_revision")?
+                .as_str()?
+                .to_string();
+            let valid_revision = revision == version
+                || revision
+                    .strip_prefix(&format!("{version}+git."))
+                    .is_some_and(|sha| {
+                        (7..=40).contains(&sha.len())
+                            && sha.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    });
+            if !VERSION.is_match(&version) || !valid_revision {
+                return None;
+            }
+            if require_current_generator
+                && (version != env!("CARGO_PKG_VERSION")
+                    || revision != crate::about::GENTLE_SOURCE_REVISION)
+            {
+                return None;
+            }
+            let identity = (version, revision);
+            if generator_identity
+                .as_ref()
+                .is_some_and(|previous| previous != &identity)
+            {
+                return None;
+            }
+            generator_identity = Some(identity);
+            // Comparison-only projection: never rewrite stored provenance or
+            // ignore similarly named fields elsewhere in the report.
+            *summary.get_mut("selection_audit_generator_revision")? = Value::Null;
+            *summary.pointer_mut("/provenance/gentle_version")? = Value::Null;
+        }
+    }
+    Some(report)
+}
+
+fn tutorial_panel_reports_equal(expected: &[u8], actual: &[u8]) -> bool {
+    match (
+        tutorial_panel_comparison_value(expected, false),
+        tutorial_panel_comparison_value(actual, true),
+    ) {
+        (Some(expected), Some(actual)) => expected == actual,
+        _ => false,
+    }
+}
+
+fn tutorial_generation_ledger_equal(
+    expected: &BTreeMap<String, Vec<u8>>,
+    actual: &BTreeMap<String, Vec<u8>>,
+) -> bool {
+    let parse_ledger = |files: &BTreeMap<String, Vec<u8>>| -> Option<Value> {
+        let ledger: Value = serde_json::from_slice(files.get("report.json")?).ok()?;
+        (ledger.get("schema")?.as_str()? == TUTORIAL_GENERATION_REPORT_SCHEMA).then_some(ledger)
+    };
+    let (Some(mut expected_ledger), Some(mut actual_ledger)) =
+        (parse_ledger(expected), parse_ledger(actual))
+    else {
+        return false;
+    };
+    for path in HISTORICAL_PANEL_REPORTS {
+        if !expected.contains_key(path) && !actual.contains_key(path) {
+            continue;
+        }
+        let (Some(expected_bytes), Some(actual_bytes)) = (expected.get(path), actual.get(path))
+        else {
+            return false;
+        };
+        if !tutorial_panel_reports_equal(expected_bytes, actual_bytes) {
+            return false;
+        }
+        for (ledger, bytes) in [
+            (&mut expected_ledger, expected_bytes),
+            (&mut actual_ledger, actual_bytes),
+        ] {
+            let Some(checksum) = ledger
+                .get_mut("file_checksums")
+                .and_then(|map| map.get_mut(path))
+            else {
+                return false;
+            };
+            if checksum.as_str() != Some(crate::digest_utils::sha256_hex_bytes(bytes).as_str()) {
+                return false;
+            }
+            // Only after validating both original byte digests and replay
+            // compatibility may their different checksum values be projected.
+            *checksum = Value::Null;
+        }
+    }
+    expected_ledger == actual_ledger
+}
+
 fn tutorial_generated_bytes_equal(path: &str, expected: &[u8], actual: &[u8]) -> bool {
+    if HISTORICAL_PANEL_REPORTS.contains(&path) {
+        return tutorial_panel_reports_equal(expected, actual);
+    }
     if !is_tutorial_text_artifact(path) {
         return expected == actual;
     }
@@ -6375,7 +6489,12 @@ pub fn check_tutorial_generated(
                 )
             )
         })?;
-        if !tutorial_generated_bytes_equal(path, expected_bytes, actual_bytes) {
+        let equivalent = if path == "report.json" {
+            tutorial_generation_ledger_equal(&expected, &actual)
+        } else {
+            tutorial_generated_bytes_equal(path, expected_bytes, actual_bytes)
+        };
+        if !equivalent {
             return Err(format!(
                 "{}{}",
                 format!(
@@ -7405,36 +7524,21 @@ mod tests {
     }
 
     #[test]
-    fn retained_patz1_assay_tutorial_versions_match_current_package() {
-        let directory =
-            tutorial_output_dir().join("artifacts/patz1_transcript_assay_panels_cli/artifacts");
-        for filename in [
-            "patz1_endpoint_end_matrix.report.json",
-            "patz1_sybr_juc_panel.report.json",
-            "patz1_routine_common_region_screen.report.json",
-        ] {
-            let report: TranscriptAssayPanelReport = serde_json::from_slice(
-                &fs::read(directory.join(filename)).expect("read retained PATZ1 assay report"),
-            )
-            .expect("parse retained PATZ1 assay report");
-            assert!(!report.selected_assays.is_empty(), "{filename}");
-            for assay in report
-                .selected_assays
-                .iter()
-                .chain(&report.short_sybr_junction_assays)
-            {
-                let summary = &assay.primer_pair_summary;
-                assert_eq!(
-                    summary.provenance.gentle_version,
-                    env!("CARGO_PKG_VERSION"),
-                    "stale package provenance in {filename}"
-                );
-                assert_eq!(
-                    summary.selection_audit_generator_revision,
-                    env!("CARGO_PKG_VERSION"),
-                    "stale normalized selection-audit revision in {filename}"
-                );
-            }
+    fn retained_panel_baselines_keep_valid_historical_provenance_and_hashes() {
+        let root = tutorial_output_dir();
+        let ledger: Value =
+            serde_json::from_slice(&fs::read(root.join("report.json")).unwrap()).unwrap();
+        for path in HISTORICAL_PANEL_REPORTS {
+            let bytes = fs::read(root.join(path)).expect("read historical panel baseline");
+            assert!(
+                tutorial_panel_comparison_value(&bytes, false).is_some(),
+                "{path}"
+            );
+            assert_eq!(
+                ledger["file_checksums"][path].as_str(),
+                Some(crate::digest_utils::sha256_hex_bytes(&bytes).as_str()),
+                "historical bytes must retain their own checksum; preserve the LF checkout rule for {path}"
+            );
         }
     }
 
@@ -7532,7 +7636,7 @@ mod tests {
             .expect("read retained PATZ1 report");
             assert!(
                 tutorial_generated_bytes_equal(
-                    filename,
+                    &format!("artifacts/patz1_transcript_assay_panels_cli/artifacts/{filename}"),
                     &expected,
                     normalize_retained_tutorial_artifact_text(&actual).as_bytes(),
                 ),
@@ -10330,7 +10434,234 @@ mod tests {
     }
 
     #[test]
-    fn retained_tutorial_artifact_normalization_removes_wall_clock_fields() {
+    fn historical_panel_comparison_ignores_only_valid_generator_identity() {
+        for path in HISTORICAL_PANEL_REPORTS {
+            let expected = fs::read(tutorial_output_dir().join(path)).unwrap();
+            let mut current: Value = serde_json::from_slice(&expected).unwrap();
+            set_test_panel_generator(
+                &mut current,
+                env!("CARGO_PKG_VERSION"),
+                crate::about::GENTLE_SOURCE_REVISION,
+            );
+            let current_bytes = serde_json::to_vec(&current).unwrap();
+            assert!(tutorial_generated_bytes_equal(
+                path,
+                &expected,
+                &current_bytes
+            ));
+            assert!(tutorial_generated_bytes_equal(
+                path,
+                String::from_utf8(expected.clone())
+                    .unwrap()
+                    .replace('\n', "\r\n")
+                    .as_bytes(),
+                &current_bytes
+            ));
+            assert!(!tutorial_generated_bytes_equal(
+                "artifacts/unrelated.report.json",
+                &expected,
+                &current_bytes
+            ));
+
+            for pointer in [
+                "/max_amplicon_bp",
+                "/operation_sha256",
+                "/selected_assays/0/primer_pair",
+                "/selected_assays/0/primer_pair_summary/tm_delta_c",
+                "/selected_assays/0/primer_pair_summary/provenance/annotation_release",
+                "/unresolved_group_pairs",
+            ] {
+                let mut changed = current.clone();
+                *changed.pointer_mut(pointer).expect("retained field") =
+                    Value::String("changed".into());
+                assert!(
+                    !tutorial_generated_bytes_equal(
+                        path,
+                        &expected,
+                        &serde_json::to_vec(&changed).unwrap()
+                    ),
+                    "{path}: {pointer}"
+                );
+            }
+            for pointer in [
+                "/schema",
+                "/selected_assays/0/primer_pair_summary/schema",
+                "/selected_assays/0/primer_pair_summary/provenance/gentle_version",
+                "/selected_assays/0/primer_pair_summary/selection_audit_generator_revision",
+            ] {
+                for bad in [
+                    Value::Null,
+                    Value::String(String::new()),
+                    Value::String("garbage".into()),
+                ] {
+                    let mut changed = current.clone();
+                    *changed.pointer_mut(pointer).unwrap() = bad;
+                    assert!(
+                        !tutorial_generated_bytes_equal(
+                            path,
+                            &expected,
+                            &serde_json::to_vec(&changed).unwrap()
+                        ),
+                        "{path}: {pointer}"
+                    );
+                    assert!(
+                        tutorial_panel_comparison_value(
+                            &serde_json::to_vec(&changed).unwrap(),
+                            false
+                        )
+                        .is_none()
+                    );
+                }
+            }
+            let mut missing = current.clone();
+            missing["selected_assays"][0]["primer_pair_summary"]["provenance"]
+                .as_object_mut()
+                .unwrap()
+                .remove("gentle_version");
+            assert!(
+                tutorial_panel_comparison_value(&serde_json::to_vec(&missing).unwrap(), false)
+                    .is_none()
+            );
+
+            let mut mixed = current.clone();
+            let mut other = mixed["selected_assays"][0].clone();
+            other["primer_pair_summary"]["provenance"]["gentle_version"] =
+                Value::String("0.0.0".into());
+            other["primer_pair_summary"]["selection_audit_generator_revision"] =
+                Value::String("0.0.0".into());
+            mixed["selected_assays"].as_array_mut().unwrap().push(other);
+            assert!(
+                tutorial_panel_comparison_value(&serde_json::to_vec(&mixed).unwrap(), false)
+                    .is_none(),
+                "individually valid but mixed identities must be rejected"
+            );
+
+            let mut stale = current.clone();
+            set_test_panel_generator(&mut stale, "0.0.0", "0.0.0");
+            assert!(!tutorial_generated_bytes_equal(
+                path,
+                &expected,
+                &serde_json::to_vec(&stale).unwrap()
+            ));
+            let mut wrong_revision = current.clone();
+            set_test_panel_generator(
+                &mut wrong_revision,
+                env!("CARGO_PKG_VERSION"),
+                &format!("{}+git.abcdef0", env!("CARGO_PKG_VERSION")),
+            );
+            assert!(!tutorial_generated_bytes_equal(
+                path,
+                &expected,
+                &serde_json::to_vec(&wrong_revision).unwrap()
+            ));
+
+            // Fields with the same name outside the two authorized locations
+            // remain ordinary result data, not a recursive ignore list.
+            let mut extra_expected: Value = serde_json::from_slice(&expected).unwrap();
+            extra_expected["gentle_version"] = Value::String("original".into());
+            current["gentle_version"] = Value::String("changed".into());
+            assert!(!tutorial_generated_bytes_equal(
+                path,
+                &serde_json::to_vec(&extra_expected).unwrap(),
+                &serde_json::to_vec(&current).unwrap()
+            ));
+        }
+    }
+
+    fn set_test_panel_generator(report: &mut Value, version: &str, revision: &str) {
+        for field in ["selected_assays", "short_sybr_junction_assays"] {
+            for assay in report[field].as_array_mut().unwrap() {
+                assay["primer_pair_summary"]["provenance"]["gentle_version"] =
+                    Value::String(version.into());
+                assay["primer_pair_summary"]["selection_audit_generator_revision"] =
+                    Value::String(revision.into());
+            }
+        }
+    }
+
+    fn test_panel_ledger(files: &mut BTreeMap<String, Vec<u8>>) {
+        let checksums: BTreeMap<_, _> = files
+            .iter()
+            .filter(|(path, _)| path.as_str() != "report.json")
+            .map(|(path, bytes)| (path.clone(), crate::digest_utils::sha256_hex_bytes(bytes)))
+            .collect();
+        files.insert(
+            "report.json".into(),
+            serde_json::to_vec(&serde_json::json!({
+                "schema": TUTORIAL_GENERATION_REPORT_SCHEMA,
+                "file_checksums": checksums,
+                "chapter_count": 29,
+            }))
+            .unwrap(),
+        );
+    }
+
+    #[test]
+    fn historical_panel_ledger_checks_both_hashes_before_comparing_results() {
+        let mut expected = BTreeMap::new();
+        let mut actual = BTreeMap::new();
+        for path in HISTORICAL_PANEL_REPORTS {
+            let bytes = fs::read(tutorial_output_dir().join(path)).unwrap();
+            let mut current: Value = serde_json::from_slice(&bytes).unwrap();
+            set_test_panel_generator(
+                &mut current,
+                env!("CARGO_PKG_VERSION"),
+                crate::about::GENTLE_SOURCE_REVISION,
+            );
+            expected.insert(path.into(), bytes);
+            actual.insert(path.into(), serde_json::to_vec(&current).unwrap());
+        }
+        for files in [&mut expected, &mut actual] {
+            files.insert("unrelated.json".into(), b"{}".to_vec());
+            test_panel_ledger(files);
+        }
+        assert!(tutorial_generation_ledger_equal(&expected, &actual));
+        for corrupt_expected in [true, false] {
+            let mut left = expected.clone();
+            let mut right = actual.clone();
+            let files = if corrupt_expected {
+                &mut left
+            } else {
+                &mut right
+            };
+            let mut ledger: Value = serde_json::from_slice(&files["report.json"]).unwrap();
+            ledger["file_checksums"][HISTORICAL_PANEL_REPORTS[0]] = Value::String("wrong".into());
+            files.insert("report.json".into(), serde_json::to_vec(&ledger).unwrap());
+            assert!(!tutorial_generation_ledger_equal(&left, &right));
+        }
+        let mut changed = actual.clone();
+        let mut report: Value =
+            serde_json::from_slice(&changed[HISTORICAL_PANEL_REPORTS[0]]).unwrap();
+        report["max_amplicon_bp"] = serde_json::json!(1);
+        changed.insert(
+            HISTORICAL_PANEL_REPORTS[0].into(),
+            serde_json::to_vec(&report).unwrap(),
+        );
+        test_panel_ledger(&mut changed);
+        assert!(
+            !tutorial_generation_ledger_equal(&expected, &changed),
+            "fresh valid hash must not hide a changed result"
+        );
+        let mut changed = actual.clone();
+        changed.insert("unrelated.json".into(), b"{\"changed\":true}".to_vec());
+        test_panel_ledger(&mut changed);
+        assert!(!tutorial_generation_ledger_equal(&expected, &changed));
+        let mut changed = actual.clone();
+        let mut ledger: Value = serde_json::from_slice(&changed["report.json"]).unwrap();
+        ledger["chapter_count"] = serde_json::json!(30);
+        changed.insert("report.json".into(), serde_json::to_vec(&ledger).unwrap());
+        assert!(
+            !tutorial_generation_ledger_equal(&expected, &changed),
+            "ledger metadata is not a generator-identity exception"
+        );
+        let mut missing = actual.clone();
+        missing.remove(HISTORICAL_PANEL_REPORTS[0]);
+        test_panel_ledger(&mut missing);
+        assert!(!tutorial_generation_ledger_equal(&expected, &missing));
+    }
+
+    #[test]
+    fn retained_tutorial_artifact_normalization_preserves_generator_identity() {
         let raw = concat!(
             "- Generated (Unix ms): `1777756509715`\n",
             "{\n",
@@ -10341,13 +10672,11 @@ mod tests {
         let normalized = normalize_retained_tutorial_artifact_text(raw);
         assert!(normalized.contains("- Generated (Unix ms): `0`"));
         assert!(normalized.contains("\"generated_at_unix_ms\": 0,"));
-        assert!(normalized.contains(&format!(
-            "\"selection_audit_generator_revision\": \"{}\"",
-            env!("CARGO_PKG_VERSION")
-        )));
+        assert!(normalized.contains(
+            "\"selection_audit_generator_revision\": \"0.1.0-internal.10+git.0123456789abcdef\""
+        ));
         assert!(!normalized.contains("1777756509715"));
         assert!(!normalized.contains("1777756511961"));
-        assert!(!normalized.contains("+git.0123456789abcdef"));
         assert!(!normalized.ends_with("\n\n"));
     }
 

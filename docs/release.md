@@ -509,10 +509,13 @@ publication from a tag push, a successful build, or a draft GitHub Release.
 3. Run `cargo metadata --locked --offline --no-deps --format-version 1`,
    `cargo test --locked -q --test release_version_consistency`, and
    `cargo check -q --locked`. Rebuild `gentle_examples_docs` at the new version
-   and run `tutorial-generate --tutorial-output TEMP_DIR`. Inspect the generated
-   diff and copy back the affected retained reports (including normalized
-   generator-version fields) and their generated checksum report; do not merely
-   relabel old provenance. Run
+   and run `tutorial-check`. Historical transcript-panel baselines may retain
+   an earlier generator version when their validated result projection matches
+   the current replay; a version bump alone does not require rewriting them.
+   If results differ, use `tutorial-generate --tutorial-output TEMP_DIR`, inspect
+   the scientific diff and deliberately update only the affected baselines and
+   their generated checksum ledger. Keep the new generator's real identity;
+   never relabel old provenance or suppress scientific differences. Run
    `python3 -m unittest scripts.test_release_candidate -v` and
    `cargo run --locked --bin gentle_examples_docs -- tutorial-check`.
    Review the diff for dependency, scientific-result or unrelated fixture churn.

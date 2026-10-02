@@ -168,6 +168,46 @@ class TutorialCheckoutTests(unittest.TestCase):
                                      f"{relative.as_posix()} text eol=lf is required")
                     self.assertEqual(hashlib.sha256(retained).hexdigest(), digest)
 
+    def test_historical_panel_baselines_keep_raw_hashes_in_both_checkout_modes(self):
+        generated = Path("docs/tutorial/generated")
+        ledger = json.loads((checker.ROOT / generated / "report.json").read_bytes())
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        expected = {}
+        for name in ("patz1_endpoint_end_matrix", "patz1_routine_common_region_screen", "patz1_sybr_juc_panel"):
+            artifact = f"artifacts/patz1_transcript_assay_panels_cli/artifacts/{name}.report.json"
+            relative = generated / artifact
+            payload = (checker.ROOT / relative).read_bytes()
+            digest = ledger["file_checksums"][artifact]
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+            expected[relative] = (payload, digest)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "historical synthetic panel baselines")
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not line.startswith(b"docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/")
+        )
+        broken = Path(self.tmp.name) / "panel-baselines-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, (payload, digest) in expected.items():
+            with self.subTest(mode="unprotected-crlf", path=relative):
+                converted = (broken / relative).read_bytes()
+                self.assertEqual(converted, payload.replace(b"\n", b"\r\n"))
+                self.assertNotEqual(hashlib.sha256(converted).hexdigest(), digest)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"panel-baselines-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    retained = (target / relative).read_bytes()
+                    self.assertEqual(retained, payload,
+                                     f"Restore {relative.as_posix()} text eol=lf")
+                    self.assertEqual(hashlib.sha256(retained).hexdigest(), digest)
+
     def test_gene_assay_gui_evidence_hashes_survive_both_checkout_modes(self):
         (self.root / ".gitattributes").write_bytes(
             (checker.ROOT / ".gitattributes").read_bytes())

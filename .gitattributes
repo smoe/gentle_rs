@@ -17,6 +17,11 @@ docs/gui_cli_mcp_parity.md text eol=lf
 docs/tutorial/catalog.json text eol=lf
 docs/tutorial/manifest.json text eol=lf
 
+# Historical panel baselines keep their original generator identity and raw hashes.
+docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json text eol=lf
+docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_routine_common_region_screen.report.json text eol=lf
+docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json text eol=lf
+
 # Public GUI evidence records exact hashes for these LF-authored text artifacts.
 docs/screenshots/gene_assay_study_gui/*.snapshot.json text eol=lf
 docs/screenshots/gene_assay_study_gui/*.context.svg text eol=lf

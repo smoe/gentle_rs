@@ -562,6 +562,29 @@ Operation graph-inspectability rule:
 - Frontends must not keep operation outcomes only in status text; graph
   projection is a definition-of-done requirement.
 
+Historical tutorial baseline rule:
+
+- Retained tutorial outputs are historical references, not evidence that every
+  later package version generated them. A version bump alone must neither
+  invalidate nor relabel their generator provenance.
+- For the three explicitly allowlisted synthetic transcript-panel reports,
+  tutorial replay compares parsed results while projecting only
+  `primer_pair_summary.selection_audit_generator_revision` and
+  `primer_pair_summary.provenance.gentle_version` in `selected_assays` and
+  `short_sybr_junction_assays`. Both fields must exist and form one valid,
+  consistent generator identity per report. Fresh output must match the
+  executing binary's package and source revision; schemas and all other data
+  remain part of the comparison, including input hashes and scientific results.
+- Validate each side's original raw-file checksum before projecting the three
+  corresponding checksum values in the generation ledger. No blanket version,
+  provenance or checksum exclusion is permitted. LF-pinned baselines and
+  LF/CRLF negative controls preserve the raw-byte integrity contract.
+- Newly generated files retain their actual source revision. Existing
+  timestamp normalization is separate; it must not overwrite generator identity.
+  A changed scientific result requires explicit review and legitimate baseline
+  regeneration, not a broader ignore list. Replay compatibility, historical
+  provenance and native-package/scientific acceptance are separate verdicts.
+
 Computational artifact provenance rule:
 
 - Persisted non-sequence computational outputs that may influence sample

@@ -26,6 +26,55 @@ from scripts import release_candidate as policy
 from scripts import check_tutorial_checkouts as checkouts
 
 
+HISTORICAL_PANEL_REPORTS = tuple(
+    f"artifacts/patz1_transcript_assay_panels_cli/artifacts/{name}.report.json"
+    for name in (
+        "patz1_endpoint_end_matrix",
+        "patz1_routine_common_region_screen",
+        "patz1_sybr_juc_panel",
+    )
+)
+
+
+def validate_historical_panel_provenance(report):
+    """Check retained generator identity, independently of today's Cargo version.
+
+    Runtime result compatibility is checked by the Rust tutorial replay; this
+    fast gate validates historical provenance and, at its caller, raw hashes.
+    """
+    if not isinstance(report, dict) or report.get("schema") != "gentle.transcript_assay_panel.v2":
+        raise ValueError("unexpected panel schema")
+    identity = None
+    for field in ("selected_assays", "short_sybr_junction_assays"):
+        assays = report.get(field)
+        if not isinstance(assays, list) or (field == "selected_assays" and not assays):
+            raise ValueError(f"missing or invalid {field}")
+        for assay in assays:
+            try:
+                summary = assay["primer_pair_summary"]
+                if summary["schema"] != "gentle.primer_pair_summary.v2":
+                    raise ValueError("unexpected primer summary schema")
+                version = summary["provenance"]["gentle_version"]
+                revision = summary["selection_audit_generator_revision"]
+            except (KeyError, TypeError) as error:
+                raise ValueError("missing generator provenance") from error
+            if not isinstance(version, str) or not re.fullmatch(
+                r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+                r"(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?",
+                version,
+            ):
+                raise ValueError("invalid generator version")
+            if not isinstance(revision, str) or not (
+                revision == version
+                or re.fullmatch(re.escape(version) + r"\+git\.[0-9a-fA-F]{7,40}", revision)
+            ):
+                raise ValueError("generator revision does not match its version")
+            if identity is not None and identity != (version, revision):
+                raise ValueError("mixed generator identities within one report")
+            identity = (version, revision)
+    return identity
+
+
 class NativeBuildSettingsTests(unittest.TestCase):
     def test_all_version_labels_select_the_same_opt1_recipe(self) -> None:
         for tag in ("v0.1.0-internal.11", "v0.1.0-internal.12", "v2.3.4-internal.1+build.7",
@@ -425,29 +474,57 @@ class ReleaseCandidateTests(unittest.TestCase):
 
 
 class WorkflowWiringTests(unittest.TestCase):
-    def test_replayed_tutorial_reports_use_current_package_version(self) -> None:
+    def test_retained_tutorial_reports_preserve_historical_provenance_and_hashes(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        version = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
-        checked = 0
+        generated = root / "docs/tutorial/generated"
+        ledger = json.loads((generated / "report.json").read_bytes())
+        for path in HISTORICAL_PANEL_REPORTS:
+            with self.subTest(path=path):
+                payload = (generated / path).read_bytes()
+                self.assertIsNotNone(validate_historical_panel_provenance(json.loads(payload)))
+                self.assertEqual(hashlib.sha256(payload).hexdigest(), ledger["file_checksums"][path],
+                                 f"{path}: historical bytes and recorded hash must match; preserve its LF rule")
 
-        def check_versions(value, path):
-            nonlocal checked
-            if isinstance(value, dict):
-                for key, item in value.items():
-                    if key in ("gentle_version", "selection_audit_generator_revision"):
-                        checked += 1
-                        self.assertEqual(item, version,
-                                         f"{path}: regenerate tutorial artifacts after a version bump; "
-                                         "do not relabel provenance without replaying the workflow")
-                    check_versions(item, path)
-            elif isinstance(value, list):
-                for item in value:
-                    check_versions(item, path)
-
-        for path in sorted((root / "docs/tutorial/generated/artifacts").rglob("*.report.json")):
-            with self.subTest(path=path.relative_to(root)):
-                check_versions(json.loads(path.read_bytes()), path.relative_to(root))
-        self.assertGreater(checked, 0, "expected version-bound retained tutorial reports")
+    def test_historical_panel_provenance_is_not_a_current_version_gate(self) -> None:
+        # Hand-crafted minimal panel for provenance validation, not biological
+        # acceptance. The real result comparison is exercised in Rust replay.
+        report = {
+            "schema": "gentle.transcript_assay_panel.v2",
+            "selected_assays": [{"primer_pair_summary": {
+                "schema": "gentle.primer_pair_summary.v2",
+                "provenance": {"gentle_version": "0.1.0-internal.11"},
+                "selection_audit_generator_revision": "0.1.0-internal.11",
+            }}],
+            "short_sybr_junction_assays": [],
+        }
+        for version in ("0.1.0-internal.10", "0.1.0-internal.11", "0.1.0-internal.12"):
+            for revision in (version, version + "+git." + "a" * 40):
+                changed = copy.deepcopy(report)
+                summary = changed["selected_assays"][0]["primer_pair_summary"]
+                summary["provenance"]["gentle_version"] = version
+                summary["selection_audit_generator_revision"] = revision
+                self.assertEqual(validate_historical_panel_provenance(changed), (version, revision))
+        for field in ("gentle_version", "selection_audit_generator_revision"):
+            for bad in (None, "", "not-a-version", 12, "0.1.0-internal.12"):
+                changed = copy.deepcopy(report)
+                summary = changed["selected_assays"][0]["primer_pair_summary"]
+                target = summary["provenance"] if field == "gentle_version" else summary
+                target[field] = bad
+                with self.subTest(field=field, value=bad), self.assertRaises(ValueError):
+                    validate_historical_panel_provenance(changed)
+        missing = copy.deepcopy(report)
+        del missing["selected_assays"][0]["primer_pair_summary"]["provenance"]["gentle_version"]
+        with self.assertRaises(ValueError):
+            validate_historical_panel_provenance(missing)
+        wrong_schema = copy.deepcopy(report)
+        wrong_schema["schema"] = "gentle.transcript_assay_panel.v3"
+        with self.assertRaises(ValueError):
+            validate_historical_panel_provenance(wrong_schema)
+        mixed = copy.deepcopy(report)
+        mixed["short_sybr_junction_assays"] = copy.deepcopy(report["selected_assays"])
+        mixed["short_sybr_junction_assays"][0]["primer_pair_summary"]["selection_audit_generator_revision"] += "+git." + "b" * 40
+        with self.assertRaises(ValueError):
+            validate_historical_panel_provenance(mixed)
 
     def test_windows_is_unconditional_and_unix_jobs_follow_selection(self) -> None:
         root = Path(__file__).resolve().parents[1]

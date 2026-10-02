@@ -405,12 +405,27 @@ and `tutorial-check` in both modes, so matrix drift fails before the longer
 tutorial replay and full Rust suite. This complements the no-build Python
 checkout gate; neither replaces native-platform acceptance.
 
-Version changes also require replaying the retained tutorial reports: their
-`gentle_version` and normalized `selection_audit_generator_revision` fields
-must match Cargo. The fast `scripts.test_release_candidate` gate checks these
-fields without compiling Rust. Regenerate with the current binary into a
-temporary output directory, inspect the differences, and retain only the
-affected outputs; do not hand-edit historical provenance or weaken drift checks.
+Version changes require replay compatibility, not replacement of historical
+provenance. The three synthetic transcript-panel baselines (with legacy PATZ1
+filenames) keep their original generator identities and raw hashes. The fast
+`scripts.test_release_candidate` gate checks their schemas, present/consistent
+generator fields and hashes, without comparing their version to today's Cargo.
+Its pass is integrity evidence, not a replay or scientific verdict.
+
+The Rust `tutorial-check` replay binds fresh outputs to the executing binary's
+package and source revision. It projects only the two generator fields at the
+explicitly allowed assay-summary paths in those three reports; all remaining
+JSON data must match. It checks both sides' original checksums before allowing
+the three associated generation-ledger hash values to differ. Unrelated files,
+ledger metadata, schemas, input hashes, scores, selections and primer sequences
+remain guarded. New generator output preserves its actual source revision;
+comparison does not rewrite either input. The baseline LF rules and the fast
+`test_historical_panel_baselines_keep_raw_hashes_in_both_checkout_modes` cover
+the raw-hash boundary, including a missing-rule negative control.
+
+If results really change, regenerate into a temporary directory, review the
+scientific diff and only then replace the affected baseline and checksum ledger.
+Never relabel historical provenance or refresh hashes merely to hide a failure.
 
 CI additionally runs a CLI smoke path for core tutorial chapters via:
 
