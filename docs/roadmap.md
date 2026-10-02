@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-01 - Prepare `.12` with the bounded `package-opt1` recipe after owner-confirmed `.11` publication. Finish version-bound tutorial regeneration, then run fresh candidate-bound policy/package gates; keep `.11` assets unchanged. Glen's isolated lazy-Help pair `e723f46e -> 64baba4f` remains a separate comparison, not a mixed source/profile baseline. Both requested sibling branches currently have uncommitted work; merge only their committed tips and do not attribute in-progress edits to this rollover.
+Last session: 2026-10-02 - Glen's review through `ae21fc05` is integrated at `a2a88995`, with LF-bound evidence and manifest-relative path repairs; execution checks remain pending. Follow the [Glen regeneration prompt](internal_12_tutorial_regeneration_glen_prompt.md) to rebuild the `.12` docs generator and replace three retained `.11` reports before declaring the rollover CI-ready. Keep `package-opt1`, `.11` assets and unrelated sibling worktree edits unchanged. Glen's lazy-Help pair `e723f46e -> 64baba4f` remains a separate comparison, not merged-candidate acceptance.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

@@ -46,6 +46,9 @@ first step, not a return to the former fully optimized release recipe.
 The fast tutorial-version guard will reject this intermediate tree until they
 are regenerated with a `.12` binary. No local build/test permission is inferred
 from this draft; do not push or dispatch it as a complete rollover meanwhile.
+The [Glen regeneration prompt](../internal_12_tutorial_regeneration_glen_prompt.md)
+binds the task to integration `a2a88995` and includes the unrun path/checkout
+regressions. This handoff does not close the blocker.
 
 1. Regenerate version-bound tutorial reports with a `.12` generator; never
    relabel `.11` provenance by hand. Run the version, tutorial, LF/CRLF and

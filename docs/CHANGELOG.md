@@ -14,6 +14,9 @@
   regressions, and document the shared contract.
 - Remove three surplus README trailing blank lines. No local builds or tests
   run; the `.12` report-regeneration blocker remains open for Glen.
+- Add the [post-integration Glen prompt](internal_12_tutorial_regeneration_glen_prompt.md)
+  with the exact merged SHA, three stale reports, safe regeneration procedure
+  and pending gates. A handoff is not execution or release acceptance.
 
 ## 2026-10-01 - Prepare `v0.1.0-internal.12` And Stage Package Optimization
 
