@@ -48,9 +48,19 @@ contract checks historical integrity separately from a fresh `.12` result
 replay, allowing only the two scoped generator fields and their verified ledger
 hashes to differ. No stored report bytes or hashes were changed. The
 [updated Glen handoff](../internal_12_tutorial_regeneration_glen_prompt.md)
-requires the post-integration contract change and execution of the still-unrun
-comparison, path and checkout regressions. Policy changes are not a passing
-replay, package build or scientific acceptance.
+requires the post-integration contract change and records the comparison, path
+and checkout checks to complete. The replay evidence below covers only the
+reported checks, not package or scientific acceptance.
+
+**Reported replay evidence, 2026-10-02:** Glen reproduced the checkout failure
+at `f1c904a4` and repaired the generated 08.03 chapter, tutorial hub and ledger
+in `e462de1f`, now integrated. With Rust 1.96.1 he reports successful exact-commit
+LF and CRLF replays, each covering parity, 51 examples and 29 chapters, plus
+17/17 Python checkout regressions. The historical `.11` panel bytes and hashes
+remain unchanged. The two stale human-review warnings remain expected. This
+is externally reported evidence, not a local rerun or native macOS/Windows
+Actions, `package-opt1` build, or scientific acceptance. The remaining handoff
+checks and native-platform results still need to be recorded.
 
 1. Build the `.12` generator and verify replay against the unchanged historical
    baselines. Regenerate only for a reviewed result change, never merely to

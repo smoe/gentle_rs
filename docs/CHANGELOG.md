@@ -7,6 +7,11 @@
   evidence and feedback route. Preserve the three historical panel baselines;
   this removes the macOS/Windows tutorial-drift failure without regenerating
   their version-bound bytes.
+- Integrate Glen's `e462de1f` by fast-forward and record his Rust 1.96.1
+  exact-commit LF/CRLF replay and 17/17 checkout-regression results in the `.12`
+  ledger and roadmap. Integration review confirmed the scoped diff and raw
+  hashes; no local builds or tests were run. Native macOS/Windows Actions and
+  package acceptance remain pending.
 - Keep the three synthetic transcript-panel tutorial reports' original `.11`
   provenance and unchanged bytes/checksums. A package-version bump alone no
   longer requires regenerating historical reference results.

@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-02 - Follow the [updated Glen handoff](internal_12_tutorial_regeneration_glen_prompt.md) to verify `.12` replay under the new historical-baseline contract, including the comparison, hash, path and checkout regressions. The three synthetic reports keep their true `.11` provenance; version-only drift no longer requires regeneration, but execution acceptance remains pending. Glen's review through `ae21fc05` is integrated at `a2a88995`; the handoff also requires this subsequent contract change. Keep `package-opt1`, published `.11` assets and sibling worktree edits unchanged.
+Last session: 2026-10-02 - Glen's generated 08.03 repair `e462de1f` is integrated on top of the historical-baseline contract `f1c904a4`; the three synthetic `.11` reports remain unchanged. Glen reports exact-commit LF/CRLF replay success (51 examples, 29 chapters) and 17/17 checkout regressions with Rust 1.96.1. Next: obtain native macOS/Windows Actions results and complete the remaining [Glen handoff checks](internal_12_tutorial_regeneration_glen_prompt.md); do not infer package or scientific acceptance from checkout replay. Keep `package-opt1`, published `.11` assets and sibling worktree edits unchanged.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -21,7 +21,7 @@ Maintenance invariant:
 ## Release Gate
 
 Published baseline: `v0.1.0-internal.11` at `a51bbc064ea29d4e7a03c559c5a6e0a6f8e1bd29`, confirmed 2026-09-30 with all three native packages and container publication. Preserve the [release ledger](release_notes/release_notes_v0.1.0-internal.11.md), including earlier failures and pending scientific/GUI acceptance; the `.10` ledger stays historical.
-Current candidate: `v0.1.0-internal.12` is the development version, not a selected tag or published artifact. Historical baseline compatibility and `package-opt1` still require fresh validation; no higher-optimization or runtime-performance verdict is implied.
+Current candidate: `v0.1.0-internal.12` is the development version, not a selected tag or published artifact. Glen reports historical-baseline replay success at `e462de1f`; native-platform and `package-opt1` acceptance remain pending. No higher-optimization or runtime-performance verdict is implied.
 Active aim: responsive startup and DNA-feature presentation with measured opt-level=1 packaging; carry gene-informed primer-PAIR, source-aware isoform and TSS scientific/GUI checks forward rather than treating publication as experimental validation.
 
 Release story: inspect TP73 GRCh38.p14 exon, repeat, array, CUT&RUN, paired-read,
