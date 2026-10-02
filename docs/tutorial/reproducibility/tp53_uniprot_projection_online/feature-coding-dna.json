@@ -1,0 +1,70 @@
+{
+  "entry_id": "P04637",
+  "feature_query": "DNA-binding",
+  "match_count": 1,
+  "matches": [
+    {
+      "aa_end": 387,
+      "aa_start": 368,
+      "amino_acid_sequence": "HLKSKKGQSTSRHKKLMFKT",
+      "crosses_exon_junction": false,
+      "exon_pairs": [],
+      "exon_spans": [
+        {
+          "coding_end_1based": 7909,
+          "coding_start_1based": 7850,
+          "exon_end_1based": 7912,
+          "exon_ordinal": 11,
+          "exon_start_1based": 6643
+        }
+      ],
+      "feature_key": "REGION",
+      "feature_note": "Basic (repression of DNA-binding)",
+      "genomic_coding_dna": "CCTGAAGTCCAAAAAGGGTCAGTCTACCTCCCGCCATAAAAAACTCATGTTCAAGACAGA",
+      "genomic_segments": [
+        {
+          "aa_end": 387,
+          "aa_start": 368,
+          "genomic_end_1based": 7909,
+          "genomic_start_1based": 7850,
+          "strand": "-"
+        }
+      ],
+      "matched_feature_fields": [
+        "feature_note"
+      ],
+      "primary_exon_ordinal": 11,
+      "strand": "-",
+      "transcript_feature_id": 2,
+      "transcript_id": "ENST00000269305.9",
+      "translation_speed_optimized_dna": "CACCTCAAATCTAAAAAAGGTCAGTCTACCTCTCGTCACAAAAAACTCATGTTTAAAACC",
+      "warnings": []
+    }
+  ],
+  "projection_id": "tp53_uniprot_p04637",
+  "query_mode": "both",
+  "requested_translation_speed_profile": "human",
+  "resolved_translation_speed_profile": "human",
+  "resolved_translation_speed_profile_source": "explicit_request",
+  "resolved_translation_speed_reference_species": "Homo sapiens",
+  "schema": "gentle.uniprot_feature_coding_dna_query.v1",
+  "seq_id": "grch38_tp53",
+  "warnings": [
+    "Transcript 'ENST00000445888.6' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000503591.2' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000504290.5' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000508793.6' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000509690.6' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000610538.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000619485.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000620739.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000622645.4' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000714357.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000714359.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000905353.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000923566.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000923567.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000923568.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'",
+    "Transcript 'ENST00000923569.1' from UniProt entry 'P04637' was not found in sequence 'grch38_tp53'"
+  ]
+}

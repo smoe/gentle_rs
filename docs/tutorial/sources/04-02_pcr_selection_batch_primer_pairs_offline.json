@@ -13,7 +13,13 @@
       "primer_design",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "notes": "Machine-checked generated chapter with two retained full primer-design reports. The reports are the executable evidence; no current typed GUI screenshot acceptance is claimed.",
+    "interfaces": [
+      "GUI",
+      "CLI / workflow",
+      "inner agent",
+      "ClawBio / outer agent"
+    ],
     "group": "04",
     "group_position": 2,
     "next_steps": ["patz1_transcript_assay_panels_cli"]
@@ -51,6 +57,16 @@
       "jq '{top_pair:(.pairs[0]|{rank,score,amplicon:[.amplicon_start_0based,.amplicon_end_0based_exclusive,.amplicon_length_bp],tm_delta_c,forward,reverse,primer_pair_complementary_run_bp,primer_pair_3prime_complementary_run_bp,rule_flags}),alternatives:[.pairs[0:3][]|{rank,score,amplicon_length_bp,tm_delta_c}]}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json",
       "jq '{pair_count,rejection_summary,top_forward:(.pairs[0].forward|{sequence,tm_c,gc_fraction,anneal_hits,longest_homopolymer_run_bp,self_complementary_run_bp}),top_flags:.pairs[0].rule_flags}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json",
       "cargo run --bin gentle_cli -- --state /tmp/gentle-primer-pair-tutorial.json shell 'primers export-report tp73_as2_promoter_batch_r01 /tmp/tp73_as2_promoter_batch_r01.json'"
+    ],
+    "agent_steps": [
+      "Check that `test_files/tp73.ncbi.gb` is available, then propose `LoadFile` as `tp73_locus` and `SetParameter` with `primer_design_backend=internal`. Treat loading and parameter mutation as the approval boundary; do not execute either operation until I approve.",
+      "Inspect `tp73_locus` without changing it. Propose the first indispensable core ROI as `[61820,61920)` and distinguish it from the broader copied context `[61720,62120)`. Return the coordinates for review; do not run primer design.",
+      "For the first ROI, propose forward window `[61720,61745)` and reverse window `[62000,62040)` with `require_roi_flanking=true`. Verify that both windows lie outside the core and show the exact typed fields; do not mutate state.",
+      "Complete the first `DesignPrimerPairs` proposal with primer length 18..24 nt, Tm 55..78 C, GC fraction 0.30..0.80, `max_anneal_hits=1`, amplicon length 90..350 bp, `max_tm_delta_c=5`, `max_pairs=5`, backend `internal` and report id `tp73_as2_promoter_batch_r01`. Show the full payload and wait for approval.",
+      "After approval, run only the bound first design. Return the structured `gentle.primer_design_report.v1` result and confirm five pairs, the internal backend and `pair_evaluation_limit_skipped=0`; do not export files or start the second design.",
+      "Inspect ranks 1 through 3 of `tp73_as2_promoter_batch_r01` without rerunning design. Compare amplicon geometry, both oligos, Tm/GC, local hits, clamps, self- and pair-complementarity and every rule flag. State explicitly that local ranking is not an order recommendation or genome-wide specificity result.",
+      "Propose a separate second `DesignPrimerPairs` request with ROI `[62040,62140)`, forward window `[61940,61965)`, reverse window `[62158,62188)` and report id `tp73_as2_promoter_batch_r02`, retaining the first request's remaining constraints. Wait for approval, then report the five-base forward homopolymer and `forward_secondary_structure_ok=false` rather than hiding the advisory behind rank 1.",
+      "Propose export paths for both complete JSON reports and show the exact file writes before execution. Keep candidate selection rationale, whole-genome specificity planning, procurement and wet-lab validation as separate decisions; do not claim them from these local reports."
     ],
     "step_expectations": [
       "The workflow creates two complete reports and exports both as retained tutorial artifacts.",

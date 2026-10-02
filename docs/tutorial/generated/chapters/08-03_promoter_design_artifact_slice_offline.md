@@ -9,10 +9,10 @@ executed_during_generation: true
 automated_status: "passing"
 review_status: "human_reviewed"
 review_stale: true
-codex_reviewed_at: "2026-08-29"
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: "2026-05-18"
 human_reviewer: "smoe"
-review_stale_reason: "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg' changed after human review date 2026-05-18"
+review_stale_reason: "declared graphic for tutorial 'promoter_design_artifact_slice_offline' 'docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png' changed after human review date 2026-05-18"
 review_issue_template: "Tutorial artifact/figure problem"
 review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-artifact-figure.md"
 generated_artifact_dir: "docs/tutorial/generated/artifacts/promoter_design_artifact_slice_offline"
@@ -25,6 +25,8 @@ Learn how GENtle turns a TP73-like annotated locus into promoter windows, promot
 Promoter design begins by asking where transcription is likely to start for each transcript and which DNA span should be treated as the upstream regulatory context. GENtle first derives promoter windows around transcript starts, then collapses transcript-level interpretations that point to the same DNA span. It then collects evidence into portable artifacts: an alternative-promoter summary, a promoter evidence matrix, an isoform promoter comparison, expression evidence linked by transcript id, TFBS score-track graphics, TFBS similarity rankings, and a manifest that lets GUI users, CLI users, or ClawBio-style consumers choose their own presentation.
 
 This tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.
+
+The 2026-10-01 review found two operational boundaries worth teaching. Opening Promoter design from an mRNA seeds `Transcript id`; clear that field before expecting the chapter-wide three-to-two promoter collapse. Native grouping and evidence-matrix views then pass. The native TF score-track and similarity actions still terminate the exact reviewed GUI build with a stack overflow, so the generated SVG/JSON prove the shared headless engine only, not GUI acceptance. The same review repaired direct-workflow manifest resolution so a fresh run reports all six just-written artifacts as present instead of accidentally checking `artifacts/artifacts/...`.
 
 ## What You Will Accomplish
 
@@ -52,14 +54,14 @@ This tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sh
 ## At a Glance
 
 1. Open docs/examples/assets/tp73_promoter_artifact_demo.gb via File -> Open Sequence....
-2. Open Promoter design from the TP73 gene or one of the TP73-demo-* mRNA features.
-3. Set Gene label to TP73, promoter upstream bp to 40, and promoter downstream bp to 15.
+2. Open Promoter design from the TP73 gene or one of the TP73-demo-* mRNA features. If an mRNA seeded Transcript id, clear it before the chapter-wide comparison; leaving it set intentionally restricts the report to that one transcript.
+3. Set Gene label to TP73, leave Transcript id empty, set promoter upstream bp to 40, and set promoter downstream bp to 15.
 4. Click Annotate promoter windows, then Compare alternative promoters; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows.
 5. Click Build evidence matrix; confirm the shared promoter row reports 2 tx and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence.
 6. Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures.
 7. Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note.
-8. Set TF motifs to SP1,TP53,TP63,TP73, run Show TF score tracks, then export TF score tracks SVG... for the visual artifact.
-9. Set TFBS similarity anchor to SP1, compare against TP53,TP63,TP73,CTCF, run Show TFBS similarity ranking, then export the JSON ranking.
+8. Set TF motifs to SP1,TP53,TP63,TP73 and score range 60..158. On the reviewed build, Show TF score tracks causes a stack overflow; use the generated SVG only as headless-engine evidence until a later exact GUI build passes.
+9. Set TFBS similarity anchor to SP1 and candidates to TP53,TP63,TP73,CTCF. The reviewed native action shares the same stack-overflow blocker; the generated JSON is CLI evidence, not a populated-GUI acceptance claim.
 10. Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order.
 
 ## Walkthrough: GUI, CLI and Inner Agent
@@ -82,17 +84,17 @@ gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offl
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open `docs/examples/assets/tp73_promoter_artifact_demo.gb` via `File -> Open Sequence...`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Verify that the current live project contains the 249 bp synthetic sequence `tp73_promoter_artifact_demo`; propose opening Promoter design without claiming access to a separate CLI state. Do not mutate or export until approved.
 
 **Expected**
 
 > The canonical workflow loads the synthetic TP73-like locus under `tp73_promoter_artifact_demo` and writes the promoter artifact bundle.
 
-### Step 2: Open Promoter design from the TP73 gene or one of the TP73-demo-* mRNA features
+### Step 2: Open Promoter design from the TP73 gene or one of the TP73-demo-* mRNA features. If an mRNA seeded Transcript id, clear it before the chapter-wide comparison; leaving it set intentionally restricts the report to that one transcript
 
 **GUI**
 
-Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features.
+Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features. If an mRNA seeded `Transcript id`, clear it before the chapter-wide comparison; leaving it set intentionally restricts the report to that one transcript.
 
 **CLI (terminal)**
 
@@ -102,17 +104,17 @@ gentle_cli shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Report whether Promoter design was opened from the gene or an mRNA. If `Transcript id` is seeded, explain that retaining it produces a one-transcript report and propose clearing it for the chapter-wide comparison; do not silently erase it.
 
 **Expected**
 
-> Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state.
+> Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state; an mRNA launch visibly seeds its transcript filter.
 
-### Step 3: Set Gene label to TP73, promoter upstream bp to 40, and promoter downstream bp to 15
+### Step 3: Set Gene label to TP73, leave Transcript id empty, set promoter upstream bp to 40, and set promoter downstream bp to 15
 
 **GUI**
 
-Set `Gene label` to `TP73`, `promoter upstream bp` to `40`, and `promoter downstream bp` to `15`.
+Set `Gene label` to `TP73`, leave `Transcript id` empty, set `promoter upstream bp` to `40`, and set `promoter downstream bp` to `15`.
 
 **CLI (terminal)**
 
@@ -122,11 +124,11 @@ gentle_cli shell 'variant annotate-promoters tp73_promoter_artifact_demo --gene-
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Set `Gene label` to `TP73`, `promoter upstream bp` to `40`, and `promoter downstream bp` to `15`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Propose the exact chapter-wide settings `gene_label=TP73`, empty transcript filter, upstream 40 and downstream 15. State that these are synthetic teaching coordinates, not TP73 biological defaults.
 
 **Expected**
 
-> The window parameters are the tiny-locus tutorial values used by all downstream promoter reports.
+> The empty transcript filter and 40/15 window parameters are the chapter-wide tiny-locus values used by all downstream promoter reports.
 
 ### Step 4: Click Annotate promoter windows, then Compare alternative promoters; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows
 
@@ -142,11 +144,15 @@ gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offl
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Click `Annotate promoter windows`, then `Compare alternative promoters`; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> After approval, annotate and compare promoter windows. Verify from the structured report that three transcript interpretations collapse to spans `60..116` and `100..156`; do not infer promoter activity from the grouping.
 
 **Expected**
 
 > `alternative_promoters.json` reports three transcript windows collapsed into two DNA-level promoter windows.
+
+![The native Promoter design window shows all three transcript interpretations collapsed into two DNA-level promoter windows after clearing the mRNA-seeded transcript filter.](../../../screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png)
+
+*Figure: The native Promoter design window shows all three transcript interpretations collapsed into two DNA-level promoter windows after clearing the mRNA-seeded transcript filter. Screenshot captured 2026-10-01.*
 
 ### Step 5: Click Build evidence matrix; confirm the shared promoter row reports 2 tx and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence
 
@@ -162,11 +168,15 @@ gentle_cli shell 'features promoter-evidence-matrix tp73_promoter_artifact_demo 
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Click `Build evidence matrix`; confirm the shared promoter row reports `2 tx` and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Build and inspect the evidence matrix only after the promoter settings are bound. Report the two candidates, the shared row's two-transcript support and each observed evidence kind; keep synthetic overlap evidence separate from external validation.
 
 **Expected**
 
 > `evidence_matrix.json` contains two promoter candidates and shows the shared promoter with `2 tx` support plus multiple evidence kinds.
+
+![The native evidence matrix contains the two collapsed promoter candidates and their promoter geometry, transcript, TFBS, repeat, variant and CUT&RUN-style evidence summaries.](../../../screenshots/promoter_design_artifact_slice_offline/02-evidence-matrix.png)
+
+*Figure: The native evidence matrix contains the two collapsed promoter candidates and their promoter geometry, transcript, TFBS, repeat, variant and CUT&RUN-style evidence summaries. Screenshot captured 2026-10-01.*
 
 ### Step 6: Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures
 
@@ -182,7 +192,7 @@ gentle_cli shell 'features promoter-isoform-comparison tp73_promoter_artifact_de
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Compare isoform promoter groups using the same empty transcript filter and 40/15 geometry. Distinguish shared versus differential evidence without calling either promoter active.
 
 **Expected**
 
@@ -202,17 +212,17 @@ gentle_cli shell 'features promoter-expression-evidence tp73_promoter_artifact_d
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Before attaching expression rows, display the three synthetic transcript IDs, values, units and source label. Treat them as association evidence and require separate approval before writing the report artifact.
 
 **Expected**
 
 > `promoter_expression_evidence.json` links the synthetic expression rows to promoter groups through transcript IDs.
 
-### Step 8: Set TF motifs to SP1,TP53,TP63,TP73, run Show TF score tracks, then export TF score tracks SVG... for the visual artifact
+### Step 8: Set TF motifs to SP1,TP53,TP63,TP73 and score range 60..158. On the reviewed build, Show TF score tracks causes a stack overflow; use the generated SVG only as headless-engine evidence until a later exact GUI build passes
 
 **GUI**
 
-Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact.
+Set TF motifs to `SP1,TP53,TP63,TP73` and score range `60..158`. On the reviewed build, `Show TF score tracks` causes a stack overflow; use the generated SVG only as headless-engine evidence until a later exact GUI build passes.
 
 **CLI (terminal)**
 
@@ -222,11 +232,11 @@ gentle_cli shell 'features tfbs-score-tracks-svg tp73_promoter_artifact_demo art
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> For TF score tracks, bind the exact `60..158` span, motif set, score kind and clipping policy. State that the reviewed native button stack-overflows and offer the deterministic CLI/SVG route without presenting it as GUI acceptance.
 
 **Expected**
 
-> `tfbs_score_tracks.svg` is written and embedded below as the visual output of the chapter.
+> `tfbs_score_tracks.svg` is written and embedded as the headless visual artifact; the reviewed native TF score-track action is not accepted because it stack-overflows.
 
 ![TFBS score tracks across the synthetic TP73 promoter slice.](../artifacts/promoter_design_artifact_slice_offline/artifacts/tp73_promoter_artifact_demo.tfbs_score_tracks.svg)
 
@@ -234,11 +244,11 @@ gentle_cli shell 'features tfbs-score-tracks-svg tp73_promoter_artifact_demo art
 
 > SVG text labels: `Continuous TF motif score tracks | target=tp73_promoter_artifact_demo | span=60..158 | motifs=4 | score=llr_background_tail_log10 | forward strand = teal | reverse strand = ambe...`. If the embedded preview omits text in the GUI, open the linked SVG or use these labels as the figure legend.
 
-### Step 9: Set TFBS similarity anchor to SP1, compare against TP53,TP63,TP73,CTCF, run Show TFBS similarity ranking, then export the JSON ranking
+### Step 9: Set TFBS similarity anchor to SP1 and candidates to TP53,TP63,TP73,CTCF. The reviewed native action shares the same stack-overflow blocker; the generated JSON is CLI evidence, not a populated-GUI acceptance claim
 
 **GUI**
 
-Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.
+Set TFBS similarity anchor to `SP1` and candidates to `TP53,TP63,TP73,CTCF`. The reviewed native action shares the same stack-overflow blocker; the generated JSON is CLI evidence, not a populated-GUI acceptance claim.
 
 **CLI (terminal)**
 
@@ -248,11 +258,11 @@ gentle_cli shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --a
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> For similarity, bind SP1, the four candidates, Smoothed Spearman, span and score kind. Report the structured ranking as screening evidence only and retain the native-GUI blocker.
 
 **Expected**
 
-> `tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`.
+> `tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`; this does not substitute for the blocked native action.
 
 ### Step 10: Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order
 
@@ -268,12 +278,32 @@ gentle_cli workflow @docs/examples/workflows/promoter_design_artifact_slice_offl
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect the component manifest after all outputs exist. Require six present artifacts and zero missing required artifacts, then return their paths and checksums; an outer agent must also return its explicit state path and execution receipt.
 
 **Expected**
 
 > `promoter_artifact_manifest.json` lists the generated JSON/SVG components so downstream tools can present them in their own order.
 
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/promoter_design_artifact_slice_offline.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-promoter-design-artifact-slice-offline.state.json",
+  "workflow_path": "docs/examples/workflows/promoter_design_artifact_slice_offline.json",
+  "timeout_secs": 300
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
 
 ## Interpretation and Reference
 
@@ -312,7 +342,7 @@ gentle_cli shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --a
 
 ## Checkpoints
 
-- The workflow executes offline without warnings beyond the expected alternative-promoter collapse note.
+- A fresh direct workflow executes offline and its manifest reports six present artifacts with zero missing required artifacts.
 - `alternative_promoters.json` reports `transcript_window_count=3` and `collapsed_window_count=2`.
 - `evidence_matrix.json` reports two promoter candidates and includes `cutrun_peak_overlap`, `repeat_context`, `tfbs_annotation`, and `variant_overlap` among observed evidence kinds.
 - `isoform_promoter_comparison.json` reports two promoter groups and surfaces differential evidence signatures for the shared versus alternative-start promoter.
@@ -320,6 +350,7 @@ gentle_cli shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --a
 - `promoter_artifact_manifest.json` reports all required promoter component artifacts as present.
 - `tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.
 - `tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`.
+- Native alternative-promoter and evidence-matrix views pass after clearing the seeded transcript filter; native TFBS score/similarity actions remain blocked by the recorded stack overflow.
 
 ## What This Chapter Produces
 
@@ -348,7 +379,7 @@ gentle_cli shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --a
 - Executed during generation: `yes`
 - Automated status: `passing`
 - Review status: `human_reviewed`
-- Codex reviewed at: `2026-08-29`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `2026-05-18`
 - Inspect the source JSON when you need full option-level detail.
 

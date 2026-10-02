@@ -2,6 +2,15 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "gibson_arrangements_gui",
   "title": "Gibson Arrangements Tutorial",
+  "graphics": [
+    {
+      "kind": "generated",
+      "path": "docs/figures/gibson_single_insert_arrangement_gel.svg",
+      "caption": "Deterministic arrangement-level gel export with flanking DNA ladders and the vector, insert and assembled-product sample lanes in stored serial order.",
+      "illustrates_step": 5,
+      "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run render-pool-gel-svg with --arrangement arrangement-1 as shown in this tutorial."
+    }
+  ],
   "catalog": {
     "order": 5,
     "path": "docs/tutorial/03-07_gibson_arrangements_gui.md",
@@ -13,7 +22,13 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection, and arrangement-level gel export.",
+    "notes": "Hands-on walkthrough for Gibson-created arrangements, lane inspection and deterministic arrangement-level gel export, with explicit inner/outer-agent state and file-write boundaries.",
+    "interfaces": [
+      "native GUI",
+      "CLI / shared arrangement export",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent (explicit disposable state)"
+    ],
     "group": "03",
     "group_position": 7,
     "prerequisites": ["gibson_arrangements_baseline"],

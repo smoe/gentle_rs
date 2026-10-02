@@ -115,6 +115,59 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), self.payload)
 
+    def test_uniprot_review_evidence_hashes_survive_both_checkout_modes(self):
+        evidence_root = Path("docs/tutorial/reproducibility")
+        records = {
+            "tp53_uniprot_projection_online/tp53_grch38_ensembl116.gb":
+                "a6694752cd58bd16e6e5565725cc6d2fa3b127606f8ce3c6ee7890e327fecec3",
+            "tp53_uniprot_projection_online/map-result.json":
+                "bbdb7dad51f305061d24770f9e5bc5554ef34a1e330b8ee9556d7086a6028be5",
+            "tp53_uniprot_projection_online/feature-coding-dna.json":
+                "d12fa76661ec541f77fc4c3bfda15078edbc159a39d6d278e756ad67adc45f24",
+            "tp73_uniprot_projection_audit_online/tp73_uniprot_projection.svg":
+                "7cb5c32e7e0c9f605e55fca781cc3cce14028bbc0fd75ba19240ef53a95d8267",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        expected = {}
+        for name, digest in records.items():
+            relative = evidence_root / name
+            payload = (checker.ROOT / relative).read_bytes()
+            provenance = (checker.ROOT / relative.parent / "README.md").read_text(
+                encoding="utf-8")
+            self.assertIn(digest, provenance)
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), digest,
+                             f"Restore exact reviewed bytes / LF policy for {relative}")
+            expected[relative] = (payload, digest)
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained UniProt review evidence")
+
+        protected_paths = {path.as_posix().encode() for path in expected}
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not any(line.startswith(path + b" ") for path in protected_paths)
+        )
+        broken = Path(self.tmp.name) / "uniprot-review-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, (payload, digest) in expected.items():
+            with self.subTest(mode="unprotected-crlf", path=relative):
+                converted = (broken / relative).read_bytes()
+                self.assertEqual(converted, payload.replace(b"\n", b"\r\n"))
+                self.assertNotEqual(hashlib.sha256(converted).hexdigest(), digest)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"uniprot-review-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, (payload, digest) in expected.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    retained = (target / relative).read_bytes()
+                    self.assertEqual(retained, payload,
+                                     f"{relative.as_posix()} text eol=lf is required")
+                    self.assertEqual(hashlib.sha256(retained).hexdigest(), digest)
+
     def test_gene_assay_gui_evidence_hashes_survive_both_checkout_modes(self):
         (self.root / ".gitattributes").write_bytes(
             (checker.ROOT / ".gitattributes").read_bytes())

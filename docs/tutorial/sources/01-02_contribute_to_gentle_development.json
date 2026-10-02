@@ -21,6 +21,7 @@
     "tier": "advanced",
     "summary": "Executable contributor onboarding from baseline run to test/documentation checks.",
     "narrative": "Contributing effectively requires keeping biological behavior, command contracts, and docs in sync. This chapter provides a concrete contributor routine: run a baseline operation chain, then validate examples, tutorial generation, and tests before opening a change request.",
+    "outer_agent_replay": false,
     "use_cases": [
       "You want to submit a feature or fix without breaking cross-interface behavior.",
       "You need to verify that tutorial/docs stay synchronized with executable workflows.",

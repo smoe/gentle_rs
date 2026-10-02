@@ -20397,6 +20397,20 @@ mod tests {
         let local = catalog.source_plan("LocalProject", None).unwrap();
         assert_eq!(local.sequence_source_type, "local");
         assert_eq!(local.annotation_source_type, "local");
+
+        for genome_id in ["Human GRCh38 Ensembl 116", "Mouse GRCm39 Ensembl 116"] {
+            let plan = catalog.source_plan(genome_id, None).unwrap();
+            for source in [&plan.sequence_source, &plan.annotation_source] {
+                assert!(
+                    source.starts_with("https://ftp.ensembl.org/pub/release-116/"),
+                    "{genome_id} must use Ensembl's standard release-116 tree: {source}"
+                );
+                assert!(
+                    !source.contains("/release-116/vertebrates/"),
+                    "{genome_id} uses a nonexistent Ensembl release path: {source}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-02 - Integrate Glen's Tutorial Review With Portability Repairs
+
+- Integrate the 34-commit tutorial review through `ae21fc05` while preserving
+  the `.12` version and `package-opt1` rollover. Historical Linux GUI evidence
+  does not certify the merged candidate or Windows/macOS acceptance.
+- Pin four new checksum-bound TP53/TP73 text artifacts to LF and add a checkout
+  regression with an unprotected CRLF negative control. Preserve artifact bytes
+  and recorded hashes.
+- Keep promoter-manifest entries relative to the manifest directory, with no
+  fallback to unrelated current-directory files. Correct the canonical example
+  and its replay adapter together; add operation-level missing-file and path
+  regressions, and document the shared contract.
+- Remove three surplus README trailing blank lines. No local builds or tests
+  run; the `.12` report-regeneration blocker remains open for Glen.
+
 ## 2026-10-01 - Prepare `v0.1.0-internal.12` And Stage Package Optimization
 
 - Record the owner-confirmed `.11` publication at `a51bbc06`: native installer
@@ -24,6 +39,204 @@
   tutorial-version guard. Do not push this preparation as a CI-ready rollover.
   Locked offline Cargo metadata, Python/TOML/YAML syntax and whitespace checks
   passed; these are not substitutes for execution tests or native packaging.
+
+## 2026-10-01 - Review Tutorial Interfaces And Agent Roles
+
+- Review tutorial 08.03 with native three-to-two promoter-collapse and
+  two-candidate evidence-matrix captures. Teach that an mRNA launch seeds a
+  one-transcript filter, record the still-blocked native TFBS actions, and fix
+  fresh direct-workflow manifest resolution so all six just-written artifacts
+  are reported present instead of being looked up below `artifacts/artifacts`.
+
+- Review tutorial 08.01 with exact native setup captures and direct/outer-agent
+  artifact parity. Record the whole-sequence GUI stack overflow instead of
+  presenting headless success as GUI acceptance, and frame the 46 bp fixture
+  with 25 bp smoothing as deterministic software evidence rather than TF
+  binding, motif-equivalence or co-occupancy evidence.
+
+- Review tutorial 01.01 against current Agent Assistant, MCP and ClawBio
+  contracts. Distinguish the live-project inner agent, explicit-state outer
+  agents and repository coding agents; add a retained publication-safe GUI
+  capture and explain screenshot consent as a separate provider disclosure.
+- Document the outer-agent artifact/receipt expectation and delegated mutation
+  proposal boundary without claiming current-HEAD GUI or model acceptance.
+- Review tutorial 01.03 as an outer-agent/MCP transport lesson. Add bounded
+  inner- and outer-agent prompts, separate shared capability reachability from
+  MCP evidence, and explain why protocol bytes and receipts—not a terminal
+  screenshot—are the informative acceptance artifacts.
+- Generate one explicit outer-agent replay contract for every executable
+  tutorial chapter. Bind it to the chapter's canonical workflow and disposable
+  state, require structured artifacts/receipts, distinguish direct wrapper use
+  from approval-bound conversational delegation, and never imply access to an
+  unsaved GUI project.
+- Keep an explicit source-level opt-out for chapters whose editorial review is
+  unresolved; tutorial 01.02 remains skipped rather than receiving misleading
+  agent prose from the common generator.
+- Correct tutorial 02.02 to the actual 46 nt / `0..46` fixture span, add native
+  screenshots for the configured TFBS panel and populated RE/TFBS inspectors,
+  and distinguish review-first inner-agent help from explicit-state outer
+  replay. Record the twice-reproduced GUI score-track stack overflow as a
+  blocker instead of presenting the headless workflow pass as GUI acceptance.
+- Refresh tutorial 02.01 without duplicating its retained GUI-acceptance
+  captures: each inner-agent prompt now binds the exact input/output IDs,
+  lineage expectation and approval boundary, while catalog metadata names the
+  existing GUI, CLI/shared-shell and explicit-state outer-agent surfaces.
+- Register all nine legacy screenshots used by tutorial 02.03, retain them as
+  useful TP73/GRCh38 orientation evidence while stating their missing
+  exact-binary provenance, and add an explicit outer-agent workflow request
+  with network, genome-cache and approval boundaries.
+- Keep tutorial 02.04 as the executable online companion to 02.03 rather than
+  duplicating its screenshots. Bind inner-agent proposals to the public
+  accession, Ensembl catalog/cache boundary, exact dotplot parameters and
+  review-before-mutation contract; reserve structured artifacts and the
+  reproducibility receipt as the online execution evidence.
+- Give generated outer-agent requests for online tutorials a 7200-second
+  wrapper budget so reference-cache preparation cannot be cut off by the old
+  300-second offline default.
+- Review tutorial 02.05 with the exact synthetic 120 bp fixture. Retain native
+  Location and Create previews bound to the display revision, GUI binary and
+  fixture hashes; describe inner proposals and explicit-state outer replay
+  without claiming full Apply/Undo/Redo GUI acceptance.
+- Review tutorial 03.01 against its typed GUI-acceptance package. Replace
+  generic inner-agent prose with exact load/digest proposals, make `frag_1`
+  and `frag_2` plus their pool/lineage the checkpoint, and distinguish the
+  deterministic in-silico digest from physical digest or gel validation.
+- Reframe tutorial 03.03 as overlap preflight plus concatenation preview. Bind
+  inner-agent proposals to exact 320 bp inputs and the 20 bp shared span, state
+  that current outputs are 640 bp with duplicated overlap rather than a 620 bp
+  Gibson product, and separate outer workflow preparation from macro-preflight
+  evidence.
+- Review tutorial 03.05 as the full destination-first Gibson exercise. Correct
+  the six-section checklist, add exact review-before-apply inner/outer prompts,
+  and register the useful legacy lineage screenshot while stating that it
+  predates current exact-binary GUI evidence.
+- Review tutorial 03.07 as the semantic lane-order layer after Gibson apply.
+  Embed the deterministic arrangement-gel SVG, explain why it is stronger than
+  a dialog screenshot, and bind inner/outer agents to exact arrangement IDs,
+  lane order, disposable state and separately approved file export.
+- Review tutorial 03.08 as the physical projection layer. Embed the canonical
+  isometric rack SVG and bind agents to the exact rack, arrangement, occupied
+  positions, template and output path while separating digital placement from
+  real tube occupancy, fabrication fitness and print safety.
+- Review tutorial 04.01 without replacing its current typed GUI-acceptance
+  evidence. State that outer agents cannot inherit the unsaved map selection
+  and that the canonical workflow prepares only the starter sequence and
+  backend; require a separately reviewed `DesignPrimerPairs` payload and a
+  persisted report before treating outer replay as design evidence.
+- Review tutorial 04.02 against both retained primer-design reports. Replace
+  generic inner-agent prompts with exact, separately approved ROI/window,
+  design, inspection and export requests; preserve the second report's real
+  homopolymer/secondary-structure advisory and avoid claiming GUI screenshot,
+  genome-wide specificity or wet-lab acceptance from local ranking.
+- Repair tutorial 04.03's fastest path: the compact 800-base PCR extract has
+  no TP73 transcript lanes, while retained `simple_pcr_source_locus` supports
+  the verified feature-3 / `NM_005427.4` junction-only seed with 15
+  transcripts and 18 unique exons. Replace shell placeholders with discovered
+  ids and bind inner/outer agents to seed review before design or export.
+- Reframe tutorial 04.04 as an offline registry/filter/formatting lesson, not
+  proof of target identity or cloning readiness. Record the real `g1`/`g3`
+  pass and `g2` U6-terminator failure, explain why `passed_only` reads the
+  source-set filter report, and bind each mutating agent step separately.
+- Review tutorial 04.05 against its retained CSV and protocol-text bytes.
+  Require agents to expose registry mutation and both file writes separately,
+  verify the shared guide/set/template/oligo values, and label the outputs as
+  review artifacts rather than ordering approval or a validated laboratory
+  SOP.
+- Review legacy tutorial 04.06 as a synthetic CLI regression course rather
+  than human PATZ1 biology. Correct its two-versus-three panel wording and
+  replace eleven generic agent prompts with separate fixture, panel, compose,
+  export and external-specificity approvals while retaining the three exact
+  report artifacts as its evidence.
+- Review tutorial 04.07 with its dedicated real-binary replay. Add copyable
+  inner/outer-agent prompts for RT-pool geometry, missing JUC-threshold
+  provenance and the normalize/plan/execute approval sequence; keep external
+  specificity, vendor submission and wet-lab work outside those approvals.
+- Review tutorial 05.01 against the prepared LocalProject fixture. Bind agents
+  to the gene rather than duplicate CDS occurrence of plus-strand `etpC`, the
+  exact `AB011549.2` coordinates and shared cache, and the 877-to-1127 bp
+  strand-aware 5-prime extension with its lineage edge.
+- Repair tutorial 05.02's status/prepare ordering. Require a read-only
+  Ensembl-116 source and effective-cache preflight before network/disk approval,
+  document that `data/genomes` resolves to `assets/data/genomes` for the asset
+  catalog, replace the broken `/release-116/vertebrates/` human and mouse source
+  URLs with Ensembl's published release tree, and keep current acceptance
+  explicitly offline/`skipped_online`.
+- Review tutorial 05.03 without hiding its large online prerequisite. Bind TP63
+  to `ENSG00000073282` and its Ensembl-116 chromosome/strand/coordinate row,
+  explain the strand-aware 5-prime/3-prime coordinate changes and final 270025
+  bp anchor, split status, extraction and ordered extension proposals for the
+  inner agent, and retain an exact workflow/digest boundary for outer replay.
+- Review tutorial 06.01 against the live native Protein Evidence window and
+  current shared-shell routes. Add a hash-bound pre-fetch orientation capture,
+  identify the nominal protein as BRAF-201 rather than TP73, add copyable
+  inner/outer-agent boundaries, and record the correctly targeted Ensembl
+  provider failure plus unstable CLI path without claiming downstream success.
+  A separate mistargeted generic-fetch smoke exposed a default-worker stack
+  overflow; give the sequence-ingress worker the same explicit 16 MiB stack
+  used by other heavy engine workers and retain both real GUI evidence states.
+- Review tutorial 06.02 against the local TP73 project, native Protein Expert
+  and shared shell. Bind the unfiltered 15-row view and the filtered
+  `NM_005427.4` 636-aa result, expose missing-CDS ORF inference instead of
+  presenting it as curated protein truth, repair the incomplete CLI examples,
+  and add bounded inner/outer-agent requests plus two exact GUI captures.
+  Prefer gene metadata from the transcript features actually present in the
+  expert lanes, preventing unrelated locus annotations from supplying the
+  Protein Expert title. Keep the headless native save-dialog result explicitly
+  unaccepted while recording the successful 1200×880 shared-shell SVG export.
+- Review tutorial 06.03 without conflating its skipped online preparation with
+  local panel acceptance. Reuse the retained Ensembl-116 TP53 source to verify
+  strict 7/7 transcript/protein mapping, open the native Isoform Expert and add
+  two exact GUI captures. Regenerate the canonical architecture SVG with the
+  current 1400-pixel renderer, preserving exon-family colour links between
+  coordinate-true transcript geometry and isoform-local protein products.
+  Replace generic inner-agent prose with cache-aware, separately approved
+  prepare/extract/import/export boundaries and keep outer replay bound to an
+  explicit disposable state, artifacts and receipt.
+- Review tutorial 06.04 through a live P04637 fetch and a bounded,
+  provenance-bound GRCh38/Ensembl-116 TP53 locus while Ensembl's sequence REST
+  endpoint returned HTTP 500. Retain two native GUI captures plus the exact
+  mapping and coding-DNA read-backs: six mapped transcripts, 16 explicit
+  missing-transcript warnings and one exon-11 DNA-binding match spanning amino
+  acids 368-387 and 60 genomic bases. Replace generic inner-agent prompts with
+  network/cache/mutation approvals and honest partial-coverage boundaries.
+  Preserve every valid IUPAC ambiguity code during complement operations so an
+  N-only geometry fixture yields visible `N` bases rather than spaces; keep
+  such placeholder DNA explicitly non-interpretable.
+- Repair and review tutorial 06.05 against the fully prepared Ensembl-116 TP73
+  locus. Replace the biologically wrong TP63 accession `Q9H3D4` with reviewed
+  TP73 `O15350`, remove the retired hard-coded Ensembl protein dependency, and
+  require full exon/CDS annotation. Fix transcript accounting to intersect
+  genomic exons with the already mapped genomic CDS ranges instead of
+  transcript-local coordinates; all ten reviewed rows now satisfy
+  `translated_nt / 3 = derived_aa`. Retain native audit/parity captures and a
+  compact evidence bundle: six real protein-length mismatches, four rows
+  limited by Ensembl REST HTTP-500 missing evidence, and zero direct-vs-composed
+  divergences. Keep the maintainer-email text explicitly local and unsent, and
+  bind inner/outer agents to identity, evidence and approval boundaries.
+- Review tutorial 06.06 through its complete offline PATZ1 fixture and native
+  Splicing Expert. Retain Evidence- and Locus-figure captures that expose the
+  deliberate GRCh37 mismatch, three negative-strand transcript models, four
+  projected synthetic tracks, two occupancy groups, one TP73 motif track and
+  two probe-effect rows. Replace generic inner-agent prompts with evidence-
+  specific checks, keep the outer agent on a disposable canonical-workflow
+  replay, and state explicitly that neither route converts synthetic layers
+  into experimental PATZ1 regulation.
+- Review tutorial 07.01 through all five RNA-read batch routes and the native
+  mapping workspace. Retain two small TP53 acceptance captures showing six
+  aligned target-assigned fragments alongside zero seed-passed, complete and
+  direct-transition reads. Clarify that `selection=all`, target assignment,
+  molecule completeness and junction evidence are separate claims; bind the
+  inner agent to the selected persisted report and the outer agent to an
+  explicit state, sorted file/report manifest, approvals and structured
+  receipts while the one-shot batch-manifest operation remains absent.
+- Repair and review tutorial 07.02 against a cached Ensembl-116 TP53 extraction
+  and the committed 10,000-read fixture. Bind the report to mRNA feature `1`
+  instead of the gene row at feature `0`, restoring native GUI report access.
+  Reframe the chapter as an explicit local-annotation boundary: TP53 matches,
+  TP63/TP73 remain missing, no additional sparse lanes are added, 11 reads pass
+  phase 1 and none are aligned. Retain two native captures and require inner and
+  outer agents to preserve cache/network approval, feature identity,
+  requested-versus-matched genes and phase-1-only nonclaims.
 
 ## 2026-09-30 - Teach PATZ1 Primer Panels As Candidate Isoform Markers
 

@@ -1,0 +1,48 @@
+{
+  "schema": "gentle.manual_feature_editor_gui_evidence.v1",
+  "status": "manual_hybrid_partial_gui_observed",
+  "automated_gui_acceptance": false,
+  "input_policy": "publication_safe_synthetic_only",
+  "capture_date": "2026-10-01",
+  "capture_backend": "ImageMagick import -window on the native X11/Xvfb sequence window",
+  "environment": "Linux Xvfb without an EWMH window manager; manual/hybrid capture only",
+  "display": {
+    "revision": "387c8e9abbe6f2aa259d3ebfbf4f344f16855abf",
+    "gentle_gui_sha256": "740118a38fd8646d95800454ee9256ca884f9f99fef5af8ba219fd8b88fec36e",
+    "viewport_pixels": [840, 602],
+    "scope_note": "The following 02ba6625 commit changes tutorial generation and documentation only; no GUI source changed after this display build."
+  },
+  "input": {
+    "path": "docs/tutorial/inputs/feature_editor_demo.gb",
+    "sha256": "68a47abd53e69ed61427323a9aae907c36d22e8da427c472f031165e7f8e9c4c",
+    "length_nt": 120,
+    "annotation_count": 3
+  },
+  "captures": [
+    {
+      "id": "location_preview",
+      "raw_png": {
+        "path": "docs/screenshots/feature_editor_gui_cli/01-location-preview.raw.png",
+        "sha256": "19e4bc581aa53871ee96c0dd9ca3b75ddfa27e449d3c8a1d9cf44f85fbc032d3",
+        "size_bytes": 258728
+      },
+      "claim": "The native Location tab previews segment_A from 21..40 to 21..45, exposes the current feature fingerprint and lists two related annotations as review-only and not modified."
+    },
+    {
+      "id": "create_overlap_preview",
+      "raw_png": {
+        "path": "docs/screenshots/feature_editor_gui_cli/02-create-overlap-preview.raw.png",
+        "sha256": "bd12fe17c2eae711f34f5c1a2e1cb606cee05c31aee7369c893b97884ab8e984",
+        "size_bytes": 248479
+      },
+      "claim": "The native Create tab previews a 25..35 review_patch with ordered label/gene qualifiers and identifies the overlapping gene and segment_A records as not modified."
+    }
+  ],
+  "unverified_gui_scope": [
+    "Location apply followed by Undo and Redo",
+    "Create apply",
+    "Split, Merge and Delete tabs",
+    "Save, close and reopen"
+  ],
+  "headless_companion": "scripts.test_tutorial_walkthroughs.FeatureEditorWalkthroughTests"
+}

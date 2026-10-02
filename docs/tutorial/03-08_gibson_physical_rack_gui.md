@@ -157,6 +157,13 @@ What to verify in the exported SVG:
 
 This is the result intended for README reuse.
 
+![Deterministic isometric export of rack-1 using the pipetting PCR tube rack template](../figures/gibson_single_insert_rack_isometric.svg)
+
+The SVG is the rendered engine output, not a screenshot of the Rack window. It
+can therefore be regenerated and inspected for rack/template metadata. It
+still describes a planned digital placement—not confirmation that physical
+tubes occupy those positions.
+
 ## Step 6: Export the Other Physical Projections
 
 Still in the `Rack` window, optionally export:
@@ -190,6 +197,30 @@ This is the important conceptual point:
 - several downstream physical exports
 
 No second sample-description system is needed.
+
+## Inner and Outer Agents
+
+The **inner agent** can inspect the open project's arrangement and linked rack.
+Keep inspection and export separate:
+
+> Inspect the rack linked to the Gibson serial arrangement. Return the rack ID,
+> linked arrangement ID, template, occupied A1-style positions, material IDs
+> and ladder references. Propose an isometric export using
+> `pipetting_pcr_tube_rack`, but do not change the template or write any file
+> until I approve the exact rack and output path.
+
+The **outer agent** starts from explicit state rather than the unsaved Rack
+window:
+
+> Use GENtle's `gentle-cloning` skill to replay
+> `docs/examples/workflows/gibson_arrangements_baseline.json` into a new
+> disposable state. Return the structured result and reproducibility receipt,
+> inspect `rack-1`, then propose the exact `racks isometric-svg` request with
+> template `pipetting_pcr_tube_rack` and its output path. Stop before writing.
+
+Approve isometric, fabrication, carrier-label and OpenSCAD exports as separate
+file writes. The agent must not infer real tube occupancy, fabrication fitness
+or print safety from the digital rack model.
 
 ## CLI Parity
 

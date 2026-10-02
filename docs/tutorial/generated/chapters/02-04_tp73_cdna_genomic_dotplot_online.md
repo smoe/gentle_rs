@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json"
 example_test_mode: "online"
 executed_during_generation: false
 automated_status: "skipped_online"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/tp73_cdna_genomic_dotplot_online"
 ---
 
@@ -22,7 +22,7 @@ generated_artifact_dir: "docs/tutorial/generated/artifacts/tp73_cdna_genomic_dot
 
 Fetch TP73 cDNA, extract TP73 from GRCh38, and compute a pair-forward dotplot with high-sensitivity defaults (`word=7`, `step=1`, `mismatches=0`).
 
-This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces.
+This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces. Use tutorial 02.03 for the retained visual orientation sequence; this chapter adds the executable online workflow, pinned public identifiers, cache boundary and reproducibility receipt instead of duplicating those screenshots.
 
 ## What You Will Accomplish
 
@@ -41,7 +41,7 @@ This chapter captures a practical cDNA-vs-genomic verification route for transcr
 
 - You want a deterministic cDNA-vs-genomic control for exon/intron-aware interpretation.
 - You need a reproducible TP73 baseline for demonstrating dotplot settings to collaborators.
-- You want one canonical workflow file that mirrors your GUI tutorial run.
+- You want one canonical workflow file that mirrors your GUI tutorial run and records exactly which online inputs were requested.
 
 ## Walkthrough: GUI, CLI and Inner Agent
 
@@ -63,7 +63,7 @@ gentle_cli shell 'genbank fetch NM_001126241.3 --as-id tp73_cdna'
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Fetch GenBank accession `NM_001126241.3` as `tp73_cdna`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Check that network access is explicitly allowed, then propose the exact `FetchGenBankAccession` operation for accession `NM_001126241.3` with output id `tp73_cdna`. Report the accession and intended project state; do not fetch or mutate the project until I approve.
 
 **Expected**
 
@@ -84,7 +84,7 @@ gentle_cli genomes extract-gene "Human GRCh38 Ensembl 116" TP73 --occurrence 1 -
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Prepare `Human GRCh38 Ensembl 116`, retrieve gene `TP73` as `tp73_genomic`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect `assets/genomes.json` and the selected cache directory, then propose `PrepareGenome` for `Human GRCh38 Ensembl 116` followed by `ExtractGenomeGene` for the first `TP73` occurrence as `tp73_genomic`. State whether the reference is already cached and which remote/cache boundary would be crossed; do not download, extract or mutate state until I approve.
 
 **Expected**
 
@@ -104,12 +104,32 @@ gentle_cli shell 'dotplot compute tp73_cdna --reference-seq tp73_genomic --mode 
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open `tp73_cdna`, switch to `Dotplot map`, set pair mode against `tp73_genomic`, and compute with `word<=7`, `step=1`, `mismatches=0`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Verify that `tp73_cdna` and `tp73_genomic` exist, then propose `ComputeDotplot` in `pair_forward` mode with `word_size=7`, `step_bp=1`, `max_mismatches=0` and output id `tp73_cdna_vs_genomic_dotplot`. Show the exact bound parameters and expected artifact before execution; do not compute or store it until I approve.
 
 **Expected**
 
 > The dotplot compute route creates `tp73_cdna_vs_genomic_dotplot` with the same high-sensitivity seed settings used by the GUI.
 
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-tp73-cdna-genomic-dotplot-online.state.json",
+  "workflow_path": "docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json",
+  "timeout_secs": 7200
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
 
 ## Interpretation and Reference
 
@@ -141,6 +161,7 @@ gentle_cli shell 'dotplot show tp73_cdna_vs_genomic_dotplot'
 - Dotplot artifact is created and can be listed/shown by id (`tp73_cdna_vs_genomic_dotplot`).
 - Pair-forward map shows exon-block style structure rather than one continuous full-length diagonal.
 - GUI tutorial and workflow JSON describe the same parameter baseline.
+- The retained visual sequence remains in tutorial 02.03; this online replay records accession, assembly/catalog/cache choices, structured outputs and a reproducibility receipt rather than treating a screenshot as execution evidence.
 
 ## Tutorial Provenance
 
@@ -153,8 +174,8 @@ gentle_cli shell 'dotplot show tp73_cdna_vs_genomic_dotplot'
 - Example test_mode: `online`
 - Executed during generation: `no`
 - Automated status: `skipped_online`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
 - Inspect the source JSON when you need full option-level detail.

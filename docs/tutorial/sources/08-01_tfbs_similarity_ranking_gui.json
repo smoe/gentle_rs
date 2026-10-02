@@ -2,7 +2,29 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "tfbs_similarity_ranking_gui",
   "title": "TFBS Similarity Ranking Tutorial",
-  "graphics": [],
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tfbs_similarity_ranking_gui/01-motif-selection.png",
+      "caption": "The native TFBS panel contains the six reviewed local motif queries on the committed 46 bp sequence.",
+      "illustrates_step": 3,
+      "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tfbs_similarity_ranking_gui/02-ranking-settings.png",
+      "caption": "The ranking panel binds SP1, Smoothed Spearman, five explicit candidates through the selected-motif fallback, no remote metadata and limit 10 before execution.",
+      "illustrates_step": 5,
+      "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tfbs_similarity_ranking_gui/03-whole-sequence-action.png",
+      "caption": "The whole-sequence action immediately before the exact reviewed GUI build terminates with a stack overflow; this is blocker evidence, not a successful result-table capture.",
+      "illustrates_step": 6,
+      "capture_date": "2026-10-01"
+    }
+  ],
   "catalog": {
     "order": 44,
     "path": "docs/tutorial/08-01_tfbs_similarity_ranking_gui.md",
@@ -15,7 +37,13 @@
       "regulatory_analysis",
       "clawbio"
     ],
-    "notes": "GUI sign-off tutorial for ranking candidate transcription-factor motifs against one anchor motif over the same DNA span, with JSON export and workflow/ClawBio replay links.",
+    "notes": "Reviewed hybrid tutorial. Direct CLI and ClawBio wrapper produce semantically identical five-row reports, but the exact native GUI build stack-overflows when whole-sequence ranking starts. The 46 bp / 25 bp-smoothed values are software regression evidence, not biological TF similarity.",
+    "interfaces": [
+      "native GUI (configuration captured; ranking blocked by stack overflow)",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent (explicit workflow, output bundle and receipt)"
+    ],
     "group": "08",
     "group_position": 1
   }

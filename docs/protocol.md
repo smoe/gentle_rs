@@ -1044,7 +1044,11 @@ Behavior notes:
 - `ExportPromoterArtifactManifest` is a lightweight component index, not a
   narrative bundle. It records which JSON/SVG artifacts exist and whether
   required components are missing so downstream tools can compose their own
-  presentation
+  presentation. Absolute component paths are used as supplied; relative paths
+  are resolved only against the output manifest's directory, never by falling
+  back to the process working directory. For a manifest at `artifacts/index.json`,
+  a sibling component is `evidence.json`, not `artifacts/evidence.json`. Tutorial
+  replay relocates the manifest but preserves these component references.
 
 ## TF query resolution contract
 

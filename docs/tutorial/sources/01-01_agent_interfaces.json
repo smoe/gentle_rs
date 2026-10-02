@@ -2,6 +2,15 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "agent_interfaces",
   "title": "GENtle Agent Assistant and Agent Interfaces Tutorial",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png",
+      "caption": "Agent Assistant keeps a publication-safe synthetic viewport local when the selected agent system cannot accept images; provider submission remains disabled.",
+      "illustrates_step": 4,
+      "capture_date": "2026-09-28"
+    }
+  ],
   "catalog": {
     "order": 11,
     "path": "docs/tutorial/01-01_agent_interfaces.md",
@@ -14,7 +23,7 @@
       "mcp_users",
       "contributors"
     ],
-    "notes": "Practical guide for the in-app Agent Assistant, provider quick starts including Mistral, bounded fact context, a fact-grounded agent exercise, reviewed shared-shell suggestions, CLI/shared shell, MCP, and external coding agents.",
+    "notes": "Practical guide that distinguishes the live-project inner Agent Assistant, explicit-state MCP/ClawBio outer agents and repository coding agents. Covers provider quick starts including Mistral, bounded fact context, screenshot consent, reviewed shared-shell suggestions, artifact/receipt expectations and delegated mutation approval.",
     "group": "01",
     "group_position": 1
   }

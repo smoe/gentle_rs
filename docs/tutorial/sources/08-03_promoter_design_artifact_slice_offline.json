@@ -9,6 +9,20 @@
       "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
       "illustrates_step": 8,
       "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png",
+      "caption": "The native Promoter design window shows all three transcript interpretations collapsed into two DNA-level promoter windows after clearing the mRNA-seeded transcript filter.",
+      "illustrates_step": 4,
+      "capture_date": "2026-10-01"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/promoter_design_artifact_slice_offline/02-evidence-matrix.png",
+      "caption": "The native evidence matrix contains the two collapsed promoter candidates and their promoter geometry, transcript, TFBS, repeat, variant and CUT&RUN-style evidence summaries.",
+      "illustrates_step": 5,
+      "capture_date": "2026-10-01"
     }
   ],
   "catalog": {
@@ -22,7 +36,13 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "notes": "Reviewed synthetic promoter-evidence chapter. Native grouping and evidence-matrix views pass after clearing an mRNA-seeded transcript filter; fresh direct workflows now report all six manifest artifacts present. Native TFBS score/similarity buttons remain blocked by a reproducible stack overflow, while their CLI-generated artifacts pass.",
+    "interfaces": [
+      "native GUI (promoter grouping and evidence matrix accepted; TFBS actions blocked)",
+      "CLI / shared shell",
+      "Agent Assistant (inner, review-first and live-project scoped)",
+      "ClawBio / outer agent (explicit disposable state, artifact bundle and receipt)"
+    ],
     "group": "08",
     "group_position": 3
   },
@@ -31,7 +51,7 @@
     "example_id": "promoter_design_artifact_slice_offline",
     "tier": "core",
     "summary": "Learn how GENtle turns a TP73-like annotated locus into promoter windows, promoter evidence tables, expression-linked promoter groups, TFBS score tracks, similarity rankings, and a manifest of reusable artifacts.",
-    "narrative": "Promoter design begins by asking where transcription is likely to start for each transcript and which DNA span should be treated as the upstream regulatory context. GENtle first derives promoter windows around transcript starts, then collapses transcript-level interpretations that point to the same DNA span. It then collects evidence into portable artifacts: an alternative-promoter summary, a promoter evidence matrix, an isoform promoter comparison, expression evidence linked by transcript id, TFBS score-track graphics, TFBS similarity rankings, and a manifest that lets GUI users, CLI users, or ClawBio-style consumers choose their own presentation.\n\nThis tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.",
+    "narrative": "Promoter design begins by asking where transcription is likely to start for each transcript and which DNA span should be treated as the upstream regulatory context. GENtle first derives promoter windows around transcript starts, then collapses transcript-level interpretations that point to the same DNA span. It then collects evidence into portable artifacts: an alternative-promoter summary, a promoter evidence matrix, an isoform promoter comparison, expression evidence linked by transcript id, TFBS score-track graphics, TFBS similarity rankings, and a manifest that lets GUI users, CLI users, or ClawBio-style consumers choose their own presentation.\n\nThis tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.\n\nThe 2026-10-01 review found two operational boundaries worth teaching. Opening Promoter design from an mRNA seeds `Transcript id`; clear that field before expecting the chapter-wide three-to-two promoter collapse. Native grouping and evidence-matrix views then pass. The native TF score-track and similarity actions still terminate the exact reviewed GUI build with a stack overflow, so the generated SVG/JSON prove the shared headless engine only, not GUI acceptance. The same review repaired direct-workflow manifest resolution so a fresh run reports all six just-written artifacts as present instead of accidentally checking `artifacts/artifacts/...`. A real ClawBio wrapper replay then completed with status `ok`, collected all seven declared artifacts plus a derived PNG, and retained its execution manifest and checksums.",
     "use_cases": [
       "You want a fast offline Promoter design example before prepared Ensembl data are available.",
       "You want to verify that transcript-derived promoter windows collapse by DNA span instead of stacking duplicate promoter symbols.",
@@ -42,14 +62,14 @@
     ],
     "gui_steps": [
       "Open `docs/examples/assets/tp73_promoter_artifact_demo.gb` via `File -> Open Sequence...`.",
-      "Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features.",
-      "Set `Gene label` to `TP73`, `promoter upstream bp` to `40`, and `promoter downstream bp` to `15`.",
+      "Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features. If an mRNA seeded `Transcript id`, clear it before the chapter-wide comparison; leaving it set intentionally restricts the report to that one transcript.",
+      "Set `Gene label` to `TP73`, leave `Transcript id` empty, set `promoter upstream bp` to `40`, and set `promoter downstream bp` to `15`.",
       "Click `Annotate promoter windows`, then `Compare alternative promoters`; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows.",
       "Click `Build evidence matrix`; confirm the shared promoter row reports `2 tx` and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence.",
       "Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures.",
       "Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note.",
-      "Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact.",
-      "Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.",
+      "Set TF motifs to `SP1,TP53,TP63,TP73` and score range `60..158`. On the reviewed build, `Show TF score tracks` causes a stack overflow; use the generated SVG only as headless-engine evidence until a later exact GUI build passes.",
+      "Set TFBS similarity anchor to `SP1` and candidates to `TP53,TP63,TP73,CTCF`. The reviewed native action shares the same stack-overflow blocker; the generated JSON is CLI evidence, not a populated-GUI acceptance claim.",
       "Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order."
     ],
     "cli_steps": [
@@ -66,14 +86,14 @@
     ],
     "step_expectations": [
       "The canonical workflow loads the synthetic TP73-like locus under `tp73_promoter_artifact_demo` and writes the promoter artifact bundle.",
-      "Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state.",
-      "The window parameters are the tiny-locus tutorial values used by all downstream promoter reports.",
+      "Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state; an mRNA launch visibly seeds its transcript filter.",
+      "The empty transcript filter and 40/15 window parameters are the chapter-wide tiny-locus values used by all downstream promoter reports.",
       "`alternative_promoters.json` reports three transcript windows collapsed into two DNA-level promoter windows.",
       "`evidence_matrix.json` contains two promoter candidates and shows the shared promoter with `2 tx` support plus multiple evidence kinds.",
       "`isoform_promoter_comparison.json` separates the shared-TSS and alternative-start promoter groups.",
       "`promoter_expression_evidence.json` links the synthetic expression rows to promoter groups through transcript IDs.",
-      "`tfbs_score_tracks.svg` is written and embedded below as the visual output of the chapter.",
-      "`tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`.",
+      "`tfbs_score_tracks.svg` is written and embedded as the headless visual artifact; the reviewed native TF score-track action is not accepted because it stack-overflows.",
+      "`tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`; this does not substitute for the blocked native action.",
       "`promoter_artifact_manifest.json` lists the generated JSON/SVG components so downstream tools can present them in their own order."
     ],
     "prerequisites": [
@@ -89,6 +109,18 @@
       "Attach expression-level evidence to promoter groups through a structured report instead of free-text reasoning.",
       "Explain why TFBS score tracks and similarity rankings are screening artifacts that need control-set follow-up before motif-enrichment claims.",
       "Use one synthetic input to exercise JSON and SVG exports deterministically."
+    ],
+    "agent_steps": [
+      "Verify that the current live project contains the 249 bp synthetic sequence `tp73_promoter_artifact_demo`; propose opening Promoter design without claiming access to a separate CLI state. Do not mutate or export until approved.",
+      "Report whether Promoter design was opened from the gene or an mRNA. If `Transcript id` is seeded, explain that retaining it produces a one-transcript report and propose clearing it for the chapter-wide comparison; do not silently erase it.",
+      "Propose the exact chapter-wide settings `gene_label=TP73`, empty transcript filter, upstream 40 and downstream 15. State that these are synthetic teaching coordinates, not TP73 biological defaults.",
+      "After approval, annotate and compare promoter windows. Verify from the structured report that three transcript interpretations collapse to spans `60..116` and `100..156`; do not infer promoter activity from the grouping.",
+      "Build and inspect the evidence matrix only after the promoter settings are bound. Report the two candidates, the shared row's two-transcript support and each observed evidence kind; keep synthetic overlap evidence separate from external validation.",
+      "Compare isoform promoter groups using the same empty transcript filter and 40/15 geometry. Distinguish shared versus differential evidence without calling either promoter active.",
+      "Before attaching expression rows, display the three synthetic transcript IDs, values, units and source label. Treat them as association evidence and require separate approval before writing the report artifact.",
+      "For TF score tracks, bind the exact `60..158` span, motif set, score kind and clipping policy. State that the reviewed native button stack-overflows and offer the deterministic CLI/SVG route without presenting it as GUI acceptance.",
+      "For similarity, bind SP1, the four candidates, Smoothed Spearman, span and score kind. Report the structured ranking as screening evidence only and retain the native-GUI blocker.",
+      "Inspect the component manifest after all outputs exist. Require six present artifacts and zero missing required artifacts, then return their paths and checksums; an outer agent must also return its explicit state path and execution receipt."
     ],
     "concepts": [
       "shared_engine_contract",
@@ -140,14 +172,16 @@
       "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json"
     ],
     "checkpoints": [
-      "The workflow executes offline without warnings beyond the expected alternative-promoter collapse note.",
+      "A fresh direct workflow executes offline and its manifest reports six present artifacts with zero missing required artifacts.",
       "`alternative_promoters.json` reports `transcript_window_count=3` and `collapsed_window_count=2`.",
       "`evidence_matrix.json` reports two promoter candidates and includes `cutrun_peak_overlap`, `repeat_context`, `tfbs_annotation`, and `variant_overlap` among observed evidence kinds.",
       "`isoform_promoter_comparison.json` reports two promoter groups and surfaces differential evidence signatures for the shared versus alternative-start promoter.",
       "`promoter_expression_evidence.json` assigns three synthetic expression rows to the two promoter groups.",
       "`promoter_artifact_manifest.json` reports all required promoter component artifacts as present.",
       "`tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.",
-      "`tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`."
+      "`tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`.",
+      "A real outer-wrapper replay exits zero, collects the seven declared artifacts plus the derived score-track PNG, and retains a reproducibility receipt.",
+      "Native alternative-promoter and evidence-matrix views pass after clearing the seeded transcript filter; native TFBS score/similarity actions remain blocked by the recorded stack overflow."
     ]
   }
 }

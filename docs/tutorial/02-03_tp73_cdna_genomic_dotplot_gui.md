@@ -70,6 +70,38 @@ From a source checkout, replace `gentle_cli` with
 reference require network access; the dotplot itself is local once both
 sequences are loaded.
 
+### Outer agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the open GUI project, its unsaved sequences,
+or an implicit genome cache. Give it the canonical workflow, a disposable
+state path, and the repository-relative catalog/cache inputs. Ask it to report
+network and reference-preparation prerequisites before running:
+
+> Use GENtle's `gentle-cloning` skill to replay
+> `docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json` against a new
+> disposable state. First report the accession, genome catalog/cache, network
+> requirement, output IDs and expected dotplot artifact. Do not infer either
+> sequence from an open GUI. Return the structured operation results, retained
+> artifact and reproducibility receipt, and stop if the pinned reference cannot
+> be prepared.
+
+Equivalent direct wrapper request:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-tp73-cdna-genomic-dotplot.state.json",
+  "workflow_path": "docs/examples/workflows/tp73_cdna_genomic_dotplot_online.json",
+  "timeout_secs": 1800
+}
+```
+
+Direct structured invocation is explicit execution. If a conversational agent
+delegates a networked or state-changing route, preserve that route's
+proposal/approval boundary instead of treating this example as blanket
+permission.
+
 ## GUI Workflow
 
 Initial state:
@@ -236,9 +268,17 @@ cargo run --bin gentle_cli -- shell 'dotplot show tp73_cdna_vs_genomic'
   show the full context on first compute.
 - Refine `word`/`step` only when needed.
 
-## Screenshot Coverage Plan
+## Screenshot Coverage and Provenance
 
-Available and already embedded:
+The nine captures below are public TP73/GRCh38 teaching images from
+2026-03-20. They remain useful for orientation and interpretation, but they
+predate the repository's current checksum-bound screenshot evidence format and
+do not identify an exact display-binary revision. Treat them as **legacy manual
+evidence**, not as current automated GUI acceptance. The canonical workflow is
+the executable parity contract; a future native recapture should retain these
+same teaching checkpoints with hashes and semantic snapshots.
+
+Available, embedded, and now declared in the tutorial catalog:
 
 - `docs/screenshots/tutorial_cdna_genomic_01_main_start.png`
 - `docs/screenshots/tutorial_cdna_genomic_02_fetch_cdna_dialog.png`

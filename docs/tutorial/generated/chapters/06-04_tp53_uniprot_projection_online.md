@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/tp53_uniprot_projection_online.json"
 example_test_mode: "online"
 executed_during_generation: false
 automated_status: "skipped_online"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/tp53_uniprot_projection_online"
 ---
 
@@ -35,7 +35,7 @@ This chapter demonstrates the UniProt projection workflow as an inspectable brid
 **Prerequisites:** Read [Chapter 9: Prepare a reference genome cache (online)](./05-02_prepare_reference_genome_online.md) first.
 
 > **How to Run This Locally**
-> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.
+> Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The canonical workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally. For bounded replay when the Ensembl sequence service is unavailable, use `docs/tutorial/reproducibility/tp53_uniprot_projection_online/tp53_grch38_ensembl116.gb`; its GRCh38 bases and Ensembl-116 geometry are hash-bound in the adjacent README. That replay still fetches P04637 online and does not validate reference preparation. Do not use the N-only architecture fixture for coding-DNA interpretation.
 
 **Useful when:**
 
@@ -48,7 +48,7 @@ This chapter demonstrates the UniProt projection workflow as an inspectable brid
 1. Prepare Human GRCh38 Ensembl 116 and extract gene TP53 into grch38_tp53.
 2. Open File -> Protein Evidence..., fetch P04637, keep entry_id=P04637, choose sequence grch38_tp53, and run Project To Sequence.
 3. Inspect the stored projection with Open Protein Expert or export it with Render Protein Mapping SVG... so you can verify how UniProt domains/regions landed on the TP53 transcripts.
-4. In Feature coding DNA query, enter DNA-binding, leave feature transcript empty unless you want to pin one isoform, choose mode=both, and press Query Coding DNA.
+4. When resuming a saved project, click Use on tp53_uniprot_p04637 and Select on imported entry P04637 so both contexts are active. In Feature coding DNA query, enter DNA-binding, leave feature transcript empty unless you want to pin one isoform, choose mode=both, and press Query Coding DNA.
 5. Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span.
 
 ## Walkthrough: GUI, CLI and Inner Agent
@@ -72,7 +72,7 @@ gentle_cli genomes extract-gene "Human GRCh38 Ensembl 116" TP53 --occurrence 1 -
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Read `assets/genomes.json` and preflight exactly `Human GRCh38 Ensembl 116`. Propose reference preparation and the separate TP53 occurrence-1 extraction as `grch38_tp53`, exposing both Ensembl URLs, cache writes, timeout and output id. Treat network access, cache mutation and project mutation as separately reviewable; do not claim completion from the retained acceptance fixture.
 
 **Expected**
 
@@ -93,7 +93,7 @@ gentle_cli shell 'uniprot map P04637 grch38_tp53 --projection-id tp53_uniprot_p0
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open `File -> Protein Evidence...`, fetch `P04637`, keep `entry_id=P04637`, choose sequence `grch38_tp53`, and run `Project To Sequence`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Verify that `grch38_tp53` contains real A/C/G/T reference bases and transcript/CDS annotations before proposing the live UniProt fetch of `P04637` and projection id `tp53_uniprot_p04637`. After approval, report the fetched source URL, mapped-transcript count and every unmapped transcript warning; partial mapping is not full isoform coverage.
 
 **Expected**
 
@@ -114,17 +114,21 @@ gentle_cli render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Inspect the stored projection with `Open Protein Expert` or export it with `Render Protein Mapping SVG...` so you can verify how UniProt domains/regions landed on the TP53 transcripts. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect the stored projection before proposing the project-relative SVG write. Distinguish transcript-native rows from UniProt-consistent, low-confidence-external and derived-only rows, and return the artifact path/hash separately from any native screenshot.
 
 **Expected**
 
 > The shared expert inspection and SVG export expose the same projected domain geometry used by the GUI Protein Expert.
 
-### Step 4: In Feature coding DNA query, enter DNA-binding, leave feature transcript empty unless you want to pin one isoform, choose mode=both, and press Query Coding DNA
+![The native Protein Expert on the provenance-bound GRCh38/Ensembl-116 acceptance locus. Six UniProt-linked transcript projections are stored; the expert also keeps the broader transcript-native architecture and 16 missing UniProt transcript references explicit instead of hiding partial coverage.](../../../screenshots/tp53_uniprot_projection_online/01-protein-expert.png)
+
+*Figure: The native Protein Expert on the provenance-bound GRCh38/Ensembl-116 acceptance locus. Six UniProt-linked transcript projections are stored; the expert also keeps the broader transcript-native architecture and 16 missing UniProt transcript references explicit instead of hiding partial coverage. Screenshot captured 2026-10-01.*
+
+### Step 4: When resuming a saved project, click Use on tp53_uniprot_p04637 and Select on imported entry P04637 so both contexts are active. In Feature coding DNA query, enter DNA-binding, leave feature transcript empty unless you want to pin one isoform, choose mode=both, and press Query Coding DNA
 
 **GUI**
 
-In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.
+When resuming a saved project, click `Use` on `tp53_uniprot_p04637` and `Select` on imported entry `P04637` so both contexts are active. In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.
 
 **CLI (terminal)**
 
@@ -134,11 +138,15 @@ gentle_cli shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --m
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Resolve the exact stored projection and its imported P04637 entry (the native resume path uses `Use` on the projection row and `Select` on the entry row), query `DNA-binding` with `mode=both`, and report transcript, amino-acid span, exon attribution, strand and genomic DNA. Label the preferred-codon sequence as a designed alternative, never as observed genomic evidence; refuse sequence-specific interpretation when the locus contains only placeholder or ambiguous bases.
 
 **Expected**
 
 > The coding-DNA query reports genomic-as-encoded and optimized alternatives for mapped `DNA-binding` feature spans.
+
+![The expanded native coding-DNA result for the P04637 DNA-binding match on ENST00000269305.9: amino acids 368-387, exon 11, 60 bases of exact genomic coding DNA and a separately labelled translation-speed-oriented alternative.](../../../screenshots/tp53_uniprot_projection_online/02-feature-coding-dna.png)
+
+*Figure: The expanded native coding-DNA result for the P04637 DNA-binding match on ENST00000269305.9: amino acids 368-387, exon 11, 60 bases of exact genomic coding DNA and a separately labelled translation-speed-oriented alternative. Screenshot captured 2026-10-01.*
 
 ### Step 5: Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span
 
@@ -154,12 +162,32 @@ gentle_cli shell 'uniprot projection-show tp53_uniprot_p04637'
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Read back the persisted projection and query result without mutation. Preserve the 16 missing-transcript warnings from the reviewed P04637/Ensembl-116 pairing and explain that the result is one feature match, not a claim that every TP53 isoform is covered.
 
 **Expected**
 
 > Projection inspection keeps the transcript, feature, and evidence metadata available for audit after the GUI panel is closed.
 
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/tp53_uniprot_projection_online.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-tp53-uniprot-projection-online.state.json",
+  "workflow_path": "docs/examples/workflows/tp53_uniprot_projection_online.json",
+  "timeout_secs": 7200
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
 
 ## Interpretation and Reference
 
@@ -202,10 +230,10 @@ gentle_cli shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --m
 
 ## Checkpoints
 
-- UniProt fetch/import reports the reviewed TP53 entry and the projection operation stores `tp53_uniprot_p04637` in project metadata.
-- Open Protein Expert shows one protein reference axis with projected transcript/CDS lanes from the TP53 locus.
+- UniProt fetch/import reports reviewed TP53 entry P04637 and its exact source URL; projection stores `tp53_uniprot_p04637`, reports six mapped transcripts for the reviewed Ensembl-116 fixture and preserves all 16 missing-transcript warnings.
+- Open Protein Expert shows the transcript-native TP53 rows and clearly distinguishes UniProt-consistent, low-confidence-external and derived-only protein rows rather than implying complete external coverage.
 - Protein-mapping SVG export succeeds directly from the UniProt specialist without requiring a separate protein sequence window.
-- The feature-coding DNA query reports the coding-strand DNA for `DNA-binding` together with transcript-specific exon attribution, including an exon pair when the feature spans a splice junction.
+- The feature-coding DNA query reports one P04637 `DNA-binding` match on ENST00000269305.9 at amino acids 368-387: 60 coding-strand bases from exon 11 plus a separately labelled 60-base optimized alternative. Ambiguous placeholder bases remain `N`, never invisible spaces or interpretable genomic evidence.
 
 ## Tutorial Provenance
 
@@ -218,8 +246,8 @@ gentle_cli shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --m
 - Example test_mode: `online`
 - Executed during generation: `no`
 - Automated status: `skipped_online`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Execution note: set `GENTLE_TEST_ONLINE=1` before `tutorial-generate` to execute this chapter.
 - Inspect the source JSON when you need full option-level detail.

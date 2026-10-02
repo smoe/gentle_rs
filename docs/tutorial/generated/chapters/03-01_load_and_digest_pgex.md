@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/load_and_digest_pgex.json"
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/load_and_digest_pgex"
 ---
 
@@ -60,7 +60,7 @@ gentle_cli op '{"LoadFile":{"path":"test_files/pGEX-3X.gb","as_id":"pgex"}}'
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Load `test_files/pGEX-3X.gb` in the GUI and inspect annotated features. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Check that `test_files/pGEX-3X.gb` exists, then propose the exact `LoadFile` operation that would load it as `pgex`. Report the path, intended ID and expected circular annotated input; do not execute it until I approve.
 
 **Expected**
 
@@ -80,7 +80,7 @@ gentle_cli op '{"Digest":{"input":"pgex","enzymes":["BamHI","EcoRI"],"output_pre
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Verify that `pgex` exists and is the intended parent, then propose exactly one `Digest` operation with enzymes `BamHI,EcoRI` and output prefix `frag`. Show the selected parent, enzyme order and expected output namespace; do not execute it until I approve.
 
 **Expected**
 
@@ -108,7 +108,7 @@ gentle_cli workflow @docs/examples/workflows/load_and_digest_pgex.json
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Review created fragment entries and confirm they are stored as independent sequence products. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect the current project without rerunning the digest. Confirm that `pgex` remains present, that `frag_1` and `frag_2` are independent derived sequences in one fragment pool, and report their lineage to the digest operation. Do not interpret this in-silico result as wet-lab gel validation.
 
 **Expected**
 
@@ -118,6 +118,26 @@ gentle_cli workflow @docs/examples/workflows/load_and_digest_pgex.json
 
 *Figure: Whole-screen orientation after running the digest and publishing its fragment products. Screenshot captured 2026-09-08.*
 
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/load_and_digest_pgex.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-load-and-digest-pgex.state.json",
+  "workflow_path": "docs/examples/workflows/load_and_digest_pgex.json",
+  "timeout_secs": 300
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
 
 ## Interpretation and Reference
 
@@ -138,8 +158,9 @@ gentle_cli workflow @docs/examples/workflows/load_and_digest_pgex.json
 
 ## Checkpoints
 
-- Digest operation completes and creates fragment sequence IDs.
-- Fragment IDs are deterministic across repeated runs.
+- Digest operation completes and creates exactly `frag_1` and `frag_2` while retaining the parent `pgex` sequence.
+- The two products are independent derived sequences grouped in one fragment pool and retain lineage to the digest operation.
+- Fragment IDs are deterministic across repeated runs; the result is an in-silico digest, not evidence that a physical digest or gel succeeded.
 
 ## Tutorial Provenance
 
@@ -152,8 +173,8 @@ gentle_cli workflow @docs/examples/workflows/load_and_digest_pgex.json
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

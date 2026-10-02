@@ -3845,6 +3845,7 @@ pub struct PromoterExpressionEvidenceReport {
 pub struct PromoterArtifactManifestEntry {
     pub artifact_id: String,
     pub artifact_kind: String,
+    /// Absolute path, or a path relative to the output manifest's directory.
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub schema_hint: Option<String>,

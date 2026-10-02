@@ -4,7 +4,7 @@
 > Status: `manual/reference`
 > Audience: users operating GENtle through the in-app Agent Assistant, CLI/shared shell, MCP, or external coding agents.
 
-Last updated: 2026-09-09
+Last updated: 2026-10-01
 
 This tutorial explains how to let an AI assistant help with GENtle without
 giving up reproducibility. The most important idea is simple:
@@ -28,6 +28,22 @@ For a complete offline MCP exercise without an AI provider, follow
 [Discover MCP Tools and Verify a Shared GENtle Result](./01-03_mcp_offline_roundtrip.md).
 It retains real MCP messages, demonstrates refusal without confirmation, and
 compares one scientific report with the CLI/shared-shell routes.
+
+## Inner agent, outer agent, or coding agent?
+
+These names describe **where the agent runs and which boundary it uses**. They
+do not imply three different biology implementations.
+
+| Route | Sees the unsaved GUI project? | Executes through | Best used for |
+|---|---|---|---|
+| **Inner agent** (Agent Assistant) | Yes, but only the state summary, bounded fact context and attachments you choose to disclose | reviewed shared-shell suggestions inside the running GENtle process | explaining the current project, proposing one next command, and opening a registered GENtle view |
+| **Outer agent** (MCP or ClawBio/OpenClaw) | No | typed MCP tools or the `gentle-cloning` wrapper against an explicit state/workflow | reproducible automation, artifact bundles, receipts and cross-tool orchestration |
+| **Coding agent** (Codex, Claude Code, similar) | No | repository files, tests and explicit CLI/MCP invocations | implementing a missing route or repairing documentation and tests |
+
+An outer agent can reproduce a saved workflow, but it must not claim to have
+seen an unsaved GUI selection or clicked a visible control. Conversely, the
+inner agent may arrange the live GUI through registered `ui ...` commands, but
+it is not a general operating-system agent and does not edit GENtle source.
 
 ## 1) The mental model
 
@@ -212,6 +228,29 @@ expects a `gentle.agent_response.v1` reply:
 Important: `suggested_commands[].command` contains GENtle shared-shell
 commands, not operating-system shell commands. GENtle runs them internally after
 you review them.
+
+![Agent Assistant holding a publication-safe synthetic TSS-view screenshot locally before any provider submission.](../screenshots/tss_regulatory_view_gui/agent-assistant-report-command.raw.png)
+
+*Figure: The selected Built-in Echo system does not support images, so GENtle
+keeps the attached synthetic screenshot local and disables submission. This
+retained Linux/X11 capture is bound to revision `8652ecf2`; it illustrates the
+consent boundary, not current-HEAD GUI acceptance or model quality. See the
+[evidence record](../screenshots/tss_regulatory_view_gui/evidence.json).*
+
+### Screenshots are a separate disclosure
+
+Use `Agent help` in the GENtle window whose visible state matters. GENtle first
+previews the captured viewport locally; it sends the image only after you choose
+an image-capable system and click `Ask Agent`. An image-capable inner agent may
+also request one screenshot with a reason, but that creates only a consent card:
+you select one registered GENtle content window and explicitly allow one
+capture. Auto-run cannot approve it, and the agent cannot name arbitrary desktop
+windows, paths or coordinates.
+
+Project context and screenshots answer different questions. Structured state is
+better for identities, coordinates and provenance; a screenshot is useful for
+layout, colour, direction and enabled/disabled controls. Review each disclosure
+independently and use only public or synthetic material for tutorial evidence.
 
 ### Starting from an empty project
 
@@ -635,7 +674,51 @@ Prefer this policy while learning:
 GENtle blocks recursive agent execution. Suggested commands may not silently run
 `agents ask`, `agents plan`, or `agents execute-plan` again.
 
-## 10) The external path: Claude, Codex, or another coding agent
+## 10) The outer path: MCP, ClawBio/OpenClaw, or a coding agent
+
+An outer agent works against an explicit saved state, workflow or input bundle.
+It does not inherit the in-memory GUI project. Ask it to report the exact state
+path, workflow, written artifacts and reproducibility receipt rather than merely
+saying that the task was completed.
+
+### ClawBio/OpenClaw
+
+GENtle ships the generic `gentle-cloning` skill and narrower delegated skills.
+The generic wrapper can replay a structured workflow request directly. A
+conversationally selected delegated route that mutates state or writes artifacts
+must first return `approval_required`; a second invocation may execute only the
+exact digest the caller attests was approved.
+
+A useful outer-agent request is:
+
+```text
+Use GENtle's gentle-cloning skill with an explicit disposable state path.
+First show me the selected route, inputs, outputs and whether it is read-only or
+confirmation-gated. Do not infer anything from an unsaved GUI project. Return
+the structured result, produced artifacts and reproducibility receipt; do not
+execute a mutating delegated proposal until I approve its exact digest.
+```
+
+For a deterministic workflow already stored in the checkout, the corresponding
+structured request has this shape:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/tutorial.state.json",
+  "workflow_path": "docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json",
+  "timeout_secs": 240
+}
+```
+
+Run that request through the copied `gentle-cloning` skill in a ClawBio
+checkout. The wrapper delegates scientific work to the same GENtle CLI and
+retains `result.json`, `report.md` and reproducibility metadata. The outer agent
+may summarize these records; it must not replace them with an untraceable prose
+claim.
+
+### Coding agents
 
 Use this when the assistant is outside GENtle and can run terminal commands or
 edit the checkout.

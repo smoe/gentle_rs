@@ -242,6 +242,36 @@ Expected interpretation:
 - the insert does not need to already contain those overlaps because the primer
   suggestions add them at the `5'` end
 
+## Inner and Outer Agents
+
+The **inner agent** can inspect the open project's destination, insert and
+current preview. Keep it review-first:
+
+> Inspect the current Gibson specialist plan for destination
+> `gibson_destination_pgex`, insert `gibson_insert_demo`, defined opening
+> `941..941`, 30 bp overlaps and output hint `gibson_ui_test_product`. Return
+> the complete plan, blocking diagnostics, two resolved junctions and two
+> primer suggestions. Do not apply cloning or export files; wait for my
+> approval of this exact plan.
+
+Changing an opening, sequence, orientation or target invalidates that proposal.
+Apply only after reviewing the newly bound plan; clicking a lineage operation
+later should reopen it for inspection, not execute it again.
+
+The **outer agent** cannot see unsaved GUI selections or inherit the open
+project's undo stack. Save the project and export the plan first, then ask it
+for the same read-only parity check used in Step 9:
+
+> Use GENtle's `gentle-cloning` skill with the explicitly saved tutorial
+> project and exported `gibson_ui_test.plan.json`. Run only the shared
+> `gibson preview` route, retain the structured preview and reproducibility
+> receipt, and compare it byte-for-byte with the GUI-exported preview. Do not
+> infer an opening from GUI state and do not apply Gibson cloning.
+
+An outer-agent apply would be a separate state mutation and needs its own exact
+proposal and approval. A matching preview establishes engine parity, not
+biological optimality or wet-lab success.
+
 ## Step 8: Apply and Export the Outputs
 
 GUI:
@@ -275,6 +305,12 @@ What to verify:
 - the primer summary is human-readable
 - the SVG opens and matches the resolved cartoon logic described by the
   textual review blocks
+
+![Historical native lineage view after Gibson apply, showing the destination and insert feeding primer and product outputs](../screenshots/tutorial_gibson_specialist_testing_08_lineage_graph.png)
+
+This 2026-03-23 image is useful orientation for the expected graph shape, but
+it predates the current hash-bound acceptance package. The exported plan,
+preview and current project state remain the execution evidence.
 
 ## Step 9: Check Shared CLI Parity
 
@@ -332,7 +368,7 @@ Why this is expected:
 
 Mark the tutorial successful if all of these are true:
 
-- [ ] `Patterns -> Gibson...` opens and shows all five sections
+- [ ] `Patterns -> Gibson...` opens and shows all six sections
 - [ ] `Tm Model` is visible as a dedicated box
 - [ ] circular destination + linear insert can be chosen without ambiguity
 - [ ] the specialist warning text says multi-insert execution currently

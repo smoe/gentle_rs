@@ -7,14 +7,14 @@ source_example: "docs/examples/workflows/prepare_extract_extend_localproject_gen
 example_test_mode: "always"
 executed_during_generation: true
 automated_status: "passing"
-review_status: "unreviewed"
+review_status: "codex_reviewed"
 review_stale: false
-codex_reviewed_at: null
+codex_reviewed_at: "2026-10-01"
 human_reviewed_at: null
 human_reviewer: null
 review_stale_reason: null
-review_issue_template: "Tutorial confusion"
-review_issue_template_path: ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+review_issue_template: null
+review_issue_template_path: null
 generated_artifact_dir: "docs/tutorial/generated/artifacts/find_and_extend_genomic_target_local_catalog"
 ---
 
@@ -60,7 +60,7 @@ gentle_cli genomes prepare LocalProject --catalog assets/genomes.json --cache-di
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open `File -> Prepare Reference Genome...`, set catalog to `assets/genomes.json`, choose `LocalProject`, and prepare it. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect `assets/genomes.json` and propose `PrepareGenome` for exactly `LocalProject` with cache `cache/localproject`. State that this is the committed offline fixture and expose the cache/index writes; do not prepare or change a different catalog/cache until I approve.
 
 **Expected**
 
@@ -81,11 +81,11 @@ gentle_cli genomes extract-gene LocalProject etpC --occurrence 1 --output-id loc
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: Open `File -> Retrieve Genome Sequence...`, use `Gene filter` (regex) to narrow annotation hits, pick one gene match, and extract it. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Using the same prepared cache, list `^etp` candidates and distinguish the duplicate gene/CDS rows. Select the gene-biotype `etpC` occurrence 1 on `AB011549.2`, plus strand, 2589..3465 (1-based), then propose `ExtractGenomeGene` as `local_etpc`. Show genome, occurrence, coordinates and output id before mutation; do not substitute the CDS row or a prefix match.
 
 **Expected**
 
-> The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.
+> The gene listing exposes separate gene/CDS rows; extraction binds gene-biotype `etpC` occurrence 1 on plus-strand `AB011549.2:2589..3465` to the 877 bp sequence `local_etpc`.
 
 ### Step 3: In the resulting DNA window, use the Extend 5' / Extend 3' anchor controls (next to Genome anchor) to add flanking context
 
@@ -101,12 +101,32 @@ gentle_cli genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 -
 
 **Ask the inner agent**
 
-> In the current GENtle project, help me perform this tutorial step: In the resulting DNA window, use the `Extend 5'` / `Extend 3'` anchor controls (next to `Genome anchor`) to add flanking context. Show the exact GENtle operation or command and its expected result for my review. State any missing input. Do not execute it until I approve.
+> Inspect the verified anchor on `local_etpc`, then propose `ExtendGenomeAnchor` on biological `five_prime` by 250 bp as `local_etpc_ext5`. Explain that plus-strand 5-prime extension changes 2589..3465 to 2339..3465, predicts length 1127 bp, and must create a lineage edge from the 877 bp parent; wait for approval before creating it.
 
 **Expected**
 
-> Anchor extension creates `local_etpc_ext5` with widened interval provenance rather than a disconnected sequence copy.
+> Anchor extension creates 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with a lineage edge from `local_etpc`, rather than a disconnected sequence copy.
 
+
+## Ask an Outer Agent (MCP or ClawBio/OpenClaw)
+
+An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.
+
+> Use GENtle's `gentle-cloning` skill to replay `docs/examples/workflows/prepare_extract_extend_localproject_gene.json` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.
+
+Equivalent direct structured request for the generic wrapper:
+
+```json
+{
+  "schema": "gentle.clawbio_skill_request.v1",
+  "mode": "workflow",
+  "state_path": "/tmp/gentle-find-and-extend-genomic-target-local-catalog.state.json",
+  "workflow_path": "docs/examples/workflows/prepare_extract_extend_localproject_gene.json",
+  "timeout_secs": 300
+}
+```
+
+Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.
 
 ## Interpretation and Reference
 
@@ -141,8 +161,8 @@ gentle_cli genomes extend-anchor local_etpc 5p 500 --output-id local_etpc_ext5_m
 ## Checkpoints
 
 - PrepareGenome succeeds for `LocalProject` without network access.
-- ExtractGenomeGene produces `local_etpc` from annotation-backed lookup.
-- ExtendGenomeAnchor produces `local_etpc_ext5` with widened genomic interval provenance.
+- ExtractGenomeGene produces 877 bp `local_etpc` from the gene-biotype `etpC` occurrence at `AB011549.2:2589..3465` on the plus strand.
+- ExtendGenomeAnchor produces 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with widened genomic interval provenance and a parent-child lineage edge.
 
 ## Tutorial Provenance
 
@@ -155,8 +175,8 @@ gentle_cli genomes extend-anchor local_etpc 5p 500 --output-id local_etpc_ext5_m
 - Example test_mode: `always`
 - Executed during generation: `yes`
 - Automated status: `passing`
-- Review status: `unreviewed`
-- Codex reviewed at: `not recorded`
+- Review status: `codex_reviewed`
+- Codex reviewed at: `2026-10-01`
 - Human reviewed at: `not recorded`
 - Inspect the source JSON when you need full option-level detail.
 

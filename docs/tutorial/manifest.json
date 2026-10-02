@@ -138,6 +138,11 @@
         "cargo run --bin gentle_cli -- op '{\"Branch\":{\"input\":\"pgex_fasta\",\"output_id\":\"pgex_fasta_branch\"}}'",
         "cargo run --bin gentle_cli -- op '{\"ReverseComplement\":{\"input\":\"pgex_fasta_branch\",\"output_id\":\"pgex_fasta_branch_rc\"}}'"
       ],
+      "agent_steps": [
+        "Check whether `test_files/pGEX_3X.fa` is available, then propose the exact `LoadFile` operation that would load it as `pgex_fasta`. State the project context and expected provenance fields. Do not execute it until I approve.",
+        "Verify that `pgex_fasta` exists in the current project, then propose a `Branch` operation producing `pgex_fasta_branch` while preserving the source record. Show the expected lineage edge and do not execute it until I approve.",
+        "Verify that `pgex_fasta_branch` exists, then propose a `ReverseComplement` operation producing `pgex_fasta_branch_rc`. Explain that the GUI auto-suffix `_revcomp` differs from this explicit scripted ID, and do not execute it until I approve."
+      ],
       "step_expectations": [
         "The project state contains the loaded source sequence `pgex_fasta` while preserving its file provenance.",
         "A separate derivative sequence `pgex_fasta_branch` appears without replacing the original FASTA record.",
@@ -356,10 +361,15 @@
         "cargo run --bin gentle_cli -- genomes genes LocalProject --catalog assets/genomes.json --cache-dir cache/localproject --filter '^etp' --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene LocalProject etpC --occurrence 1 --output-id local_etpc --catalog assets/genomes.json --cache-dir cache/localproject",
         "cargo run --bin gentle_cli -- genomes extend-anchor local_etpc 5p 250 --output-id local_etpc_ext5 --catalog assets/genomes.json --cache-dir cache/localproject"
       ],
+      "agent_steps": [
+        "Inspect `assets/genomes.json` and propose `PrepareGenome` for exactly `LocalProject` with cache `cache/localproject`. State that this is the committed offline fixture and expose the cache/index writes; do not prepare or change a different catalog/cache until I approve.",
+        "Using the same prepared cache, list `^etp` candidates and distinguish the duplicate gene/CDS rows. Select the gene-biotype `etpC` occurrence 1 on `AB011549.2`, plus strand, 2589..3465 (1-based), then propose `ExtractGenomeGene` as `local_etpc`. Show genome, occurrence, coordinates and output id before mutation; do not substitute the CDS row or a prefix match.",
+        "Inspect the verified anchor on `local_etpc`, then propose `ExtendGenomeAnchor` on biological `five_prime` by 250 bp as `local_etpc_ext5`. Explain that plus-strand 5-prime extension changes 2589..3465 to 2339..3465, predicts length 1127 bp, and must create a lineage edge from the 877 bp parent; wait for approval before creating it."
+      ],
       "step_expectations": [
         "The offline `LocalProject` reference is prepared into `cache/localproject` without network access.",
-        "The gene listing narrows annotation candidates, and extraction creates the anchored sequence id `local_etpc`.",
-        "Anchor extension creates `local_etpc_ext5` with widened interval provenance rather than a disconnected sequence copy."
+        "The gene listing exposes separate gene/CDS rows; extraction binds gene-biotype `etpC` occurrence 1 on plus-strand `AB011549.2:2589..3465` to the 877 bp sequence `local_etpc`.",
+        "Anchor extension creates 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with a lineage edge from `local_etpc`, rather than a disconnected sequence copy."
       ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
@@ -406,8 +416,8 @@
       "retain_outputs": [],
       "checkpoints": [
         "PrepareGenome succeeds for `LocalProject` without network access.",
-        "ExtractGenomeGene produces `local_etpc` from annotation-backed lookup.",
-        "ExtendGenomeAnchor produces `local_etpc_ext5` with widened genomic interval provenance."
+        "ExtractGenomeGene produces 877 bp `local_etpc` from the gene-biotype `etpC` occurrence at `AB011549.2:2589..3465` on the plus strand.",
+        "ExtendGenomeAnchor produces 1127 bp `local_etpc_ext5` at `AB011549.2:2339..3465` with widened genomic interval provenance and a parent-child lineage edge."
       ]
     },
     {
@@ -438,6 +448,11 @@
         "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX-3X.gb\",\"as_id\":\"pgex\"}}'",
         "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"frag\"}}'",
         "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/load_and_digest_pgex.json"
+      ],
+      "agent_steps": [
+        "Check that `test_files/pGEX-3X.gb` exists, then propose the exact `LoadFile` operation that would load it as `pgex`. Report the path, intended ID and expected circular annotated input; do not execute it until I approve.",
+        "Verify that `pgex` exists and is the intended parent, then propose exactly one `Digest` operation with enzymes `BamHI,EcoRI` and output prefix `frag`. Show the selected parent, enzyme order and expected output namespace; do not execute it until I approve.",
+        "Inspect the current project without rerunning the digest. Confirm that `pgex` remains present, that `frag_1` and `frag_2` are independent derived sequences in one fragment pool, and report their lineage to the digest operation. Do not interpret this in-silico result as wet-lab gel validation."
       ],
       "step_expectations": [
         "The state contains the annotated pGEX sequence as `pgex`.",
@@ -475,8 +490,9 @@
       "follow_up_commands": [],
       "retain_outputs": [],
       "checkpoints": [
-        "Digest operation completes and creates fragment sequence IDs.",
-        "Fragment IDs are deterministic across repeated runs."
+        "Digest operation completes and creates exactly `frag_1` and `frag_2` while retaining the parent `pgex` sequence.",
+        "The two products are independent derived sequences grouped in one fragment pool and retain lineage to the digest operation.",
+        "Fragment IDs are deterministic across repeated runs; the result is an in-silico digest, not evidence that a physical digest or gel succeeded."
       ],
       "graphics": [
         {
@@ -700,7 +716,7 @@
     {
       "id": "gibson_two_fragment_overlap_preview",
       "order": 4,
-      "title": "Gibson two-fragment overlap planning baseline",
+      "title": "Gibson two-fragment overlap preflight and concatenation preview",
       "group": "03",
       "group_label": "Cloning & Assembly",
       "group_order": 3,
@@ -709,11 +725,11 @@
       "example_id": "gibson_two_fragment_overlap_preview",
       "tier": "core",
       "guide_path": null,
-      "summary": "Use the built-in Gibson routine baseline to validate overlap assumptions and generate deterministic preview assemblies.",
-      "narrative": "Gibson assembly in practice depends on overlap design quality. This chapter anchors that design logic in GENtle through one repeatable workflow: build two overlapping fragments, run Gibson-specific preflight checks on overlap compatibility, and produce forward-order preview sequences for review and communication.",
+      "summary": "Validate a 20 bp two-fragment overlap and generate deterministic, explicitly non-final concatenation previews.",
+      "narrative": "Gibson assembly in practice depends on overlap design quality. This chapter anchors that design logic in GENtle through one repeatable workflow: build two overlapping fragments, run Gibson-specific preflight checks on overlap compatibility, and produce forward-order concatenation previews for review and communication. GENtle does not yet provide a dedicated overlap-eliding Gibson assembly operation: two 320 bp inputs with a shared 20 bp overlap produce a 640 bp preview, not a 620 bp Gibson product. Use the preview to review order and diagnostics, never as an order-ready construct sequence.",
       "use_cases": [
         "You want reproducible documentation of intended Gibson fragment order and overlap assumptions.",
-        "You need fast preflight feedback before primer ordering or wet-lab execution.",
+        "You need fast overlap and fragment-order feedback before primer ordering or wet-lab execution, while retaining the distinction between a preview and a final construct.",
         "You want one routine that can be explained to collaborators through GUI + shell parity."
       ],
       "gui_steps": [
@@ -726,10 +742,15 @@
         "cargo run --bin gentle_cli -- shell 'macros template-import assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json'",
         "cargo run --bin gentle_cli -- shell 'macros template-run gibson_two_fragment_overlap_preview --bind left_seq_id=gibson_left --bind right_seq_id=gibson_right --bind overlap_bp=20 --bind assembly_prefix=gibson_demo --bind output_id=gibson_demo_forward --validate-only'"
       ],
+      "agent_steps": [
+        "Inspect `test_files/pGEX_3X.fa` and propose the exact load plus `ExtractRegion` operations for `gibson_left` at `[0,320)` and `gibson_right` at `[300,620)`. Confirm that each input is 320 bp and their intended shared span is 20 bp. Explain that the workflow's 640 bp concatenation previews retain both overlap copies; do not execute until I approve.",
+        "Check whether `gibson_two_fragment_overlap_preview` is registered. If it is absent, propose the exact template import from `assets/cloning_patterns_catalog/gibson/overlap_assembly/gibson_two_fragment_overlap_preview.json`; treat registry mutation separately and do not import until I approve.",
+        "Propose a validate-only run for `gibson_left`, `gibson_right`, `overlap_bp=20`, `assembly_prefix=gibson_demo` and `output_id=gibson_demo_forward`. Return the complete preflight report and stop. If I later request execution, propose a separate transactional run and state that its 640 bp output is a concatenation preview, not an overlap-elided Gibson product."
+      ],
       "step_expectations": [
-        "The workflow loads `pgex_fasta`, extracts `gibson_left` and `gibson_right`, and leaves deterministic preview IDs for inspection.",
+        "The workflow loads `pgex_fasta`, extracts 320 bp `gibson_left` and `gibson_right` inputs sharing the intended 20 bp source span, and leaves deterministic 640 bp concatenation-preview IDs for inspection.",
         "The routine catalog registers `gibson_two_fragment_overlap_preview`, so the next shell command can validate that specific fragment order.",
-        "The validate-only run reports executable bindings for the chosen overlap; rerun with `--transactional` to create the named preview assembly."
+        "The validate-only run reports executable bindings for the chosen overlap; a separately approved `--transactional` run creates the named 640 bp concatenation preview, not a final Gibson product."
       ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
@@ -737,7 +758,7 @@
       "learning_objectives": [
         "Understand where Gibson overlap assumptions are checked in shared-shell preflight.",
         "Interpret overlap mismatch diagnostics before state mutation.",
-        "Use deterministic output IDs for clear cloning communication."
+        "Use deterministic output IDs for clear cloning communication without confusing a concatenation preview with an overlap-elided product sequence."
       ],
       "concepts": [
         "shared_engine_contract",
@@ -764,7 +785,7 @@
           "where_used": "template run output naming",
           "why_it_matters": "Stable IDs make review/export/communication unambiguous.",
           "how_to_derive": "Use project-specific names (for example `tp73_gibson_round1`).",
-          "omit_when": "Omit only when default IDs are acceptable for exploratory runs."
+          "omit_when": "Omit only when default IDs are acceptable for exploratory runs; regardless of naming, these outputs remain concatenation previews."
         }
       ],
       "follow_up_commands": [
@@ -774,15 +795,16 @@
       ],
       "retain_outputs": [],
       "checkpoints": [
-        "Validate-only run returns `can_execute=true` for matching overlap fragments.",
+        "Validate-only run returns `can_execute=true` for the two 320 bp fragments with a matching 20 bp overlap.",
         "Mismatch overlap inputs return explicit Gibson overlap diagnostics.",
-        "Mutating run creates deterministic preview outputs (`${assembly_prefix}_*` and `${output_id}`)."
+        "A separately approved mutating run creates deterministic 640 bp preview outputs (`${assembly_prefix}_*` and `${output_id}`); an overlap-elided 620 bp Gibson product is intentionally not claimed.",
+        "The canonical outer-agent workflow receipt covers input preparation and concatenation previews only; retain the separate validate-only macro preflight report as the overlap evidence."
       ]
     },
     {
       "id": "guides_filter_and_generate_oligos",
       "order": 5,
-      "title": "Guide practical filtering and oligo generation",
+      "title": "Filter declared guides and format cloning oligos",
       "group": "04",
       "group_label": "Primers, PCR & qPCR",
       "group_order": 4,
@@ -791,8 +813,8 @@
       "example_id": "guides_filter_and_generate_oligos",
       "tier": "core",
       "guide_path": null,
-      "summary": "Apply practical guide constraints and produce cloning-ready oligo candidates.",
-      "narrative": "For CRISPR-style cloning, guide quality control is where many downstream failures are prevented. This routine demonstrates how to encode practical constraints directly in operations, then generate oligos from the passed candidates.",
+      "summary": "Apply explicit practical filters to three declared guide candidates and format only the passing guides with one named cloning template.",
+      "narrative": "For CRISPR-style cloning, practical sequence filtering can prevent avoidable downstream failures, but it is only one review layer. This offline registry demonstration declares three guide records without loading or validating a TP73 reference sequence. It then records why `g2` fails the U6 `TTTT` rule, retains `g1` and `g3`, and formats those two candidates with `lenti_bsmbi_u6_default`. The resulting oligos are deterministic template-formatted candidates, not proof of target identity, genome-wide specificity, nuclease activity, cloning success or order readiness.",
       "use_cases": [
         "You need a transparent guide filtering step before oligo ordering.",
         "You want to document why specific guides were excluded.",
@@ -808,17 +830,22 @@
         "cargo run --bin gentle_cli -- guides filter tp73_guides --config '{\"gc_min\":0.3,\"gc_max\":0.7,\"max_homopolymer_run\":4,\"reject_ambiguous_bases\":true,\"avoid_u6_terminator_tttt\":true,\"u6_terminator_window\":\"spacer_plus_tail\",\"required_5prime_base\":\"G\",\"allow_5prime_g_extension\":true}' --output-set tp73_guides_pass",
         "cargo run --bin gentle_cli -- guides oligos-generate tp73_guides lenti_bsmbi_u6_default --apply-5prime-g-extension --output-oligo-set tp73_lenti --passed-only"
       ],
+      "agent_steps": [
+        "Propose `UpsertGuideSet` for exactly `g1`, `g2` and `g3` as declared demo records under `tp73_guides`. State that no TP73 reference is loaded and that the supplied `seq_id` and coordinates are not validated in this chapter; show the full records and wait for approval before registry mutation.",
+        "Propose `FilterGuidesPractical` on `tp73_guides` with GC 0.30..0.70, maximum homopolymer 4, ambiguous-base rejection, U6 `TTTT` avoidance over `spacer_plus_tail`, required 5-prime G and allowed G extension, writing subset `tp73_guides_pass`. Show the configuration first; after approval, report that `g1` and `g3` pass while `g2` fails `u6_terminator_t4`.",
+        "Propose `GenerateGuideOligos` from `tp73_guides` with template `lenti_bsmbi_u6_default`, `passed_only=true`, 5-prime-G extension enabled and output id `tp73_lenti`. Explain that `passed_only` reads the stored filter report on the source set, predict records only for `g1` and `g3`, and wait for separate approval. Return the exact oligo records without calling them target-validated or order-ready."
+      ],
       "step_expectations": [
         "The guide registry contains `tp73_guides` with three ranked guide candidates.",
-        "The filter report records pass/fail decisions and writes the passing subset as `tp73_guides_pass`.",
-        "The oligo registry contains `tp73_lenti`, generated only from guides that passed the practical filter."
+        "The filter report records that `g1` and `g3` pass and `g2` fails `u6_terminator_t4`, and writes the passing subset as `tp73_guides_pass`.",
+        "The oligo registry contains two `tp73_lenti` records, generated only for `g1` and `g3` by consulting the filter report stored on `tp73_guides`."
       ],
       "prerequisites": [
         "load_branch_reverse_complement_pgex_fasta"
       ],
       "learning_objectives": [
         "Create and filter guide sets through explicit engine operations.",
-        "Generate oligo records from filtered guide candidates.",
+        "Generate template-formatted oligo records from filtered guide candidates without confusing formatting with target validation.",
         "Connect guide workflows to the same deterministic operation model used for cloning steps."
       ],
       "concepts": [
@@ -845,7 +872,8 @@
       "retain_outputs": [],
       "checkpoints": [
         "Guide set and passed guide set are present in metadata.",
-        "Oligo set generation succeeds for passed guides."
+        "Oligo set generation yields exactly two records for `g1` and `g3`; `g2` remains excluded by its U6 `TTTT` failure.",
+        "The chapter explicitly states that its declared coordinates are not checked against a loaded TP73 reference and that local filtering does not establish off-target safety, activity, cloning success or order readiness."
       ]
     },
     {
@@ -930,10 +958,10 @@
       "example_id": "guides_export_csv_and_protocol",
       "tier": "advanced",
       "guide_path": null,
-      "summary": "Export representative machine-readable and human-readable artifacts.",
-      "narrative": "Operational work is only useful if outputs can be shared with collaborators and ordering pipelines. This routine keeps one representative CSV and one protocol text file so the tutorial remains readable while still proving export behavior.",
+      "summary": "Export one declared guide's template-formatted oligos as a retained CSV and a human-readable protocol draft, then compare both artifacts with their source set.",
+      "narrative": "Operational work becomes reviewable when exact output bytes can be handed to collaborators. This routine declares one synthetic guide record, formats it with `lenti_bsmbi_u6_default`, and retains one CSV plus one protocol text file. The CSV proves deterministic tabular export and the text proves checklist-bearing protocol rendering. Neither file validates the declared target coordinates, authorizes ordering, or turns the generated suggestions into a laboratory-approved SOP.",
       "use_cases": [
-        "You need oligo tables for ordering and a protocol summary for bench execution.",
+        "You need an oligo table and protocol draft for review before any ordering or bench authorization.",
         "You want reproducible artifacts tied to explicit operation history.",
         "You need a concise output bundle for review without committing redundant files."
       ],
@@ -947,16 +975,21 @@
         "cargo run --bin gentle_cli -- guides oligos-export demo_guides exports/demo_guides.csv --format csv_table --oligo-set demo_lenti\ncargo run --bin gentle_cli -- guides protocol-export demo_guides exports/demo_guides.protocol.txt --oligo-set demo_lenti",
         "cargo run --bin gentle_cli -- guides oligos-show demo_lenti"
       ],
+      "agent_steps": [
+        "Propose `UpsertGuideSet` for the single declared record `demo_1` under `demo_guides`, followed by `GenerateGuideOligos` with template `lenti_bsmbi_u6_default`, 5-prime-G extension enabled and output id `demo_lenti`. Show the exact record and predicted forward/reverse oligos; state that no target reference is loaded, and wait for approval before mutating the registry.",
+        "Propose two separate file writes: `ExportGuideOligos` in `csv_table` format to `exports/demo_guides.csv`, and `ExportGuideProtocolText` with the QC checklist to `exports/demo_guides.protocol.txt`. Show both resolved paths and source set ids before execution; do not treat approval to export as approval to order or run the protocol.",
+        "Read the retained CSV and protocol text without modifying state. Confirm exactly one `demo_1` row, oligo set `demo_lenti`, template `lenti_bsmbi_u6_default`, matching forward/reverse sequences and the checklist. Return checksums or exact bytes for handoff, and label the text a protocol draft rather than a validated SOP."
+      ],
       "step_expectations": [
         "The guide set `demo_guides` and oligo set `demo_lenti` are stored with deterministic ids.",
-        "The CSV and protocol text files are written under `exports/` for machine and bench-facing review.",
-        "The oligo-set inspection output matches the exported set id and guide provenance."
+        "The CSV and protocol text files are written under `exports/` for machine-readable and human-readable review.",
+        "The oligo-set inspection output and both retained files match set id `demo_lenti`, guide `demo_1`, template `lenti_bsmbi_u6_default` and the exact oligo sequences."
       ],
       "prerequisites": [
         "guides_filter_and_generate_oligos"
       ],
       "learning_objectives": [
-        "Export guide outputs in machine-readable and human-readable forms.",
+        "Export guide outputs in machine-readable and human-readable forms without confusing export with ordering or bench authorization.",
         "Understand selective artifact retention for tutorial readability.",
         "Map retained artifacts back to the operation chain that produced them."
       ],
@@ -986,8 +1019,9 @@
         "exports/demo_guides.protocol.txt"
       ],
       "checkpoints": [
-        "CSV export file exists and contains guide rows.",
-        "Protocol text export exists and contains checklist content."
+        "CSV export contains exactly one `demo_1` row with the generated forward and reverse oligos.",
+        "Protocol text names `demo_guides`, `demo_lenti` and `lenti_bsmbi_u6_default`, repeats the same oligos and contains checklist content.",
+        "The chapter labels both files as review artifacts rather than target validation, ordering approval or a laboratory-approved SOP."
       ]
     },
     {
@@ -1019,6 +1053,7 @@
         "cargo run --bin gentle_examples_docs -- --check",
         "cargo check -q\ncargo run --bin gentle_examples_docs -- tutorial-check"
       ],
+      "outer_agent_replay": false,
       "step_expectations": [
         "The baseline workflow creates `contrib_seed`, `contrib_branch`, and `contrib_branch_rc` through the shared engine.",
         "Example generation/checking confirms the canonical workflow JSON remains parseable and adapter snippets are current.",
@@ -1080,21 +1115,26 @@
         "You need to understand which routines are intentionally online-only in CI defaults."
       ],
       "gui_steps": [
-        "Open prepared-reference controls from the GUI menus.",
-        "Select the target genome and start preparation with explicit cache settings.",
-        "Confirm prepared status in the GUI before attempting extraction workflows."
+        "Open `File -> Prepare Reference Genome...`, select catalog `assets/genomes.json` and inspect the status for `Human GRCh38 Ensembl 116`, including both remote sources and the effective cache directory.",
+        "After explicit approval for network transfer, disk use and cache writes, prepare exactly `Human GRCh38 Ensembl 116` with the reviewed catalog/cache settings.",
+        "Query status again and confirm prepared component metadata before attempting extraction workflows."
       ],
       "cli_steps": [
-        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json",
         "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes",
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/prepare_reference_genome_online.json",
         "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes"
       ],
-      "step_expectations": [
-        "The workflow starts only when `GENTLE_TEST_ONLINE=1` is set and prepares the selected cache target.",
-        "The status payload names `Human GRCh38 Ensembl 116` and reports the effective cache directory.",
-        "Prepared status becomes visible before extraction or promoter chapters depend on this reference."
+      "agent_steps": [
+        "Read `assets/genomes.json` and run only `genomes status` for `Human GRCh38 Ensembl 116` with cache `data/genomes`. Return the exact Ensembl-116 soft-masked FASTA and GTF URLs, lifecycle state and `effective_cache_dir`; explain that the relative cache is resolved against the catalog location. Do not download anything.",
+        "If the status is missing, propose exactly one `PrepareGenome` operation for `Human GRCh38 Ensembl 116`, catalog `assets/genomes.json`, cache `data/genomes` and timeout 3600 seconds. Estimate the network/disk boundary from the catalog/status, expose all cache writes, and wait for explicit approval before network access or mutation; do not substitute Ensembl 113, NCBI RefSeq or another GRCh38 family member.",
+        "After preparation completes, run the same read-only status request. Confirm `prepared=true`, the exact requested catalog key, effective cache, source URLs and component metadata before proposing any gene extraction; a successful transfer alone is not evidence that a later biological target is correct."
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This chapter downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from `https://ftp.ensembl.org/pub/release-116/vertebrates/`; make sure `data/genomes` has enough disk space and that interrupted downloads can be retried.",
+      "step_expectations": [
+        "The preflight status names `Human GRCh38 Ensembl 116`, the exact Ensembl-116 FASTA/GTF sources and the effective cache directory without downloading.",
+        "Only the explicitly opted-in workflow prepares the selected cache target; offline tutorial generation leaves it skipped.",
+        "Postflight status reports `prepared=true` and component metadata before extraction or promoter chapters depend on this reference."
+      ],
+      "local_execution_note": "Run `genomes status` first and read `effective_cache_dir`; with catalog `assets/genomes.json`, relative cache `data/genomes` currently resolves to `assets/data/genomes`. Only then set `GENTLE_TEST_ONLINE=1`. The workflow downloads the GRCh38 Ensembl 116 soft-masked FASTA and GTF from the standard `https://ftp.ensembl.org/pub/release-116/` FASTA/GTF trees; ensure the effective cache filesystem has enough space and interrupted downloads can be retried.",
       "learning_objectives": [
         "Recognize which tutorial flows require network access and external tools.",
         "Use `GENTLE_TEST_ONLINE` to opt into online chapter execution.",
@@ -1126,8 +1166,9 @@
       ],
       "retain_outputs": [],
       "checkpoints": [
-        "Genome preparation runs only when GENTLE_TEST_ONLINE is enabled.",
-        "Offline generation still emits the chapter with execution status noted."
+        "Preflight status resolves the requested Ensembl-116 sources and effective cache path without network mutation.",
+        "Genome preparation runs only when `GENTLE_TEST_ONLINE` is enabled.",
+        "Offline generation still emits the chapter as `skipped_online`; a later online run must prove `prepared=true` and component metadata separately."
       ]
     },
     {
@@ -1159,6 +1200,11 @@
         "cargo run --bin gentle_cli -- shell 'panels import-isoform grch38_tp53 assets/panels/tp53_isoforms_v1.json --panel-id tp53_isoforms_v1'\ncargo run --bin gentle_cli -- shell 'panels inspect-isoform grch38_tp53 tp53_isoforms_v1'",
         "cargo run --bin gentle_cli -- shell 'panels render-isoform-svg grch38_tp53 tp53_isoforms_v1 exports/tp53_isoform_architecture.svg'"
       ],
+      "agent_steps": [
+        "Read `assets/genomes.json`, run a read-only status/preflight for exactly `Human GRCh38 Ensembl 116`, and report that catalog-relative `data/genomes` resolves beneath `assets`. Then propose the network/disk preparation and the separate TP53 occurrence-1 extraction as `grch38_tp53`; expose source URLs, cache writes and output id, and do not execute either mutation until I approve its exact scope.",
+        "Verify that `grch38_tp53` exists and inspect `assets/panels/tp53_isoforms_v1.json` as the seven-isoform TP53 panel before proposing `ImportIsoformPanel` with panel id `tp53_isoforms_v1`. Report strictness and any unresolved transcript mapping explicitly; do not turn panel curation into expression or functional evidence.",
+        "Inspect `tp53_isoforms_v1` first and require seven transcript lanes plus seven protein lanes before proposing the SVG write to `exports/tp53_isoform_architecture.svg`. Bind output path and current project state to the proposal, wait for approval before writing, and return the output hash and operation receipt separately from the native GUI screenshot."
+      ],
       "step_expectations": [
         "The reference is prepared if needed and TP53 is extracted into the stable anchored sequence id `grch38_tp53`.",
         "The panel import stores `tp53_isoforms_v1`; the inspect route returns the same isoform-architecture payload that the GUI expert view renders.",
@@ -1167,7 +1213,7 @@
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`.",
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts `Human GRCh38 Ensembl 116` from Ensembl FTP, then imports the local curated panel `assets/panels/tp53_isoforms_v1.json` and writes `exports/tp53_isoform_architecture.svg`. For a network-free renderer check only, load `docs/figures/tp53_ensembl116_panel_source.gb` as `grch38_tp53_readme`, import the panel with `strict=true`, and compare against `docs/figures/tp53_isoform_architecture.svg`; this does not validate online preparation or extraction.",
       "learning_objectives": [
         "Execute an end-to-end isoform-panel workflow using shared engine operations.",
         "Understand how curated panel JSON joins genome-derived transcripts without GUI-only logic.",
@@ -1185,7 +1231,7 @@
           "parameter": "ImportIsoformPanel.panel_path / panel_id / strict",
           "where_used": "operation 3",
           "why_it_matters": "Defines which curated panel is loaded and whether transcript mapping mismatches should fail hard.",
-          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory mapping; switch to `strict=true` when curation is locked.",
+          "how_to_derive": "Use `assets/panels/tp53_isoforms_v1.json` and keep `strict=false` for exploratory online mapping so unresolved rows remain visible. The retained Ensembl-116 source maps all seven rows with `strict=true`; switch to strict mode only when source and panel are deliberately locked.",
           "omit_when": ""
         },
         {
@@ -1204,9 +1250,32 @@
         "exports/tp53_isoform_architecture.svg"
       ],
       "checkpoints": [
-        "Panel import reports mapped transcript lanes and any unresolved transcript warnings.",
-        "Isoform architecture SVG export succeeds with deterministic lane ordering.",
+        "Panel import reports seven transcript lanes and seven protein lanes; any unresolved transcript warning remains explicit.",
+        "Isoform architecture SVG export succeeds with deterministic lane ordering and exon-family colours linking coordinate-true transcript geometry to isoform-local protein products.",
         "Saved project contains TP53 sequence plus imported panel metadata for replay."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/01-isoform-panel-controls.png",
+          "caption": "The current native Sequence tools panel reopened on the retained Ensembl-116 TP53 source. Panel path and id are populated; the unchecked Strict control is the current GUI input state, not evidence about the earlier strict CLI import.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_isoform_architecture_online/02-isoform-expert.png",
+          "caption": "The native Isoform Expert after strict local import: seven mapped TP53 transcript lanes and seven protein-domain rows from the shared expert payload.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "generated",
+          "path": "docs/figures/tp53_isoform_architecture.svg",
+          "caption": "Current deterministic 1200 by 1400 isoform architecture export from the retained Ensembl-116 source and strict seven-isoform panel. Exon-family colours connect coordinate-true transcript geometry with isoform-local protein products.",
+          "illustrates_step": 3,
+          "regen_command": "cargo run --bin gentle_cli -- --state /tmp/tp53-isoform-figure.state.json workflow docs/figures/tp53_isoform_architecture.workflow.json"
+        }
       ]
     },
     {
@@ -1229,24 +1298,29 @@
         "You want a reproducible +/-2 kb extension workflow that can be replayed by GUI and CLI users."
       ],
       "gui_steps": [
-        "Open `File -> Prepare Reference Genome...` and prepare `Human GRCh38 Ensembl 116` from `assets/genomes.json`.",
-        "Open `File -> Retrieve Genome Sequence...`, set gene query/filter to `TP63`, review the displayed TP63 coordinate hit, and extract the first TP63 entry.",
-        "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, then `Extend 3'` with `2000 bp` to produce the +/-2 kb context sequence."
+        "Confirm that chapter 05.02 completed for exactly `Human GRCh38 Ensembl 116`; in `File -> Prepare Reference Genome...`, inspect the prepared status and effective cache without starting another download.",
+        "Open `File -> Retrieve Genome Sequence...`, filter to exact symbol `TP63`, and bind the candidate before extraction: `ENSG00000073282`, GRCh38 chromosome 3, plus strand, 189631252..189897276 (1-based inclusive), protein coding.",
+        "In the resulting DNA sequence window (`grch38_tp63`), use `Extend 5'` with `2000 bp`, verify start 189629252, then use `Extend 3'` with `2000 bp` and verify final anchor 3:189629252..189899276 with length 270025 bp."
       ],
       "cli_steps": [
-        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600",
-        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes status \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- genomes genes \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --filter \"^TP63$\" --biotype protein_coding --limit 20\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP63 --occurrence 1 --output-id grch38_tp63 --catalog assets/genomes.json --cache-dir data/genomes",
         "cargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63 5p 2000 --output-id grch38_tp63_ext5_2kb --catalog assets/genomes.json --cache-dir data/genomes\ncargo run --bin gentle_cli -- genomes extend-anchor grch38_tp63_ext5_2kb 3p 2000 --output-id grch38_tp63_ext5_ext3_2kb --catalog assets/genomes.json --cache-dir data/genomes"
       ],
+      "agent_steps": [
+        "Run only `genomes status` for exact catalog key `Human GRCh38 Ensembl 116` with catalog `assets/genomes.json` and cache `data/genomes`. Report `prepared`, lifecycle, effective cache and source identities. If it is not prepared, stop and point to chapter 05.02; do not start a download or silently use Ensembl 113/RefSeq.",
+        "On the same prepared reference, list exact-symbol, protein-coding TP63 candidates before proposing extraction. Bind the proposal to `ENSG00000073282`, chromosome 3, plus strand and 189631252..189897276 (1-based inclusive), occurrence 1 and output `grch38_tp63`; if the installed annotation disagrees, stop for review rather than selecting by row order. Execute only after approval.",
+        "For approved `grch38_tp63`, propose two ordered `ExtendGenomeAnchor` operations: five-prime 2000 to `grch38_tp63_ext5_2kb`, then three-prime 2000 to `grch38_tp63_ext5_ext3_2kb`. Explain that plus-strand 5' lowers the genomic start and 3' raises the end. After approval, verify final anchor 3:189629252..189899276, length 270025 bp, parent chain and verified-anchor provenance; do not describe genomic left/right as 5'/3' without the strand."
+      ],
       "step_expectations": [
-        "The reference-preparation status becomes ready or reports a reusable prepared cache for GRCh38.",
-        "The gene listing shows the TP63 coordinate candidate(s), and extraction creates the anchored sequence id `grch38_tp63`.",
-        "The final extension step creates or refreshes `grch38_tp63_ext5_ext3_2kb` while preserving genome-anchor provenance."
+        "The exact Ensembl-116 reference is already prepared in the reported effective cache; this chapter does not hide preparation inside retrieval.",
+        "The listing binds `ENSG00000073282` on chromosome 3, plus strand, 189631252..189897276 before extraction creates anchored sequence `grch38_tp63`.",
+        "The five-prime result starts at 189629252; the final three-prime result ends at 189899276, has 270025 bp and preserves verified genome-anchor provenance."
       ],
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares `Human GRCh38 Ensembl 116` using Ensembl FTP FASTA/GTF endpoints from `assets/genomes.json`, then extracts TP63 and extends the anchored locus locally.",
+      "local_execution_note": "Complete chapter 05.02 first, then run from the repository root with the same catalog and effective cache. `GENTLE_TEST_ONLINE=1` permits the canonical all-in-one workflow to prepare a missing reference, so prefer the explicit status/list/extract/extend commands when reviewing approval boundaries. Current acceptance is offline/`skipped_online`: public TP63 metadata and local extension semantics were checked, but no large reference download or typed GUI capture was performed.",
       "learning_objectives": [
         "Use annotation-backed gene retrieval to inspect coordinates before extracting a sequence.",
         "Apply anchored-region extension from the DNA sequence viewer without losing genome-anchor provenance.",
@@ -1263,14 +1337,14 @@
           "parameter": "ExtractGenomeGene.gene_query / occurrence",
           "where_used": "operation 2 and Retrieve Genome Sequence dialog",
           "why_it_matters": "Controls which TP63 transcript/gene match is selected when multiple annotation entries exist.",
-          "how_to_derive": "Start with `gene_query=TP63` and `occurrence=1`; inspect coordinate listing first and adjust occurrence only if you need a non-primary hit.",
+          "how_to_derive": "Require the reviewed Ensembl-116 gene row `ENSG00000073282`, chromosome 3, plus strand, 189631252..189897276. Treat `occurrence=1` as a replay selector only after those fields match; never use row order as biological identity.",
           "omit_when": ""
         },
         {
           "parameter": "ExtendGenomeAnchor.side / length_bp",
           "where_used": "operations 3 and 4 + DNA window Extend controls",
           "why_it_matters": "Defines biological flank direction and exact context length added around the anchored region.",
-          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000` for symmetric +/-2 kb context expansion.",
+          "how_to_derive": "Use `five_prime,2000` then `three_prime,2000`. For this plus-strand anchor, five-prime lowers start from 189631252 to 189629252 and three-prime raises end from 189897276 to 189899276; reverse-strand targets invert that genomic direction.",
           "omit_when": ""
         }
       ],
@@ -1282,15 +1356,15 @@
       ],
       "retain_outputs": [],
       "checkpoints": [
-        "TP63 coordinate candidates are visible before extraction in Retrieve Genome Sequence workflows.",
-        "ExtractGenomeGene produces `grch38_tp63` as anchored sequence context.",
-        "Sequential 5'/3' extension by 2000 bp yields `grch38_tp63_ext5_ext3_2kb` with preserved anchor provenance."
+        "The exact prepared Ensembl-116 cache and TP63 gene identity are visible before extraction; a missing or mismatched prerequisite stops the route.",
+        "ExtractGenomeGene produces `grch38_tp63` anchored to plus-strand `ENSG00000073282` at 3:189631252..189897276.",
+        "Sequential 5'/3' extension yields `grch38_tp63_ext5_ext3_2kb` at 3:189629252..189899276, length 270025 bp, with preserved verified-anchor provenance."
       ]
     },
     {
       "id": "tp53_multi_gene_sparse_mapping_online",
       "order": 12,
-      "title": "Map TP53 locus reads with multi-gene sparse indexing (online)",
+      "title": "Probe TP53-family sparse indexing from a TP53 locus (online)",
       "group": "07",
       "group_label": "RNA Reads, Splicing & Expression",
       "group_order": 7,
@@ -1299,36 +1373,46 @@
       "example_id": "tp53_multi_gene_sparse_mapping_online",
       "tier": "online",
       "guide_path": null,
-      "summary": "Prepare GRCh38, extract TP53, then map RNA reads with origin_mode=multi_gene_sparse against TP53-family targets.",
-      "narrative": "This chapter extends the TP53 genome-targeting path toward read-origin mapping in one deterministic route. After extracting the TP53 locus from GRCh38, you run `InterpretRnaReads` with `multi_gene_sparse` so the index can include additional target genes (for example TP53/TP63/TP73) in one run. The goal is to keep genome anchoring and multi-gene interpretation in the same reproducible workflow contract.",
+      "summary": "Prepare GRCh38, extract TP53, and inspect how a multi_gene_sparse request reports TP63/TP73 as unavailable in the local TP53-only annotation.",
+      "narrative": "This chapter extends the TP53 genome-targeting path toward read-origin mapping in one deterministic route. It also documents an important current boundary: `multi_gene_sparse` expands transcript templates only from annotations attached to the selected DNA sequence; target-gene ids are not a request to download or join other loci. The canonical workflow extracts TP53 alone, so the reviewed Ensembl-116 run matches TP53, reports TP63 and TP73 as absent from local annotation, and adds no extra transcript lanes. This is therefore a reproducible warning/provenance exercise, not a completed TP53/TP63/TP73 family comparison.\n\nThe 2026-10-01 acceptance run reused a prepared Ensembl-116 cache, processed the committed 10,000-read fixture, seed-passed 11 reads, and aligned none because the workflow stops after phase 1. It also exposed and repaired a real parity defect: seed feature 0 was the gene row and produced a report that the documented mRNA workspace could not open. The workflow now binds feature 1, the first TP53 mRNA, so the native report view and CLI address the same saved report.",
       "use_cases": [
-        "You want one TP53-based run that can contrast seed support across TP53-family targets.",
-        "You need a reproducible baseline for comparing single-gene vs multi-gene sparse indexing behavior.",
-        "You want GUI and CLI routes to produce the same multi-gene request payload."
+        "You want to verify that target-gene ids do not silently fetch or merge annotations from other loci.",
+        "You need a reproducible TP53 baseline for comparing single-gene and sparse-origin request provenance.",
+        "You want GUI and CLI routes to expose the same missing-local-annotation boundary before constructing a true multi-locus fixture."
       ],
       "gui_steps": [
-        "Prepare `Human GRCh38 Ensembl 116` and extract `TP53` into `grch38_tp53`.",
-        "Open Splicing Expert for a TP53 transcript, set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
-        "Run Nanopore interpretation from the same panel and inspect sparse-origin warnings/summary fields in the report section."
+        "Prepare or explicitly reuse `Human GRCh38 Ensembl 116`, verify the cache manifest, and extract `TP53` into `grch38_tp53`.",
+        "Open Splicing Expert for TP53 mRNA feature `1` (`ENST00000269305` in the reviewed Ensembl-116 extraction), set `Origin mode` to `multi_gene_sparse`, and set `Target genes` to `TP53, TP63, TP73`.",
+        "Run Nanopore phase-1 interpretation, load report `tp53_family_sparse_template`, and inspect the counts and sparse-origin warnings. Confirm that TP53 matched locally, TP63/TP73 did not, no extra lanes were added, 11/10,000 reads seed-passed, and alignment remains deferred."
+      ],
+      "step_titles": [
+        "Prepare or reuse the Ensembl-116 TP53 locus",
+        "Bind the report to TP53 mRNA feature 1",
+        "Inspect the sparse-origin boundary and phase-1 counts"
       ],
       "cli_steps": [
         "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- workflow @docs/examples/workflows/tp53_multi_gene_sparse_mapping_online.json",
         "cargo run --bin gentle_cli -- shell 'rna-reads list-reports grch38_tp53'",
         "cargo run --bin gentle_cli -- shell 'rna-reads show-report tp53_family_sparse_template'"
       ],
+      "agent_steps": [
+        "Inspect the exact `Human GRCh38 Ensembl 116` catalog entry and requested cache path before proposing preparation. Report whether GENtle will reuse a checksum-verified manifest or perform network downloads; do not treat a similarly named cache at another path as reusable without verification.",
+        "After extraction, query the TP53 features and verify that feature `1` is mRNA `ENST00000269305` in this pinned release. Propose the interpretation request with `origin_mode=multi_gene_sparse` and requested targets TP53, TP63 and TP73; never substitute the gene feature at index `0` for the documented mRNA workspace.",
+        "Inspect the saved structured report before making a biological statement. Keep requested genes separate from matched genes and missing local annotations; report 11 seed-passed of 10,000, zero aligned, and phase-1-only status. Do not call this a TP53-family comparison or infer TP63/TP73 absence from the reads."
+      ],
       "step_expectations": [
-        "The workflow prepares/extracts TP53 and runs the read interpretation template with `origin_mode=multi_gene_sparse`.",
-        "The report list includes `tp53_family_sparse_template` after the interpretation step has stored its report.",
-        "The report detail exposes target-gene provenance, sparse-origin warnings, and seed/align summary fields for review."
+        "The workflow reuses or prepares the exact Ensembl-116 cache, extracts 41 TP53 features, and binds interpretation to mRNA feature `1` rather than the gene row.",
+        "The report list includes `tp53_family_sparse_template` with `origin_mode=multi_gene_sparse`, three requested target ids, 10,000 total reads, 11 seed-passed reads, and zero aligned reads.",
+        "The report warns that no additional lanes were added, TP53 matched, and TP63/TP73 were not found in the selected sequence's local annotation."
       ],
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, then runs the multi-gene sparse RNA-read interpretation against locally derived TP53-family transcript templates.",
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The default workflow may download and prepare roughly 1 GB of compressed GRCh38 sequence plus annotation unless the exact cache directory already contains a valid Ensembl-116 manifest. A relocated prepared cache must be supplied through an explicitly reviewed workflow/cache path; do not assume that matching files at a different path will be reused. The run indexes TP53-local transcripts only and reports TP63/TP73 missing.",
       "learning_objectives": [
-        "Map one gene locus from reference genome preparation through read-interpretation in a single operation chain.",
-        "Understand what `multi_gene_sparse` changes at runtime (expanded local transcript-template indexing).",
-        "Interpret deterministic report provenance for `origin_mode`, target-gene set, and planned ROI capture flag."
+        "Map one TP53 locus from reference-genome preparation through phase-1 read interpretation in a single operation chain.",
+        "Understand that `multi_gene_sparse` expands only from transcript annotations already attached to the selected sequence.",
+        "Interpret deterministic report provenance for the seed feature, requested/matched/missing genes, phase-1 counts, and planned ROI capture flag."
       ],
       "concepts": [
         "shared_engine_contract",
@@ -1341,14 +1425,14 @@
           "parameter": "InterpretRnaReads.seed_feature_id",
           "where_used": "operation 3",
           "why_it_matters": "Defines which feature seeds the splicing view and baseline transcript scope for sparse expansion.",
-          "how_to_derive": "In GUI this is implicit from the selected transcript. For direct workflow/CLI editing, inspect TP53 feature indices first and set the correct mRNA feature id.",
+          "how_to_derive": "Query the pinned extracted sequence. In the reviewed Ensembl-116 result feature 0 is the gene and feature 1 is mRNA ENST00000269305; the canonical workflow must use 1 so the native mRNA workspace can reopen the report.",
           "omit_when": ""
         },
         {
           "parameter": "InterpretRnaReads.origin_mode / target_gene_ids",
           "where_used": "operation 3",
           "why_it_matters": "Controls whether indexing stays baseline (`single_gene`) or is expanded with matched target-gene transcripts (`multi_gene_sparse`).",
-          "how_to_derive": "Use TP53-family IDs (`TP53, TP63, TP73`) for contrast runs, then narrow/expand based on biological question.",
+          "how_to_derive": "Use TP53, TP63 and TP73 here to exercise provenance and missing-local-annotation reporting. A true contrast requires those transcript annotations on the selected sequence; ids alone do not fetch or combine loci.",
           "omit_when": ""
         },
         {
@@ -1366,9 +1450,25 @@
       ],
       "retain_outputs": [],
       "checkpoints": [
-        "TP53 locus extraction and RNA-read interpretation operations are both present in one workflow run history.",
-        "Report summary shows `origin_mode=multi_gene_sparse` and target-gene provenance fields.",
-        "Warnings remain explicit for any missing target genes and for ROI-capture requests when enabled."
+        "TP53 locus extraction and RNA-read interpretation operations are both present in one workflow run history, and the report is bound to mRNA feature 1.",
+        "Report summary shows `origin_mode=multi_gene_sparse`, requested targets TP53/TP63/TP73, 10,000 total reads, 11 seed-passed reads and zero aligned reads.",
+        "Warnings explicitly state that TP53 matched, TP63/TP73 were absent from local annotation, and no additional transcript lanes were added."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/01-project-graph.png",
+          "caption": "The native project graph retains the Ensembl-116 TP53 locus, its exon-concatenated derivative, and the 10,000-read sparse-origin report as separate provenance nodes. The report records 11 seed-passed reads and zero aligned reads because this workflow runs phase 1 only.",
+          "illustrates_step": 1,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_multi_gene_sparse_mapping_online/02-sparse-report-warnings.png",
+          "caption": "The native RNA-read Mapping workspace opens the report through TP53 mRNA feature 1 and shows that multi_gene_sparse added no local lanes beyond TP53. The structured report additionally records TP63 and TP73 as absent from the extracted sequence's local annotation.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        }
       ]
     },
     {
@@ -1412,6 +1512,16 @@
         "jq '{top_pair:(.pairs[0]|{rank,score,amplicon:[.amplicon_start_0based,.amplicon_end_0based_exclusive,.amplicon_length_bp],tm_delta_c,forward,reverse,primer_pair_complementary_run_bp,primer_pair_3prime_complementary_run_bp,rule_flags}),alternatives:[.pairs[0:3][]|{rank,score,amplicon_length_bp,tm_delta_c}]}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r01.report.json",
         "jq '{pair_count,rejection_summary,top_forward:(.pairs[0].forward|{sequence,tm_c,gc_fraction,anneal_hits,longest_homopolymer_run_bp,self_complementary_run_bp}),top_flags:.pairs[0].rule_flags}' docs/tutorial/generated/artifacts/pcr_selection_batch_primer_pairs_offline/artifacts/tp73_as2_promoter_batch_r02.report.json",
         "cargo run --bin gentle_cli -- --state /tmp/gentle-primer-pair-tutorial.json shell 'primers export-report tp73_as2_promoter_batch_r01 /tmp/tp73_as2_promoter_batch_r01.json'"
+      ],
+      "agent_steps": [
+        "Check that `test_files/tp73.ncbi.gb` is available, then propose `LoadFile` as `tp73_locus` and `SetParameter` with `primer_design_backend=internal`. Treat loading and parameter mutation as the approval boundary; do not execute either operation until I approve.",
+        "Inspect `tp73_locus` without changing it. Propose the first indispensable core ROI as `[61820,61920)` and distinguish it from the broader copied context `[61720,62120)`. Return the coordinates for review; do not run primer design.",
+        "For the first ROI, propose forward window `[61720,61745)` and reverse window `[62000,62040)` with `require_roi_flanking=true`. Verify that both windows lie outside the core and show the exact typed fields; do not mutate state.",
+        "Complete the first `DesignPrimerPairs` proposal with primer length 18..24 nt, Tm 55..78 C, GC fraction 0.30..0.80, `max_anneal_hits=1`, amplicon length 90..350 bp, `max_tm_delta_c=5`, `max_pairs=5`, backend `internal` and report id `tp73_as2_promoter_batch_r01`. Show the full payload and wait for approval.",
+        "After approval, run only the bound first design. Return the structured `gentle.primer_design_report.v1` result and confirm five pairs, the internal backend and `pair_evaluation_limit_skipped=0`; do not export files or start the second design.",
+        "Inspect ranks 1 through 3 of `tp73_as2_promoter_batch_r01` without rerunning design. Compare amplicon geometry, both oligos, Tm/GC, local hits, clamps, self- and pair-complementarity and every rule flag. State explicitly that local ranking is not an order recommendation or genome-wide specificity result.",
+        "Propose a separate second `DesignPrimerPairs` request with ROI `[62040,62140)`, forward window `[61940,61965)`, reverse window `[62158,62188)` and report id `tp73_as2_promoter_batch_r02`, retaining the first request's remaining constraints. Wait for approval, then report the five-base forward homopolymer and `forward_secondary_structure_ok=false` rather than hiding the advisory behind rank 1.",
+        "Propose export paths for both complete JSON reports and show the exact file writes before execution. Keep candidate selection rationale, whole-genome specificity planning, procurement and wet-lab validation as separate decisions; do not claim them from these local reports."
       ],
       "step_expectations": [
         "The workflow creates two complete reports and exports both as retained tutorial artifacts.",
@@ -1511,11 +1621,11 @@
       "tier": "online",
       "guide_path": null,
       "summary": "Fetch TP73 cDNA, extract TP73 from GRCh38, and compute a pair-forward dotplot with high-sensitivity defaults (`word=7`, `step=1`, `mismatches=0`).",
-      "narrative": "This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces.",
+      "narrative": "This chapter captures a practical cDNA-vs-genomic verification route for transcript structure interpretation. The focus is a reproducible first-pass map that reveals exon-aligned block patterns while preserving one shared operation path across GUI and CLI interfaces. Use tutorial 02.03 for the retained visual orientation sequence; this chapter adds the executable online workflow, pinned public identifiers, cache boundary and reproducibility receipt instead of duplicating those screenshots.",
       "use_cases": [
         "You want a deterministic cDNA-vs-genomic control for exon/intron-aware interpretation.",
         "You need a reproducible TP73 baseline for demonstrating dotplot settings to collaborators.",
-        "You want one canonical workflow file that mirrors your GUI tutorial run."
+        "You want one canonical workflow file that mirrors your GUI tutorial run and records exactly which online inputs were requested."
       ],
       "gui_steps": [
         "Fetch GenBank accession `NM_001126241.3` as `tp73_cdna`.",
@@ -1526,6 +1636,11 @@
         "cargo run --bin gentle_cli -- shell 'genbank fetch NM_001126241.3 --as-id tp73_cdna'",
         "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id tp73_genomic --catalog assets/genomes.json --cache-dir data/genomes",
         "cargo run --bin gentle_cli -- shell 'dotplot compute tp73_cdna --reference-seq tp73_genomic --mode pair_forward --word-size 7 --step 1 --max-mismatches 0 --id tp73_cdna_vs_genomic_dotplot'"
+      ],
+      "agent_steps": [
+        "Check that network access is explicitly allowed, then propose the exact `FetchGenBankAccession` operation for accession `NM_001126241.3` with output id `tp73_cdna`. Report the accession and intended project state; do not fetch or mutate the project until I approve.",
+        "Inspect `assets/genomes.json` and the selected cache directory, then propose `PrepareGenome` for `Human GRCh38 Ensembl 116` followed by `ExtractGenomeGene` for the first `TP73` occurrence as `tp73_genomic`. State whether the reference is already cached and which remote/cache boundary would be crossed; do not download, extract or mutate state until I approve.",
+        "Verify that `tp73_cdna` and `tp73_genomic` exist, then propose `ComputeDotplot` in `pair_forward` mode with `word_size=7`, `step_bp=1`, `max_mismatches=0` and output id `tp73_cdna_vs_genomic_dotplot`. Show the exact bound parameters and expected artifact before execution; do not compute or store it until I approve."
       ],
       "step_expectations": [
         "The GenBank route imports the TP73 cDNA accession under the stable id `tp73_cdna`.",
@@ -1571,7 +1686,8 @@
       "checkpoints": [
         "Dotplot artifact is created and can be listed/shown by id (`tp73_cdna_vs_genomic_dotplot`).",
         "Pair-forward map shows exon-block style structure rather than one continuous full-length diagonal.",
-        "GUI tutorial and workflow JSON describe the same parameter baseline."
+        "GUI tutorial and workflow JSON describe the same parameter baseline.",
+        "The retained visual sequence remains in tutorial 02.03; this online replay records accession, assembly/catalog/cache choices, structured outputs and a reproducibility receipt rather than treating a screenshot as execution evidence."
       ]
     },
     {
@@ -1776,7 +1892,7 @@
         "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP53` into `grch38_tp53`.",
         "Open `File -> Protein Evidence...`, fetch `P04637`, keep `entry_id=P04637`, choose sequence `grch38_tp53`, and run `Project To Sequence`.",
         "Inspect the stored projection with `Open Protein Expert` or export it with `Render Protein Mapping SVG...` so you can verify how UniProt domains/regions landed on the TP53 transcripts.",
-        "In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
+        "When resuming a saved project, click `Use` on `tp53_uniprot_p04637` and `Select` on imported entry `P04637` so both contexts are active. In `Feature coding DNA query`, enter `DNA-binding`, leave `feature transcript` empty unless you want to pin one isoform, choose `mode=both`, and press `Query Coding DNA`.",
         "Read the result panel to see the amino-acid span, genomic coding DNA, optional translation-speed optimized DNA, and the reported exon or exon pair for each matching transcript feature span."
       ],
       "cli_steps": [
@@ -1785,6 +1901,13 @@
         "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp53 uniprot-projection tp53_uniprot_p04637\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp53 uniprot-projection tp53_uniprot_p04637 exports/tp53_uniprot_projection.svg",
         "cargo run --bin gentle_cli -- shell 'uniprot feature-coding-dna tp53_uniprot_p04637 DNA-binding --mode both --speed-profile human'",
         "cargo run --bin gentle_cli -- shell 'uniprot projection-show tp53_uniprot_p04637'"
+      ],
+      "agent_steps": [
+        "Read `assets/genomes.json` and preflight exactly `Human GRCh38 Ensembl 116`. Propose reference preparation and the separate TP53 occurrence-1 extraction as `grch38_tp53`, exposing both Ensembl URLs, cache writes, timeout and output id. Treat network access, cache mutation and project mutation as separately reviewable; do not claim completion from the retained acceptance fixture.",
+        "Verify that `grch38_tp53` contains real A/C/G/T reference bases and transcript/CDS annotations before proposing the live UniProt fetch of `P04637` and projection id `tp53_uniprot_p04637`. After approval, report the fetched source URL, mapped-transcript count and every unmapped transcript warning; partial mapping is not full isoform coverage.",
+        "Inspect the stored projection before proposing the project-relative SVG write. Distinguish transcript-native rows from UniProt-consistent, low-confidence-external and derived-only rows, and return the artifact path/hash separately from any native screenshot.",
+        "Resolve the exact stored projection and its imported P04637 entry (the native resume path uses `Use` on the projection row and `Select` on the entry row), query `DNA-binding` with `mode=both`, and report transcript, amino-acid span, exon attribution, strand and genomic DNA. Label the preferred-codon sequence as a designed alternative, never as observed genomic evidence; refuse sequence-specific interpretation when the locus contains only placeholder or ambiguous bases.",
+        "Read back the persisted projection and query result without mutation. Preserve the 16 missing-transcript warnings from the reviewed P04637/Ensembl-116 pairing and explain that the result is one feature match, not a claim that every TP53 isoform is covered."
       ],
       "step_expectations": [
         "The reference is prepared if needed and TP53 is extracted into the anchored sequence id `grch38_tp53`.",
@@ -1796,7 +1919,7 @@
       "prerequisites": [
         "prepare_reference_genome_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally.",
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The canonical workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches reviewed UniProt accession `P04637`, then performs projection and coding-DNA queries locally. For bounded replay when the Ensembl sequence service is unavailable, use `docs/tutorial/reproducibility/tp53_uniprot_projection_online/tp53_grch38_ensembl116.gb`; its GRCh38 bases and Ensembl-116 geometry are hash-bound in the adjacent README. That replay still fetches P04637 online and does not validate reference preparation. Do not use the N-only architecture fixture for coding-DNA interpretation.",
       "learning_objectives": [
         "Use one persisted UniProt projection as the canonical bridge from reviewed protein annotation to locus-level transcript/CDS geometry and back to coding DNA.",
         "Understand that both the protein expert and the feature-coding DNA query are thin views over stored engine state, not separate GUI-only mapping models.",
@@ -1858,10 +1981,26 @@
         "exports/tp53_uniprot_projection.svg"
       ],
       "checkpoints": [
-        "UniProt fetch/import reports the reviewed TP53 entry and the projection operation stores `tp53_uniprot_p04637` in project metadata.",
-        "Open Protein Expert shows one protein reference axis with projected transcript/CDS lanes from the TP53 locus.",
+        "UniProt fetch/import reports reviewed TP53 entry P04637 and its exact source URL; projection stores `tp53_uniprot_p04637`, reports six mapped transcripts for the reviewed Ensembl-116 fixture and preserves all 16 missing-transcript warnings.",
+        "Open Protein Expert shows the transcript-native TP53 rows and clearly distinguishes UniProt-consistent, low-confidence-external and derived-only protein rows rather than implying complete external coverage.",
         "Protein-mapping SVG export succeeds directly from the UniProt specialist without requiring a separate protein sequence window.",
-        "The feature-coding DNA query reports the coding-strand DNA for `DNA-binding` together with transcript-specific exon attribution, including an exon pair when the feature spans a splice junction."
+        "The feature-coding DNA query reports one P04637 `DNA-binding` match on ENST00000269305.9 at amino acids 368-387: 60 coding-strand bases from exon 11 plus a separately labelled 60-base optimized alternative. Ambiguous placeholder bases remain `N`, never invisible spaces or interpretable genomic evidence."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/01-protein-expert.png",
+          "caption": "The native Protein Expert on the provenance-bound GRCh38/Ensembl-116 acceptance locus. Six UniProt-linked transcript projections are stored; the expert also keeps the broader transcript-native architecture and 16 missing UniProt transcript references explicit instead of hiding partial coverage.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp53_uniprot_projection_online/02-feature-coding-dna.png",
+          "caption": "The expanded native coding-DNA result for the P04637 DNA-binding match on ENST00000269305.9: amino acids 368-387, exon 11, 60 bases of exact genomic coding DNA and a separately labelled translation-speed-oriented alternative.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
       ]
     },
     {
@@ -2384,38 +2523,49 @@
       "example_id": "tp73_uniprot_projection_audit_online",
       "tier": "online",
       "guide_path": "docs/tutorial/06-05_tp73_uniprot_projection_audit_cli.md",
-      "summary": "Build a TP73 locus project, fetch UniProt and Ensembl protein evidence, persist the integrated audit plus parity report, and keep the matching expert SVG as an inspectable artifact.",
-      "narrative": "This executable chapter turns the TP73 UniProt/Ensembl audit into a reproducible online workflow. It prepares GRCh38, extracts TP73, fetches the reviewed UniProt entry and matching Ensembl protein evidence, projects the protein onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG export alongside the stored report artifacts. The companion hand-written tutorial then explains how to inspect the same outcome through the public primitive commands.",
+      "summary": "Build a fully annotated TP73 locus, fetch reviewed UniProt O15350, persist the integrated audit plus parity report, and keep the matching expert SVG as an inspectable artifact.",
+      "narrative": "This executable chapter turns the TP73 UniProt audit into a reproducible online workflow. It prepares GRCh38, extracts TP73 with full exon/CDS annotation, fetches reviewed UniProt O15350, projects p73 onto the locus, persists the integrated audit and direct-vs-composed parity report, and keeps one shared expert SVG. The companion guide explains the public primitives, the optional Ensembl-protein comparison, and why missing evidence must not be reported as a UniProt error.",
       "use_cases": [
         "You want one canonical online starter project that proves the TP73 UniProt/Ensembl audit path still runs end to end.",
         "You want a persisted TP73 audit report plus parity report before following the shell-level primitive walkthrough.",
         "You want a deterministic bridge from locus extraction and UniProt projection into audit, parity, and expert-view artifact export."
       ],
       "gui_steps": [
-        "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73`.",
-        "Fetch UniProt `Q9H3D4` and Ensembl protein `ENSP00000264724` from `Protein Evidence...`, then project the UniProt entry onto the TP73 locus.",
-        "Run the high-level audit and parity actions from `Protein Evidence...` so the stored audit rows and local unsent email draft are persisted.",
+        "Prepare `Human GRCh38 Ensembl 116` and extract gene `TP73` into `grch38_tp73` with annotation scope `full`.",
+        "Fetch reviewed UniProt `O15350` as `TP73_UNIPROT` from `Protein Evidence...`, then project it onto the TP73 locus as `tp73_uniprot_o15350`.",
+        "Run the high-level audit from `Protein Evidence...`; distinguish protein mismatch from `missing_evidence`, and keep the maintainer-email text local and unsent.",
+        "Run and reopen the parity report; verify that the native summary reports `0 / 10` divergent rows before trusting the outer primitive composition.",
         "Open the saved projection in the Protein Expert or inspect the exported SVG artifact to verify the projected feature geometry.",
-        "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`."
+        "Use the companion CLI tutorial to rebuild the same result from `resolve-ensembl-links`, `transcript-accounting`, `compare-ensembl-exons`, and `compare-ensembl-peptide`; fetch optional Ensembl protein evidence only when its REST service is healthy."
       ],
       "cli_steps": [
-        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 3600\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id grch38_tp73 --catalog assets/genomes.json --cache-dir data/genomes",
-        "cargo run --bin gentle_cli -- shell 'uniprot fetch Q9H3D4 --entry-id Q9H3D4'\ncargo run --bin gentle_cli -- shell 'ensembl-protein fetch ENSP00000264724 --entry-id TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot map Q9H3D4 grch38_tp73 --projection-id tp73_uniprot_q9h3d4'",
-        "cargo run --bin gentle_cli -- shell 'uniprot audit-projection tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit'\ncargo run --bin gentle_cli -- shell 'uniprot audit-parity tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS --report-id tp73_projection_audit_parity'",
-        "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot_q9h3d4 exports/tp73_uniprot_projection.svg",
-        "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'"
+        "GENTLE_TEST_ONLINE=1 cargo run --bin gentle_cli -- genomes prepare \"Human GRCh38 Ensembl 116\" --catalog assets/genomes.json --cache-dir data/genomes --timeout-secs 7200\ncargo run --bin gentle_cli -- genomes extract-gene \"Human GRCh38 Ensembl 116\" TP73 --occurrence 1 --output-id grch38_tp73 --annotation-scope full --catalog assets/genomes.json --cache-dir data/genomes",
+        "cargo run --bin gentle_cli -- shell 'uniprot fetch O15350 --entry-id TP73_UNIPROT'\ncargo run --bin gentle_cli -- shell 'uniprot map TP73_UNIPROT grch38_tp73 --projection-id tp73_uniprot_o15350'",
+        "cargo run --bin gentle_cli -- shell 'uniprot audit-projection tp73_uniprot_o15350 --report-id tp73_projection_audit'",
+        "cargo run --bin gentle_cli -- shell 'uniprot audit-parity tp73_uniprot_o15350 --report-id tp73_projection_audit_parity'",
+        "cargo run --bin gentle_cli -- inspect-feature-expert grch38_tp73 uniprot-projection tp73_uniprot_o15350\ncargo run --bin gentle_cli -- render-feature-expert-svg grch38_tp73 uniprot-projection tp73_uniprot_o15350 exports/tp73_uniprot_projection.svg",
+        "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_o15350'\ncargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_o15350'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_o15350'\ncargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_o15350'"
+      ],
+      "agent_steps": [
+        "Read `assets/genomes.json`, preflight exactly `Human GRCh38 Ensembl 116`, and propose preparation plus TP73 occurrence-1 extraction with `annotation_scope=full`. Expose the Ensembl URLs, cache writes, timeout and state mutation separately; core annotation is insufficient for this audit.",
+        "Verify gene symbol TP73 and reviewed UniProt identity `O15350` / `P73_HUMAN` before proposing fetch and projection. Reject `Q9H3D4` because it is TP63, then report the fetched source URL and ten projected transcript ids.",
+        "Run the stored audit only after confirming every accounting row satisfies translated_nt/3=derived_aa. Separate six protein-length mismatches from four rows limited by missing Ensembl evidence, and never send or present the local draft as a validated complaint.",
+        "Run direct-vs-composed parity and require zero divergent rows across status, accounting, mismatch reasons, comparison mode and draft transcript set. Preserve the structured parity payload instead of replacing it with prose.",
+        "Inspect or render the persisted projection without claiming that an SVG or screenshot supplies missing Ensembl evidence.",
+        "Rebuild the report from the four public primitives. Treat an optional Ensembl protein fetch as a separate network action and retain `missing_evidence` when the provider fails."
       ],
       "step_expectations": [
-        "The reference is prepared if needed and TP73 is extracted into the anchored sequence id `grch38_tp73`.",
-        "The UniProt, Ensembl protein, and projection records persist under the ids used by the audit workflow.",
-        "The integrated audit and parity reports are stored as `tp73_projection_audit` and `tp73_projection_audit_parity`.",
+        "The reference is prepared if needed and TP73 is extracted into `grch38_tp73` with non-zero transcript, exon and CDS feature counts.",
+        "Reviewed UniProt O15350 persists as `TP73_UNIPROT`, and its ten linked transcript projections persist as `tp73_uniprot_o15350`.",
+        "The integrated audit is stored as `tp73_projection_audit`; all ten accounting rows use genomic CDS coordinates and separate mismatch from missing evidence.",
+        "The parity report is stored as `tp73_projection_audit_parity` and reports zero divergent rows out of ten.",
         "Expert inspection and SVG export show the same projected TP73 feature geometry used by the GUI.",
         "The primitive CLI commands rebuild the audit evidence path behind the integrated reports."
       ],
       "prerequisites": [
         "tp53_uniprot_projection_online"
       ],
-      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. This workflow prepares/extracts GRCh38 Ensembl 116 from Ensembl FTP, fetches UniProt `Q9H3D4`, queries Ensembl protein evidence for `ENSP00000264724`, and then writes the audit/parity reports plus SVG locally.",
+      "local_execution_note": "Set `GENTLE_TEST_ONLINE=1` and run from the repository root. The workflow prepares GRCh38 Ensembl 116, extracts TP73 with full exon/CDS annotation, fetches reviewed UniProt `O15350`, and writes audit/parity reports plus SVG locally. A separate Ensembl-protein fetch is optional; during the 2026-10-01 review Ensembl lookup and sequence endpoints returned HTTP 500, so no external sequence was fabricated.",
       "learning_objectives": [
         "Use one executable chapter as the reproducible setup layer behind the TP73 UniProt/Ensembl audit walkthrough.",
         "Understand that the high-level audit and parity report are built on the same reusable primitive record families exposed to shell/CLI and future AI callers.",
@@ -2431,29 +2581,29 @@
       ],
       "parameter_notes": [
         {
-          "parameter": "FetchUniprotSwissProt.query / entry_id",
-          "where_used": "operation 3",
-          "why_it_matters": "Pins the reviewed UniProt TP73 entry that drives the protein-coordinate system for projection and audit.",
-          "how_to_derive": "Use the stable reviewed TP73 accession `Q9H3D4` for this canonical chapter.",
+          "parameter": "ExtractGenomeGene.annotation_scope",
+          "where_used": "operation 2",
+          "why_it_matters": "The audit intersects transcript exons with genomic CDS ranges; core scope omits those exon/CDS features and makes the accounting uninterpretable.",
+          "how_to_derive": "Use `full` for this audit and verify that the extraction result reports non-zero exon and CDS counts.",
           "omit_when": ""
         },
         {
-          "parameter": "FetchEnsemblProtein.query / entry_id",
-          "where_used": "operation 4",
-          "why_it_matters": "Keeps the Ensembl protein evidence explicit and reusable for exon/CDS and peptide comparison during audit.",
-          "how_to_derive": "Use `ENSP00000264724` with a stable project-local id such as `TP73_ENS`.",
+          "parameter": "FetchUniprotSwissProt.query / entry_id",
+          "where_used": "operation 3",
+          "why_it_matters": "Pins the reviewed UniProt TP73 entry that drives the protein-coordinate system for projection and audit.",
+          "how_to_derive": "Use reviewed TP73 accession `O15350` (`P73_HUMAN`). `Q9H3D4` is TP63 and is biologically invalid here.",
           "omit_when": ""
         },
         {
           "parameter": "ProjectUniprotToGenome.projection_id",
-          "where_used": "operation 5",
+          "where_used": "operation 4",
           "why_it_matters": "The stored projection id is the durable handle reused by the expert SVG export, the integrated audit, and the parity report.",
-          "how_to_derive": "Use a stable intent-bearing id such as `tp73_uniprot_q9h3d4`.",
+          "how_to_derive": "Use a stable intent-bearing id such as `tp73_uniprot_o15350`.",
           "omit_when": ""
         },
         {
           "parameter": "AuditUniprotProjectionConsistency.report_id / AuditUniprotProjectionParity.report_id",
-          "where_used": "operations 7 and 8",
+          "where_used": "operations 6 and 7",
           "why_it_matters": "Stable report ids make the saved audit/parity artifacts easy to reopen from GUI, CLI, or future AI orchestration.",
           "how_to_derive": "Use descriptive ids like `tp73_projection_audit` and `tp73_projection_audit_parity`.",
           "omit_when": ""
@@ -2461,20 +2611,37 @@
       ],
       "follow_up_commands": [
         "cargo run --bin gentle_cli -- shell 'uniprot audit-show tp73_projection_audit'",
-        "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_q9h3d4'",
-        "cargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_q9h3d4'",
-        "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'",
-        "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_q9h3d4 --ensembl-entry TP73_ENS'",
+        "cargo run --bin gentle_cli -- shell 'uniprot resolve-ensembl-links tp73_uniprot_o15350'",
+        "cargo run --bin gentle_cli -- shell 'uniprot transcript-accounting tp73_uniprot_o15350'",
+        "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-exons tp73_uniprot_o15350'",
+        "cargo run --bin gentle_cli -- shell 'uniprot compare-ensembl-peptide tp73_uniprot_o15350'",
         "cargo run --bin gentle_cli -- shell 'uniprot audit-parity-show tp73_projection_audit_parity'"
       ],
       "retain_outputs": [
         "exports/tp73_uniprot_projection.svg"
       ],
       "checkpoints": [
-        "The TP73 locus, UniProt entry, and Ensembl protein evidence all persist under stable ids in one project state.",
-        "The integrated audit stores `tp73_projection_audit` with per-transcript accounting and a local unsent maintainer-email draft.",
-        "The parity report stores `tp73_projection_audit_parity` and confirms whether the integrated Rust audit matches the public primitive composition.",
+        "The Ensembl-116 TP73 locus carries full annotation, reviewed UniProt O15350 persists as `TP73_UNIPROT`, and ten linked transcripts persist in `tp73_uniprot_o15350`.",
+        "Every accounting row satisfies translated_nt/3=derived_aa; the integrated audit separates six protein-length mismatches from four otherwise matching rows limited by missing Ensembl evidence.",
+        "The local maintainer-email text remains explicitly unsent and is never treated as a validated complaint while external evidence is missing.",
+        "The parity report stores `tp73_projection_audit_parity` with zero divergent rows out of ten and a matching draft transcript set.",
         "The shared expert SVG export succeeds so the projected TP73 feature geometry remains inspectable outside the live GUI."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/01-audit-mismatch-vs-missing-evidence.png",
+          "caption": "The native Protein Evidence audit separates six protein-length mismatches from four rows whose remaining limitation is missing Ensembl evidence. Expanded rows show corrected genomic CDS accounting, and the text box is explicitly an unsent local draft.",
+          "illustrates_step": 3,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/tp73_uniprot_projection_audit_online/02-direct-vs-composed-parity.png",
+          "caption": "The native parity summary reports zero divergent rows out of ten and confirms that the direct and composed paths selected the same transcript set for the local draft.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        }
       ]
     },
     {
@@ -2490,7 +2657,7 @@
       "tier": "core",
       "guide_path": null,
       "summary": "Learn how GENtle turns a TP73-like annotated locus into promoter windows, promoter evidence tables, expression-linked promoter groups, TFBS score tracks, similarity rankings, and a manifest of reusable artifacts.",
-      "narrative": "Promoter design begins by asking where transcription is likely to start for each transcript and which DNA span should be treated as the upstream regulatory context. GENtle first derives promoter windows around transcript starts, then collapses transcript-level interpretations that point to the same DNA span. It then collects evidence into portable artifacts: an alternative-promoter summary, a promoter evidence matrix, an isoform promoter comparison, expression evidence linked by transcript id, TFBS score-track graphics, TFBS similarity rankings, and a manifest that lets GUI users, CLI users, or ClawBio-style consumers choose their own presentation.\n\nThis tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.",
+      "narrative": "Promoter design begins by asking where transcription is likely to start for each transcript and which DNA span should be treated as the upstream regulatory context. GENtle first derives promoter windows around transcript starts, then collapses transcript-level interpretations that point to the same DNA span. It then collects evidence into portable artifacts: an alternative-promoter summary, a promoter evidence matrix, an isoform promoter comparison, expression evidence linked by transcript id, TFBS score-track graphics, TFBS similarity rankings, and a manifest that lets GUI users, CLI users, or ClawBio-style consumers choose their own presentation.\n\nThis tutorial uses a synthetic 249 bp TP73-labeled locus with two transcripts sharing one 5' boundary, one alternative-start transcript, and local annotation evidence. It is not making a biological claim about TP73. The small artificial locus keeps the algorithm visible: every promoter window, evidence row, and plotted TFBS score can be traced back to a short local sequence without requiring an online genome fetch.\n\nThe 2026-10-01 review found two operational boundaries worth teaching. Opening Promoter design from an mRNA seeds `Transcript id`; clear that field before expecting the chapter-wide three-to-two promoter collapse. Native grouping and evidence-matrix views then pass. The native TF score-track and similarity actions still terminate the exact reviewed GUI build with a stack overflow, so the generated SVG/JSON prove the shared headless engine only, not GUI acceptance. The same review repaired direct-workflow manifest resolution so a fresh run reports all six just-written artifacts as present instead of accidentally checking `artifacts/artifacts/...`. A real ClawBio wrapper replay then completed with status `ok`, collected all seven declared artifacts plus a derived PNG, and retained its execution manifest and checksums.",
       "use_cases": [
         "You want a fast offline Promoter design example before prepared Ensembl data are available.",
         "You want to verify that transcript-derived promoter windows collapse by DNA span instead of stacking duplicate promoter symbols.",
@@ -2501,14 +2668,14 @@
       ],
       "gui_steps": [
         "Open `docs/examples/assets/tp73_promoter_artifact_demo.gb` via `File -> Open Sequence...`.",
-        "Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features.",
-        "Set `Gene label` to `TP73`, `promoter upstream bp` to `40`, and `promoter downstream bp` to `15`.",
+        "Open `Promoter design` from the `TP73` gene or one of the `TP73-demo-*` mRNA features. If an mRNA seeded `Transcript id`, clear it before the chapter-wide comparison; leaving it set intentionally restricts the report to that one transcript.",
+        "Set `Gene label` to `TP73`, leave `Transcript id` empty, set `promoter upstream bp` to `40`, and set `promoter downstream bp` to `15`.",
         "Click `Annotate promoter windows`, then `Compare alternative promoters`; confirm that three transcript-level interpretations collapse into two DNA-level promoter windows.",
         "Click `Build evidence matrix`; confirm the shared promoter row reports `2 tx` and that evidence kinds include promoter geometry, transcript support, promoter annotation, TFBS, variant, repeat, and CUT&RUN-style overlap evidence.",
         "Run the isoform promoter comparison; confirm that the shared TSS transcripts and alternative-start transcript are compared as separate promoter groups with differential evidence signatures.",
         "Load or paste expression rows for the TP73 demo transcripts; confirm that expression evidence attaches to the matching promoter groups rather than becoming a GUI-only note.",
-        "Set TF motifs to `SP1,TP53,TP63,TP73`, run `Show TF score tracks`, then export `TF score tracks SVG...` for the visual artifact.",
-        "Set TFBS similarity anchor to `SP1`, compare against `TP53,TP63,TP73,CTCF`, run `Show TFBS similarity ranking`, then export the JSON ranking.",
+        "Set TF motifs to `SP1,TP53,TP63,TP73` and score range `60..158`. On the reviewed build, `Show TF score tracks` causes a stack overflow; use the generated SVG only as headless-engine evidence until a later exact GUI build passes.",
+        "Set TFBS similarity anchor to `SP1` and candidates to `TP53,TP63,TP73,CTCF`. The reviewed native action shares the same stack-overflow blocker; the generated JSON is CLI evidence, not a populated-GUI acceptance claim.",
         "Inspect the component manifest to see which JSON/SVG artifacts were produced; downstream tools can choose their own presentation order."
       ],
       "cli_steps": [
@@ -2523,16 +2690,28 @@
         "cargo run --bin gentle_cli -- shell 'features tfbs-track-similarity tp73_promoter_artifact_demo --anchor-motif SP1 --candidate-motif TP53 --candidate-motif TP63 --candidate-motif TP73 --candidate-motif CTCF --range 60..158 --ranking-metric smoothed_spearman --score-kind llr_background_tail_log10 --path artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json'",
         "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/promoter_design_artifact_slice_offline.json"
       ],
+      "agent_steps": [
+        "Verify that the current live project contains the 249 bp synthetic sequence `tp73_promoter_artifact_demo`; propose opening Promoter design without claiming access to a separate CLI state. Do not mutate or export until approved.",
+        "Report whether Promoter design was opened from the gene or an mRNA. If `Transcript id` is seeded, explain that retaining it produces a one-transcript report and propose clearing it for the chapter-wide comparison; do not silently erase it.",
+        "Propose the exact chapter-wide settings `gene_label=TP73`, empty transcript filter, upstream 40 and downstream 15. State that these are synthetic teaching coordinates, not TP73 biological defaults.",
+        "After approval, annotate and compare promoter windows. Verify from the structured report that three transcript interpretations collapse to spans `60..116` and `100..156`; do not infer promoter activity from the grouping.",
+        "Build and inspect the evidence matrix only after the promoter settings are bound. Report the two candidates, the shared row's two-transcript support and each observed evidence kind; keep synthetic overlap evidence separate from external validation.",
+        "Compare isoform promoter groups using the same empty transcript filter and 40/15 geometry. Distinguish shared versus differential evidence without calling either promoter active.",
+        "Before attaching expression rows, display the three synthetic transcript IDs, values, units and source label. Treat them as association evidence and require separate approval before writing the report artifact.",
+        "For TF score tracks, bind the exact `60..158` span, motif set, score kind and clipping policy. State that the reviewed native button stack-overflows and offer the deterministic CLI/SVG route without presenting it as GUI acceptance.",
+        "For similarity, bind SP1, the four candidates, Smoothed Spearman, span and score kind. Report the structured ranking as screening evidence only and retain the native-GUI blocker.",
+        "Inspect the component manifest after all outputs exist. Require six present artifacts and zero missing required artifacts, then return their paths and checksums; an outer agent must also return its explicit state path and execution receipt."
+      ],
       "step_expectations": [
         "The canonical workflow loads the synthetic TP73-like locus under `tp73_promoter_artifact_demo` and writes the promoter artifact bundle.",
-        "Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state.",
-        "The window parameters are the tiny-locus tutorial values used by all downstream promoter reports.",
+        "Promoter-window controls resolve against the TP73 gene/mRNA features in the same shared engine state; an mRNA launch visibly seeds its transcript filter.",
+        "The empty transcript filter and 40/15 window parameters are the chapter-wide tiny-locus values used by all downstream promoter reports.",
         "`alternative_promoters.json` reports three transcript windows collapsed into two DNA-level promoter windows.",
         "`evidence_matrix.json` contains two promoter candidates and shows the shared promoter with `2 tx` support plus multiple evidence kinds.",
         "`isoform_promoter_comparison.json` separates the shared-TSS and alternative-start promoter groups.",
         "`promoter_expression_evidence.json` links the synthetic expression rows to promoter groups through transcript IDs.",
-        "`tfbs_score_tracks.svg` is written and embedded below as the visual output of the chapter.",
-        "`tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`.",
+        "`tfbs_score_tracks.svg` is written and embedded as the headless visual artifact; the reviewed native TF score-track action is not accepted because it stack-overflows.",
+        "`tfbs_similarity.json` ranks TP53, TP63, TP73, and CTCF against SP1 using `smoothed_spearman`; this does not substitute for the blocked native action.",
         "`promoter_artifact_manifest.json` lists the generated JSON/SVG components so downstream tools can present them in their own order."
       ],
       "prerequisites": [
@@ -2603,14 +2782,16 @@
         "artifacts/tp73_promoter_artifact_demo.tfbs_similarity.json"
       ],
       "checkpoints": [
-        "The workflow executes offline without warnings beyond the expected alternative-promoter collapse note.",
+        "A fresh direct workflow executes offline and its manifest reports six present artifacts with zero missing required artifacts.",
         "`alternative_promoters.json` reports `transcript_window_count=3` and `collapsed_window_count=2`.",
         "`evidence_matrix.json` reports two promoter candidates and includes `cutrun_peak_overlap`, `repeat_context`, `tfbs_annotation`, and `variant_overlap` among observed evidence kinds.",
         "`isoform_promoter_comparison.json` reports two promoter groups and surfaces differential evidence signatures for the shared versus alternative-start promoter.",
         "`promoter_expression_evidence.json` assigns three synthetic expression rows to the two promoter groups.",
         "`promoter_artifact_manifest.json` reports all required promoter component artifacts as present.",
         "`tfbs_score_tracks.svg` is written and opens as a compact promoter score-track figure.",
-        "`tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`."
+        "`tfbs_similarity.json` ranks four candidates against SP1 using `smoothed_spearman`.",
+        "A real outer-wrapper replay exits zero, collects the seven declared artifacts plus the derived score-track PNG, and retains a reproducibility receipt.",
+        "Native alternative-promoter and evidence-matrix views pass after clearing the seeded transcript filter; native TFBS score/similarity actions remain blocked by the recorded stack overflow."
       ],
       "graphics": [
         {
@@ -2619,6 +2800,20 @@
           "caption": "TFBS score tracks across the synthetic TP73 promoter slice.",
           "illustrates_step": 8,
           "regen_command": "cargo run --bin gentle_examples_docs -- tutorial-generate"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/01-alternative-promoters.png",
+          "caption": "The native Promoter design window shows all three transcript interpretations collapsed into two DNA-level promoter windows after clearing the mRNA-seeded transcript filter.",
+          "illustrates_step": 4,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/promoter_design_artifact_slice_offline/02-evidence-matrix.png",
+          "caption": "The native evidence matrix contains the two collapsed promoter candidates and their promoter geometry, transcript, TFBS, repeat, variant and CUT&RUN-style evidence summaries.",
+          "illustrates_step": 5,
+          "capture_date": "2026-10-01"
         }
       ]
     },
@@ -2845,7 +3040,7 @@
       "tier": "core",
       "guide_path": null,
       "summary": "Compose one reproducible, strand-aware locus figure from PATZ1-like transcript models, cDNA/EST and array constraints, condition-wise abundance, differential probe activity, grouped occupancy tracks, and a TP73 motif score track without network access.",
-      "narrative": "Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, abundance, differential activity, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.\n\nRead the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus. Its abundance cells report condition-wise probe-set signal, while separately scaled differential cells report raw activity changes rather than statistical significance. Signal can prioritize assay regions but does not prove PCR-primer binding. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.",
+      "narrative": "Gene-centered interpretation becomes difficult when transcript order, genomic coordinates, probe geometry, abundance, differential activity, occupancy tracks, and assay evidence are inspected in separate tools. GENtle's Gene Locus Evidence composer keeps these sources distinct but aligns them on one axis. This chapter uses an artificial 240 bp region labelled as a negative-strand PATZ1 locus. Its transcript models, PSR/JUC rows, effect values, occupancy intervals, and expression values are synthetic and exist only to make every transformation inspectable offline.\n\nRead the figure as a structured evidence ledger. A probe interval or junction marker identifies where an array design interrogates the locus. Its abundance cells report condition-wise probe-set signal, while separately scaled differential cells report raw activity changes rather than statistical significance. Signal can prioritize assay regions but does not prove PCR-primer binding. An occupancy interval reports a projected experimental track at the locus, not the affected isoform. A motif score is a sequence-model result, not proof of binding. The shared visual axis helps formulate validation experiments while preserving those boundaries.\n\nThe inner agent works against the currently open project and should propose each GUI-equivalent operation for review while preserving these evidence classes. The outer agent starts from no GUI state: give it the canonical workflow plus an explicit disposable project path, then compare its structured receipt and artifact digest with the local result. Neither agent may turn the synthetic fixture into a claim about biological PATZ1 regulation.",
       "use_cases": [
         "You want to inspect transcript architecture and multiple evidence layers in one gene-centered figure.",
         "You need a deterministic negative-strand example before loading a full Ensembl locus.",
@@ -2864,6 +3059,14 @@
       "cli_steps": [
         "cargo run --bin gentle_cli -- workflow @docs/examples/workflows/patz1_gene_locus_evidence_offline.json"
       ],
+      "agent_steps": [
+        "Verify that the selected input is the committed 240 bp synthetic PATZ1 fixture, not a live PATZ1 locus. Propose loading it and importing panel `patz1_synthetic_v1`; report the GRCh38.p14 anchor, negative strand, three transcript ids, and any unverified-anchor warning separately.",
+        "Inspect the Evidence ledger with the committed probe, cDNA/EST, and expression resources. Preserve observed evidence, candidate association, design constraint, and unresolved evidence as distinct states; explicitly report that the GRCh37 cDNA/EST negative control is rejected against GRCh38.p14.",
+        "Propose importing exactly the four committed synthetic BED tracks with their workflow-declared names. Report their source paths, projected intervals, and track identities; do not describe the invented intervals as CUT&RUN measurements or isoform-specific regulation.",
+        "Build the locus-composition request from the committed probe-effect table and occupancy layout. Confirm one PSR row, one JUC row, three abundance columns, three differential columns, two separately scaled occupancy groups, and the GRCh38.p14 coordinate binding before composition.",
+        "Verify the 19 bp flanks from the fixture geometry and resolve TP73 through the local JASPAR registry with `llr_background_tail_log10`, clipping enabled, and five retained hits. Explain that motif scores rank sequence-model sites and do not establish binding, affinity, or causality.",
+        "Compose and inspect the shared-engine report before proposing any export. Return the transcript, evidence-layer, warning, provenance, and artifact summaries separately; treat SVG/PDF/JSON writes as explicit outputs and never replace the structured report with a screenshot-derived interpretation."
+      ],
       "step_expectations": [
         "The loaded 240 bp sequence reports a GRCh38.p14 chromosome-22 anchor and the gene/transcript rows remain on the negative strand.",
         "The evidence ledger keeps cDNA/EST observations separate from array design constraints and retains the synthetic missing/mismatched evidence warnings.",
@@ -2876,6 +3079,7 @@
         "tp53_isoform_architecture_online",
         "pcr_selection_batch_primer_pairs_offline"
       ],
+      "local_execution_note": "Run from the repository root; the canonical workflow is fully offline and uses only committed synthetic fixtures. For native inspection, open the generated disposable project, double-click an mRNA row to open Splicing Expert, then use the Evidence and Locus figure tabs. The inner agent operates on that open project; the outer agent must receive the workflow plus an explicit disposable project path and return its structured receipt and artifact digest.",
       "learning_objectives": [
         "Distinguish transcript 5'-to-3' display order from ascending genomic coordinates on a negative-strand gene.",
         "Read PSR intervals and JUC junction markers as different array geometries.",
@@ -2937,6 +3141,20 @@
       ],
       "graphics": [
         {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/01-evidence-ledger.png",
+          "caption": "The native Evidence tab keeps three negative-strand transcript models, four projected occupancy tracks, and four junction-evidence rows separate. The deliberately incompatible GRCh37 cDNA/EST row remains visibly rejected against the GRCh38.p14 anchor instead of being coerced into support.",
+          "illustrates_step": 2,
+          "capture_date": "2026-10-01"
+        },
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/patz1_gene_locus_evidence_offline/02-locus-composition.png",
+          "caption": "The native Locus figure tab composes three transcripts, two occupancy groups, one TP73 motif track, and two probe-effect rows. Warnings and explicit non-claims remain beside the preview; the synthetic layers are not presented as experimental PATZ1 regulation.",
+          "illustrates_step": 6,
+          "capture_date": "2026-10-01"
+        },
+        {
           "kind": "generated",
           "path": "docs/tutorial/generated/artifacts/patz1_gene_locus_evidence_offline/patz1_gene_locus_evidence.svg",
           "caption": "A strand-aware synthetic PATZ1 locus composition with transcript models, distinct PSR/JUC effects, grouped occupancy lanes, and a TP73 motif score track. The aligned layers are evidence for inspection, not proof of isoform-specific regulation.",
@@ -2996,6 +3214,19 @@
         "jq '{schema, isoform_evidence_sha256, roles:[.assay_panels[].role], specificity_accepted:[.assay_panels[].specificity_accepted], experimental_sequence:.recommended_experimental_sequence}' /tmp/patz1_gene_transcript_assay_routine.report.json",
         "jq '.specificity_followups' docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json"
       ],
+      "agent_steps": [
+        "Identify this as the committed synthetic PATZ1-like regression fixture, not human PATZ1 sequence or annotation. Propose replay of `docs/examples/workflows/patz1_endpoint_sybr_transcript_assay_panel_offline.json` only in a new disposable state, list its three panel reports plus compound routine output, and wait for approval before the workflow mutates state or writes artifacts.",
+        "Propose `LoadFile` for `test_files/fixtures/transcript_assay_panel/patz1/patz1_assay_minus_strand.gb` as `patz1_transcript_assay_demo`. Show the synthetic provenance and intended feature group; do not load it until I approve.",
+        "Read the canonical workflow and extract the three externally tagged `DesignTranscriptAssayPanel` payloads unchanged except for their explicitly redirected `/tmp` report paths. Return payload digests and distinguish endpoint, junction-SYBR and common-region objectives; do not execute any panel.",
+        "If Primer3 is being considered, run only the read-only `primers preflight --backend primer3` check and report executable/version availability. Do not change the tutorial's deterministic internal backend or imply that preflight designs primers.",
+        "Propose the endpoint `DesignTranscriptAssayPanel` payload with `endpoint_rt_pcr`, `isoform_end_matrix`, oligo-dT, `require_all` and the 10,000 bp ceiling. Show the full request and wait for approval; after execution return the complete reaction/band matrices and reverse-transcription warning without interpreting band intensity as quantitative abundance.",
+        "Propose the separate primer-only SYBR panel with `one_per_class`, required synthetic Clariom-JUC evidence and report id `patz1_sybr_juc_panel`. Wait for its own approval, then return the selected spanning assay and unresolved rows; do not claim human PATZ1 specificity.",
+        "Propose the separate `pan_transcript` routine common-region screen with report id `patz1_routine_common_region_screen`. Keep annotation-confirmed commonality distinct from synthetic PSR/JUC support, show preferred versus allowed product ranges, and wait for approval before design.",
+        "List and inspect all three persisted panel reports without rerunning them. If export is requested, propose the exact source report id and destination path as a separate file write; compare the exported digest with the persisted report.",
+        "Propose `ComposeGeneTranscriptAssayRoutine` over the exact three report ids and the committed isoform-evidence digest. State that composition reads existing evidence and does not redesign panels or run specificity; expose the `/tmp/patz1_gene_transcript_assay_routine.report.json` file write and wait for approval.",
+        "Inspect the compound routine without mutation. Report the three roles, evidence and panel digests, uncovered classes, selected-pair audit and `specificity_accepted=false` for every offline panel; do not convert missing or planned evidence into acceptance.",
+        "Inspect only the non-executing specificity follow-up templates. Replace `GENOME_ID` and `OUTPUT_DIR` only after a prepared reference and external runner are explicitly supplied; keep plan generation, external BLAST execution and manifest-bound finalization as separate approvals, and accept only a finalized `pass`."
+      ],
       "step_expectations": [
         "The canonical offline workflow writes complete endpoint, discriminating SYBR, and routine common-region `gentle.transcript_assay_panel.v2` reports from committed synthetic inputs.",
         "The explicit project state contains the minus-strand PATZ1-like locus under the deterministic sequence id used by both operations.",
@@ -3004,7 +3235,7 @@
         "The endpoint report is complete, primer-only, uses the 10,000 bp ceiling, and contains designed end reactions plus at least three distinct predicted band sizes.",
         "The SYBR report is primer-only and includes a selected assay spanning the required synthetic Clariom JUC junction.",
         "The routine report uses `pan_transcript`, records annotation-confirmed common-region evidence, and treats any overlapping PSR row only as independent support.",
-        "Both report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.",
+        "All three report ids are persisted in the selected state; list/show/export operate without reconstructing or hand-editing the reports.",
         "The compound routine is a pure read over the exact evidence bytes and persisted panel reports; its three roles are common_control, junction_validation, and endpoint_structure.",
         "The compound routine keeps every panel's specificity acceptance false in this offline run instead of promoting a planned follow-up to a completed check.",
         "Every selected assay exposes a non-executing `primers specificity-plan` template, and the report honestly retains `genomic_confirmation_status: not_run` in this offline tutorial."
@@ -3048,7 +3279,7 @@
         },
         {
           "parameter": "coverage_policy=require_all",
-          "where_used": "Both tutorial operations",
+          "where_used": "All three tutorial operations",
           "why_it_matters": "Strict coverage refuses incomplete panels instead of silently dropping a mature-cDNA class or requested junction.",
           "how_to_derive": "Keep `require_all` for a claimed complete panel; choose `best_effort` only as an explicit exploratory decision and inspect every uncovered reason.",
           "omit_when": ""

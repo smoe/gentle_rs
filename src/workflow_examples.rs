@@ -240,6 +240,11 @@ pub struct TutorialSourceGeneratedChapterSection {
     /// displayed for review and are never executed by tutorial generation.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_steps: Vec<String>,
+    /// Whether generated prose should advertise the canonical workflow through
+    /// an outer-agent replay. `None` preserves the default for ordinary
+    /// executable tutorials; `Some(false)` is an explicit editorial opt-out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_agent_replay: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -600,6 +605,7 @@ impl TutorialSourceGeneratedChapterSection {
             step_titles: self.step_titles,
             cli_steps: self.cli_steps,
             agent_steps: self.agent_steps,
+            outer_agent_replay: self.outer_agent_replay,
             step_expectations: self.step_expectations,
             step_rationales: self.step_rationales,
             prerequisites: self.prerequisites,
@@ -794,6 +800,8 @@ pub struct TutorialChapter {
     pub cli_steps: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub agent_steps: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_agent_replay: Option<bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub step_expectations: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -3748,24 +3756,9 @@ fn rewrite_example_paths_for_execution(
             }
             continue;
         }
-        if let Operation::ExportPromoterArtifactManifest {
-            artifacts, path, ..
-        } = op
-        {
-            let resolved_manifest_path = resolve_output_path(path, run_dir);
-            let manifest_parent = Path::new(&resolved_manifest_path)
-                .parent()
-                .map(Path::to_path_buf);
-            for artifact in artifacts {
-                let resolved_artifact_path =
-                    PathBuf::from(resolve_output_path(&artifact.path, run_dir));
-                artifact.path = manifest_parent
-                    .as_ref()
-                    .and_then(|parent| resolved_artifact_path.strip_prefix(parent).ok())
-                    .map(display_path)
-                    .unwrap_or_else(|| display_path(&resolved_artifact_path));
-            }
-            *path = resolved_manifest_path;
+        if let Operation::ExportPromoterArtifactManifest { path, .. } = op {
+            // Component paths are already manifest-relative (or absolute).
+            *path = resolve_output_path(path, run_dir);
             ensure_parent_exists(path)?;
             continue;
         }
@@ -5128,6 +5121,39 @@ fn render_tutorial_gui_steps(chapter: &TutorialChapter, output_dir: &Path) -> St
     out
 }
 
+fn render_tutorial_outer_agent_replay(chapter: &TutorialChapter, workflow_path: &str) -> String {
+    let state_name = chapter.id.replace('_', "-");
+    // Online chapters may need to populate multi-gigabyte reference caches.
+    // Keep the wrapper alive longer than the inner genome-prepare timeout;
+    // offline/core replays retain the tighter feedback loop.
+    let timeout_secs = match chapter.tier {
+        TutorialTier::Online => 7_200,
+        TutorialTier::Core | TutorialTier::Advanced => 300,
+    };
+    let mut out = String::new();
+    out.push_str("\n## Ask an Outer Agent (MCP or ClawBio/OpenClaw)\n\n");
+    out.push_str("An outer agent does not inherit the unsaved GUI project. Give it this chapter's canonical workflow and an explicit disposable state path; ask it to retain the structured result, artifacts and reproducibility receipt instead of replacing them with prose.\n\n");
+    out.push_str("> Use GENtle's `gentle-cloning` skill to replay `");
+    out.push_str(workflow_path);
+    out.push_str("` against a new disposable state. First report the exact workflow, inputs, state path, outputs and whether the selected route needs confirmation. Do not infer state from an open GUI. Return the structured result, produced artifacts and reproducibility receipt, and state any unmet prerequisite.\n\n");
+    out.push_str("Equivalent direct structured request for the generic wrapper:\n\n");
+    out.push_str("```json\n");
+    out.push_str("{\n");
+    out.push_str("  \"schema\": \"gentle.clawbio_skill_request.v1\",\n");
+    out.push_str("  \"mode\": \"workflow\",\n");
+    out.push_str("  \"state_path\": \"/tmp/gentle-");
+    out.push_str(&state_name);
+    out.push_str(".state.json\",\n");
+    out.push_str("  \"workflow_path\": \"");
+    out.push_str(workflow_path);
+    out.push_str("\",\n");
+    out.push_str(&format!("  \"timeout_secs\": {timeout_secs}\n"));
+    out.push_str("}\n");
+    out.push_str("```\n\n");
+    out.push_str("Submitting a direct structured request is an explicit wrapper invocation. If natural language selects a narrower delegated skill and that route mutates state, selects biological material or writes artifacts, the caller must preserve that skill's proposal/approval boundary and approve only the exact bound digest. This tutorial generation step does not invoke an agent or grant approval.\n");
+    out
+}
+
 fn tutorial_inline_artifact_steps(graphics: &[TutorialGraphic]) -> HashMap<String, usize> {
     let mut inline_steps = HashMap::new();
     for graphic in graphics {
@@ -5358,6 +5384,9 @@ fn render_tutorial_chapter_markdown(
         out.push_str(&workflow_path);
         out.push_str("'\n");
         out.push_str("```\n");
+    }
+    if chapter.outer_agent_replay.unwrap_or(true) {
+        out.push_str(&render_tutorial_outer_agent_replay(chapter, &workflow_path));
     }
     out.push_str("\n## Interpretation and Reference\n");
     out.push_str(&render_tutorial_parameters_that_matter(chapter));
@@ -6694,6 +6723,7 @@ mod tests {
             step_titles: vec![],
             cli_steps: vec![],
             agent_steps: vec![],
+            outer_agent_replay: None,
             step_expectations: vec![],
             step_rationales: vec![],
             prerequisites: vec![],
@@ -9660,6 +9690,34 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_outer_agent_replay_binds_workflow_and_separates_gui_state() {
+        let chapter = minimal_tutorial_chapter("outer_agent_contract");
+        let workflow_path = "docs/examples/workflows/minimal_example.json";
+        let markdown = render_tutorial_outer_agent_replay(&chapter, workflow_path);
+
+        assert!(markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"));
+        assert!(markdown.contains("does not inherit the unsaved GUI project"));
+        assert!(markdown.contains(workflow_path));
+        assert!(markdown.contains("/tmp/gentle-outer-agent-contract.state.json"));
+        assert!(markdown.contains("gentle.clawbio_skill_request.v1"));
+        assert!(markdown.contains("proposal/approval boundary"));
+        assert!(markdown.contains("does not invoke an agent or grant approval"));
+        assert!(markdown.contains("\"timeout_secs\": 300"));
+    }
+
+    #[test]
+    fn tutorial_outer_agent_replay_allows_online_cache_preparation() {
+        let mut chapter = minimal_tutorial_chapter("online_outer_agent_contract");
+        chapter.tier = TutorialTier::Online;
+        let markdown = render_tutorial_outer_agent_replay(
+            &chapter,
+            "docs/examples/workflows/prepare_reference_genome_online.json",
+        );
+
+        assert!(markdown.contains("\"timeout_secs\": 7200"));
+    }
+
+    #[test]
     fn tutorial_generated_chapter_includes_narrative_concepts_and_objectives() {
         let _blast_tools = tutorial_blast_tools();
         let _serial = lock_jaspar_registry_for_test();
@@ -9688,6 +9746,21 @@ mod tests {
         assert!(markdown.contains("## Walkthrough: GUI, CLI and Inner Agent"));
         assert!(markdown.contains("**Ask the inner agent**"));
         assert!(markdown.contains("Do not execute it until I approve."));
+        assert!(markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"));
+        assert!(
+            markdown
+                .contains("docs/examples/workflows/load_branch_reverse_complement_pgex_fasta.json")
+        );
+        assert!(markdown.contains("does not inherit the unsaved GUI project"));
+
+        let contributor_chapter =
+            generated.join("chapters/01-02_contribute_to_gentle_development.md");
+        let contributor_markdown = std::fs::read_to_string(&contributor_chapter)
+            .expect("read contributor chapter markdown");
+        assert!(
+            !contributor_markdown.contains("## Ask an Outer Agent (MCP or ClawBio/OpenClaw)"),
+            "the explicitly opted-out contributor chapter must not advertise an outer-agent replay"
+        );
         assert!(markdown.contains("## Parameters That Matter"));
         assert!(
             markdown
@@ -10133,7 +10206,7 @@ mod tests {
                         artifacts: vec![crate::engine::PromoterArtifactManifestEntry {
                             artifact_id: "evidence_matrix".to_string(),
                             artifact_kind: "promoter_evidence_matrix".to_string(),
-                            path: "artifacts/evidence_matrix.json".to_string(),
+                            path: "evidence_matrix.json".to_string(),
                             schema_hint: Some("gentle.promoter_evidence_matrix.v1".to_string()),
                             label: None,
                             recommended_use: None,
@@ -10173,14 +10246,86 @@ mod tests {
                 "output path should be rewritten into run dir: {path}"
             );
             if let Operation::ExportPromoterArtifactManifest { artifacts, .. } = op {
-                assert!(
-                    artifacts
-                        .iter()
-                        .all(|artifact| !Path::new(&artifact.path).is_absolute()
-                            && !artifact.path.starts_with(&display_path(run_dir.path()))),
-                    "manifest artifact paths should stay portable relative paths: {artifacts:?}"
-                );
+                assert_eq!(artifacts[0].path, "evidence_matrix.json");
             }
+        }
+    }
+
+    #[test]
+    fn promoter_manifest_paths_match_in_direct_and_tutorial_replay() {
+        let example: WorkflowExample = serde_json::from_slice(
+            &fs::read(example_dir().join("promoter_design_artifact_slice_offline.json"))
+                .expect("canonical promoter workflow"),
+        )
+        .expect("workflow JSON");
+        let repo_root = std::env::current_dir().expect("cwd");
+        let component_names = [
+            "tp73_promoter_artifact_demo.alternative_promoters.json",
+            "tp73_promoter_artifact_demo.evidence_matrix.json",
+            "tp73_promoter_artifact_demo.isoform_promoter_comparison.json",
+            "tp73_promoter_artifact_demo.promoter_expression_evidence.json",
+            "tp73_promoter_artifact_demo.tfbs_score_tracks.svg",
+            "tp73_promoter_artifact_demo.tfbs_similarity.json",
+        ];
+        for replay in [false, true] {
+            let run_dir = TempDir::new().expect("isolated output root");
+            let prepared = if replay {
+                rewrite_example_paths_for_execution(&example, &repo_root, run_dir.path())
+                    .expect("tutorial replay paths")
+            } else {
+                example.clone()
+            };
+            let mut operation = prepared
+                .workflow
+                .ops
+                .into_iter()
+                .find(|op| matches!(op, Operation::ExportPromoterArtifactManifest { .. }))
+                .expect("canonical manifest operation");
+            if let Operation::ExportPromoterArtifactManifest { path, .. } = &mut operation
+                && !replay
+            {
+                // Relocate only the destination, as a direct caller can do;
+                // component references must not require the tutorial adapter.
+                *path = display_path(&run_dir.path().join(&*path));
+            }
+            let artifacts = run_dir.path().join("artifacts");
+            fs::create_dir_all(&artifacts).expect("artifact directory");
+            // Synthetic placeholders exercise path existence, not biology or
+            // content validation. They are removed with the temporary root.
+            for name in component_names {
+                fs::write(artifacts.join(name), "synthetic artifact\n")
+                    .expect("component placeholder");
+            }
+            let mut state = ProjectState::default();
+            state.sequences.insert(
+                "tp73_promoter_artifact_demo".to_string(),
+                crate::dna_sequence::DNAsequence::from_sequence("ACGT").expect("synthetic DNA"),
+            );
+            let result = GentleEngine::from_state(state)
+                .apply(operation)
+                .expect("export through public operation");
+            let report = result.promoter_artifact_manifest.expect("manifest report");
+            assert_eq!(report.present_artifact_count, 6, "replay={replay}");
+            assert_eq!(report.missing_required_artifact_count, 0, "replay={replay}");
+            assert!(report.warnings.is_empty(), "replay={replay}");
+            assert_eq!(
+                report
+                    .artifacts
+                    .iter()
+                    .map(|row| row.path.as_str())
+                    .collect::<Vec<_>>(),
+                component_names,
+                "replay={replay}"
+            );
+            let manifest_path =
+                artifacts.join("tp73_promoter_artifact_demo.promoter_artifact_manifest.json");
+            let persisted: serde_json::Value =
+                serde_json::from_slice(&fs::read(manifest_path).expect("saved manifest"))
+                    .expect("manifest JSON");
+            assert_eq!(
+                persisted,
+                serde_json::to_value(report).expect("result JSON")
+            );
         }
     }
 

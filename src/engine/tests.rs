@@ -2861,7 +2861,10 @@ fn uniprot_projection_test_sequence() -> DNAsequence {
     let mut dna = DNAsequence::from_sequence(&"ACGT".repeat(300)).expect("valid dna");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
-        location: gb_io::seq::Location::simple_range(99, 360),
+        location: gb_io::seq::Location::Join(vec![
+            gb_io::seq::Location::simple_range(99, 180),
+            gb_io::seq::Location::simple_range(299, 360),
+        ]),
         qualifiers: vec![
             ("gene".into(), Some("TOY1".to_string())),
             ("transcript_id".into(), Some("TX1".to_string())),
@@ -24595,7 +24598,8 @@ SQ   SEQUENCE   30 AA;  3333 MW;  0000000000000000 CRC64;
         UNIPROT_PROJECTION_TRANSCRIPT_ACCOUNTING_SCHEMA
     );
     assert_eq!(accounting.rows.len(), 1);
-    assert!(accounting.rows[0].translated_nt > 0);
+    assert_eq!(accounting.rows[0].translated_nt, 142);
+    assert_eq!(accounting.rows[0].expected_aa_count, 47);
 
     let exon_compare = engine
         .compare_uniprot_projection_to_ensembl_exons(
@@ -24698,6 +24702,13 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
             .collect(),
     });
     dna.features_mut().push(gb_io::seq::Feature {
+        kind: "gene".into(),
+        location: gb_io::seq::Location::simple_range(0, dna_len_i64),
+        qualifiers: vec![("standard_name".into(), Some("UNRELATED_REGION".to_string()))]
+            .into_iter()
+            .collect(),
+    });
+    dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
         location: gb_io::seq::Location::simple_range(0, 180),
         qualifiers: vec![
@@ -24727,6 +24738,7 @@ fn test_transcript_protein_expert_supports_transcript_only_rows() {
         panic!("expected isoform-architecture payload for transcript protein expert");
     };
     assert_eq!(view.seq_id, "toy_tx_only");
+    assert_eq!(view.gene_symbol, "TPROT");
     assert_eq!(view.protein_lanes.len(), 1);
     let comparison = view.protein_lanes[0]
         .comparison
@@ -58995,6 +59007,89 @@ fn export_promoter_artifact_manifest_marks_present_and_missing_required_artifact
             .warnings
             .iter()
             .any(|warning| warning.contains("missing"))
+    );
+}
+
+#[test]
+fn export_promoter_artifact_manifest_resolves_only_against_manifest_directory() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("tp73_relative_artifact_manifest".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    let current_dir = std::env::current_dir().expect("current directory");
+    let dir = tempfile::tempdir_in(&current_dir).expect("tempdir inside cwd");
+    let artifact_dir = dir.path().join("artifacts with spaces");
+    fs::create_dir_all(&artifact_dir).expect("create artifact directory");
+    let present_path = artifact_dir.join("present.json");
+    fs::write(&present_path, "{}").expect("write present artifact");
+    // This path exists from cwd, but not from the manifest directory. Never
+    // change process cwd: other engine tests may be running in parallel.
+    let cwd_only_path = present_path
+        .strip_prefix(&current_dir)
+        .expect("tempdir should be inside current directory");
+    assert!(
+        cwd_only_path.is_relative(),
+        "test path must stay cwd-relative"
+    );
+
+    assert!(cwd_only_path.exists());
+    assert!(!artifact_dir.join(cwd_only_path).exists());
+    let manifest_path = artifact_dir.join("manifest.json");
+    let result = engine
+        .apply(Operation::ExportPromoterArtifactManifest {
+            input: "tp73_relative_artifact_manifest".to_string(),
+            gene_label: Some("TP73".to_string()),
+            artifacts: vec![
+                PromoterArtifactManifestEntry {
+                    artifact_id: "relative".to_string(),
+                    path: "present.json".to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "cwd_only".to_string(),
+                    path: cwd_only_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "absolute".to_string(),
+                    path: present_path.to_string_lossy().to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+                PromoterArtifactManifestEntry {
+                    artifact_id: "empty".to_string(),
+                    required: true,
+                    ..PromoterArtifactManifestEntry::default()
+                },
+            ],
+            path: manifest_path.to_string_lossy().to_string(),
+        })
+        .expect("promoter artifact manifest");
+
+    let report = result.promoter_artifact_manifest.expect("manifest result");
+    assert_eq!(report.present_artifact_count, 2);
+    assert_eq!(report.missing_required_artifact_count, 2);
+    assert_eq!(report.artifacts[0].path, "present.json");
+    assert_eq!(report.artifacts[0].status, "present");
+    assert_eq!(report.artifacts[1].status, "missing");
+    assert_eq!(report.artifacts[2].status, "present");
+    assert_eq!(report.artifacts[3].status, "missing_empty_path");
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("cwd_only"))
+    );
+    let persisted: serde_json::Value =
+        serde_json::from_slice(&fs::read(manifest_path).expect("written manifest"))
+            .expect("manifest JSON");
+    assert_eq!(
+        persisted,
+        serde_json::to_value(&report).expect("result JSON")
     );
 }
 

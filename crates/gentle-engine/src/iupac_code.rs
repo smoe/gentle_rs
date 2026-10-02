@@ -150,6 +150,17 @@ impl IupacCode {
             b'G' => b'C',
             b'T' => b'A',
             b'U' => b'A',
+            b'W' => b'W',
+            b'S' => b'S',
+            b'M' => b'K',
+            b'K' => b'M',
+            b'R' => b'Y',
+            b'Y' => b'R',
+            b'B' => b'V',
+            b'D' => b'H',
+            b'H' => b'D',
+            b'V' => b'B',
+            b'N' => b'N',
             _ => b' ',
         }
     }
@@ -210,8 +221,20 @@ mod tests {
         assert_eq!(IupacCode::letter_complement(b'G'), b'C');
         assert_eq!(IupacCode::letter_complement(b'T'), b'A');
         assert_eq!(IupacCode::letter_complement(b'U'), b'A');
+        assert_eq!(IupacCode::letter_complement(b'W'), b'W');
+        assert_eq!(IupacCode::letter_complement(b'S'), b'S');
+        assert_eq!(IupacCode::letter_complement(b'M'), b'K');
+        assert_eq!(IupacCode::letter_complement(b'K'), b'M');
+        assert_eq!(IupacCode::letter_complement(b'R'), b'Y');
+        assert_eq!(IupacCode::letter_complement(b'Y'), b'R');
+        assert_eq!(IupacCode::letter_complement(b'B'), b'V');
+        assert_eq!(IupacCode::letter_complement(b'D'), b'H');
+        assert_eq!(IupacCode::letter_complement(b'H'), b'D');
+        assert_eq!(IupacCode::letter_complement(b'V'), b'B');
+        assert_eq!(IupacCode::letter_complement(b'N'), b'N');
         assert_eq!(IupacCode::letter_complement(b'X'), b' ');
         assert_eq!(IupacCode::letter_complement(b'a'), b'T');
+        assert_eq!(IupacCode::letter_complement(b'n'), b'N');
     }
 
     #[test]

@@ -36,7 +36,13 @@
       "cloning_planning",
       "contributors"
     ],
-    "notes": "Machine-checked generated chapter; listed in Tutorials for explicit human functional confirmation.",
+    "notes": "Machine-checked generated chapter with typed GUI-acceptance views for Sequence Tools and Digest; listed in Tutorials for explicit human scientific confirmation.",
+    "interfaces": [
+      "native GUI (typed acceptance)",
+      "CLI / shared engine",
+      "Agent Assistant (inner, review-first)",
+      "ClawBio / outer agent"
+    ],
     "group": "03",
     "group_position": 1
   },
@@ -251,6 +257,11 @@
       "Open Sequence Tools from the DNA window, expand Core cloning operations, keep enzymes `BamHI,EcoRI`, set prefix `frag`, and run Digest.",
       "Review created fragment entries and confirm they are stored as independent sequence products."
     ],
+    "agent_steps": [
+      "Check that `test_files/pGEX-3X.gb` exists, then propose the exact `LoadFile` operation that would load it as `pgex`. Report the path, intended ID and expected circular annotated input; do not execute it until I approve.",
+      "Verify that `pgex` exists and is the intended parent, then propose exactly one `Digest` operation with enzymes `BamHI,EcoRI` and output prefix `frag`. Show the selected parent, enzyme order and expected output namespace; do not execute it until I approve.",
+      "Inspect the current project without rerunning the digest. Confirm that `pgex` remains present, that `frag_1` and `frag_2` are independent derived sequences in one fragment pool, and report their lineage to the digest operation. Do not interpret this in-silico result as wet-lab gel validation."
+    ],
     "cli_steps": [
       "cargo run --bin gentle_cli -- op '{\"LoadFile\":{\"path\":\"test_files/pGEX-3X.gb\",\"as_id\":\"pgex\"}}'",
       "cargo run --bin gentle_cli -- op '{\"Digest\":{\"input\":\"pgex\",\"enzymes\":[\"BamHI\",\"EcoRI\"],\"output_prefix\":\"frag\"}}'",
@@ -291,8 +302,9 @@
     "follow_up_commands": [],
     "retain_outputs": [],
     "checkpoints": [
-      "Digest operation completes and creates fragment sequence IDs.",
-      "Fragment IDs are deterministic across repeated runs."
+      "Digest operation completes and creates exactly `frag_1` and `frag_2` while retaining the parent `pgex` sequence.",
+      "The two products are independent derived sequences grouped in one fragment pool and retain lineage to the digest operation.",
+      "Fragment IDs are deterministic across repeated runs; the result is an in-silico digest, not evidence that a physical digest or gel succeeded."
     ]
   }
 }

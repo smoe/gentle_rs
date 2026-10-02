@@ -5,9 +5,65 @@
   "graphics": [
     {
       "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_01_main_start.png",
+      "caption": "Main GENtle lineage window before the TP73 cDNA/genomic comparison starts.",
+      "illustrates_step": 1,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_02_fetch_cdna_dialog.png",
+      "caption": "GenBank accession dialog configured for NM_001126241.3 as tp73_cdna.",
+      "illustrates_step": 1,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_03_prepare_genome_dialog.png",
+      "caption": "Reference-genome preparation dialog for Human GRCh38 Ensembl 116.",
+      "illustrates_step": 2,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_04_retrieve_tp73_genomic_dialog.png",
+      "caption": "Genomic-sequence retrieval dialog configured for the first TP73 occurrence as tp73_genomic.",
+      "illustrates_step": 2,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_05_sequences_loaded.png",
+      "caption": "Lineage view after tp73_cdna and tp73_genomic have both been loaded.",
+      "illustrates_step": 2,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_06_cdna_sequence_window.png",
+      "caption": "tp73_cdna in the standard DNA viewer before switching to Dotplot map.",
+      "illustrates_step": 3,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
       "path": "docs/screenshots/tutorial_cdna_genomic_07_dotplot_window.png",
       "caption": "Dotplot workspace after loading TP73 cDNA and genomic sequence.",
       "illustrates_step": 4,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_08_pair_forward_result.png",
+      "caption": "Pair-forward result with separated exon-aligned blocks across genomic coordinates.",
+      "illustrates_step": 4,
+      "capture_date": "2026-03-20"
+    },
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/tutorial_cdna_genomic_09_dotplot_as_node.png",
+      "caption": "Computed dotplot retained as an analysis node in the main lineage graph.",
+      "illustrates_step": 5,
       "capture_date": "2026-03-20"
     }
   ],
@@ -22,11 +78,16 @@
       "sequence_analysis",
       "visual_learning"
     ],
-    "notes": "Screenshot-backed manual tutorial for cDNA-vs-genomic comparison.",
+    "notes": "Nine-image manual tutorial for cDNA-vs-genomic comparison. The March 2026 images are useful orientation captures but predate provenance-bound GUI acceptance; the inner agent uses current GUI state, while outer replay requires explicit state, network and genome-cache paths.",
     "estimated_minutes": 30,
     "difficulty": "routine",
     "network": "online setup; local analysis",
-    "interfaces": ["GUI", "CLI / GUI Shell", "inner agent"],
+    "interfaces": [
+      "native GUI",
+      "CLI / GUI Shell",
+      "Agent Assistant (inner, review-first)",
+      "MCP / ClawBio outer agent"
+    ],
     "starting_state": "TP73 cDNA accession and a prepared GRCh38 Ensembl reference",
     "produces": ["pairwise dotplot analysis"],
     "group": "02",

@@ -2,7 +2,7 @@
 
 > Type: hand-written command-line/MCP walkthrough. Offline.
 > Audience: a biologist and the person connecting their external assistant.
-> Last updated: 2026-09-10.
+> Last updated: 2026-10-01.
 
 The question is deliberately small: **where do EcoRI and BamHI recognize this
 12-base synthetic DNA, `GAATTCGGATCC`?** We will ask GENtle through MCP, then
@@ -11,6 +11,39 @@ compare its scientific report with the command-line and shared-shell routes.
 No AI model, subscription, API key, database or internet connection is needed.
 MCP transports requests; GENtle supplies the sequence analysis. Allow about
 10 minutes after building. A full rebuild can take substantially longer.
+
+## Where the inner and outer agents fit
+
+This chapter primarily exercises an **outer-agent** boundary. An MCP client
+discovers typed tools, starts `gentle_mcp` with an explicit disposable state
+path and retains the returned JSON-RPC evidence. It does not inherit an unsaved
+GUI project.
+
+An outer-agent request can be phrased as:
+
+```text
+Use GENtle through MCP against a new disposable state file. Discover tools
+before selecting one. Show me the exact FindRestrictionSites operation for the
+inline sequence GAATTCGGATCC and enzymes EcoRI and BamHI. First call it without
+confirmation and retain the refusal; after I approve, call that same operation
+with confirmation. Compare its scientific report with GENtle CLI/shared-shell
+results and return the retained evidence paths. Do not calculate sites yourself.
+```
+
+The **inner Agent Assistant** can help with the biological inspection in the
+currently open project, but it is not the MCP transport harness. A suitable
+inner-agent prompt is:
+
+```text
+Propose one read-only GENtle shared-shell command that scans this exact inline
+DNA for EcoRI and BamHI recognition sites: GAATTCGGATCC. Use execution "ask",
+state the expected coordinate convention, and do not execute it.
+```
+
+Its reviewed suggestion should resolve to `features restriction-scan`. That
+demonstrates shared capability reachability; it does **not** prove MCP framing,
+tool discovery, confirmation refusal or cross-adapter report equality. Those
+claims come only from the retained outer run below.
 
 ## 1. Prepare an Isolated Run
 
@@ -149,6 +182,15 @@ The shell command can also run in the GUI Shell, but doing that is a separate
 manual check. MCP is not a general `shell` tool or a GUI remote control.
 This example uses the CLI's shared-shell route to demonstrate reachability
 parity without inventing an MCP tool that is not advertised.
+
+## Why this chapter has no GUI screenshot
+
+No visible GUI state is part of the acceptance claim. A screenshot of a
+terminal, a Help page or an empty GENtle project would not prove JSON-RPC
+framing, discovery, refusal or report equality. The informative evidence is the
+retained request/response bytes, schemas, process receipts and report JSON. Use
+the linked Agent Interfaces guide when the learning question is instead how a
+reviewed command or screenshot appears inside GENtle.
 
 ## Success, Failure and Next Steps
 

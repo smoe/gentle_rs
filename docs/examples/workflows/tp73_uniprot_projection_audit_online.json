@@ -2,7 +2,7 @@
   "schema": "gentle.workflow_example.v1",
   "id": "tp73_uniprot_projection_audit_online",
   "title": "TP73 UniProt/Ensembl projection audit (online)",
-  "summary": "Prepare GRCh38, extract TP73, fetch UniProt and Ensembl protein evidence, project the TP73 protein onto the locus, and persist both the integrated audit and the direct-vs-composed parity report.",
+  "summary": "Prepare GRCh38, extract fully annotated TP73, fetch reviewed UniProt O15350, project p73 onto the locus, and persist both the integrated audit and the direct-vs-composed parity report.",
   "test_mode": "online",
   "required_files": [
     "assets/genomes.json"
@@ -33,27 +33,22 @@
           "gene_query": "TP73",
           "occurrence": 1,
           "output_id": "grch38_tp73",
+          "annotation_scope": "full",
           "catalog_path": "assets/genomes.json",
           "cache_dir": "data/genomes"
         }
       },
       {
         "FetchUniprotSwissProt": {
-          "query": "Q9H3D4",
-          "entry_id": "Q9H3D4"
-        }
-      },
-      {
-        "FetchEnsemblProtein": {
-          "query": "ENSP00000264724",
-          "entry_id": "TP73_ENS"
+          "query": "O15350",
+          "entry_id": "TP73_UNIPROT"
         }
       },
       {
         "ProjectUniprotToGenome": {
           "seq_id": "grch38_tp73",
-          "entry_id": "Q9H3D4",
-          "projection_id": "tp73_uniprot_q9h3d4",
+          "entry_id": "TP73_UNIPROT",
+          "projection_id": "tp73_uniprot_o15350",
           "transcript_id": null
         }
       },
@@ -62,7 +57,7 @@
           "seq_id": "grch38_tp73",
           "target": {
             "uniprot_projection": {
-              "projection_id": "tp73_uniprot_q9h3d4"
+              "projection_id": "tp73_uniprot_o15350"
             }
           },
           "path": "exports/tp73_uniprot_projection.svg"
@@ -70,18 +65,18 @@
       },
       {
         "AuditUniprotProjectionConsistency": {
-          "projection_id": "tp73_uniprot_q9h3d4",
+          "projection_id": "tp73_uniprot_o15350",
           "transcript_id": null,
           "report_id": "tp73_projection_audit",
-          "ensembl_entry_id": "TP73_ENS"
+          "ensembl_entry_id": null
         }
       },
       {
         "AuditUniprotProjectionParity": {
-          "projection_id": "tp73_uniprot_q9h3d4",
+          "projection_id": "tp73_uniprot_o15350",
           "transcript_id": null,
           "report_id": "tp73_projection_audit_parity",
-          "ensembl_entry_id": "TP73_ENS"
+          "ensembl_entry_id": null
         }
       }
     ]

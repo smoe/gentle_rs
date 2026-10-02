@@ -2,7 +2,8 @@
 
 > Type: hand-written GUI/CLI walkthrough. Offline; no reference downloads.
 > Audience: biologists correcting annotations on an existing DNA sequence.
-> Last updated: 2026-09-10. Live GUI acceptance: not yet recorded.
+> Last updated: 2026-10-01. Native Location/Create previews are retained below;
+> complete Apply/Undo/Redo GUI acceptance is not yet recorded.
 
 An annotation says what a stretch of DNA represents. Changing its boundaries
 does **not** change the bases, establish expression, or repair every annotation
@@ -56,6 +57,11 @@ GENtle does not propagate a change to mRNA/CDS/exon records. A CDS length
 warning is a reason to inspect the biological evidence, not permission to
 silently adjust its reading frame.
 
+![Native Feature Editor Location preview showing the exact boundary change and review-only related annotations](../screenshots/feature_editor_gui_cli/01-location-preview.raw.png)
+
+The screenshot is evidence for the synthetic Location preview only. The
+structured fingerprint and saved record—not pixels—are the execution oracle.
+
 ## 3. Create: Overlap Is a Review Prompt
 
 In **Create**, enter kind `misc_feature`, positions `25` to `35`, strand
@@ -75,6 +81,11 @@ proof of a dependency. Preview does not reserve a new feature index.
 Click **Create**. In this untouched starter sequence the new record is index
 3; verify its label rather than assuming that index in another project. There
 are now four annotations but still 120 bp of DNA.
+
+![Native Feature Editor Create preview showing ordered qualifiers and two review-only overlap candidates](../screenshots/feature_editor_gui_cli/02-create-overlap-preview.raw.png)
+
+Both listed annotations say `not modified`: overlap and a shared identifier are
+prompts for human review, not permission to propagate an edit.
 
 ## 4. Split and Merge: Records, Not Molecules
 
@@ -107,6 +118,36 @@ change after a deletion, so reselect records by their current details.
 Save, close, reopen, and check the same final three records and the 120 bp DNA.
 Keep the starter file unchanged. Save the edited project under a different
 path, and record that path in your tutorial notes.
+
+## Inner and Outer Agents
+
+The **inner agent** can inspect the currently open project, but it should still
+produce a reviewable proposal before every mutation. A useful request is:
+
+> Inspect `segment_A` in `editor_demo`. Propose, but do not apply, the exact
+> change from 21..40 to 21..45. Return the before/after interval, affected
+> feature fingerprint, and every related annotation with the reason it needs
+> review. Do not alter related features or DNA, and wait for my approval of
+> this exact proposal.
+
+After any edit, request a fresh preview. A previous fingerprint is deliberately
+stale; neither an agent nor a person should recycle it.
+
+An **outer agent** does not inherit this GUI project's unsaved state, selection
+or undo stack. Give it the committed synthetic fixture and a new disposable
+state instead:
+
+> Use GENtle's `gentle-cloning` skill with a new disposable state. First
+> propose loading `docs/tutorial/inputs/feature_editor_demo.gb` as
+> `editor_demo`; do not execute until I approve the exact state path and
+> operation. Then run only a dry-run preview of `features edit-location
+> editor_demo 1 --start-1based 21 --end-1based-inclusive 45`. Return the full
+> structured report and fingerprint. Do not apply the edit, infer GUI state or
+> replace the report with prose.
+
+Loading into the disposable state and applying a feature edit are separate
+mutations and need separately bound approval. The dry-run report can be
+compared with the GUI preview; it does not prove that the GUI control was used.
 
 ## Command-Line Counterpart
 
@@ -170,9 +211,11 @@ before/after change; the scientific oracle is the saved annotation record and
 unchanged DNA. Retain the exact binary revision, starter hash, final project,
 preview/apply reports and any explicitly approved screenshots.
 
-The CLI test is not a live GUI pass. There is no typed Xvfb acceptance contract
-for this chapter yet: Glen must report missing semantic controls as
-`harness_gap`, not infer success from screenshots or guess click positions.
+The CLI test is not a complete live GUI pass. The two retained native captures
+record manual/hybrid Location and Create previews, but there is still no typed
+Xvfb contract for Apply/Undo/Redo/Split/Merge/Delete: Glen must report those
+missing semantic controls as `harness_gap`, not infer success from screenshots
+or guess click positions.
 Complex/nested/fuzzy boundary edits and automatic transcript repair remain
 outside this exercise; unsupported edits should give a reason, not a guess.
 
