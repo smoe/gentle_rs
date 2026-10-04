@@ -3059,10 +3059,23 @@ Shared shell command:
       worker; locally computed lanes stay separate from an attached report and
       from imported evidence. Headless records `applied=false`.)
     - `promoters tss-view-svg SEQ_ID OUTPUT.svg [--report REPORT_JSON] [--motif ACCESSION]... [--score-kind KIND] [--keep-negative] [--span START..END] [--width PX]`:
-      headless export of the native annotated-TSS presentation, exactly what the
-      GUI's **Export View SVG** draws for the same attachments. `--motif` accepts
+      headless export using the native annotated-TSS renderer, as used by the
+      GUI's **Export View SVG** for the same attachments. `--motif` accepts
       repeated flags or a comma list and computes local curves; `--report`
       attaches a validated profile report. `--span` is local 1-based inclusive.
+      With `--motif`, only complete motif footprints inside that span are
+      scanned on both strands; footprints crossing either boundary are excluded.
+      For span length L and matrix length M the denominator is
+      `2 * max(0, L - M + 1)` strand-windows; unavailable windows remain in that
+      denominator but not the evaluated numerator. The trailing grey band marks
+      starts without a complete footprint within the scored span.
+      Admission still uses the **full annotated window** (50,000 bp and
+      1,000,000 matrix/base combinations), not the narrow scan span. Full input
+      validation and per-matrix background calibration still occur. Local scales
+      and empirical quantiles (`llr_quantile`, `true_log_odds_quantile`) describe
+      the scored span. This is not equivalent to cropping full-window GUI scores:
+      GUI export and `--report` only clip already-scored data, retaining their
+      original scoring bounds, counts and scales.
       Writes atomically and reports the lane count, exported span and SVG
       SHA-256. Requires GENtle annotated-TSS metadata on `SEQ_ID`: a plain locus
       is refused, not guessed. `--score-kind` is not inherited from the viewer —

@@ -54,6 +54,16 @@ unevaluable windows remain distinct; legacy absence of evaluability/provenance
 cannot authorize local lanes. Cancellation and source/request changes must not
 publish partial or stale results. Navigation never silently triggers rescoring.
 
+An explicit native-view export with local scoring and a subspan scans only
+complete motif footprints contained in that span, on both local strands.
+Boundary-crossing footprints are excluded, not padded or reported as zeros;
+counts retain the same evaluated/possible strand-window meaning. Admission
+still uses the full annotated window. Retain full-window identity plus the
+exact scored span and its byte digest; identical substrings at different local
+positions are not interchangeable. Empirical quantiles use the scanned span.
+Cropping existing report/GUI curves remains presentation-only and retains their
+original scope, calibration and scales.
+
 Presentation-size reductions must not discard scores, change sampling or weaken
 receipt checks. Raster-backed PDF image compression is lossless; encoding and
 output hashes are recorded. The separate `vector_pdf` representation preserves

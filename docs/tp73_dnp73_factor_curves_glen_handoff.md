@@ -9,7 +9,30 @@ local-scoring and export routes, then add screenshots to the new tutorial.
 - Input: `test_files/tp73.ncbi.gb` only. No network, no prepared genome, no
   private data. If a step seems to need any of those, stop and report it.
 
-## What is new and therefore unproven
+## 2026-09-30 Scoring-Scope Follow-Up (Not Yet Verified)
+
+The headless `--motif --span` route now limits target scanning to complete
+footprints contained in the requested span, on both strands. Full-window
+admission remains unchanged. For `--span 401..701`, expect TP73 572/572,
+E2F1 580/580 and PATZ1 582/582 evaluated/possible strand-windows, rather than
+the full-window counts below. A footprint crossing either boundary is excluded;
+the terminal grey band is relative to the scored span. Invalid requests must
+leave an existing output untouched. New deterministic regressions are added,
+but no local builds or tests have been run for this follow-up.
+
+Keep same-scope GUI/headless comparisons separate from comparing a full-window
+GUI crop to newly scored subspan curves. Existing GUI/report attachments keep
+their original scales and counts; span-scored lanes use their own ranges, and
+empirical quantiles use the scanned span. Background-tail/bit scores should
+agree for the same complete footprint. Full input validation and per-matrix
+background calibration still run; measure target scanning separately rather
+than promise a proportional wall-time reduction.
+
+Glen's three Linux screenshots remain registered and unreviewed for human
+scientific approval. Their original acceptance does not cover this follow-up.
+Do not recapture or reinterpret those artifacts solely for the new count policy.
+
+## Original Route Handoff (Historical Verification)
 
 Two routes were added so the tutorial is executable by the inner/outer agent,
 not only by hand in the GUI:
@@ -58,7 +81,8 @@ Please confirm or refute each, with the revision and platform recorded:
 
 1. **GUI/headless equivalence.** Produce the view once through **Export View
    SVG** and once through `promoters tss-view-svg` with the same motifs, score
-   kind and span. The lane set and coordinates must agree. The SVG bytes may
+   kind and scoring span (use the full window for this parity check). The lane
+   set and coordinates must agree. The SVG bytes may
    differ; say so explicitly if they do, and whether anything scientific differs.
 2. **Hosted intent really applies.** From a focused TP73 window, run
    `ui open tss-view --local-score MA0861.2,MA0024.3,MA1961.2 --score-kind

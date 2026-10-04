@@ -20,6 +20,8 @@ pub struct TssLocalScoreRequest {
 #[derive(Clone, Debug, Serialize)]
 pub struct TssLocalScoreAttachment {
     pub request: TssLocalScoreRequest,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
     pub source_binding_sha256: String,
     pub cache_key_sha256: String,
     pub report_sha256: String,
@@ -40,7 +42,7 @@ impl TssLocalScoreRequest {
             return Err("Local TSS scoring requires 1..32 explicit matrix IDs (no ALL, aliases or IUPAC fallback)".into());
         }
         if length == 0 || length > 50_000 || length * self.matrix_ids.len() > 1_000_000 {
-            return Err("Local TSS scoring budget: at most 50,000 bp and 1,000,000 matrix/base combinations; use a smaller annotated window or the shared headless scorer".into());
+            return Err("Local TSS scoring admission budget applies to the full annotated window, even for a partial export: at most 50,000 bp and 1,000,000 matrix/base combinations; use a smaller annotated window or the shared headless scorer".into());
         }
         let mut seen = std::collections::BTreeSet::new();
         if self
@@ -69,18 +71,29 @@ impl TssSequenceView {
 
     /// Uses precisely the already oriented, validated DNA, never a project SeqId lookup.
     pub fn local_score_target(&self, sequence: &str) -> Result<SequenceScanTarget, String> {
+        self.local_score_target_in_span(sequence, 0..sequence.len())
+    }
+
+    fn local_score_target_in_span(
+        &self,
+        sequence: &str,
+        span: std::ops::Range<usize>,
+    ) -> Result<SequenceScanTarget, String> {
         let sequence = sequence.to_ascii_uppercase();
         if self.geometry.length().ok_or("Invalid TSS geometry")? != sequence.len()
             || sha256_hex_bytes(sequence.as_bytes()) != self.sequence_sha256
         {
             return Err("Local scoring sequence no longer matches the validated TSS window".into());
         }
+        if span.start >= span.end || span.end > sequence.len() {
+            return Err("Invalid local TSS scoring span within the annotated window".into());
+        }
         Ok(SequenceScanTarget::InlineSequence {
             sequence_text: sequence,
             topology: InlineSequenceTopology::Linear,
             id_hint: Some(self.promoter_id.clone()),
-            span_start_0based: None,
-            span_end_0based_exclusive: None,
+            span_start_0based: Some(span.start),
+            span_end_0based_exclusive: Some(span.end),
         })
     }
 
@@ -91,8 +104,21 @@ impl TssSequenceView {
         request: &TssLocalScoreRequest,
         progress: &mut dyn FnMut(OperationProgress) -> bool,
     ) -> Result<TfbsScoreTrackReport, String> {
+        self.compute_local_scores_in_span(sequence, request, 0..sequence.len(), progress)
+    }
+
+    /// Score only complete footprints within `span`, on both local strands.
+    /// No left/right halo: a footprint crossing either span boundary is excluded.
+    /// Admission still applies to the full bound sequence, not the scan length.
+    pub fn compute_local_scores_in_span(
+        &self,
+        sequence: &str,
+        request: &TssLocalScoreRequest,
+        span: std::ops::Range<usize>,
+        progress: &mut dyn FnMut(OperationProgress) -> bool,
+    ) -> Result<TfbsScoreTrackReport, String> {
         request.validate_budget(sequence.len())?;
-        let target = self.local_score_target(sequence)?;
+        let target = self.local_score_target_in_span(sequence, span)?;
         let registry = crate::tf_motifs::snapshot_db();
         let mut expected = Vec::new();
         for id in &request.matrix_ids {
@@ -133,6 +159,35 @@ impl TssSequenceView {
         report: &TfbsScoreTrackReport,
     ) -> Result<Self, String> {
         let length = self.geometry.length().ok_or("Invalid TSS geometry")?;
+        self.project_local_scores(request, report, 0..length, &self.sequence_sha256)
+    }
+
+    /// Bind a span report to both the entire annotated sequence and the exact
+    /// scanned bytes. Equal substrings at different positions are not equivalent.
+    pub fn with_local_scores_in_span(
+        &self,
+        sequence: &str,
+        request: &TssLocalScoreRequest,
+        report: &TfbsScoreTrackReport,
+        span: std::ops::Range<usize>,
+    ) -> Result<Self, String> {
+        self.local_score_target_in_span(sequence, span.clone())?;
+        let sequence = sequence.to_ascii_uppercase();
+        let scanned = sequence
+            .as_bytes()
+            .get(span.clone())
+            .ok_or("Invalid local TSS scoring span")?;
+        self.project_local_scores(request, report, span, &sha256_hex_bytes(scanned))
+    }
+
+    fn project_local_scores(
+        &self,
+        request: &TssLocalScoreRequest,
+        report: &TfbsScoreTrackReport,
+        span: std::ops::Range<usize>,
+        scanned_sha256: &str,
+    ) -> Result<Self, String> {
+        let length = self.geometry.length().ok_or("Invalid TSS geometry")?;
         request.validate_budget(length)?;
         let provenance = report
             .scoring_provenance
@@ -143,9 +198,9 @@ impl TssSequenceView {
             || report.target_label != self.promoter_id
             || report.scan_topology != InlineSequenceTopology::Linear
             || report.source_sequence_length_bp != length
-            || report.view_start_0based != 0
-            || report.view_end_0based_exclusive != length
-            || provenance.sequence_sha256 != self.sequence_sha256
+            || report.view_start_0based != span.start
+            || report.view_end_0based_exclusive != span.end
+            || provenance.sequence_sha256 != scanned_sha256
             || report.score_kind != request.score_kind
             || report.clip_negative != request.clip_negative
             || report.motifs_requested != request.matrix_ids
@@ -162,10 +217,10 @@ impl TssSequenceView {
             .zip(&provenance.matrices)
             .zip(&request.matrix_ids)
         {
-            let count = if track.motif_length_bp > length {
+            let count = if track.motif_length_bp > span.len() {
                 0
             } else {
-                length + 1 - track.motif_length_bp
+                span.len() + 1 - track.motif_length_bp
             };
             let validity = track
                 .score_validity
@@ -173,7 +228,7 @@ impl TssSequenceView {
                 .ok_or("Local score validity unavailable")?;
             if &track.tf_id != id
                 || binding.matrix_id != *id
-                || track.track_start_0based != 0
+                || track.track_start_0based != span.start
                 || binding.matrix_sha256.len() != 64
                 || !binding.matrix_sha256.bytes().all(|c| c.is_ascii_hexdigit())
                 || track.motif_length_bp == 0
@@ -197,12 +252,13 @@ impl TssSequenceView {
                 kind: TssLaneKind::LocalScoreTrace,
                 id: format!("local/{id}/{}", report.score_kind.as_str()),
                 label: format!("Locally computed | {} | {id}", track.tf_name.as_deref().unwrap_or(id)),
-                details: format!("GENtle shared InlineSequence scorer; matrix SHA-256 {}; sequence SHA-256 {}; scorer {}. Motif-window starts in displayed orientation, not measured binding or luciferase activity. Independent from saved report/imported evidence.", binding.matrix_sha256, provenance.sequence_sha256, provenance.scorer),
+                details: format!("GENtle shared InlineSequence scorer; matrix SHA-256 {}; full sequence SHA-256 {}; scanned sequence SHA-256 {}; scorer {}. Scored local {}..{}; only complete footprints within this span, no boundary-crossing windows. Empirical quantiles, if selected, use this scored span, not the full window. Motif-window starts in displayed orientation, not measured binding or luciferase activity. Independent from saved report/imported evidence.", binding.matrix_sha256, self.sequence_sha256, provenance.sequence_sha256, provenance.scorer, span.start + 1, span.end),
                 units: report.score_kind.as_str().into(),
-                state: format!("{valid}/{} evaluated strand-windows; {}", 2 * count,
+                state: format!("{valid}/{} evaluated strand-windows in local {}..{}; complete footprints only; {}", 2 * count, span.start + 1, span.end,
                     if report.clip_negative { "negative scores clipped" } else { "signed scores retained" }),
                 features: vec![],
-                trace: Some(TssViewTrace { motif_length_bp: track.motif_length_bp, forward, reverse,
+                trace: Some(TssViewTrace { start_0based: span.start, end_0based_exclusive: span.end,
+                    motif_length_bp: track.motif_length_bp, forward, reverse,
                     clip_negative: report.clip_negative, range_is_fallback: min == max }),
                 scale_min: min,
                 scale_max: if min == max { min + 1.0 } else { max },
@@ -211,7 +267,9 @@ impl TssSequenceView {
         let source_binding_sha256 = self.local_score_source_binding()?;
         view.local_scoring = Some(TssLocalScoreAttachment {
             request: request.clone(),
-            cache_key_sha256: digest(&(&source_binding_sha256, request, provenance))?,
+            start_0based: span.start,
+            end_0based_exclusive: span.end,
+            cache_key_sha256: digest(&(&source_binding_sha256, request, &span, provenance))?,
             source_binding_sha256,
             report_sha256: digest(report)?,
             producer_revision: option_env!("GENTLE_SOURCE_REVISION")
@@ -354,6 +412,175 @@ mod tests {
             cleared.clear_local_scores();
             assert_eq!(serde_json::to_value(&cleared).unwrap(), before);
         }
+    }
+
+    #[test]
+    fn tss_local_span_scans_only_contained_footprints_and_preserves_orientation() {
+        let _guard = crate::tf_motifs::test_registry_lock().lock().unwrap();
+        for minus in [false, true] {
+            let (view, sequence, request) = fixture(minus);
+            let mut full_steps = 0;
+            let full = view
+                .compute_local_scores(&sequence, &request, &mut |event| {
+                    if let OperationProgress::Tfbs(p) = event {
+                        if p.stage_label.as_deref() == Some("target scan") {
+                            full_steps = full_steps.max(p.scanned_steps);
+                        }
+                    }
+                    true
+                })
+                .unwrap();
+            let mut span_steps = 0;
+            let report = view
+                .compute_local_scores_in_span(&sequence, &request, 1..8, &mut |event| {
+                    if let OperationProgress::Tfbs(p) = event {
+                        if p.stage_label.as_deref() == Some("target scan") {
+                            assert_eq!(p.total_steps, 4);
+                            span_steps = span_steps.max(p.scanned_steps);
+                        }
+                    }
+                    true
+                })
+                .unwrap();
+            assert_eq!((full_steps, span_steps), (8, 4));
+            assert_eq!(report.source_sequence_length_bp, 9);
+            assert_eq!(
+                (report.view_start_0based, report.view_end_0based_exclusive),
+                (1, 8)
+            );
+            let track = &report.tracks[0];
+            assert_eq!(
+                (
+                    track.motif_length_bp,
+                    track.track_start_0based,
+                    track.scored_window_count
+                ),
+                (6, 1, 2)
+            );
+            for reverse in [false, true] {
+                for i in 0..2 {
+                    assert_eq!(
+                        track.score_at(i, reverse),
+                        full.tracks[0].score_at(i + 1, reverse)
+                    );
+                }
+                assert!(track.score_at(0, reverse).is_some());
+                assert_eq!(track.score_at(1, reverse), None);
+            }
+            assert_eq!(track.score_at(0, false), Some(0.0));
+            let rendered = view
+                .with_local_scores_in_span(&sequence, &request, &report, 1..8)
+                .unwrap();
+            let index = rendered
+                .lanes
+                .iter()
+                .position(|l| l.trace.is_some())
+                .unwrap();
+            let lane = &rendered.lanes[index];
+            assert!(
+                lane.state
+                    .starts_with("2/4 evaluated strand-windows in local 2..8")
+            );
+            let trace = lane.trace.as_ref().unwrap();
+            assert_eq!((trace.start_0based, trace.end_0based_exclusive), (1, 8));
+            assert_eq!(trace.forward, vec![Some(0.0), None]);
+            let mut options = TssViewSvgOptions {
+                start_0based: 1,
+                end_0based_exclusive: 8,
+                lane_indices: vec![index],
+                width_px: 1200,
+                print_size_mm: None,
+            };
+            let svg = render_tss_view_svg(&rendered, &options).unwrap();
+            assert!(svg.contains(&view.coordinate_label(1)));
+            assert!(svg.contains("footprint 2..7"));
+            assert_eq!(svg.matches("data-role=\"score-window\"").count(), 2);
+            assert_eq!(svg.matches("data-role=\"unavailable-score\"").count(), 2);
+            assert!(svg.contains("No complete motif window starts here within the scored span"));
+            options.start_0based = 0;
+            assert!(
+                render_tss_view_svg(&rendered, &options)
+                    .unwrap_err()
+                    .contains("exceeds the scored span")
+            );
+            assert!(view.with_local_scores(&request, &report).is_err());
+            assert!(
+                view.with_local_scores_in_span("CAAAAAANA", &request, &report, 1..8)
+                    .is_err()
+            );
+            assert!(
+                view.with_local_scores_in_span(&sequence, &request, &report, 0..7)
+                    .is_err()
+            );
+            let mut wrong = report.clone();
+            wrong.scoring_provenance.as_mut().unwrap().sequence_sha256 =
+                view.sequence_sha256.clone();
+            assert!(
+                view.with_local_scores_in_span(&sequence, &request, &wrong, 1..8)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn tss_local_span_identity_short_spans_and_full_window_admission() {
+        let _guard = crate::tf_motifs::test_registry_lock().lock().unwrap();
+        let (view, sequence, request) = fixture(false);
+        let mut keys = Vec::new();
+        let mut hashes = Vec::new();
+        // Identical six-base DNA at different positions must have different cache bindings.
+        for span in [0..6, 1..7] {
+            let report = view
+                .compute_local_scores_in_span(&sequence, &request, span.clone(), &mut |_| true)
+                .unwrap();
+            assert_eq!(report.tracks[0].scored_window_count, 1);
+            let attachment = view
+                .with_local_scores_in_span(&sequence, &request, &report, span)
+                .unwrap()
+                .local_scoring
+                .unwrap();
+            keys.push(attachment.cache_key_sha256);
+            hashes.push(attachment.provenance.sequence_sha256);
+        }
+        assert_eq!(hashes[0], hashes[1]);
+        assert_ne!(keys[0], keys[1]);
+        let report = view
+            .compute_local_scores_in_span(&sequence, &request, 1..5, &mut |_| true)
+            .unwrap();
+        assert_eq!(report.tracks[0].scored_window_count, 0);
+        let short = view
+            .with_local_scores_in_span(&sequence, &request, &report, 1..5)
+            .unwrap();
+        let options = TssViewSvgOptions {
+            start_0based: 1,
+            end_0based_exclusive: 5,
+            lane_indices: vec![short.lanes.len() - 1],
+            width_px: 1200,
+            print_size_mm: None,
+        };
+        let svg = render_tss_view_svg(&short, &options).unwrap();
+        assert!(svg.contains("0/0 evaluated strand-windows"));
+        assert!(svg.contains("data-role=\"terminal-unavailable\""));
+        assert!(!svg.contains("data-role=\"score-window\""));
+        assert!(!svg.contains("data-role=\"unavailable-score\""));
+        for span in [0..0, 9..10] {
+            assert!(
+                view.compute_local_scores_in_span(&sequence, &request, span, &mut |_| panic!(
+                    "invalid span reached scorer"
+                ))
+                .is_err()
+            );
+        }
+        let error = view
+            .compute_local_scores_in_span(&"A".repeat(50_001), &request, 0..6, &mut |_| {
+                panic!("over-budget full window reached scorer")
+            })
+            .unwrap_err();
+        assert!(error.contains("full annotated window, even for a partial export"));
+        let error = view
+            .compute_local_scores_in_span(&sequence, &request, 1..8, &mut |_| false)
+            .unwrap_err();
+        assert!(error.to_lowercase().contains("cancel"));
     }
 
     #[test]

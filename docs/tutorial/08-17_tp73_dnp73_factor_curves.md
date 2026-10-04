@@ -332,6 +332,37 @@ Narrow the export to the proximal promoter with a local 1-based span:
 promoters tss-view-svg TP73_WINDOW tp73-dnp73-proximal.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10 --span 401..701 --width 1600
 ```
 
+This second command **scores only the 301 bp span**, not the full 701 bp window.
+It evaluates complete footprints contained in local 401..701 on both strands.
+A motif starting before local 401 is excluded even if it overlaps the plot;
+a start whose footprint extends beyond local 701 is also excluded. Those last
+positions stay grey, not zero. The annotated TSS is still local 501, at genomic
+1:3,690,672; the span does not renumber the DNA or reverse either strand.
+
+For this same unambiguous sequence, the expected proximal counts are:
+
+| Matrix | Evaluated / possible strand-windows in local 401..701 |
+| --- | --- |
+| TP73 `MA0861.2` (16 bp) | 572 / 572 |
+| E2F1 `MA0024.3` (12 bp) | 580 / 580 |
+| PATZ1 `MA1961.2` (11 bp) | 582 / 582 |
+
+Both full and partial counts mean `2 × max(0, scanned_length − matrix_length + 1)`
+possible strand-windows; ambiguous windows, if present, reduce only the
+evaluated numerator. Full-sequence validation and background calibration still
+run, so fewer scanned windows do not promise a proportional speedup. The
+50,000 bp / 1,000,000 matrix-base admission limits still apply to the **entire
+annotated window**. A narrow export does not bypass them.
+
+The GUI's **Export View SVG** is different: it crops the existing full-window
+curves without rescoring, and retains their original counts and scales. The
+headless span command computes its own local lane ranges. With the
+background-tail score used here, overlapping complete windows keep the same
+scores, but their displayed heights can change with the range. If you choose
+empirical `llr_quantile` or `true_log_odds_quantile` instead, those ranks are
+calculated within the scanned span and can change too. Attached `--report`
+curves are always merely clipped, never rescored.
+
 Repeat `--score-kind` on every export. Omitting it does not inherit the score
 kind you used in the view — it falls back to the route default `llr_bits`, and
 two exports that differ only in that flag are not comparable.
@@ -340,7 +371,9 @@ two exports that differ only in that flag are not comparable.
 
 > Export the native TP73 TSS view with those three motif curves to
 > `tp73-dnp73-factors.svg`, then export local 401..701 separately. Report the
-> lane count and each file's SVG SHA-256.
+> lane count, each lane's scored span and evaluated/possible strand-window
+> counts, and each file's SVG SHA-256. Keep this separate from cropping the
+> already-scored GUI view.
 
 The operation reports the lane count, the exported local span and the SVG's
 SHA-256, so the same command can be shown to have produced the same figure. The

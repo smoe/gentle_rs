@@ -69,6 +69,9 @@ pub fn render_tss_view_svg(
         let cells = if let Some(trace) = &lane.trace {
             if trace.forward.len() != trace.reverse.len()
                 || trace.forward.len() > length
+                || trace.start_0based >= trace.end_0based_exclusive
+                || trace.end_0based_exclusive > length
+                || trace.start_0based + trace.forward.len() > trace.end_0based_exclusive
                 || trace
                     .forward
                     .iter()
@@ -78,7 +81,16 @@ pub fn render_tss_view_svg(
             {
                 return Err(format!("Invalid score-array geometry for {}", lane.id));
             }
-            end.min(trace.forward.len()).saturating_sub(start)
+            if start < trace.start_0based || end > trace.end_0based_exclusive {
+                return Err(format!(
+                    "Export span exceeds the scored span for {}; rescore explicitly or export within local {}..{}",
+                    lane.id,
+                    trace.start_0based + 1,
+                    trace.end_0based_exclusive
+                ));
+            }
+            end.min(trace.start_0based + trace.forward.len())
+                .saturating_sub(start)
         } else {
             lane.features
                 .iter()
@@ -243,11 +255,11 @@ pub fn render_tss_view_svg(
             );
         }
         if let Some(trace) = &lane.trace {
-            let visible_end = end.min(trace.forward.len());
+            let visible_end = end.min(trace.start_0based + trace.forward.len());
             if visible_end < end {
                 let _ = write!(
                     svg,
-                    "<rect data-role=\"terminal-unavailable\" x=\"{:.2}\" y=\"{top}\" width=\"{:.2}\" height=\"120\" fill=\"#dddddd\"><title>No complete motif window starts here</title></rect>",
+                    "<rect data-role=\"terminal-unavailable\" x=\"{:.2}\" y=\"{top}\" width=\"{:.2}\" height=\"120\" fill=\"#dddddd\"><title>No complete motif window starts here within the scored span</title></rect>",
                     x(visible_end.max(start)),
                     right - x(visible_end.max(start))
                 );
@@ -258,7 +270,8 @@ pub fn render_tss_view_svg(
                 let mut path = String::new();
                 let mut hovers = String::new();
                 let mut connected = false;
-                for (p, score) in scores.iter().enumerate().take(visible_end).skip(start) {
+                for p in start..visible_end {
+                    let score = scores[p - trace.start_0based];
                     if let Some(raw) = score.filter(|v| v.is_finite()) {
                         let value = if trace.clip_negative {
                             raw.max(0.0)

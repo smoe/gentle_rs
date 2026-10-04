@@ -5,9 +5,13 @@ use super::*;
 use gentle_protocol::{tss_motif_evidence, tss_profiles::*};
 use std::{io::Read, path::Path};
 
-/// Full motif-window-start arrays, including unavailable windows (not zero).
+/// Motif-window-start arrays within an explicit scoring span. Array index zero
+/// is `start_0based`; only footprints wholly contained in the span are present.
+/// Unavailable windows are not zero scores.
 #[derive(Clone, Debug, Serialize)]
 pub struct TssViewTrace {
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
     pub motif_length_bp: usize,
     pub forward: Vec<Option<f64>>,
     pub reverse: Vec<Option<f64>>,
@@ -101,6 +105,8 @@ impl TssSequenceView {
                 state: format!("{valid}/{} valid strand-windows; {}", track.forward_scores.len() + track.reverse_scores.len(), if panel.clip_negative { "negative scores clipped for display" } else { "raw signed scores" }),
                 features: vec![],
                 trace: Some(TssViewTrace {
+                    start_0based: 0,
+                    end_0based_exclusive: self.geometry.length().ok_or("Invalid TSS geometry")?,
                     motif_length_bp: track.motif_length_bp,
                     forward: track.forward_scores.clone(),
                     reverse: track.reverse_scores.clone(),

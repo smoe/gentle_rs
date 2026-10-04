@@ -6933,10 +6933,26 @@ Both need a GUI host, and headless shells record `applied=false`.
 
 `promoters tss-view-svg SEQ_ID OUTPUT.svg` needs no GUI host at all: it decodes
 the annotated window, optionally attaches a report with `--report`, optionally
-computes local curves with `--motif`, and writes the same figure this view
-exports. It reports the lane count, exported local span and SVG SHA-256, and
+computes local curves with `--motif`, and uses the native view's renderer for
+those attachments. It reports the lane count, exported local span and SVG SHA-256, and
 refuses a sequence without GENtle annotated-TSS metadata. `--score-kind` is not
 inherited from the viewer; repeat it per export.
+
+With `--motif --span START..END`, the headless operation scores only complete
+motif footprints inside that local, 1-based inclusive span, on both strands.
+It excludes footprints crossing either edge. Counts, local axis ranges and
+empirical quantiles describe the scanned span, whose exact coordinates and
+sequence hash are retained alongside the full annotated-window binding.
+The denominator is `2 * max(0, span_length - motif_length + 1)`; ambiguous
+windows are unavailable, not zero, and the trailing grey band means no complete
+footprint **inside the scored span**. Admission still applies to the full
+annotated window, even if the requested span is small.
+
+This differs from panning and **Export View SVG**, which do not rescore and
+keep the existing full-window count, calibration and scale. Attached `--report`
+curves likewise remain untouched. A cropped existing plot and a newly scored
+subspan therefore need not have the same edge coverage, scale or empirical
+quantiles. Same-window, same-scoring-scope GUI/headless parity remains required.
 
 See the [TP73 ΔNp73 factor-curve walkthrough](tutorial/08-17_tp73_dnp73_factor_curves.md)
 for all three routes on a real locus.

@@ -21181,7 +21181,7 @@ fn tss_view_svg_capability_descriptor(id: &str) -> Value {
             {"name": "MATRIX_IDS", "required": false, "subject_kind": "other", "detail": "repeat --motif ACCESSION, or local_motifs on the typed operation; exact full-PFM accessions only, no factor aliases"},
             {"name": "SCORE_KIND", "required": false, "subject_kind": "other", "detail": "--score-kind KIND, or score_kind on the typed operation; defaults to llr_bits, never inherited from a GUI"},
             {"name": "CLIP_NEGATIVE", "required": false, "subject_kind": "other", "detail": "defaults to true; --keep-negative disables clipping"},
-            {"name": "SPAN", "required": false, "subject_kind": "other", "detail": "--span START..END uses 1-based inclusive local coordinates; typed start_0based/end_0based_exclusive use a half-open interval"},
+            {"name": "SPAN", "required": false, "subject_kind": "other", "detail": "--span START..END uses 1-based inclusive local coordinates; typed start_0based/end_0based_exclusive use a half-open interval. Local scoring scans only complete footprints within this span, excluding boundary-crossing windows. Admission limits still use the full annotated window; empirical quantiles use the scored span. Attached reports are only clipped, never rescored"},
             {"name": "WIDTH_PX", "required": false, "subject_kind": "other", "detail": "--width PX, or width_px on the typed operation; defaults to 1600"}
         ],
         "reads": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}],

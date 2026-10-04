@@ -51569,6 +51569,16 @@ impl GentleEngine {
                     // sequence without GENtle annotated-TSS metadata is refused, not guessed.
                     let mut view = crate::tss_sequence_view::TssSequenceView::from_dna(dna)
                         .map_err(EngineError::invalid_input)?;
+                    let length = view
+                        .geometry
+                        .length()
+                        .ok_or_else(|| EngineError::invalid_input("Invalid TSS geometry"))?;
+                    let span = start_0based.unwrap_or(0)..end_0based_exclusive.unwrap_or(length);
+                    if span.start >= span.end || span.end > length {
+                        return Err(EngineError::invalid_input(
+                            "Invalid TSS SVG span within the annotated window",
+                        ));
+                    }
                     if let Some(report_path) = report.as_deref() {
                         view = view
                             .load_profile(std::path::Path::new(report_path))
@@ -51584,24 +51594,28 @@ impl GentleEngine {
                             clip_negative,
                         };
                         let tracks = view
-                            .compute_local_scores(&sequence, &request, on_progress)
+                            .compute_local_scores_in_span(
+                                &sequence,
+                                &request,
+                                span.clone(),
+                                on_progress,
+                            )
                             .map_err(EngineError::invalid_input)?;
                         view = view
-                            .with_local_scores(&request, &tracks)
+                            .with_local_scores_in_span(&sequence, &request, &tracks, span.clone())
                             .map_err(EngineError::invalid_input)?;
                         result.messages.push(format!(
-                            "Computed local {} curves for {} exact matrix accession(s) on the displayed window",
+                            "Computed local {} curves for {} exact matrix accession(s) in local {}..{}; only complete footprints within the span, excluding boundary-crossing windows; admission budget uses the full {}-bp annotated window",
                             score_kind.as_str(),
-                            local_motifs.len()
+                            local_motifs.len(),
+                            span.start + 1,
+                            span.end,
+                            length
                         ));
                     }
-                    let length = view
-                        .geometry
-                        .length()
-                        .ok_or_else(|| EngineError::invalid_input("Invalid TSS geometry"))?;
                     let options = crate::tss_sequence_view::TssViewSvgOptions {
-                        start_0based: start_0based.unwrap_or(0),
-                        end_0based_exclusive: end_0based_exclusive.unwrap_or(length),
+                        start_0based: span.start,
+                        end_0based_exclusive: span.end,
                         lane_indices: (0..view.lanes.len()).collect(),
                         width_px: width_px.unwrap_or(1600),
                         print_size_mm: None,

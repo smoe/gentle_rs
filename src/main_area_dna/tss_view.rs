@@ -927,7 +927,21 @@ fn paint_trace(
             egui::Stroke::new(0.4, foreground.gamma_multiply(0.3)),
         );
     }
-    let visible_end = end.min(trace.forward.len());
+    if start < trace.start_0based || end > trace.end_0based_exclusive {
+        painter.text(
+            plot.center(),
+            egui::Align2::CENTER_CENTER,
+            format!(
+                "Scores cover local {}..{} only; narrow the view or explicitly rescore",
+                trace.start_0based + 1,
+                trace.end_0based_exclusive
+            ),
+            egui::FontId::proportional(11.0),
+            foreground,
+        );
+        return None;
+    }
+    let visible_end = end.min(trace.start_0based + trace.forward.len());
     let bounded = visible_end.saturating_sub(start) <= 10_000;
     if visible_end < end {
         p.rect_filled(
@@ -956,7 +970,7 @@ fn paint_trace(
                 path.clear();
             };
             for pos in start..visible_end {
-                match scores[pos] {
+                match scores[pos - trace.start_0based] {
                     Some(raw) => {
                         valid += 1;
                         let display = if trace.clip_negative {
@@ -1058,8 +1072,9 @@ fn trace_selection(
     pos: usize,
 ) -> Option<TssViewFeature> {
     let trace = lane.trace.as_ref()?;
-    let forward = trace.forward.get(pos).copied().flatten();
-    let reverse = trace.reverse.get(pos).copied().flatten();
+    let index = pos.checked_sub(trace.start_0based)?;
+    let forward = trace.forward.get(index).copied().flatten();
+    let reverse = trace.reverse.get(index).copied().flatten();
     if forward.is_none() && reverse.is_none() {
         return None;
     }
@@ -1098,6 +1113,35 @@ fn trace_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tss_span_trace_selection_uses_sequence_local_not_array_coordinates() {
+        for minus in [false, true] {
+            let (dna, report) = crate::tss_sequence_view::profile_fixture(minus);
+            let view = TssSequenceView::from_dna(&dna)
+                .unwrap()
+                .with_profile(&report)
+                .unwrap();
+            let mut lane = view
+                .lanes
+                .iter()
+                .find(|l| l.trace.is_some())
+                .unwrap()
+                .clone();
+            let trace = lane.trace.as_mut().unwrap();
+            trace.start_0based = 1;
+            trace.end_0based_exclusive = 5;
+            trace.forward = vec![Some(0.0), None];
+            trace.reverse = vec![None, None];
+            assert!(trace_selection(&view, &lane, 0).is_none());
+            assert!(trace_selection(&view, &lane, 2).is_none());
+            assert!(trace_selection(&view, &lane, 3).is_none());
+            let selection = trace_selection(&view, &lane, 1).unwrap();
+            assert_eq!((selection.start, selection.end), (1, 4));
+            assert!(selection.details.contains(&view.coordinate_label(1)));
+            assert!(selection.details.contains("Raw + 0 / - unavailable"));
+        }
+    }
 
     #[test]
     fn tss_standard_map_action_selects_spans_without_inventing_annotations() {

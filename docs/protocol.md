@@ -88,6 +88,19 @@ and unstranded sites are not fabricated as features. See
 
 ## Accession-Pinned TSS Profiles
 
+`ExportTssViewSvg` renders an already annotated TSS sequence with optional saved
+report attachment and explicit local motif scoring. Its optional half-open
+`start_0based..end_0based_exclusive` interval also scopes local scoring: only
+complete footprints inside it are scanned, on both strands, without a halo.
+The equivalent shell `--span` uses 1-based inclusive coordinates. A local trace
+retains its scoring bounds, full sequence binding, scanned-sequence hash,
+matrix hashes and evaluated/possible strand-window counts. Array index zero
+corresponds to the scoring-span start, not necessarily sequence base zero.
+The admission budget remains full-window based; a narrow span does not admit
+an oversized annotated sequence. Empirical quantiles and local scales use the
+scored span. Saved report attachment and native GUI export do not rescore or
+change their original calibration. See [native TSS export](gui.md#export-the-native-tss-view).
+
 `ComputeTssTfbsProfiles {request, export?}` validates a transcript-oriented
 FASTA bundle and a strict, exact-version JASPAR panel. It returns
 `tss_tfbs_profiles` (`gentle.tss_tfbs_profiles.v1`) and, when requested,

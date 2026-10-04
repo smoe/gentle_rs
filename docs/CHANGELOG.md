@@ -289,6 +289,36 @@
 - Extend source guards for title/catalog/graphic consistency and the unsupported
   command. No local builds, tests, GUI replay or agent invocation run; current
   execution acceptance remains with CI and Glen.
+## 2026-09-30 - Scope Native TSS Export Scoring To The Requested Span
+
+- Start from `da942858` on `gentle_rs_2_main`. `promoters tss-view-svg`
+  now passes the requested span to the shared InlineSequence scorer instead
+  of scoring the full window and only clipping the plot. Evaluate complete
+  footprints within the span, on both strands; exclude boundary-crossing
+  footprints without padding. Preserve zero/unavailable masks and local to
+  genomic coordinate projection, including negative genomic strands.
+- Keep admission bound to the full annotated window (50,000 bp and 1,000,000
+  matrix/base combinations). Bind both the full sequence and scored-span
+  digest, coordinates, matrix identity and cache identity. Counts retain their
+  evaluated/possible strand-window meaning, including empty or ambiguous spans.
+- Native GUI/report export remains presentation-only. Its original counts,
+  calibration and scales differ deliberately from a freshly scored subspan;
+  empirical quantiles now refer to that subspan. Document this distinction in
+  CLI, GUI, protocol, agent guidance, tutorial 08.17 and Glen's handoff.
+- Add deterministic regressions for actual target-scan steps, both strands,
+  zero versus missing scores, short/invalid spans, identity and admission,
+  coordinate-aware selection and the real TP73 proximal counts. Preserve the
+  existing P1 missing-flanks refusal. The tutorial remains unreviewed in the
+  unchanged review manifest; no catalog metadata or screenshot status changes.
+- **Not run, by request:** local builds, Cargo check, Rust/Python tests,
+  tutorial replay, native GUI checks and benchmarks. Formatting and whitespace
+  inspection only; this is implementation pending verification, not Glen's
+  acceptance or a speed claim. Committed on owner request on 2026-10-05;
+  no Cargo.lock change, push, tag or workflow dispatch.
+- Hover-density policy still awaits owner choice (proposed cap: 128 scored
+  titles per lane/strand); the current hover behavior is unchanged. P1 upstream
+  retrieval, per-matrix strongest-position summaries and collection export
+  remain separate follow-ups; no cross-window scale policy was chosen.
 
 ## 2026-09-30 - Add Approval-Bound Outer Routing For TSS Collections
 

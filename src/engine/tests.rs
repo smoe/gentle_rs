@@ -24005,6 +24005,7 @@ fn test_genome_chromosome_matches_accepts_refseq_accessions_for_sex_and_mito_con
 #[test]
 fn export_tss_view_svg_scores_exact_matrices_headless_and_refuses_plain_sequences() {
     use gentle_protocol::tss_workspace::{TssInventoryRequest, TssMaterializeRequest};
+    let _guard = crate::tf_motifs::test_registry_lock().lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("dnp73.svg");
     let mut engine = GentleEngine::new();
@@ -24112,6 +24113,70 @@ fn export_tss_view_svg_scores_exact_matrices_headless_and_refuses_plain_sequence
     // Trailing positions without a complete motif window are marked, not scored as zero.
     assert!(svg.contains("data-role=\"terminal-unavailable\""));
     assert!(svg.contains("Unavailable is not zero"));
+
+    let sequence_before = engine.state.sequences[window].get_forward_string();
+    let partial = dir.path().join("dnp73 proximal.svg");
+    let narrowed = engine
+        .apply(Operation::ExportTssViewSvg {
+            seq_id: window.clone(),
+            path: partial.to_string_lossy().to_string(),
+            report: None,
+            local_motifs: vec!["MA0861.2".into(), "MA0024.3".into(), "MA1961.2".into()],
+            score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+            clip_negative: true,
+            start_0based: Some(400),
+            end_0based_exclusive: Some(701),
+            width_px: None,
+        })
+        .unwrap();
+    assert!(
+        narrowed
+            .messages
+            .iter()
+            .any(|m| m.contains("in local 401..701") && m.contains("full 701-bp annotated window"))
+    );
+    let partial_svg = std::fs::read_to_string(&partial).unwrap();
+    // 301 bases, each matrix's full footprint, both strands. Counts must not
+    // remain the full-window 1372/1380/1382 merely because the picture is cropped.
+    for (accession, full_count, partial_count) in [
+        ("MA0861.2", 1372, 572),
+        ("MA0024.3", 1380, 580),
+        ("MA1961.2", 1382, 582),
+    ] {
+        assert!(svg.contains(&format!(
+            "{full_count}/{full_count} evaluated strand-windows"
+        )));
+        let lane = partial_svg
+            .split(&format!(
+                "<g data-lane-id=\"local/{accession}/llr_background_tail_log10\">"
+            ))
+            .nth(1)
+            .unwrap()
+            .split("</title>")
+            .next()
+            .unwrap();
+        assert!(lane.contains(&format!(
+            "{partial_count}/{partial_count} evaluated strand-windows in local 401..701"
+        )));
+    }
+    assert_eq!(
+        engine.state.sequences[window].get_forward_string(),
+        sequence_before
+    );
+
+    let invalid = engine.apply(Operation::ExportTssViewSvg {
+        seq_id: window.clone(),
+        path: partial.to_string_lossy().to_string(),
+        report: None,
+        local_motifs: vec!["MA0861.2".into()],
+        score_kind: TfbsScoreTrackValueKind::LlrBackgroundTailLog10,
+        clip_negative: true,
+        start_0based: Some(701),
+        end_0based_exclusive: Some(701),
+        width_px: None,
+    });
+    assert!(invalid.is_err());
+    assert_eq!(std::fs::read_to_string(&partial).unwrap(), partial_svg);
 
     // An unknown accession is refused outright rather than silently dropped.
     assert!(
