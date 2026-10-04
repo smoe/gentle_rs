@@ -1,0 +1,11 @@
+{
+  "inventory": {
+    "seq_id": "tp73_locus",
+    "gene_query": "TP73",
+    "collection_id": "tp73_tss",
+    "upstream_bp": 500,
+    "downstream_bp": 200
+  },
+  "expected_approval_sha256": "sha256:PASTE_FROM_YOUR_PREVIEW",
+  "selected_tss_ids": ["tss_PASTE_FROM_YOUR_PREVIEW"]
+}

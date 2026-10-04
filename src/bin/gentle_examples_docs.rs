@@ -396,6 +396,7 @@ fn run_tutorial_check_mode(
     let summary = json!({
         "status": "ok",
         "mode": "tutorial-check",
+        "agent_parity": report.agent_parity,
         "chapter_count": report.chapter_count,
         "generated_files": report.generated_files,
         "warnings": report.warnings,

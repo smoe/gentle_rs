@@ -1,5 +1,11 @@
 //! Curated workflow example payloads and templates.
 
+mod agent_parity;
+pub use agent_parity::{
+    TutorialAgentParityCheck, TutorialAgentParityFinding, TutorialAgentParitySummary,
+    check_tutorial_agent_parity,
+};
+
 use crate::engine::{
     Engine, GentleEngine, Operation, OperationProgress, ProjectState, Workflow,
     protocol::{FactComparison, FactExpression},
@@ -507,7 +513,20 @@ pub struct TutorialAgentParityCase {
     pub id: String,
     pub command: String,
     pub execution: TutorialAgentExecutionIntent,
+    /// Biological/project mutation declared by the author. The shared parser
+    /// may conservatively classify additional commands as mutating.
     pub mutating: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parser_payload: Option<TutorialAgentParserPayload>,
+}
+
+/// Bind a learner-created `@file` to a repository JSON template for parsing
+/// only. Its JSON must occur in the guide; approval placeholders stay intact.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TutorialAgentParserPayload {
+    pub file: String,
+    pub template: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -919,6 +938,9 @@ pub struct TutorialGenerationReport {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
     pub chapters: Vec<TutorialGenerationChapter>,
+    /// Check-time diagnostics only; absent from generated tutorial artifacts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_parity: Option<TutorialAgentParitySummary>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -6402,6 +6424,7 @@ pub fn generate_tutorial_docs(
         file_checksums,
         warnings,
         chapters: chapter_reports,
+        agent_parity: None,
     };
     let report_path = output_dir.join("report.json");
     let report_json = serde_json::to_string_pretty(&report)
@@ -6417,9 +6440,20 @@ pub fn check_tutorial_generated(
     expected_output_dir: &Path,
     repo_root: &Path,
 ) -> Result<TutorialGenerationReport, String> {
+    let tutorial_source_dir = tutorial_source_dir_for_manifest(manifest_path);
+    let parity_source_dir = repo_root.join(&tutorial_source_dir);
+    // Custom legacy manifests need not have tutorial sources. When present,
+    // validate all declared contracts before any workflow replay or writes.
+    let parity = if parity_source_dir.exists() {
+        check_tutorial_agent_parity(&load_tutorial_source_units(&parity_source_dir)?, repo_root)
+    } else {
+        TutorialAgentParityCheck::default()
+    };
+    if let Some(error) = parity.failure_message() {
+        return Err(error);
+    }
     let examples = load_workflow_examples(source_dir)?;
     let manifest = load_tutorial_manifest(manifest_path)?;
-    let tutorial_source_dir = tutorial_source_dir_for_manifest(manifest_path);
     if !expected_output_dir.exists() {
         return Err(format!(
             "Expected generated tutorial directory '{}' does not exist. Run `tutorial-generate` first.",
@@ -6559,6 +6593,7 @@ pub fn check_tutorial_generated(
             }
         }
     }
+    report.agent_parity = Some(parity.summary);
     Ok(report)
 }
 
@@ -8839,126 +8874,15 @@ mod tests {
 
     #[test]
     fn tss_tutorial_agent_drafts_parse_and_keep_mutations_reviewed() {
-        use crate::agent_bridge::{AgentExecutionIntent, AgentResponse, AgentSuggestedCommand};
-
-        let units = load_tutorial_source_units(Path::new(DEFAULT_TUTORIAL_SOURCE_DIR))
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let units = load_tutorial_source_units(&root.join(DEFAULT_TUTORIAL_SOURCE_DIR))
             .expect("load tutorial sources");
-        let expected_ids = [
-            "tss_collection_gui",
-            "tss_regulatory_view_gui",
-            "tp73_dnp73_factor_curves",
-        ];
-        let mut case_count = 0;
-        let mut mutating_count = 0;
-
-        for tutorial_id in expected_ids {
-            let unit = units
-                .iter()
-                .find(|unit| unit.id == tutorial_id)
-                .unwrap_or_else(|| panic!("missing tutorial source '{tutorial_id}'"));
-            let contract = unit
-                .agent_parity
-                .as_ref()
-                .unwrap_or_else(|| panic!("missing agent parity contract for '{tutorial_id}'"));
-            assert_eq!(contract.schema, TUTORIAL_AGENT_PARITY_SCHEMA);
-            let guide_path = unit
-                .generated_chapter
-                .as_ref()
-                .and_then(|chapter| chapter.guide_path.as_deref())
-                .map(Path::new)
-                .or_else(|| {
-                    unit.catalog
-                        .as_ref()
-                        .map(|catalog| Path::new(&catalog.path))
-                })
-                .expect("agent parity tutorial needs a documented guide path");
-            let guide = fs::read_to_string(guide_path)
-                .unwrap_or_else(|error| panic!("read {}: {error}", guide_path.display()));
-
-            for case in &contract.cases {
-                case_count += 1;
-                assert!(
-                    guide.contains(&case.command),
-                    "tutorial '{}' case '{}' drifted from its guide command '{}'",
-                    tutorial_id,
-                    case.id,
-                    case.command
-                );
-                // 08.17 deliberately asks the learner to write these two files from
-                // the immediately preceding preview. Parse equivalent typed payloads
-                // without turning a run-specific approval into a committed fixture.
-                let parser_command = match case.command.as_str() {
-                    "promoters tss-inventory @tp73-inventory.json" => format!(
-                        "promoters tss-inventory '{}'",
-                        serde_json::json!({
-                            "seq_id": "tp73_locus",
-                            "gene_query": "TP73",
-                            "collection_id": "tp73_tss",
-                            "upstream_bp": 500,
-                            "downstream_bp": 200
-                        })
-                    ),
-                    "promoters tss-materialize @tp73-materialize.json" => format!(
-                        "promoters tss-materialize '{}'",
-                        serde_json::json!({
-                            "inventory": {
-                                "seq_id": "tp73_locus",
-                                "gene_query": "TP73",
-                                "collection_id": "tp73_tss",
-                                "upstream_bp": 500,
-                                "downstream_bp": 200
-                            },
-                            "expected_approval_sha256": "sha256:parser-fixture",
-                            "selected_tss_ids": ["tss_parser_fixture"]
-                        })
-                    ),
-                    _ => case.command.clone(),
-                };
-                let parsed = crate::engine_shell::parse_shell_line(&parser_command).unwrap_or_else(
-                    |error| {
-                        panic!(
-                            "tutorial '{}' case '{}' is not parser-valid: {error}",
-                            tutorial_id, case.id
-                        )
-                    },
-                );
-                let execution = match case.execution {
-                    TutorialAgentExecutionIntent::Ask => AgentExecutionIntent::Ask,
-                    TutorialAgentExecutionIntent::Auto => AgentExecutionIntent::Auto,
-                };
-                let response = AgentResponse {
-                    schema: "gentle.agent_response.v1".to_string(),
-                    suggested_commands: vec![AgentSuggestedCommand {
-                        title: Some(case.id.clone()),
-                        command: case.command.clone(),
-                        execution,
-                        ..AgentSuggestedCommand::default()
-                    }],
-                    ..AgentResponse::default()
-                };
-                assert_eq!(response.suggested_commands[0].command, case.command);
-
-                if case.mutating {
-                    mutating_count += 1;
-                    assert!(
-                        parsed.is_state_mutating(),
-                        "tutorial '{}' case '{}' declares mutation but the shared parser does not",
-                        tutorial_id,
-                        case.id
-                    );
-                    assert_eq!(
-                        response.suggested_commands[0].execution,
-                        AgentExecutionIntent::Ask,
-                        "tutorial '{}' case '{}' must remain an explicit reviewed suggestion",
-                        tutorial_id,
-                        case.id
-                    );
-                }
-            }
-        }
-
-        assert_eq!(case_count, 19);
-        assert_eq!(mutating_count, 5);
+        let check = check_tutorial_agent_parity(&units, root);
+        assert!(check.findings.is_empty(), "{:?}", check.findings);
+        assert_eq!(check.summary.tutorials, 3);
+        assert_eq!(check.summary.cases, 19);
+        assert_eq!(check.summary.declared_mutating, 5);
+        assert_eq!(check.summary.parser_state_mutating, 11);
     }
 
     #[test]

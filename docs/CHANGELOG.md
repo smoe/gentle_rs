@@ -346,6 +346,24 @@
   Locked offline Cargo check, formatting and whitespace checks pass on the
   merged tree. This does not claim native GUI, Windows or approver authentication.
 
+## 2026-09-30 - Validate Tutorial Agent Contracts Before Replay
+
+- Share tutorial command/guide/parser validation between library regressions
+  and `gentle_examples_docs tutorial-check`. Discover every declared contract
+  and report stable case-bound findings before loading or replaying workflows;
+  successful checks expose separate author-mutation and parser-mutation counts.
+- Bind learner-created JSON requests to repository templates matching guide
+  code blocks semantically, including LF/CRLF. Preserve unapproved placeholders;
+  resolve guide/template/`@file` paths against the explicit repository root,
+  rejecting raw traversal, absolute paths and symlink escapes.
+- Replace inline TSS parser overrides and tautological agent-response
+  construction with the shared validator. Add synthetic parser/path/template
+  regressions and a real CLI early-failure test. Keep existing source schema,
+  generated artifacts, execution guards and scientific results unchanged.
+- The non-executing parity step is not a new approval mechanism or a claim of
+  model/native-GUI acceptance. Tutorial-check's later workflow replay is still
+  executable; native Windows validation remains for CI/Glen.
+
 ## 2026-09-30 - Exercise Nested-Agent Protection After Explicit Macro Approval
 
 - Repair the nested-agent macro regression after mutating suggestions became

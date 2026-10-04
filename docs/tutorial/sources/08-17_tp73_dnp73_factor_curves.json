@@ -67,12 +67,20 @@
       {
         "id": "preview_tp73_starts",
         "command": "promoters tss-inventory @tp73-inventory.json",
+        "parser_payload": {
+          "file": "tp73-inventory.json",
+          "template": "docs/examples/assets/tss_factor_curves_tutorial/inventory.template.json"
+        },
         "execution": "ask",
         "mutating": false
       },
       {
         "id": "materialize_dnp73_start",
         "command": "promoters tss-materialize @tp73-materialize.json",
+        "parser_payload": {
+          "file": "tp73-materialize.json",
+          "template": "docs/examples/assets/tss_factor_curves_tutorial/materialize.template.json"
+        },
         "execution": "ask",
         "mutating": true
       },

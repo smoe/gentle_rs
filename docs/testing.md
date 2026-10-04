@@ -352,6 +352,57 @@ cargo run --bin gentle_examples_docs -- tutorial-catalog-check
 cargo test workflow_examples -- --test-threads=1
 ```
 
+#### Tutorial Agent-Parity Contracts
+
+`check_tutorial_agent_parity` is the shared, non-executing validator used by the
+repository regression and by `gentle_examples_docs tutorial-check` before
+workflow loading/replay. It discovers all source units declaring
+`gentle.tutorial_agent_parity.v1`; tutorials without a contract are skipped.
+The source loader still validates schema, case IDs and author-declared `ask`
+requirements. The validator collects command/guide, parser and admission
+findings with stable codes and tutorial/case identities.
+
+The optional additive `parser_payload` member of a case binds a learner's
+`@file` to a portable repository-relative JSON template, for example:
+
+```json
+{
+  "parser_payload": {
+    "file": "tp73-materialize.json",
+    "template": "docs/examples/assets/tss_factor_curves_tutorial/materialize.template.json"
+  }
+}
+```
+
+The `@file` token must occur exactly once. The template must equal a fenced
+`json` block in the guide as a JSON value, independent of formatting, object
+key order or LF/CRLF. All placeholders remain intact: parsing a materialization
+request cannot approve it. Unmapped `@file` inputs are read from the explicit
+repository root, with raw traversal, absolute paths and symlink escapes
+rejected before parsing. Existing command grammar and execution are unchanged.
+
+Author-declared `mutating=true` requires a parser-mutating command, but the
+reverse is not required: generic `op` inspect/export routes are conservatively
+classified. `auto` on any parser-mutating command or undo/redo is diagnosed as
+`auto_blocked_by_runtime`, matching existing runtime protection. Counts are
+derived; only the repository regression pins today's 3 tutorials / 19 cases /
+5 author-declared mutations / 11 parser-classified mutations.
+
+```sh
+cargo test --lib workflow_examples::agent_parity -- --test-threads=1
+cargo test --lib tss_tutorial_agent_drafts_parse_and_keep_mutations_reviewed
+cargo test --test tutorial_agent_parity_cli
+```
+
+The mandatory CLI-boundary test uses an unrelated CWD, LF/CRLF temporary source
+trees and missing replay inputs to prove early exit 1 with typed findings and
+no output artifacts. Unit tests cover new tutorial discovery, template drift,
+real parser errors, path quoting, unchanged placeholders and Unix symlink
+escapes. See [fixture provenance](../tests/tutorial_agent_parity_README.md).
+No new byte-exact generated output is introduced; generated tutorial artifacts
+remain unchanged. These checks do not certify model quality, native GUI
+behavior, real biology or approval.
+
 Hand-written [MCP](tutorial/01-03_mcp_offline_roundtrip.md) and
 [Feature Editor](tutorial/02-05_feature_editor_gui_cli.md) walkthroughs have
 separate offline command regressions:

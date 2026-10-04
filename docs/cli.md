@@ -1464,6 +1464,29 @@ Validate committed tutorial-generated output:
 cargo run --bin gentle_examples_docs -- tutorial-check
 ```
 
+Before replay, this command validates every source unit declaring
+`agent_parity`: the documented command must occur in its guide, parse through
+the shared shell, and respect the existing automatic-execution mutation and
+undo/redo guards. A guide may call an inspect/export command non-mutating even
+when the parser conservatively requires review; that is allowed with `ask`.
+
+Learner-created `@file` requests can bind a `parser_payload` JSON template;
+see [the source contract](testing.md#tutorial-agent-parity-contracts). Guide,
+template and `@file` paths resolve under `--repo-root`, not the process working
+directory. They must be portable repository-relative paths; absolute paths,
+raw parent traversal and symlink escapes are rejected. Approval placeholders
+are parsed unchanged, never replaced with invented approval values.
+
+Parity failures exit 1 on stderr with the prefix
+`tutorial agent parity failed (N findings):`, followed by one JSON finding per
+line (`code`, `tutorial_id`, `case_id`, `detail`). Success adds an
+`agent_parity` summary with `tutorials`, `cases`, `declared_mutating` and
+`parser_state_mutating` counts to the existing JSON summary. The parity step
+never executes commands; **the rest of `tutorial-check` still replays workflows
+in temporary directories**. This is not a model, GUI or scientific acceptance
+verdict. Custom legacy manifests without source units keep their existing
+behavior and report zero declared parity contracts.
+
 ## `gentle` (GUI launcher)
 
 `gentle` starts the graphical application.
