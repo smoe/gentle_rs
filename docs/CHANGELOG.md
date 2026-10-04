@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-10-05 - Handle Fallible ScreenCaptureKit Filter Construction
+
+- Adapt native window capture to ScreenCaptureKit 11's fallible content-filter
+  builder. Propagate configuration errors through the existing capture-failure
+  path before requesting an image; preserve permission and same-process guards.
+- No local builds, tests or screenshot captures run; macOS validation remains
+  pending.
+
 ## 2026-10-02 - Separate Historical Baselines From Current Replay
 
 - Refresh the generated 08.03 chapter, tutorial hub and generation ledger after

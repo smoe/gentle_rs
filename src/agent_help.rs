@@ -332,7 +332,10 @@ fn capture_macos_window(window_id: u32, scale_factor: f64) -> Result<egui::Color
     let frame = window.frame();
     let width = (frame.size.width * scale_factor).round().max(1.0) as u32;
     let height = (frame.size.height * scale_factor).round().max(1.0) as u32;
-    let filter = SCContentFilter::create().with_window(&window).build();
+    let filter = SCContentFilter::create()
+        .with_window(&window)
+        .build()
+        .map_err(|error| format!("Could not configure macOS window capture: {error}"))?;
     let config = SCStreamConfiguration::new()
         .with_width(width)
         .with_height(height)
