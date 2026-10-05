@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-02 - Glen's generated 08.03 repair `e462de1f` is integrated on top of the historical-baseline contract `f1c904a4`; the three synthetic `.11` reports remain unchanged. Glen reports exact-commit LF/CRLF replay success (51 examples, 29 chapters) and 17/17 checkout regressions with Rust 1.96.1. Next: obtain native macOS/Windows Actions results and complete the remaining [Glen handoff checks](internal_12_tutorial_regeneration_glen_prompt.md); do not infer package or scientific acceptance from checkout replay. Keep `package-opt1`, published `.11` assets and sibling worktree edits unchanged.
+Last session: 2026-10-05 - Guard tutorial review dates against checkout-time fallback, preserve the corrected 08.03 catalog and align the twentieth TSS agent case. Independent catalog/history checks, 18 LF/CRLF checkout tests and locked cargo check pass on macOS; the broader workflow replay is continuing. Preserve Glen's `e462de1f` evidence, historical `.11` reports and native-platform/packaging/scientific gates. Next: current native CI and the [Glen handoff checks](internal_12_tutorial_regeneration_glen_prompt.md), never inferring package or scientific acceptance from checkout replay.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

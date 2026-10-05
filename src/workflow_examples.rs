@@ -689,7 +689,7 @@ impl TutorialSourceUnit {
                     &graphics,
                     repo_root,
                 ),
-            ),
+            )?,
         );
         Ok(Some({
             let order = catalog.order;
@@ -1822,7 +1822,16 @@ pub fn generate_tutorial_catalog_from_sources(
     };
     let (review_by_id, review_warn_after_months) =
         tutorial_review_entries_for_source_dir(source_dir)?;
-    let review_today = current_utc_review_date();
+    let review_today = if review_by_id.values().any(|entry| {
+        entry
+            .human_reviewed_at
+            .as_deref()
+            .is_some_and(|date| !date.trim().is_empty())
+    }) {
+        Some(git_review_date(meta_path, false)?)
+    } else {
+        None
+    };
     let repo_root = tutorial_repo_root_for_source_dir(source_dir);
     let source_path_by_id = tutorial_source_path_lookup(source_dir);
     let mut entries = Vec::new();
@@ -2490,18 +2499,6 @@ fn review_date_after(left: (i32, u32, u32), right: (i32, u32, u32)) -> bool {
     left > right
 }
 
-fn system_time_review_date(time: SystemTime) -> Option<(i32, u32, u32)> {
-    let seconds = time.duration_since(UNIX_EPOCH).ok()?.as_secs();
-    Some(civil_from_unix_days((seconds / 86_400) as i64))
-}
-
-fn path_modified_review_date(path: &Path) -> Option<(i32, u32, u32)> {
-    fs::metadata(path)
-        .ok()
-        .and_then(|metadata| metadata.modified().ok())
-        .and_then(system_time_review_date)
-}
-
 fn git_repo_root_for_path(path: &Path) -> Option<PathBuf> {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
@@ -2517,34 +2514,55 @@ fn git_repo_root_for_path(path: &Path) -> Option<PathBuf> {
     }
 }
 
-fn git_path_review_date(path: &Path) -> Option<(i32, u32, u32)> {
-    let repo_root = git_repo_root_for_path(path)?;
+fn git_review_date(path: &Path, path_history: bool) -> Result<(i32, u32, u32), String> {
+    let unavailable = || {
+        format!(
+            "Tutorial review history unavailable for '{}'; restore full Git history before generating or checking reviewed tutorials (checkout mtimes are not evidence)",
+            tutorial_review_dependency_path(path)
+        )
+    };
+    let repo_root = git_repo_root_for_path(path).ok_or_else(unavailable)?;
     let absolute = if path.is_absolute() {
         path.to_path_buf()
     } else {
-        env::current_dir().ok()?.join(path)
+        env::current_dir().map_err(|_| unavailable())?.join(path)
     };
-    let relative = absolute.strip_prefix(&repo_root).ok()?;
-    let output = Command::new("git")
+    let relative = absolute
+        .strip_prefix(&repo_root)
+        .map_err(|_| unavailable())?;
+    let mut command = Command::new("git");
+    command
+        .arg("--literal-pathspecs")
         .arg("-C")
         .arg(&repo_root)
         .arg("log")
         .arg("-1")
-        .arg("--format=%ct")
-        .arg("--")
-        .arg(relative)
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
+        .arg("--format=%ct");
+    if path_history {
+        command.arg("--").arg(relative);
     }
-    let stdout = String::from_utf8(output.stdout).ok()?;
-    let seconds = stdout.trim().parse::<i64>().ok()?;
-    Some(civil_from_unix_days(seconds / 86_400))
+    let output = command.output().map_err(|_| unavailable())?;
+    if !output.status.success() {
+        return Err(unavailable());
+    }
+    let stdout = String::from_utf8(output.stdout).map_err(|_| unavailable())?;
+    let seconds = stdout.trim().parse::<i64>().map_err(|_| unavailable())?;
+    Ok(civil_from_unix_days(seconds.div_euclid(86_400)))
 }
 
-fn path_review_change_date(path: &Path) -> Option<(i32, u32, u32)> {
-    git_path_review_date(path).or_else(|| path_modified_review_date(path))
+fn tutorial_review_dependency_path(path: &Path) -> String {
+    let absolute = if path.is_absolute() {
+        Some(path.to_path_buf())
+    } else {
+        env::current_dir().ok().map(|cwd| cwd.join(path))
+    };
+    absolute
+        .as_deref()
+        .and_then(|absolute| {
+            let root = git_repo_root_for_path(absolute)?;
+            Some(display_path(absolute.strip_prefix(root).ok()?))
+        })
+        .unwrap_or_else(|| display_path(path))
 }
 
 fn tutorial_repo_root_for_source_dir(source_dir: &Path) -> PathBuf {
@@ -6003,12 +6021,15 @@ fn tutorial_source_dependencies(
 fn tutorial_review_dependency_stale_reason(
     entry: Option<&TutorialReviewEntry>,
     dependencies: &[TutorialReviewDependency],
-) -> Option<String> {
-    let reviewed_at = entry?.human_reviewed_at.as_deref()?.trim();
+) -> Result<Option<String>, String> {
+    let Some(reviewed_at) = entry.and_then(|entry| entry.human_reviewed_at.as_deref()) else {
+        return Ok(None);
+    };
+    let reviewed_at = reviewed_at.trim();
     if reviewed_at.is_empty() {
-        return None;
+        return Ok(None);
     }
-    let reviewed_date = parse_review_date(reviewed_at).ok()?;
+    let reviewed_date = parse_review_date(reviewed_at)?;
     let mut missing_graphics = dependencies
         .iter()
         .filter(|dependency| dependency.label.starts_with("declared graphic"))
@@ -6017,33 +6038,31 @@ fn tutorial_review_dependency_stale_reason(
             format!(
                 "{} '{}' is missing after human review date {}",
                 dependency.label,
-                display_path(&dependency.path),
+                tutorial_review_dependency_path(&dependency.path),
                 reviewed_at
             )
         })
         .collect::<Vec<_>>();
     missing_graphics.sort();
     if let Some(reason) = missing_graphics.into_iter().next() {
-        return Some(reason);
+        return Ok(Some(reason));
     }
-    let mut stale_dependencies = dependencies
-        .iter()
-        .filter_map(|dependency| {
-            let modified = path_review_change_date(&dependency.path)?;
-            review_date_after(modified, reviewed_date).then(|| {
-                (
-                    modified,
-                    tutorial_review_dependency_priority(&dependency.label),
-                    format!(
-                        "{} '{}' changed after human review date {}",
-                        dependency.label,
-                        display_path(&dependency.path),
-                        reviewed_at
-                    ),
-                )
-            })
-        })
-        .collect::<Vec<_>>();
+    let mut stale_dependencies = Vec::new();
+    for dependency in dependencies {
+        let modified = git_review_date(&dependency.path, true)?;
+        if review_date_after(modified, reviewed_date) {
+            stale_dependencies.push((
+                modified,
+                tutorial_review_dependency_priority(&dependency.label),
+                format!(
+                    "{} '{}' changed after human review date {}",
+                    dependency.label,
+                    tutorial_review_dependency_path(&dependency.path),
+                    reviewed_at
+                ),
+            ));
+        }
+    }
     stale_dependencies.sort_by(|left, right| {
         right
             .0
@@ -6051,10 +6070,10 @@ fn tutorial_review_dependency_stale_reason(
             .then_with(|| left.1.cmp(&right.1))
             .then_with(|| left.2.cmp(&right.2))
     });
-    stale_dependencies
+    Ok(stale_dependencies
         .into_iter()
         .next()
-        .map(|(_, _, reason)| reason)
+        .map(|(_, _, reason)| reason))
 }
 
 fn tutorial_review_dependency_priority(label: &str) -> usize {
@@ -6097,7 +6116,8 @@ fn tutorial_review_dependency_stale_reasons(
                     &unit.graphics,
                     &repo_root,
                 ),
-            ) else {
+            )?
+            else {
                 continue;
             };
             reasons.insert(unit.id, reason);
@@ -6118,7 +6138,7 @@ fn tutorial_review_dependency_stale_reasons(
         if let Some(reason) = tutorial_review_dependency_stale_reason(
             review_by_id.get(&chapter.id),
             &[workflow_dependency],
-        ) {
+        )? {
             reasons.insert(chapter.id.clone(), reason);
         }
     }
@@ -6831,6 +6851,140 @@ mod tests {
 
     fn tutorial_output_dir() -> PathBuf {
         PathBuf::from(DEFAULT_TUTORIAL_OUTPUT_DIR)
+    }
+
+    fn commit_synthetic_review_history(root: &Path, date: &str) {
+        for args in [
+            vec!["init", "--quiet"],
+            vec!["add", "--all"],
+            vec!["commit", "--quiet", "-m", "Synthetic review dependencies"],
+        ] {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(root)
+                .args([
+                    "-c",
+                    "core.autocrlf=false",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "-c",
+                    "user.name=Synthetic test",
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "core.hooksPath=.disabled-hooks",
+                ])
+                .args(args)
+                .env("GIT_AUTHOR_DATE", date)
+                .env("GIT_COMMITTER_DATE", date)
+                .output()
+                .expect("run synthetic Git fixture command");
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    fn synthetic_review_entry() -> TutorialReviewEntry {
+        TutorialReviewEntry {
+            tutorial_id: "synthetic_review".into(),
+            tutorial_kind: "guided_walkthrough".into(),
+            tutorial_status: "active".into(),
+            replaced_by: None,
+            codex_reviewed_at: None,
+            human_reviewed_at: Some("2024-01-01".into()),
+            human_reviewer: Some("synthetic".into()),
+        }
+    }
+
+    #[test]
+    fn tutorial_review_history_ignores_checkout_mtimes_and_absolute_path_spelling() {
+        let dir = TempDir::new().unwrap();
+        let root = dir.path();
+        let source = root.join("source.json");
+        let graphic = root.join("graphic.png");
+        fs::write(&source, b"{}\n").unwrap();
+        fs::write(&graphic, b"synthetic image bytes").unwrap();
+        commit_synthetic_review_history(root, "2024-01-02T00:00:00Z");
+        fs::File::options()
+            .write(true)
+            .open(&graphic)
+            .unwrap()
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(UNIX_EPOCH + std::time::Duration::from_secs(4_102_444_800)),
+            )
+            .unwrap();
+        let dependencies = [
+            TutorialReviewDependency {
+                label: "declared graphic".into(),
+                path: graphic.clone(),
+            },
+            TutorialReviewDependency {
+                label: "source JSON".into(),
+                path: source.clone(),
+            },
+        ];
+        let entry = synthetic_review_entry();
+        assert_eq!(git_review_date(&source, true).unwrap(), (2024, 1, 2));
+        assert_eq!(git_review_date(&graphic, true).unwrap(), (2024, 1, 2));
+        assert_eq!(git_review_date(&source, false).unwrap(), (2024, 1, 2));
+        assert_eq!(
+            tutorial_review_dependency_stale_reason(Some(&entry), &dependencies).unwrap(),
+            Some("source JSON 'source.json' changed after human review date 2024-01-01".into())
+        );
+        fs::write(&graphic, b"new synthetic image bytes").unwrap();
+        commit_synthetic_review_history(root, "2024-01-03T00:00:00Z");
+        assert!(
+            tutorial_review_dependency_stale_reason(Some(&entry), &dependencies)
+                .unwrap()
+                .unwrap()
+                .starts_with("declared graphic 'graphic.png'")
+        );
+        fs::remove_file(&graphic).unwrap();
+        assert_eq!(
+            tutorial_review_dependency_stale_reason(Some(&entry), &dependencies).unwrap(),
+            Some(
+                "declared graphic 'graphic.png' is missing after human review date 2024-01-01"
+                    .into()
+            )
+        );
+    }
+
+    #[test]
+    fn tutorial_review_history_unavailable_never_uses_checkout_time() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("source.json");
+        fs::write(&path, b"{}\n").unwrap();
+        let entry = synthetic_review_entry();
+        let dependencies = [TutorialReviewDependency {
+            label: "source JSON".into(),
+            path: path.clone(),
+        }];
+        // No repository, then an empty path history, then a failed Git lookup.
+        for phase in 0..3 {
+            if phase == 1 {
+                fs::write(dir.path().join("tracked.txt"), b"synthetic\n").unwrap();
+                fs::rename(&path, dir.path().join("pending.json")).unwrap();
+                commit_synthetic_review_history(dir.path(), "2024-01-02T00:00:00Z");
+                fs::rename(dir.path().join("pending.json"), &path).unwrap();
+            } else if phase == 2 {
+                fs::rename(dir.path().join(".git"), dir.path().join("saved-git")).unwrap();
+                fs::write(dir.path().join(".git"), b"gitdir: missing-git-directory\n").unwrap();
+            }
+            let error =
+                tutorial_review_dependency_stale_reason(Some(&entry), &dependencies).unwrap_err();
+            assert!(
+                error.contains("Tutorial review history unavailable"),
+                "{error}"
+            );
+            assert!(
+                error.contains("checkout mtimes are not evidence"),
+                "{error}"
+            );
+        }
     }
 
     fn tutorial_blast_tools() -> Vec<crate::tool_overrides::ScopedToolOverrideGuard> {
@@ -8880,9 +9034,9 @@ mod tests {
         let check = check_tutorial_agent_parity(&units, root);
         assert!(check.findings.is_empty(), "{:?}", check.findings);
         assert_eq!(check.summary.tutorials, 3);
-        assert_eq!(check.summary.cases, 19);
+        assert_eq!(check.summary.cases, 20);
         assert_eq!(check.summary.declared_mutating, 5);
-        assert_eq!(check.summary.parser_state_mutating, 11);
+        assert_eq!(check.summary.parser_state_mutating, 12);
     }
 
     #[test]
@@ -9070,8 +9224,16 @@ mod tests {
     #[test]
     fn tutorial_review_manifest_stale_date_warns() {
         let dir = TempDir::new().expect("temp tutorial dir");
-        let manifest_path = dir.path().join("manifest.json");
-        let review_path = dir.path().join("review_manifest.json");
+        let tutorial_dir = dir.path().join("docs/tutorial");
+        let manifest_path = tutorial_dir.join("manifest.json");
+        let review_path = tutorial_dir.join("review_manifest.json");
+        let workflow_path = dir
+            .path()
+            .join(DEFAULT_WORKFLOW_EXAMPLE_DIR)
+            .join("minimal_example.json");
+        fs::create_dir_all(&tutorial_dir).unwrap();
+        fs::create_dir_all(workflow_path.parent().unwrap()).unwrap();
+        fs::write(&workflow_path, b"{}\n").unwrap();
         let manifest = TutorialManifest {
             schema: TUTORIAL_MANIFEST_SCHEMA.to_string(),
             description: "test manifest".to_string(),
@@ -9102,6 +9264,7 @@ mod tests {
 "#,
         )
         .expect("write review manifest");
+        commit_synthetic_review_history(dir.path(), "2023-12-31T00:00:00Z");
 
         let context =
             tutorial_review_context_for_date(&manifest_path, &manifest, Some((2026, 5, 21)))
@@ -9186,6 +9349,7 @@ mod tests {
             chapters: vec![],
         };
 
+        commit_synthetic_review_history(repo_root, "2024-01-02T00:00:00Z");
         let context =
             tutorial_review_context_for_date(&manifest_path, &manifest, Some((2024, 1, 2)))
                 .expect("review context");
@@ -9318,6 +9482,7 @@ mod tests {
         )
         .expect("write review manifest");
 
+        commit_synthetic_review_history(repo_root, "2024-01-02T00:00:00Z");
         let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir)
             .expect("generate tutorial catalog");
         let entry = catalog
@@ -9338,6 +9503,22 @@ mod tests {
         assert_eq!(
             entry.review_issue_template_path.as_deref(),
             Some(TUTORIAL_CONFUSION_ISSUE_TEMPLATE_PATH)
+        );
+
+        let mut review: Value = serde_json::from_slice(&fs::read(&review_path).unwrap()).unwrap();
+        review["warn_after_months"] = Value::from(12);
+        review["entries"][0]["human_reviewed_at"] = Value::from("2024-01-02");
+        fs::write(&review_path, serde_json::to_vec(&review).unwrap()).unwrap();
+        commit_synthetic_review_history(repo_root, "2024-01-02T01:00:00Z");
+        let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir).unwrap();
+        let entry = catalog
+            .entries
+            .iter()
+            .find(|entry| entry.id == "stale_catalog")
+            .unwrap();
+        assert!(
+            !entry.review_stale,
+            "catalog age uses the revision date, not wall time"
         );
     }
 
@@ -9428,6 +9609,7 @@ mod tests {
         )
         .expect("write review manifest");
 
+        commit_synthetic_review_history(repo_root, "2026-03-22T00:00:00Z");
         let catalog = generate_tutorial_catalog_from_sources(&meta_path, &source_dir)
             .expect("generate tutorial catalog");
         let entry = catalog

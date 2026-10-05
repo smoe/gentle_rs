@@ -400,6 +400,13 @@ Catalog/manifest split:
   `review_issue_template_path`. These are derived from
   `docs/tutorial/review_manifest.json` and from dependency freshness checks;
   they are not authored in tutorial source JSON.
+- Dependency dates come from Git history, never checkout mtimes. Failed/empty
+  history lookup is an explicit generation/check error, not a fresh review.
+  Missing graphics precede newest UTC commit date, then source/workflow/Markdown/
+  graphic priority. Reasons use repository-relative paths. The stored catalog's
+  review-age reference is the checked-out commit date; live warnings continue
+  to evaluate age at the current date. Reviewed source archives without Git
+  history cannot authoritatively regenerate review projections.
 - Tutorial source units may declare `graphics[]` entries with `kind`
   (`generated` or `screenshot`), `path`, `caption`, `illustrates_step`, and
   either `regen_command` or `capture_date`. Generated chapters carry those

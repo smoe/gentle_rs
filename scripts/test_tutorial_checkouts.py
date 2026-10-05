@@ -115,6 +115,31 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), self.payload)
 
+    def test_review_dependencies_keep_commit_dates_despite_newer_graphic_mtime(self):
+        source = Path("docs/tutorial/sources/synthetic.json")
+        graphic = Path("docs/screenshots/synthetic.png")
+        for relative, payload in ((source, b"{}\n"), (graphic, b"synthetic image")):
+            path = self.root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        env = dict(os.environ, GIT_AUTHOR_DATE="2024-01-02T00:00:00Z",
+                   GIT_COMMITTER_DATE="2024-01-02T00:00:00Z")
+        subprocess.run(["git", "-C", str(self.root), "-c", "commit.gpgsign=false",
+                        "-c", "core.hooksPath=.disabled-hooks", "commit", "--quiet",
+                        "-m", "Synthetic review date tie"], env=env, check=True)
+        expected = checker.git(self.root, "log", "-1", "--format=%ct", "--", str(source))
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"review-dates-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            os.utime(target / graphic, (4102444800, 4102444800))
+            for relative in (source, graphic):
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual(checker.git(target, "log", "-1", "--format=%ct",
+                                                 "--", str(relative)), expected)
+            self.assertNotEqual((target / graphic).stat().st_mtime,
+                                (target / source).stat().st_mtime)
+
     def test_uniprot_review_evidence_hashes_survive_both_checkout_modes(self):
         evidence_root = Path("docs/tutorial/reproducibility")
         records = {
@@ -522,7 +547,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             for failed_call in (0, 1, 2, 3):
                 with self.subTest(error=type(error).__name__, failed_call=failed_call), \
                         patch.object(checker.subprocess, "run",
-                                     side_effect=[None] * failed_call + [error]):
+                                     side_effect=[None] * failed_call + [error]) as run:
                     with self.assertRaisesRegex(RuntimeError, "crlf checkout failed"):
                         checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
                     self.assertEqual(run.call_count, failed_call + 1)

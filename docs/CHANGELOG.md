@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-05 - Guard Tutorial Review History And Checkout Failure Checks
+
+- Verify the October 4 CI failure against `f523a757`: its catalog retained the
+  graphic-based reason while the generator chose the same-date source JSON.
+  The review reversed that diff; `19889dae` already fixes it. Preserve the
+  catalog correction and human-review status rather than regenerating reports
+  or claiming that a timestamp fallback caused that historical failure.
+- Remove the latent mtime fallback for reviewed dependency dates. Failed/empty
+  Git history is an explicit generation/check error. Preserve missing-graphic,
+  newest UTC commit date and dependency-priority ordering; render relative
+  paths even for absolute source inputs. Bind committed-catalog review age to
+  the revision date, keeping live warnings current-date-based.
+- Add synthetic Git/date/history regressions and LF/CRLF date-tie coverage.
+  Fix the unbound checkout-test mock introduced by the earlier catalog check,
+  retaining stop-on-first-failure assertions. Align agent-parity counts with
+  the new twentieth TSS export case, without changing approval guards.
+- On macOS, the two catalog checks, new history/age regressions, 18 fast
+  checkout tests and `cargo check -q --locked` pass. The catalog checks also
+  pass in a fresh full clone. No full suite, package, benchmark, GUI, native
+  Windows/Linux rerun or publication is claimed. Private outputs, report
+  hashes, retained screenshots and package recipes are unchanged.
+
 ## 2026-10-05 - Synchronize Promoter Tutorial Catalog Review Metadata
 
 - Refresh tutorial 08.03's catalog stale-review reason and feedback route to

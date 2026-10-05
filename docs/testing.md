@@ -385,8 +385,8 @@ Author-declared `mutating=true` requires a parser-mutating command, but the
 reverse is not required: generic `op` inspect/export routes are conservatively
 classified. `auto` on any parser-mutating command or undo/redo is diagnosed as
 `auto_blocked_by_runtime`, matching existing runtime protection. Counts are
-derived; only the repository regression pins today's 3 tutorials / 19 cases /
-5 author-declared mutations / 11 parser-classified mutations.
+derived; only the repository regression pins today's 3 tutorials / 20 cases /
+5 author-declared mutations / 12 parser-classified mutations.
 
 ```sh
 cargo test --lib workflow_examples::agent_parity -- --test-threads=1
@@ -450,6 +450,19 @@ Tutorial navigation is part of the catalog contract: prerequisite and
 continuation ids must resolve, cannot repeat or self-reference, and are capped
 at three per direction. Generated-chapter prerequisites project into the same
 catalog field used by manual pages and the in-app Help navigation.
+
+Reviewed tutorial dependencies require available Git history. Checkout mtimes
+are never a substitute for a failed or empty `git log` lookup; generation and
+checks report unavailable history rather than inventing freshness. Missing
+graphics take precedence, then the newest UTC commit date, then source/workflow/
+Markdown/graphic priority. Reasons use repository-relative paths even when the
+generator receives absolute source paths from another working directory.
+The committed catalog evaluates review age at the checked-out commit date;
+live tutorial-check warnings still use today's date. Thus a later checkout or
+copied file timestamp does not rewrite the catalog. Synthetic Rust Git fixtures
+exercise date ties, newer graphic mtimes, genuinely newer commits and missing/
+empty/failed history; the fast LF/CRLF gate preserves these date ties as well as
+the existing byte contracts.
 
 The prebuilt-binary checkout replay runs `parity-matrix-check` and
 `tutorial-catalog-check` before `--check` and `tutorial-check` in both modes,
