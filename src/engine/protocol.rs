@@ -5452,6 +5452,11 @@ pub struct Workflow {
 /// for which sequence windows/views may need refresh after an operation.
 pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dna_sequence_design: Option<Box<gentle_protocol::sequence_design::DnaSequenceDesignReport>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dna_sequence_design_receipt:
+        Option<gentle_protocol::sequence_design::DnaSequenceDesignReceipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tss_inventory: Option<Box<gentle_protocol::tss_workspace::TssInventoryReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tss_collection: Option<Box<gentle_protocol::tss_workspace::TssCollectionReport>>,
@@ -6574,6 +6579,10 @@ pub struct GenomicRegionHomologyProgress {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Union of long-running operation progress events.
 pub enum OperationProgress {
+    SequenceDesign {
+        evaluated_candidates: u64,
+        requested_candidate_budget: u64,
+    },
     /// Completed operation count, not an estimate of remaining wall-clock time.
     Workflow {
         completed: usize,

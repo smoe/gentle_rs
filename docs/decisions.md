@@ -1,5 +1,26 @@
 # GENtle Decisions
 
+## Synthetic Sequence-Design Boundaries
+
+Status: active for the experimental synonymous motif-removal prototype.
+
+Only explicit synthetic coding-insert requests authorize preview, never labels
+or natural assay templates. The pure independently versioned core has no root,
+GUI, serialization, Python, file or network dependency. Root context resolution
+binds explicit codon/residue mapping rather than undeclared asset ordering.
+Its private component version does not follow GENtle's application-version
+rollover; only workspace-version-inheriting lockfile entries follow that bump.
+Frozen bases, exact protein/start/stop and full-sequence motif evaluation are
+invariants. Bounded-search failure is unresolved, not infeasible; cancellation
+cannot publish an applicable proposal, including a valid intermediate result.
+Feasible incomplete optimization does not establish minimum nucleotide edits.
+Approval binds exact input/output/protection/mapping/configuration/evaluations;
+apply revalidates without rerunning search and creates one undoable derivation.
+Stale source annotations are omitted rather than inherited. No expression,
+splicing, folding or suitability claim follows from translation preservation.
+See [the scoped contract](dna_sequence_optimization_plan.md). This is outside
+the `.12` release gate and is not full DNA Chisel compatibility.
+
 ## Transcript Capture Discovery Boundaries
 
 Capture binding coverage, retained isoform information, specificity and

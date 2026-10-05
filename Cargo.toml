@@ -18,6 +18,7 @@ non_kebab_case_bins = "allow"
 [workspace]
 resolver = "3"
 members = [
+    "crates/gentle-sequence-design",
     "crates/gentle-benchmarks",
     "crates/gentle-engine",
     "crates/gentle-protocol",
@@ -131,6 +132,7 @@ lua-interface = ["dep:mlua", "dep:rustyline"]
 script-interfaces = ["js-interface", "lua-interface"]
 
 [dependencies]
+gentle-sequence-design = { path = "crates/gentle-sequence-design" }
 gentle-engine = { path = "crates/gentle-engine" }
 gentle-gui = { path = "crates/gentle-gui", optional = true }
 gentle-protocol = { path = "crates/gentle-protocol" }

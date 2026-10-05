@@ -1411,6 +1411,8 @@ fn tool_command_paths(name: &str) -> &'static [&'static str] {
         "agent_execute_plan" => &["agents execute-plan"],
         "op" => &[
             "op",
+            "sequence-design plan",
+            "sequence-design apply",
             "primers design-transcript-capture-pool",
             "gene-locus prepare",
             "gel-image import",
@@ -4961,6 +4963,81 @@ mod tests {
             .and_then(Value::as_str)
             .unwrap_or_default();
         assert!(text.contains("confirm=true"));
+    }
+
+    #[test]
+    fn sequence_design_mcp_confirmation_preview_and_exact_apply_parity() {
+        // Hand-crafted 12-bp synthetic MEF insert, recreated from this literal.
+        let temp = tempdir().unwrap();
+        let state_path = temp.path().join("design project.json");
+        let preview_path = temp.path().join("design preview.json");
+        let design_request = json!({
+            "schema":"gentle.dna_sequence_design_request.v1",
+            "target":{"kind":"inline_sequence", "sequence":"ATGGAATTCTAA"},
+            "purpose":"synthetic_coding_insert",
+            "cds":{"start_0based":0, "end_0based_exclusive":12},
+            "protein_sequence":"MEF", "genetic_code":1,
+            "avoid_motifs":[{"pattern":"GAATTC", "strand":"both"}],
+            "max_evaluations":4096, "output_seq_id":"synthetic_without_ecori"
+        });
+        let mut request = json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call",
+            "params":{"name":"op", "arguments":{
+                "state_path":state_path.to_string_lossy(),
+                "operation":{"PlanDnaSequenceDesign":{
+                    "request":design_request, "path":preview_path.to_string_lossy()
+                }}
+            }}
+        });
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert!(!state_path.exists() && !preview_path.exists());
+        request["params"]["arguments"]["confirm"] = true.into();
+        let allowed = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_ne!(
+            allowed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true),
+            "{allowed}"
+        );
+        let preview: gentle_protocol::sequence_design::DnaSequenceDesignReport =
+            serde_json::from_slice(&std::fs::read(&preview_path).unwrap()).unwrap();
+        let mut direct = GentleEngine::new();
+        let direct_result = direct
+            .apply(
+                serde_json::from_value(request["params"]["arguments"]["operation"].clone())
+                    .unwrap(),
+            )
+            .unwrap();
+        assert_eq!(direct_result.dna_sequence_design.as_deref(), Some(&preview));
+        let before = std::fs::read(&state_path).unwrap();
+        request["params"]["arguments"]["operation"] = json!({"ApplyDnaSequenceDesign":{
+            "proposal":preview, "approval_digest":preview.approval_digest
+        }});
+        request["params"]["arguments"]["confirm"] = false.into();
+        let denied = run_single(DEFAULT_MCP_STATE_PATH, request.clone());
+        assert_eq!(
+            denied.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(std::fs::read(&state_path).unwrap(), before);
+        request["params"]["arguments"]["confirm"] = true.into();
+        let allowed = run_single(DEFAULT_MCP_STATE_PATH, request);
+        assert_ne!(
+            allowed.pointer("/result/isError").and_then(Value::as_bool),
+            Some(true),
+            "{allowed}"
+        );
+        let state = ProjectState::load_from_path(state_path.to_str().unwrap()).unwrap();
+        assert_eq!(
+            state.sequences["synthetic_without_ecori"].get_forward_string(),
+            "ATGGAATTTTAA"
+        );
+        for path in ["sequence-design plan", "sequence-design apply"] {
+            assert!(tool_command_paths("op").contains(&path));
+        }
     }
 
     #[test]

@@ -107,6 +107,27 @@
   availability follow-up plus the owner's object-context discovery request;
   broader context-menu coverage remains next work, not completed acceptance.
 
+## 2026-10-05 - Preview Synonymous Motif Removal For Synthetic Inserts
+
+- Add the dependency-free, independently versioned private sequence-design core
+  for explicit synthetic forward code-1 CDSs, preserving protein, literal
+  start/stop, flanks and protected bases while removing finite IUPAC motifs.
+- Add deterministic bounded full enumeration, full final validation, coupled
+  edit oracle and explicit invalid/unsupported/feasible/unresolved/infeasible/
+  cancelled outcomes. Incomplete search does not establish edit optimality.
+- Add shared engine preview/exact-approval operations, shell/direct CLI, MCP-op
+  reachability and inner-agent capability/guidance. Application rechecks hashes,
+  current mapping and protection without rerunning search, retains a receipt
+  and creates one undoable source-linked derivation without stale annotations.
+- Keep GC, broader DNA Chisel specifications, dedicated GUI and performance/
+  independent biological acceptance deferred, outside the `.12` release gate.
+- Rebase onto local `main` `564ea09b`, retaining its dependency/Help update and
+  both changelog entries. On macOS, 7 core, 6 engine/MCP, 1 CLI, 2 glossary,
+  6 MCP surface, 1 parity-matrix and 4 version checks passed, plus default/test
+  compilation, formatting, whitespace and 27 Python checks (3 platform skips).
+  Add re-hashed oversized-preview admission controls; native GUI/Pi/Windows,
+  full-workspace tests and independent acceptance remain unclaimed.
+
 ## 2026-10-02 - Separate Historical Baselines From Current Replay
 
 - Refresh the generated 08.03 chapter, tutorial hub and generation ledger after

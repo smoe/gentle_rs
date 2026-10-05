@@ -291,6 +291,9 @@ impl CommandExecutionService {
                     let mut job = callback_job.lock().unwrap();
                     if job.cancel.load(Ordering::Acquire) { return false; }
                     match event {
+                        OperationProgress::SequenceDesign { evaluated_candidates, requested_candidate_budget } => {
+                            callback_frame.update_detail(format!("Synthetic design: {evaluated_candidates} candidates evaluated; requested budget {requested_candidate_budget}; source unchanged"));
+                        }
                         OperationProgress::Workflow { completed, total } => {
                             job.receipt.completed_steps = Some(completed);
                             job.receipt.total_steps = Some(total);

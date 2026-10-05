@@ -14439,6 +14439,8 @@ fn poll_prepare_success_after_cancel_request_reports_completion_prefix() {
     tx.send(GenomePrepareTaskMessage::Done {
         job_id: 54,
         result: Ok(OpResult {
+            dna_sequence_design: None,
+            dna_sequence_design_receipt: None,
             primer_group_target_design: None,
             cryptic_splicing_screen: None,
             tata_box_screen: None,
@@ -14723,6 +14725,8 @@ fn poll_track_import_refreshes_only_changed_sequence_windows() {
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 91,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
+            dna_sequence_design: None,
+            dna_sequence_design_receipt: None,
             primer_group_target_design: None,
             cryptic_splicing_screen: None,
             tata_box_screen: None,
@@ -14891,6 +14895,8 @@ fn poll_track_import_refreshes_all_open_windows_when_changed_ids_missing() {
     tx.send(GenomeTrackImportTaskMessage::Done {
         job_id: 92,
         result: Ok(GenomeTrackTaskResult::Operation(OpResult {
+            dna_sequence_design: None,
+            dna_sequence_design_receipt: None,
             primer_group_target_design: None,
             cryptic_splicing_screen: None,
             tata_box_screen: None,
@@ -15281,6 +15287,8 @@ fn poll_track_autosync_marks_stale_result_and_allows_new_key_retry() {
 #[test]
 fn format_extract_region_status_includes_annotation_fallback_reason() {
     let status = GENtleApp::format_extract_region_status(&OpResult {
+        dna_sequence_design: None,
+        dna_sequence_design_receipt: None,
         primer_group_target_design: None,
         cryptic_splicing_screen: None,
         tata_box_screen: None,

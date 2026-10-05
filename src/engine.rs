@@ -1341,6 +1341,8 @@ mod reporter_ops;
 mod reporter_panel;
 #[path = "engine/analysis/rna_reads.rs"]
 mod rna_reads;
+#[path = "engine/analysis/sequence_design.rs"]
+mod sequence_design;
 #[path = "engine/state/sequence_ops.rs"]
 mod sequence_ops;
 #[path = "engine/analysis/sequencing_confirmation.rs"]
@@ -3240,6 +3242,15 @@ impl BlastRunOptions {
 /// rely on `GentleEngine::apply` for execution. This preserves one deterministic
 /// behavior surface and avoids adapter-specific biology logic branches.
 pub enum Operation {
+    PlanDnaSequenceDesign {
+        request: Box<gentle_protocol::sequence_design::DnaSequenceDesignRequest>,
+        #[serde(default)]
+        path: Option<String>,
+    },
+    ApplyDnaSequenceDesign {
+        proposal: Box<gentle_protocol::sequence_design::DnaSequenceDesignReport>,
+        approval_digest: String,
+    },
     ComputeTssTfbsProfiles {
         request: Box<gentle_protocol::tss_profiles::ComputeTssProfilesRequest>,
         #[serde(default)]
@@ -10094,6 +10105,7 @@ impl GentleEngine {
         if matches!(
             op,
             Operation::SaveFile { .. }
+                | Operation::PlanDnaSequenceDesign { .. }
                 | Operation::ComputeTssTfbsProfiles { .. }
                 | Operation::ExportTssTfbsProfiles { .. }
                 | Operation::InspectGelImageAnalysis { .. }

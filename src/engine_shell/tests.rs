@@ -1373,6 +1373,35 @@ fn smoke_command_line_for_glossary_command(
     command: &GlossaryCommandFixture,
     scratch: &Path,
 ) -> String {
+    if matches!(
+        command.path.as_str(),
+        "sequence-design plan" | "sequence-design apply"
+    ) {
+        // Literal synthetic MEF insert for parser coverage, not a natural target.
+        let request = serde_json::json!({
+            "schema":"gentle.dna_sequence_design_request.v1",
+            "target":{"kind":"inline_sequence", "sequence":"ATGGAATTCTAA"},
+            "purpose":"synthetic_coding_insert",
+            "cds":{"start_0based":0, "end_0based_exclusive":12},
+            "protein_sequence":"MEF", "genetic_code":1,
+            "avoid_motifs":[{"pattern":"GAATTC", "strand":"both"}],
+            "max_evaluations":4096, "output_seq_id":"synthetic_without_ecori"
+        });
+        if command.path == "sequence-design plan" {
+            return format!(
+                "sequence-design plan {}",
+                quote_shell_arg(&request.to_string())
+            );
+        }
+        let preview = GentleEngine::new()
+            .plan_dna_sequence_design(serde_json::from_value(request).unwrap(), |_| false)
+            .unwrap();
+        return format!(
+            "sequence-design apply {} --approve {}",
+            quote_shell_arg(&serde_json::to_string(&preview).unwrap()),
+            preview.approval_digest.as_deref().unwrap()
+        );
+    }
     if command.path == "features tss-tfbs-profiles-export" {
         // Parser-only synthetic report, deliberately without measured/scored windows.
         // Runtime export must still validate its content and provenance.

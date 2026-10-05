@@ -40004,6 +40004,8 @@ impl GentleEngine {
         let op_id = self.next_op_id();
         let mut parent_seq_ids: Vec<SeqId> = vec![];
         let mut result = OpResult {
+            dna_sequence_design: None,
+            dna_sequence_design_receipt: None,
             op_id,
             created_seq_ids: vec![],
             changed_seq_ids: vec![],
@@ -51601,6 +51603,36 @@ impl GentleEngine {
                         .warnings
                         .extend(plan.warnings.iter().map(|warning| warning.detail.clone()));
                     result.regulatory_fragment_panel_plan = Some(Box::new(plan));
+                }
+                Operation::PlanDnaSequenceDesign { request, path } => {
+                    let budget = request.max_evaluations;
+                    let report =
+                        self.plan_dna_sequence_design(*request, |evaluated_candidates| {
+                            !on_progress(OperationProgress::SequenceDesign {
+                                evaluated_candidates,
+                                requested_candidate_budget: budget,
+                            })
+                        })?;
+                    if let Some(path) = path.as_deref() {
+                        self.write_pretty_json_file(&report, path, "DNA sequence-design preview")?;
+                    }
+                    result.messages.push(format!("Synthetic motif-removal preview: {:?}; {} candidate(s) evaluated; source unchanged", report.status, report.evaluated_candidates));
+                    result.dna_sequence_design = Some(Box::new(report));
+                }
+                Operation::ApplyDnaSequenceDesign {
+                    proposal,
+                    approval_digest,
+                } => {
+                    if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
+                        seq_id,
+                    } = &proposal.request.target
+                    {
+                        parent_seq_ids.push(seq_id.clone());
+                    }
+                    let receipt = self.apply_dna_sequence_design(*proposal, &approval_digest)?;
+                    result.created_seq_ids.push(receipt.created_seq_id.clone());
+                    result.messages.push("Created exactly approved synthetic DNA; source annotations omitted and experimental suitability not assessed".into());
+                    result.dna_sequence_design_receipt = Some(receipt);
                 }
                 Operation::RenderRegulatoryFragmentPanelSvg { plan, path } => {
                     Self::validate_regulatory_fragment_panel_document(&plan)?;

@@ -7783,6 +7783,18 @@ Error: `{err}`"
         progress: &OperationProgress,
     ) -> TutorialProjectTaskProgress {
         let mut message = match progress {
+            OperationProgress::SequenceDesign {
+                evaluated_candidates,
+                requested_candidate_budget,
+            } => Self::tutorial_project_progress_message(
+                chapter_id,
+                chapter_title,
+                "sequence_design",
+                &format!(
+                    "Synthetic design candidates evaluated: {evaluated_candidates}; requested budget {requested_candidate_budget}"
+                ),
+                None,
+            ),
             OperationProgress::Workflow { completed, total } => {
                 Self::tutorial_project_progress_message(
                     chapter_id,
@@ -12419,6 +12431,8 @@ Error: `{err}`"
                 }
             })
             .map(|report| OpResult {
+                dna_sequence_design: None,
+                dna_sequence_design_receipt: None,
                 primer_group_target_design: None,
                 cryptic_splicing_screen: None,
                 tata_box_screen: None,
