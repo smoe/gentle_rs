@@ -71,7 +71,10 @@ finished with Linux and Windows catalog-test failures; their preceding drift
 checks passed, Windows's full suite was skipped and macOS was not selected.
 `19889dae` already corrects that catalog projection. The separate Git-history
 guard, checkout mock repair and twentieth TSS case counts are locally validated;
-they do not establish current native Actions or package acceptance. The
+they do not establish current native Actions or package acceptance. The later
+run `37292637621` at `462b5ffe` also exposes a Windows rooted-path admission
+failure in tutorial validation; its bounded repair still requires new native
+Windows CI, not a macOS-only verdict. The
 [candidate-preparation handoff](../internal_12_candidate_preparation.md)
 records exact historical evidence, permitted local checks, build-only commands
 and open compatibility/runner decisions. No workflow was dispatched.
