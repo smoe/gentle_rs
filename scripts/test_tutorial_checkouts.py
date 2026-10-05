@@ -457,6 +457,7 @@ class TutorialCheckoutTests(unittest.TestCase):
             checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
         self.assertEqual([call.args[0] for call in run.call_args_list],
                          [["existing-binary", "parity-matrix-check"],
+                          ["existing-binary", "tutorial-catalog-check"],
                           ["existing-binary", "--check"], ["existing-binary", "tutorial-check"]])
         for call in run.call_args_list:
             self.assertNotIn("GENTLE_TEST_ONLINE", call.kwargs["env"])
@@ -518,12 +519,13 @@ class TutorialCheckoutTests(unittest.TestCase):
     def test_failed_check_or_timeout_cannot_be_reported_as_success(self):
         for error in (subprocess.CalledProcessError(1, "validator"),
                       subprocess.TimeoutExpired("validator", 12)):
-            for failed_call in (0, 1, 2):
+            for failed_call in (0, 1, 2, 3):
                 with self.subTest(error=type(error).__name__, failed_call=failed_call), \
                         patch.object(checker.subprocess, "run",
                                      side_effect=[None] * failed_call + [error]):
                     with self.assertRaisesRegex(RuntimeError, "crlf checkout failed"):
                         checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
+                    self.assertEqual(run.call_count, failed_call + 1)
 
     def test_main_checks_both_modes_at_one_revision_without_building(self):
         binary = Path(self.tmp.name) / "existing-binary"

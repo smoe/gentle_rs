@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-05 - Synchronize Promoter Tutorial Catalog Review Metadata
+
+- Refresh tutorial 08.03's catalog stale-review reason and feedback route to
+  match its committed source history and already-refreshed chapter/hub/ledger.
+  Preserve the human-review date, stale status, screenshots and scientific
+  artifacts; this is catalog projection drift, not a newline repair.
+- Run `tutorial-catalog-check` before the long LF/CRLF tutorial replay in CI.
+  Extend the checkout regression to require the catalog check and stop on its
+  failure. No local builds or tests run; native CI validation remains pending.
+
 ## 2026-10-05 - Handle Fallible ScreenCaptureKit Filter Construction
 
 - Adapt native window capture to ScreenCaptureKit 11's fallible content-filter

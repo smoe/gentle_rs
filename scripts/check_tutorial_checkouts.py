@@ -53,7 +53,7 @@ def check_checkout(binary, checkout, mode, timeout):
     env = os.environ.copy()
     # This gate checks committed offline teaching artifacts, not live services.
     env.pop("GENTLE_TEST_ONLINE", None)
-    for argument in ("parity-matrix-check", "--check", "tutorial-check"):
+    for argument in ("parity-matrix-check", "tutorial-catalog-check", "--check", "tutorial-check"):
         print(f"[{mode}] {binary.name} {argument}", flush=True)
         try:
             subprocess.run([str(binary), argument], cwd=checkout, env=env,

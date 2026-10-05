@@ -451,9 +451,10 @@ continuation ids must resolve, cannot repeat or self-reference, and are capped
 at three per direction. Generated-chapter prerequisites project into the same
 catalog field used by manual pages and the in-app Help navigation.
 
-The prebuilt-binary checkout replay runs `parity-matrix-check` before `--check`
-and `tutorial-check` in both modes, so matrix drift fails before the longer
-tutorial replay and full Rust suite. This complements the no-build Python
+The prebuilt-binary checkout replay runs `parity-matrix-check` and
+`tutorial-catalog-check` before `--check` and `tutorial-check` in both modes,
+so matrix or catalog drift fails before the longer tutorial replay and full
+Rust suite. This complements the no-build Python
 checkout gate; neither replaces native-platform acceptance.
 
 Version changes require replay compatibility, not replacement of historical
