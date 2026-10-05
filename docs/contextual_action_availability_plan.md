@@ -13,6 +13,45 @@ below. No further implementation blocker was identified in that review; live
 GUI acceptance and broader migration remain outstanding. This does not expand
 the `.10` release gate. No new direct Claude session was invoked for closeout.
 
+## Object Context And Palette Clarity Follow-Up (2026-10-04)
+
+The owner approved a bounded GUI-clarity follow-up after the tutorial reviews,
+then emphasized context-click as the preferred way to discover useful next steps.
+This extends the existing pilot, not its biological or permission contracts:
+
+- Graph/table lineage context menus now identify the clicked item and lead with
+  inspection, existing sequence/pool/saved-analysis viewers, and single-DNA PCR
+  setup before copy/group/rename/remove bookkeeping. PCR binds the clicked DNA
+  explicitly, including when another PCR workspace is open; non-DNA, missing
+  sources and busy project locks have explanations. Popup subjects retain the
+  clicked node/project identity across pointer movement; disappearing or shifted
+  rows and project replacement cannot rebind an open menu. Blank graph space
+  points to node inspection and file import. Pools are not guessed into one
+  primer template. Broader context-menu coverage remains next work.
+- Compact palette rows show action names. A separate, scrollable detail area
+  retains the selected action's purpose and any prerequisite/recovery explanation,
+  including at the minimum window size. Search still includes descriptions and
+  keywords; public titles and command identifiers are unchanged.
+- Disabled rows can be inspected by pointer or keyboard without invoking them.
+  Arrow navigation brings the selected row into view, and a stationary pointer
+  cannot undo a keyboard selection. Hosted and native palette paths reuse one
+  contents renderer instead of maintaining duplicate interaction code.
+- Undo/Redo use the existing engine checkpoint counts and background-job guard
+  in both the egui Edit menu and palette, with a dispatch-time recheck. Empty
+  history and active jobs are explicitly unavailable with recovery guidance;
+  unavailable project locks remain Checking. No history serialization, whole
+  fact graph, external probe or scientific preflight is added to paint.
+- TATA/cryptic-screen palette descriptions and PCR/confirmation menu hovers
+  distinguish opening setup/review from running analysis or applying changes.
+
+Inline synthetic tests cover clicked-object inspection and PCR binding, popup
+subject retention/invalidation, non-DNA and removed subjects, empty/history
+transitions, invalidated redo, active jobs, busy locks, minimum-size visible
+explanations, disabled hover, keyboard selection, empty results and both palette
+window paths. Execution results are recorded in `CHANGELOG.md`. Glen's live native/hosted layout and
+focus checks remain pending; headless egui frames are not native GUI acceptance.
+Native macOS menu migration and additional action families remain separate.
+
 ## Evidence And User Intent
 
 The user wants menus, their nested submenus and individual actions to reflect

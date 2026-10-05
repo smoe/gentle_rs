@@ -5686,7 +5686,7 @@ Error: `{err}`"
             CommandPaletteEntry {
                 readiness: ActionReadiness::Ready,
                 title: "Cryptic-splicing Structural Screen".to_string(),
-                detail: "Inspect bounded GT-AG pseudo-intron candidates in a project sequence"
+                detail: "Open structural-screen setup for selected DNA; inspect bounded GT-AG pseudo-intron candidates without changing annotations."
                     .to_string(),
                 keywords:
                     "splicing cryptic splice donor acceptor pseudo-intron cds structural screen"
@@ -5696,7 +5696,7 @@ Error: `{err}`"
             CommandPaletteEntry {
                 readiness: ActionReadiness::Ready,
                 title: "TATA-box Evidence".to_string(),
-                detail: "Inspect source annotations, EPD promoter classifications and TBP matrix predictions".into(),
+                detail: "Open evidence review for selected DNA; inspect annotations, EPD promoter classifications and TBP predictions before adding features.".into(),
                 keywords: "tata tbp promoter epd tss annotation motif".into(),
                 action: CommandPaletteAction::OpenTataBoxes,
             },
@@ -16976,12 +16976,11 @@ Error: `{err}`"
                 }
             });
             let _edit_menu = ui.menu_button(self.tr("menu.edit"), |ui| {
+                let launch = LaunchContext::capture(self, false);
                 let undo_resp = self.track_hover_status(
-                    ui.add_enabled(
-                        history_ops_enabled && undo_count > 0,
-                        egui::Button::new(self.tr("menu.edit.undo")),
-                    )
-                    .on_hover_text("Undo the most recent operation-level state change"),
+                    launch.readiness(CommandPaletteAction::Undo)
+                        .button(ui, self.tr("menu.edit.undo"))
+                        .on_hover_text("Undo the most recent operation-level state change"),
                     "Edit > Undo",
                 );
                 #[cfg(feature = "gui-test-support")]
@@ -16994,19 +16993,17 @@ Error: `{err}`"
                     false,
                 );
                 if undo_resp.clicked() {
-                    self.undo_last_operation();
+                    self.execute_command_palette_action(ui.ctx(), CommandPaletteAction::Undo);
                     ui.close();
                 }
                 let redo_resp = self.track_hover_status(
-                    ui.add_enabled(
-                        history_ops_enabled && redo_count > 0,
-                        egui::Button::new(self.tr("menu.edit.redo")),
-                    )
-                    .on_hover_text("Redo the most recently undone operation"),
+                    launch.readiness(CommandPaletteAction::Redo)
+                        .button(ui, self.tr("menu.edit.redo"))
+                        .on_hover_text("Redo the most recently undone operation"),
                     "Edit > Redo",
                 );
                 if redo_resp.clicked() {
-                    self.redo_last_operation();
+                    self.execute_command_palette_action(ui.ctx(), CommandPaletteAction::Redo);
                     ui.close();
                 }
                 if !history_ops_enabled {
@@ -17210,7 +17207,7 @@ Error: `{err}`"
                 if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::PcrDesign))
                     .button(ui, self.tr("menu.patterns.pcr_designer"))
                     .on_hover_text(
-                        "Open paint-first pair-PCR specialist window (ROI + primer windows + queue)",
+                        "Open PCR Designer setup for selected DNA (target region and primer windows); no design runs automatically",
                     )
                     .clicked()
                 {
@@ -17220,7 +17217,7 @@ Error: `{err}`"
                 if launch.readiness(CommandPaletteAction::UiIntent(UiIntentTarget::SequencingConfirmation))
                     .button(ui, self.tr("menu.patterns.sequencing_confirmation"))
                     .on_hover_text(
-                        "Open construct-confirmation specialist window for called sequencing reads",
+                        "Open sequencing-confirmation setup for selected DNA; choose reads before analysis",
                     )
                     .clicked()
                 {
@@ -20888,7 +20885,11 @@ Error: `{err}`"
         valid_node_ids: &HashSet<String>,
         persist_workspace_after_frame: &mut bool,
     ) {
-        ui.label(format!("Node: {node_id}"));
+        if let Some(row) = context_row {
+            self.render_lineage_item_context_actions(ui, row);
+        } else {
+            ui.label(format!("Node: {node_id}"));
+        }
         ui.separator();
         if let Some(row) = context_row {
             for kind in [
@@ -22905,68 +22906,7 @@ Error: `{err}`"
             .with_min_inner_size([500.0, 320.0]);
         if ctx.embed_viewports() {
             let mut render_contents = |ui: &mut Ui| {
-                crate::agent_help::render_agent_help_button(
-                    ui,
-                    "Command Palette",
-                    "window.command_palette",
-                );
-                ui.separator();
-                ui.label("Search actions, settings, and help topics");
-                let input_id = ui.make_persistent_id("gentle_command_palette_search");
-                let search_response = ui.add(
-                    egui::TextEdit::singleline(&mut self.command_palette_query)
-                        .id(input_id)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("Type action name (Cmd/Ctrl+K)"),
-                );
-                if self.command_palette_focus_query {
-                    search_response.request_focus();
-                    self.command_palette_focus_query = false;
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowDown)) && !entries.is_empty() {
-                    self.command_palette_selected =
-                        (self.command_palette_selected + 1) % entries.len();
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
-                    if self.command_palette_selected == 0 {
-                        self.command_palette_selected = entries.len() - 1;
-                    } else {
-                        self.command_palette_selected -= 1;
-                    }
-                }
-                if ui.input(|i| i.key_pressed(Key::Enter)) {
-                    execute_action = entries
-                        .get(self.command_palette_selected)
-                        .and_then(CommandPaletteEntry::ready_action);
-                }
-
-                ui.separator();
-                if entries.is_empty() {
-                    ui.small("No matching commands");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt("command_palette_results_scroll")
-                        .max_height(400.0)
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            for (idx, entry) in entries.iter().enumerate() {
-                                let selected = self.command_palette_selected == idx;
-                                let label = format!("{} — {}", entry.title, entry.detail);
-                                let response = entry.render_row(ui, selected, label);
-                                if response.hovered() {
-                                    self.command_palette_selected = idx;
-                                    self.hover_status_name =
-                                        format!("Command palette: {}", entry.title);
-                                }
-                                if response.clicked() {
-                                    execute_action = Some(entry.action);
-                                }
-                            }
-                        });
-                }
+                execute_action = self.render_command_palette_contents(ui, &entries);
             };
             let spec = crate::egui_compat::HostedWindowSpec::new(
                 "Command Palette",
@@ -22992,68 +22932,7 @@ Error: `{err}`"
         ctx.show_viewport_immediate(viewport_id, builder, |ctx, class| {
             self.note_viewport_focus_if_active(ctx, viewport_id);
             let mut render_contents = |ui: &mut Ui| {
-                crate::agent_help::render_agent_help_button(
-                    ui,
-                    "Command Palette",
-                    "window.command_palette",
-                );
-                ui.separator();
-                ui.label("Search actions, settings, and help topics");
-                let input_id = ui.make_persistent_id("gentle_command_palette_search");
-                let search_response = ui.add(
-                    egui::TextEdit::singleline(&mut self.command_palette_query)
-                        .id(input_id)
-                        .desired_width(f32::INFINITY)
-                        .hint_text("Type action name (Cmd/Ctrl+K)"),
-                );
-                if self.command_palette_focus_query {
-                    search_response.request_focus();
-                    self.command_palette_focus_query = false;
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowDown)) && !entries.is_empty() {
-                    self.command_palette_selected =
-                        (self.command_palette_selected + 1) % entries.len();
-                }
-                if ui.input(|i| i.key_pressed(Key::ArrowUp)) && !entries.is_empty() {
-                    if self.command_palette_selected == 0 {
-                        self.command_palette_selected = entries.len() - 1;
-                    } else {
-                        self.command_palette_selected -= 1;
-                    }
-                }
-                if ui.input(|i| i.key_pressed(Key::Enter)) {
-                    execute_action = entries
-                        .get(self.command_palette_selected)
-                        .and_then(CommandPaletteEntry::ready_action);
-                }
-
-                ui.separator();
-                if entries.is_empty() {
-                    ui.small("No matching commands");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .id_salt("command_palette_results_scroll")
-                        .max_height(400.0)
-                        .show(ui, |ui| {
-                            scroll_input_policy::apply_scrollarea_keyboard_navigation(
-                                ui,
-                                scroll_input_policy::DEFAULT_SCROLLAREA_KEYBOARD_STEP,
-                            );
-                            for (idx, entry) in entries.iter().enumerate() {
-                                let selected = self.command_palette_selected == idx;
-                                let label = format!("{} — {}", entry.title, entry.detail);
-                                let response = entry.render_row(ui, selected, label);
-                                if response.hovered() {
-                                    self.command_palette_selected = idx;
-                                    self.hover_status_name =
-                                        format!("Command palette: {}", entry.title);
-                                }
-                                if response.clicked() {
-                                    execute_action = Some(entry.action);
-                                }
-                            }
-                        });
-                }
+                execute_action = self.render_command_palette_contents(ui, &entries);
             };
 
             if class == egui::ViewportClass::EmbeddedWindow {

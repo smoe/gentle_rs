@@ -62,6 +62,42 @@
 - No local builds, tests or screenshot captures run; macOS validation remains
   pending.
 
+## 2026-10-04 - Clarify Object Context Menus, Palette And History
+
+- Lead graph/table node context menus with the clicked item's identity,
+  inspection and existing sequence/pool/saved-analysis viewers before bookkeeping.
+  Add PCR setup bound to the clicked single DNA, never unrelated selection or
+  an old workspace target; explain non-DNA/missing/busy inputs without guessing
+  a template from a pool. Retain the clicked subject through popup pointer
+  movement; reject shifted/missing rows or replaced projects rather than retarget
+  an open menu. Make table node cells click-sensitive and give blank graph space
+  inspection/import directions. Record object-first discovery in the decisions.
+- Replace long palette result rows with compact action names and a separate
+  scrollable purpose/prerequisite/recovery area, shared by hosted/native paths.
+  Disabled rows remain inspectable, arrow selection stays visible, and a
+  stationary pointer no longer overrides keyboard navigation. Search descriptions,
+  action titles and shared command contracts remain unchanged.
+- Align egui Edit-menu and palette Undo/Redo with current engine checkpoint counts
+  and the existing background-job guard, including a fresh dispatch check.
+  Explain empty session history, active jobs and unavailable project locks rather
+  than advertising an action that cannot run.
+- Clarify that TATA/cryptic screens and PCR/sequencing-confirmation launchers open
+  setup or review, not automatic analysis. Add inline synthetic clicked-object,
+  popup identity, history, stale dispatch, minimum-window, disabled-hover and
+  keyboard regressions; refresh the GUI manual and bounded availability plan. Live native/hosted acceptance remains
+  pending; this changes no biology, permissions, dependency or release gate.
+- Verification: 54 focused default-feature library tests passed for action
+  readiness, subject selection, palette/history and lineage context/artifact
+  routing; `cargo check -q --locked --offline -j 1`, `cargo fmt --all --check`
+  and `git diff --check` passed. Tested patched HEAD `564ea09` on Darwin 27 arm64,
+  Rust `1.101.0-nightly (c1070d693 2026-09-28)`. Test linking emitted a large
+  `__eh_frame` compact-unwind warning. No native GUI/Windows acceptance checks,
+  screenshot captures or external scientific probes were run.
+- Session-close: 4 ok, 2 warn, 0 fail (intentional dirty/unrelated artifacts and
+  the manual plan-fidelity reminder). Scoped diff review matches the approved
+  availability follow-up plus the owner's object-context discovery request;
+  broader context-menu coverage remains next work, not completed acceptance.
+
 ## 2026-10-02 - Separate Historical Baselines From Current Replay
 
 - Refresh the generated 08.03 chapter, tutorial hub and generation ledger after

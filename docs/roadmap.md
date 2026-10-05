@@ -262,7 +262,7 @@ severity presentation are recorded in `docs/CHANGELOG.md`.
 ## Phase D: Visualization And Workflow UX
 
 Use the GUI as the human inspection surface for engine-owned evidence. Continue dense DNA-map readability, alternative-splicing polish, gel/feature editing, contextual links, visual regression fixtures and scroll/zoom hardening when they fit the selected release story.
-Improve inspection clarity, deterministic exports and manual-smoke reliability; defer unrelated visual redesigns. Rendering-latency work belongs to [.12 Priorities](#12-priorities), not here. Next [contextual availability](contextual_action_availability_plan.md): Glen's live macOS check, then further action families; native-menu and agent/host-probe integration remain deferred.
+Improve inspection clarity, deterministic exports and manual-smoke reliability; defer unrelated visual redesigns. Rendering-latency work belongs to [.12 Priorities](#12-priorities), not here. Next [contextual availability](contextual_action_availability_plan.md): Glen's live native/hosted check of item-first lineage context menus (especially clicked-DNA PCR binding), compact palette guidance and Edit-menu/palette Undo/Redo; prioritize map/result/empty-space context-click guidance next. Native-menu and agent/host-probe integration remain deferred.
 
 - Evidence-viewer follow-up: keep the Splicing Expert evidence ledger readable
   on large real loci and add direct report-store selectors if probe/expression

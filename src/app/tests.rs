@@ -15708,6 +15708,250 @@ fn make_lineage_row(node_id: &str, seq_id: &str) -> LineageRow {
     }
 }
 
+// Hand-crafted in-memory lineage rows/sequence records and egui pointer events.
+// These exercise context-menu setup/inspection, not assay design or file fixtures.
+fn render_lineage_context_frame(
+    app: &mut GENtleApp,
+    ctx: &egui::Context,
+    row: &LineageRow,
+    events: Vec<egui::Event>,
+) -> egui::FullOutput {
+    ctx.run_ui(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(640.0, 800.0),
+            )),
+            events,
+            ..Default::default()
+        },
+        |ui| {
+            let mut persist = false;
+            app.render_lineage_group_context_menu(
+                ui,
+                &row.node_id,
+                Some(row),
+                &HashSet::new(),
+                &HashSet::new(),
+                &mut persist,
+            );
+        },
+    )
+}
+
+fn click_lineage_context_action(app: &mut GENtleApp, row: &LineageRow, label: &str) {
+    fn text_center(shape: &egui::epaint::Shape, label: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::epaint::Shape::Text(text) if text.galley.job.text == label => {
+                Some(text.pos + text.galley.size() * 0.5)
+            }
+            egui::epaint::Shape::Vec(shapes) => {
+                shapes.iter().find_map(|shape| text_center(shape, label))
+            }
+            _ => None,
+        }
+    }
+    let ctx = egui::Context::default();
+    render_lineage_context_frame(app, &ctx, row, vec![]).drop_without_applying_deltas();
+    let output = render_lineage_context_frame(app, &ctx, row, vec![]);
+    let pos = output
+        .shapes
+        .iter()
+        .find_map(|shape| text_center(&shape.shape, label))
+        .expect("context action text");
+    output.drop_without_applying_deltas();
+    for pressed in [true, false] {
+        render_lineage_context_frame(
+            app,
+            &ctx,
+            row,
+            vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        )
+        .drop_without_applying_deltas();
+    }
+}
+
+#[test]
+fn lineage_context_menu_explains_non_dna_and_offers_inspection_before_bookkeeping() {
+    let mut app = command_palette_test_app_with_sequence();
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .get_mut("seq1")
+        .unwrap()
+        .set_molecule_type("protein");
+    let mut row = make_lineage_row("clicked_node", "seq1");
+    row.display_name = "Clicked protein".into();
+    let before = app.engine.read().unwrap().mutation_revision();
+    let output = render_lineage_context_frame(&mut app, &egui::Context::default(), &row, vec![]);
+    let mut texts = vec![];
+    for clipped in &output.shapes {
+        collect_rendered_text_from_shape(&clipped.shape, &mut texts);
+    }
+    output.drop_without_applying_deltas();
+    assert!(texts.iter().any(|text| text.contains("Clicked protein")));
+    let inspect = texts
+        .iter()
+        .position(|text| text == "Inspect node details")
+        .unwrap();
+    let copy = texts
+        .iter()
+        .position(|text| text == "Copy node ID")
+        .unwrap();
+    assert!(inspect < copy);
+    assert!(texts.iter().any(|text| text == "Open sequence"));
+    assert!(
+        texts
+            .iter()
+            .any(|text| text.contains("PCR Designer needs DNA"))
+    );
+    assert!(!app.lineage_context_pcr_readiness("seq1").is_ready());
+    assert_eq!(before, app.engine.read().unwrap().mutation_revision());
+    click_lineage_context_action(&mut app, &row, "Inspect node details");
+    assert_eq!(
+        app.lineage_graph_selected_node_id.as_deref(),
+        Some("clicked_node")
+    );
+    assert_eq!(before, app.engine.read().unwrap().mutation_revision());
+}
+
+#[test]
+fn lineage_context_pcr_uses_clicked_dna_not_selection_or_existing_dialog_target() {
+    let mut app = command_palette_test_app_with_sequence();
+    app.lineage_graph_selected_node_id = Some("unrelated_node".into());
+    app.show_pcr_design_dialog = true;
+    app.pcr_design_seq_id = "unrelated_sequence".into();
+    let row = make_lineage_row("clicked_node", "seq1");
+    let before = app.engine.read().unwrap().mutation_revision();
+    click_lineage_context_action(&mut app, &row, "PCR Designer...");
+    assert!(app.show_pcr_design_dialog);
+    assert_eq!(app.pcr_design_seq_id, "seq1");
+    assert_eq!(
+        app.lineage_graph_selected_node_id.as_deref(),
+        Some("unrelated_node")
+    );
+    assert_eq!(app.new_windows.len(), 1);
+    assert_eq!(app.new_windows[0].sequence_id().as_deref(), Some("seq1"));
+    assert_eq!(before, app.engine.read().unwrap().mutation_revision());
+}
+
+#[test]
+fn lineage_context_popup_retains_clicked_subject_and_rejects_replacement_or_shifted_rows() {
+    fn frame(
+        app: &GENtleApp,
+        ctx: &egui::Context,
+        rows: &[LineageRow],
+        hovered: Option<&LineageRow>,
+        events: Vec<egui::Event>,
+    ) -> Option<String> {
+        let mut node_id = None;
+        ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(640.0, 480.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            |ui| {
+                let response = ui.allocate_response(egui::vec2(300.0, 200.0), egui::Sense::click());
+                node_id = app
+                    .lineage_context_row(&response, rows, hovered)
+                    .map(|row| row.node_id);
+                response.context_menu(|ui| {
+                    ui.label("Synthetic item popup");
+                });
+            },
+        )
+        .drop_without_applying_deltas();
+        node_id
+    }
+    let rows = [
+        make_lineage_row("clicked", "seq1"),
+        make_lineage_row("other", "other_seq"),
+    ];
+    for initial in [Some(&rows[0]), None] {
+        let mut app = command_palette_test_app_with_sequence();
+        let ctx = egui::Context::default();
+        for _ in 0..2 {
+            frame(&app, &ctx, &rows, initial, vec![]);
+        }
+        for pressed in [true, false] {
+            let pos = egui::pos2(20.0, 20.0);
+            frame(
+                &app,
+                &ctx,
+                &rows,
+                initial,
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+            );
+        }
+        let remembered = frame(
+            &app,
+            &ctx,
+            &rows,
+            Some(&rows[1]),
+            vec![egui::Event::PointerMoved(egui::pos2(500.0, 250.0))],
+        );
+        assert_eq!(
+            remembered.as_deref(),
+            initial.map(|row| row.node_id.as_str())
+        );
+        // A shifted table slot or removed graph node must not retarget an open menu.
+        assert!(frame(&app, &ctx, &rows[1..], Some(&rows[1]), vec![]).is_none());
+        app.engine = command_palette_test_app_with_sequence().engine;
+        assert!(frame(&app, &ctx, &rows, Some(&rows[0]), vec![]).is_none());
+    }
+}
+
+#[test]
+fn lineage_context_pcr_rechecks_missing_subject_and_busy_project_without_fallback() {
+    let mut app = command_palette_test_app_with_sequence();
+    assert!(app.lineage_context_pcr_readiness("seq1").is_ready());
+    let engine = app.engine.clone();
+    let locked = engine.write().unwrap();
+    assert!(matches!(
+        app.lineage_context_pcr_readiness("seq1"),
+        super::ActionReadiness::Checking { .. }
+    ));
+    drop(locked);
+    app.engine
+        .write()
+        .unwrap()
+        .state_mut()
+        .sequences
+        .remove("seq1");
+    let readiness = app.lineage_context_pcr_readiness("seq1");
+    assert!(!readiness.is_ready());
+    assert!(
+        readiness
+            .detail()
+            .unwrap()
+            .contains("no longer in the project")
+    );
+    assert!(app.open_pcr_design_dialog_for_seq_id("seq1").is_err());
+    assert!(app.new_windows.is_empty());
+}
+
 #[test]
 fn lineage_dag_layout_ranks_nodes_within_each_layer() {
     let rows = vec![

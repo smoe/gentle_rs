@@ -2227,12 +2227,15 @@ Patterns menu:
   substitute. No guide set is silently selected by alphabetical order.
   Existing macro preflight and transactional execution remain authoritative.
 - Pilot availability is shared between egui menus and Command Palette rows:
-  PCR Design, Sequencing Confirmation, Saved Genomic Regions, the three gRNA
-  setup actions, and palette-only TATA, cryptic-splicing, conservation, and
-  feature-location actions. Already-open PCR/confirmation windows can still be
-  focused; empty-project conservation setup still offers reference retrieval.
-  Disabled rows retain their reason (hover or selected palette row). Enter and
-  click cannot invoke them, and dispatch rechecks state. The gRNA submenu is
+  Undo/Redo, PCR Design, Sequencing Confirmation, Saved Genomic Regions, the
+  three gRNA setup actions, and palette-only TATA, transcript-start/TSS,
+  cryptic-splicing, conservation, and feature-location actions. Already-open
+  PCR/confirmation windows can still be focused; empty-project conservation
+  setup still offers reference retrieval. Undo/Redo explain empty session history
+  or the existing background-job restriction; a busy project reports Checking
+  without waiting for its lock. Disabled rows retain their reason on hover and
+  in the selected-action detail area. Enter and click cannot invoke them, and
+  dispatch rechecks state. The gRNA submenu is
   available when any of its children is available; imports, help and configuration
   remain reachable. This is not application-wide or native-macOS-menu coverage.
 - gRNA preflight is bound to its project revision, template and bindings.
@@ -2604,6 +2607,19 @@ Node click behavior in lineage `Graph` view:
   same `PCR Designer` on the originating template and restores the saved
   cloning-handoff selection (vector, enzymes, leaders, and saved handoff id).
 - Right-click context menu (graph and table node-id cells):
+  - starts with the clicked item's display label, kind and primary ID; keeps that
+    subject while the pointer moves into the popup, without retargeting to another
+    hovered/selected item. If the project or row disappears, reopen the menu
+  - `Inspect node details`: selects that item to show its existing details and
+    provenance in the project view
+  - `Open sequence` / `Open pool`: opens the clicked item in its existing viewer,
+    without combining molecules or running analysis
+  - `Open saved analysis`: opens supported saved reports in their specialist
+    viewer without rerunning them; other node types retain detail inspection
+  - `PCR Designer...`: opens primer-pair setup for the clicked single DNA
+    sequence, even if another sequence or PCR workspace was previously selected.
+    RNA/protein and missing DNA remain disabled with an explanation. A pool is
+    not silently reduced to one template. Running design remains a separate action
   - `Copy node ID`: copies the stable lineage node identifier.
   - `Copy sequence/report ID`: copies the primary row identifier, such as a
     sequence ID, qPCR/primer report ID, macro instance ID, or arrangement ID.
@@ -2615,6 +2631,8 @@ Node click behavior in lineage `Graph` view:
   - `Remove (leaf only)`: opens a confirmation dialog, then removes that
     sequence/node from project state on confirm.
   - both are disabled for non-leaf nodes in this first pass.
+- Graph blank space explains how to inspect a node or add data via
+  `File > Open sequence`.
 - Right-click context menu on the lineage graph canvas also includes
   `Save Graph as SVG...`.
   - the exported SVG follows the same visible grouped/hub-projected graph model
@@ -4434,9 +4452,10 @@ the destination, but an insert is never picked automatically.
 
 The palette captures its initiating subject before taking focus. Closing that
 viewer, changing the project or removing the sequence invalidates the subject
-rather than choosing another one. This launch safeguard does not yet make every
-palette/menu row state-aware; dimmed actions, shared readiness presentation and
-broader action coverage remain the next implementation slice.
+rather than choosing another one. Migrated actions are dimmed when unavailable
+and explain their prerequisites; broader action coverage and native macOS menu
+presentation remain separate follow-ups. Availability means the advertised
+launcher can be used, not that its analysis passed scientific validation.
 
 - Command Palette:
   - open via `Cmd/Ctrl+K` or `Edit -> Command Palette...`
@@ -4445,7 +4464,16 @@ broader action coverage remain the next implementation slice.
     and agent assistant are generated from the shared `UiIntentTarget`
     metadata used by shell/agent capability discovery
   - includes `Planning` action (`Patterns -> Planning...` equivalent)
-  - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`)
+  - compact result rows show action names; a separate detail area explains the
+    selected action's purpose and any unavailable reason/recovery guidance
+  - hovering a disabled row or selecting it with `Up`/`Down` shows its explanation
+    without enabling it; a stationary pointer does not override keyboard selection
+  - details remain outside the result-list scroll, with their own scroll for long
+    guidance in small windows; search still matches descriptions and keywords
+  - supports keyboard navigation (`Up`/`Down`, `Enter`, `Esc`), with the selected
+    result brought into view on arrow navigation
+  - Undo/Redo use the same current session-history and background-job checks as
+    the egui Edit menu, including a fresh check when invoked
 - Operation History panel:
   - open via `Edit -> Operation History...` or `Window -> Show Operation History`
   - includes undo/redo buttons, available counts, history limit, next transition

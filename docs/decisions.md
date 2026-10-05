@@ -24,6 +24,14 @@ shared macro/engine validation remains authoritative for execution. Static
 capability descriptor lookup may cache immutable metadata, never host availability.
 Importing a template and using it with bound inputs are separate actions.
 
+Object context menus are a primary discovery surface: identify the clicked item
+and lead with inspection/opening and applicable setup actions before bookkeeping.
+Capture that item for the popup's lifetime, without retargeting on pointer
+movement or borrowing an unrelated global selection. Explain disabled
+choices and their recovery steps; opening a form is not permission to execute.
+Reuse existing shared operations and viewer routes rather than context-menu-only
+biology or analysis logic.
+
 ## Accession-Pinned TSS Document Invariants
 
 Status: active

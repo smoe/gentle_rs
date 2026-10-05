@@ -1,10 +1,16 @@
 //! Main lineage workspace rendering helpers.
 //!
-//! This module is a move-only extraction from `app.rs`: it keeps the
-//! project overview strip, lineage graph/table workspace, and lineage modal
-//! helpers close to `GENtleApp` while reducing the top-level app monolith.
+//! Presents engine-owned sequence and analysis records in the project overview,
+//! lineage graph/table, and lineage dialogs. Context actions bind inspection and
+//! existing setup/viewer routes to the clicked item; they do not run new biology.
 
 use super::*;
+
+#[derive(Clone)]
+struct LineageContextSubject {
+    engine: std::sync::Weak<RwLock<GentleEngine>>,
+    node_id: Option<String>,
+}
 
 fn lineage_graph_canvas_width(base_width: f32, graph_zoom: f32, viewport_width: f32) -> f32 {
     (base_width * graph_zoom + 280.0 * graph_zoom).max(viewport_width.max(1.0))
@@ -427,6 +433,134 @@ impl GENtleApp {
         let kind = Self::infer_lineage_analysis_kind_from_row(row)?;
         let artifact_id = Self::infer_lineage_analysis_artifact_id_from_row(row)?;
         Some((kind, row.seq_id.clone(), artifact_id))
+    }
+
+    /// Retain the context-clicked node while the pointer moves into its popup.
+    /// Resolve it from current visible rows; a closed/replaced project never supplies a fallback.
+    pub(super) fn lineage_context_row(
+        &self,
+        response: &egui::Response,
+        rows: &[LineageRow],
+        clicked_row: Option<&LineageRow>,
+    ) -> Option<LineageRow> {
+        let id = response.id.with("lineage_context_subject");
+        if response.secondary_clicked() {
+            response.ctx.data_mut(|data| {
+                data.insert_temp(
+                    id,
+                    LineageContextSubject {
+                        engine: Arc::downgrade(&self.engine),
+                        node_id: clicked_row.map(|row| row.node_id.clone()),
+                    },
+                )
+            });
+        }
+        if !response.secondary_clicked() && !response.context_menu_opened() {
+            response
+                .ctx
+                .data_mut(|data| data.remove::<LineageContextSubject>(id));
+            return None;
+        }
+        let subject = response
+            .ctx
+            .data(|data| data.get_temp::<LineageContextSubject>(id))?;
+        if !subject.engine.ptr_eq(&Arc::downgrade(&self.engine)) {
+            return None;
+        }
+        let node_id = subject.node_id?;
+        rows.iter().find(|row| row.node_id == node_id).cloned()
+    }
+
+    /// Read only the clicked sequence's kind; unrelated selection is never a binding.
+    pub(super) fn lineage_context_pcr_readiness(&self, seq_id: &str) -> ActionReadiness {
+        match self.engine.try_read() {
+            Ok(engine) => match engine.sequence_kind(seq_id) {
+                Some("dna") => ActionReadiness::Ready,
+                Some(kind) => ActionReadiness::NeedsInput {
+                    detail: format!(
+                        "'{seq_id}' is {kind}; PCR Designer needs DNA, not an RNA or protein sequence."
+                    ),
+                },
+                None => ActionReadiness::Blocked {
+                    detail: format!(
+                        "Sequence '{seq_id}' is no longer in the project; refresh the project view."
+                    ),
+                },
+            },
+            Err(_) => ActionReadiness::Checking {
+                detail: "Project is busy; try again".into(),
+            },
+        }
+    }
+
+    /// Offer inspection and existing launchers for this exact lineage item.
+    pub(super) fn render_lineage_item_context_actions(&mut self, ui: &mut Ui, row: &LineageRow) {
+        ui.set_max_width(420.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(format!(
+                    "{}: {}",
+                    Self::lineage_node_kind_label(row.kind),
+                    row.display_name,
+                ))
+                .strong(),
+            )
+            .wrap(),
+        );
+        ui.add(egui::Label::new(format!("ID: {}", Self::lineage_row_primary_id(row))).wrap());
+        if ui.button("Inspect node details")
+            .on_hover_text("Select this item to show its sequence/report details and provenance in the project view")
+            .clicked()
+        {
+            self.lineage_graph_selected_node_id = Some(row.node_id.clone());
+            ui.close();
+            return;
+        }
+        match row.kind {
+            LineageNodeKind::Sequence if row.pool_size > 1 => {
+                if ui.button("Open pool")
+                    .on_hover_text("Open the existing multi-molecule view for this pool; no members are combined or changed")
+                    .clicked()
+                {
+                    self.open_pool_window(&row.seq_id, row.pool_members.clone());
+                    ui.close();
+                }
+            }
+            LineageNodeKind::Sequence => {
+                if ui.button("Open sequence")
+                    .on_hover_text("Open or focus this sequence's viewer without running an analysis")
+                    .clicked()
+                {
+                    self.open_sequence_window(&row.seq_id);
+                    ui.close();
+                    return;
+                }
+                let readiness = self.lineage_context_pcr_readiness(&row.seq_id);
+                if readiness.button(ui, "PCR Designer...")
+                    .on_hover_text("Open primer-pair design setup for this DNA; review the target and constraints before running")
+                    .clicked()
+                {
+                    if let Err(reason) = self.open_pcr_design_dialog_for_seq_id(&row.seq_id) {
+                        self.app_status = format!("Cannot open PCR Designer: {reason}");
+                    }
+                    ui.close();
+                }
+                if let Some(detail) = readiness.detail() {
+                    ui.add(egui::Label::new(detail).wrap());
+                }
+            }
+            LineageNodeKind::Analysis => {
+                if let Some((kind, seq_id, artifact_id)) = Self::lineage_analysis_open_payload(row)
+                    && ui.button("Open saved analysis")
+                        .on_hover_text("Inspect this saved result in its existing specialist viewer; this does not rerun the analysis")
+                        .clicked()
+                {
+                    self.open_lineage_analysis_artifact(kind, &seq_id, &artifact_id);
+                    ui.close();
+                }
+            }
+            LineageNodeKind::Macro | LineageNodeKind::Arrangement => {}
+        }
     }
 
     pub(super) fn project_overview_metrics(
@@ -2542,8 +2676,8 @@ impl GENtleApp {
                                     }
                                 });
                             }
-                            let context_node_id = hover_row.map(|row| row.node_id.clone());
-                            let context_row = hover_row.cloned();
+                            let context_row = self.lineage_context_row(&resp, &rows, hover_row);
+                            let context_node_id = context_row.as_ref().map(|row| row.node_id.clone());
                             resp.clone().context_menu(|ui| {
                                 if let Some(node_id) = context_node_id.as_ref() {
                                     self.render_lineage_group_context_menu(
@@ -2555,7 +2689,8 @@ impl GENtleApp {
                                         &mut persist_workspace_after_frame,
                                     );
                                 } else {
-                                    ui.label("No node under cursor");
+                                    ui.label("Graph workspace");
+                                    ui.add(egui::Label::new("Right-click a sequence or report to inspect it and see useful next steps. Add sequences with File > Open sequence; if an item changed, reopen its menu.").wrap());
                                 }
                                 ui.separator();
                                 if ui
@@ -2802,19 +2937,27 @@ impl GENtleApp {
                                             });
                                         },
                                     )
-                                    .response;
+                                    .response
+                                    .interact(egui::Sense::click());
                                 if node_display != row.node_id {
                                     node_response = node_response.on_hover_text(row.node_id.clone());
                                 }
+                                let context_row = self.lineage_context_row(
+                                    &node_response, std::slice::from_ref(row), Some(row),
+                                );
                                 node_response.context_menu(|ui| {
-                                    self.render_lineage_group_context_menu(
-                                        ui,
-                                        &row.node_id,
-                                        Some(row),
-                                        &leaf_node_ids,
-                                        &valid_lineage_node_ids,
-                                        &mut persist_workspace_after_frame,
-                                    );
+                                    if let Some(row) = context_row.as_ref() {
+                                        self.render_lineage_group_context_menu(
+                                            ui,
+                                            &row.node_id,
+                                            Some(row),
+                                            &leaf_node_ids,
+                                            &valid_lineage_node_ids,
+                                            &mut persist_workspace_after_frame,
+                                        );
+                                    } else {
+                                        ui.label("This item changed or is no longer visible; reopen its context menu.");
+                                    }
                                 });
                                 if node_response.clicked() {
                                     self.lineage_graph_selected_node_id = Some(row.node_id.clone());
