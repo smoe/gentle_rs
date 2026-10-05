@@ -132,25 +132,214 @@ fn bounded_results_agree_with_independent_four_sequence_oracle() {
                     });
                 for budget in 1..=4 {
                     request.max_evaluations = budget;
-                    let result = solve(&request, |_| false);
-                    match result.status {
-                        Status::Feasible => {
-                            let dna = result.sequence.as_deref().unwrap();
-                            assert!(variants.contains(&dna));
-                            assert!(patterns.iter().all(|p| !forbidden(dna, p, direction)));
-                            assert!(expected.is_some());
-                            if result.minimum_edits_proven {
-                                assert_eq!(Some(dna), expected);
+                    for strategy in [
+                        SearchStrategy::FullEnumeration,
+                        SearchStrategy::ConflictDirected,
+                    ] {
+                        let result = solve_with_strategy(&request, strategy, |_| false);
+                        match result.status {
+                            Status::Feasible => {
+                                let dna = result.sequence.as_deref().unwrap();
+                                assert!(variants.contains(&dna));
+                                assert!(patterns.iter().all(|p| !forbidden(dna, p, direction)));
+                                assert!(expected.is_some());
+                                if result.minimum_edits_proven {
+                                    assert_eq!(Some(dna), expected);
+                                }
                             }
+                            Status::ProvenInfeasible => assert!(expected.is_none()),
+                            Status::SearchExhausted => assert!(!result.optimization_complete),
+                            status => panic!("unexpected {status:?}"),
                         }
-                        Status::ProvenInfeasible => assert!(expected.is_none()),
-                        Status::SearchExhausted => assert!(!result.optimization_complete),
-                        status => panic!("unexpected {status:?}"),
                     }
                 }
             }
         }
     }
+}
+
+#[test]
+fn conflict_search_matches_an_independent_degenerate_motif_oracle() {
+    // Eight explicitly constructed F/K/F variants. These declarations and the
+    // base membership tests below do not call the core's mapper or matcher.
+    let variants = ["TTT", "TTC"]
+        .into_iter()
+        .flat_map(|first| {
+            ["AAA", "AAG"].into_iter().flat_map(move |middle| {
+                ["TTT", "TTC"]
+                    .into_iter()
+                    .map(move |last| format!("CATG{first}{middle}{last}TAA"))
+            })
+        })
+        .collect::<Vec<_>>();
+    let contains = |dna: &str, pattern: &str| {
+        dna.as_bytes().windows(pattern.len()).any(|window| {
+            window
+                .iter()
+                .zip(pattern.bytes())
+                .all(|(base, symbol)| match symbol {
+                    b'R' => b"AG".contains(base),
+                    b'Y' => b"CT".contains(base),
+                    b'N' => b"ACGT".contains(base),
+                    _ => *base == symbol,
+                })
+        })
+    };
+    let reverse = |pattern: &str| {
+        pattern
+            .bytes()
+            .rev()
+            .map(|symbol| match symbol {
+                b'A' => 'T',
+                b'T' => 'A',
+                b'C' => 'G',
+                b'G' => 'C',
+                b'R' => 'Y',
+                b'Y' => 'R',
+                b'N' => 'N',
+                _ => panic!("unsupported independent oracle symbol"),
+            })
+            .collect::<String>()
+    };
+    for patterns in [
+        vec!["TTTAAA"],
+        vec!["TTYAAA"],
+        vec!["TTTAAA", "TTCAAA", "TTTAAG"],
+        vec!["AAA", "AAG"],
+        vec!["CATGTTT"],
+        vec!["TT", "AAR"],
+        vec!["NATG"],
+    ] {
+        for direction in [Strand::Forward, Strand::Reverse, Strand::Both] {
+            for protected in [
+                vec![],
+                vec![Interval { start: 6, end: 7 }],
+                vec![Interval { start: 4, end: 13 }],
+            ] {
+                let mut request = input(&variants[0], "MFKF", &patterns);
+                request.cds = Interval {
+                    start: 1,
+                    end: variants[0].len(),
+                };
+                request.protected = protected;
+                for motif in &mut request.motifs {
+                    motif.strand = direction;
+                }
+                let expected = variants
+                    .iter()
+                    .filter(|dna| {
+                        request
+                            .protected
+                            .iter()
+                            .all(|p| dna[p.start..p.end] == variants[0][p.start..p.end])
+                            && patterns.iter().all(|pattern| {
+                                (direction == Strand::Reverse || !contains(dna, pattern))
+                                    && (direction == Strand::Forward
+                                        || !contains(dna, &reverse(pattern)))
+                            })
+                    })
+                    .min_by_key(|dna| {
+                        (
+                            dna.bytes()
+                                .zip(variants[0].bytes())
+                                .filter(|(a, b)| a != b)
+                                .count(),
+                            *dna,
+                        )
+                    });
+                for strategy in [
+                    SearchStrategy::FullEnumeration,
+                    SearchStrategy::ConflictDirected,
+                ] {
+                    let result = solve_with_strategy(&request, strategy, |_| false);
+                    assert_eq!(
+                        result.sequence.as_ref(),
+                        expected,
+                        "{strategy:?}: {request:?}"
+                    );
+                    if expected.is_some() {
+                        assert_eq!(result.status, Status::Feasible);
+                        assert!(result.minimum_edits_proven && result.optimization_complete);
+                    } else {
+                        assert_eq!(result.status, Status::ProvenInfeasible);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn conflict_search_can_repair_new_violations_outside_the_original_match() {
+    let mut request = input("ATGCTGGAATTCTAA", "MLEF", &["GAATTC", "CTGGAG"]);
+    request.protected = vec![Interval { start: 9, end: 12 }];
+    let expected = solve(&request, |_| false);
+    let actual = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(actual.status, Status::Feasible);
+    assert_eq!(actual.sequence, expected.sequence);
+    assert_eq!(actual.sequence.as_deref(), Some("ATGCTAGAGTTCTAA"));
+    assert!(actual.minimum_edits_proven && actual.optimization_complete);
+    assert_eq!(actual.edits.len(), 2);
+    assert!(actual.edits.iter().any(|edit| edit.position < 6));
+    assert_eq!(
+        validate_output(&request, actual.sequence.as_deref().unwrap()).unwrap(),
+        actual.edits
+    );
+}
+
+#[test]
+fn conflict_search_can_finish_without_enumerating_unrelated_synonyms() {
+    let dna = format!("ATG{}GAATTCTAA", "GCT".repeat(100));
+    let request = input(&dna, &format!("M{}EF", "A".repeat(100)), &["GAATTC"]);
+    let mut bounded = request.clone();
+    bounded.max_evaluations = 16;
+    let enumeration = solve(&bounded, |_| false);
+    let directed = solve_with_strategy(&bounded, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(enumeration.status, Status::Feasible);
+    assert_eq!(directed.sequence, enumeration.sequence);
+    assert_eq!(directed.search_space, None);
+    assert!(!enumeration.minimum_edits_proven && !enumeration.optimization_complete);
+    assert!(directed.minimum_edits_proven && directed.optimization_complete);
+    assert!(directed.evaluated_candidates < enumeration.evaluated_candidates);
+    assert_eq!(
+        directed,
+        solve_with_strategy(&bounded, SearchStrategy::ConflictDirected, |_| false)
+    );
+}
+
+#[test]
+fn conflict_search_budget_stop_cancellation_and_proofs_remain_distinct() {
+    let mut coupled = input("ATGTTTAAATAA", "MFK", &["TTTAAA", "TTCAAA", "TTTAAG"]);
+    coupled.max_evaluations = 2;
+    let unresolved = solve_with_strategy(&coupled, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(unresolved.status, Status::SearchExhausted);
+    assert!(unresolved.sequence.is_none() && !unresolved.optimization_complete);
+    coupled.max_evaluations = 3;
+    let feasible = solve_with_strategy(&coupled, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(feasible.status, Status::Feasible);
+    assert!(!feasible.minimum_edits_proven && !feasible.optimization_complete);
+    assert_eq!(feasible.edits.len(), 2);
+    let cancelled = solve_with_strategy(&coupled, SearchStrategy::ConflictDirected, |n| n == 3);
+    assert_eq!(cancelled.status, Status::Cancelled);
+    assert!(cancelled.sequence.is_none() && cancelled.edits.is_empty());
+    assert!(!cancelled.minimum_edits_proven && !cancelled.optimization_complete);
+    coupled.max_evaluations = 4096;
+    let complete = solve_with_strategy(&coupled, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(complete.sequence, feasible.sequence);
+    assert!(complete.minimum_edits_proven && complete.optimization_complete);
+    let impossible = input("ATGTTTTAA", "MF", &["TTY"]);
+    let proof = solve_with_strategy(&impossible, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(proof.status, Status::ProvenInfeasible);
+    assert_eq!(
+        proof.reason,
+        "complete_conflict_search_found_no_feasible_variant"
+    );
+    assert_eq!(proof.evaluated_candidates, 2);
+    let frozen = input("ATGAAATAA", "MK", &["ATG"]);
+    assert_eq!(
+        solve_with_strategy(&frozen, SearchStrategy::ConflictDirected, |_| false).reason,
+        "forbidden_match_entirely_in_frozen_bases"
+    );
 }
 
 #[test]

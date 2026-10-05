@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 
 pub const ALGORITHM: &str = "synonymous_full_enumeration_v1";
+pub const CONFLICT_ALGORITHM: &str = "synonymous_conflict_search_v1";
 pub const MAX_SEQUENCE_BP: usize = 12_000;
 pub const MAX_MOTIFS: usize = 16;
 pub const MAX_MOTIF_BP: usize = 32;
@@ -14,6 +15,23 @@ pub const MAX_PROTECTED_INTERVALS: usize = 256;
 pub const MAX_EVALUATIONS: u64 = 100_000;
 pub const MAX_TOTAL_MOTIF_WORK: u64 = 50_000_000;
 pub const MAX_REPORTED_MATCHES: usize = 4_096;
+
+/// Enumeration remains the compatibility default; conflict search is explicit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SearchStrategy {
+    #[default]
+    FullEnumeration,
+    ConflictDirected,
+}
+
+impl SearchStrategy {
+    pub fn algorithm(self) -> &'static str {
+        match self {
+            Self::FullEnumeration => ALGORITHM,
+            Self::ConflictDirected => CONFLICT_ALGORITHM,
+        }
+    }
+}
 
 /// All coordinates are sequence-local, zero-based, half-open.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -519,6 +537,20 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
     }
     outcome
 }
+
+/// Choose a versioned bounded solver without changing admission or validation.
+pub fn solve_with_strategy(
+    input: &Input,
+    strategy: SearchStrategy,
+    cancel: impl FnMut(u64) -> bool,
+) -> Outcome {
+    match strategy {
+        SearchStrategy::FullEnumeration => solve(input, cancel),
+        SearchStrategy::ConflictDirected => conflict_search::solve(input, cancel),
+    }
+}
+
+mod conflict_search;
 
 #[cfg(test)]
 mod tests;

@@ -43,14 +43,25 @@ fn wire_edits(edits: Vec<core::Edit>) -> Vec<DesignNucleotideEdit> {
         .collect()
 }
 
-fn nonclaims() -> Vec<String> {
-    vec![
+fn search_strategy(value: DnaDesignSearchStrategy) -> core::SearchStrategy {
+    match value {
+        DnaDesignSearchStrategy::FullEnumeration => core::SearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected => core::SearchStrategy::ConflictDirected,
+    }
+}
+
+fn nonclaims(strategy: DnaDesignSearchStrategy) -> Vec<String> {
+    let mut statements = vec![
         "Synthetic coding-insert redesign only; no natural assay target is implicitly recoded.".into(),
         "Translation preservation does not establish expression, splicing, regulatory function, folding or experimental suitability.".into(),
         "Standard code 1 elongation and literal frozen ATG/stop only; no inferred initiation efficiency or authentic CDS claim.".into(),
         "Bounded enumeration is not full DNA Chisel compatibility or an efficient general optimizer; incomplete results do not prove minimum edits.".into(),
         "Source annotations are omitted from the derived sequence; only the explicitly supplied synthetic CDS is recorded.".into(),
-    ]
+    ];
+    if strategy == DnaDesignSearchStrategy::ConflictDirected {
+        statements[3] = "Bounded conflict-directed search is not full DNA Chisel compatibility; only completed search establishes minimum edits and no runtime-performance claim is made.".into();
+    }
+    statements
 }
 
 impl GentleEngine {
@@ -208,7 +219,8 @@ impl GentleEngine {
         let (sequence, source_features_sha256, omitted_source_feature_count) =
             self.dna_design_source(&request)?;
         let (input, mapping) = Self::dna_design_input(&request, sequence.clone())?;
-        let result = core::solve(&input, cancel);
+        let strategy = request.search_strategy;
+        let result = core::solve_with_strategy(&input, search_strategy(strategy), cancel);
         let status = match result.status {
             core::Status::Invalid => DnaDesignStatus::Invalid,
             core::Status::Unsupported => DnaDesignStatus::Unsupported,
@@ -226,7 +238,7 @@ impl GentleEngine {
             omitted_source_feature_count,
             genetic_code_mapping_sha256: Self::dna_design_hash(&mapping)?,
             genetic_code_mapping: mapping,
-            algorithm: core::ALGORITHM.into(),
+            algorithm: search_strategy(strategy).algorithm().into(),
             status,
             reason: result.reason,
             output_sha256: result.sequence.as_deref().map(sha256_prefixed_str),
@@ -250,7 +262,7 @@ impl GentleEngine {
             optimization_complete: result.optimization_complete,
             minimum_edits_proven: result.minimum_edits_proven,
             approval_digest: None,
-            nonclaims: nonclaims(),
+            nonclaims: nonclaims(strategy),
         };
         if status == DnaDesignStatus::Feasible {
             report.approval_digest = Some(Self::dna_design_approval(&report)?);
@@ -291,7 +303,7 @@ impl GentleEngine {
                 .iter()
                 .any(|e| e.before.len() != 1 || e.after.len() != 1)
             || proposal.initial_matches.len() > core::MAX_REPORTED_MATCHES
-            || proposal.nonclaims != nonclaims()
+            || proposal.nonclaims != nonclaims(proposal.request.search_strategy)
             || proposal.reason.len() > 1024
             || proposal.algorithm.len() > 128
             || approval.len() > MAX_DIGEST_BYTES
@@ -301,7 +313,7 @@ impl GentleEngine {
             ));
         }
         if proposal.schema != REPORT_SCHEMA
-            || proposal.algorithm != core::ALGORITHM
+            || proposal.algorithm != search_strategy(proposal.request.search_strategy).algorithm()
             || proposal.status != DnaDesignStatus::Feasible
             || proposal.approval_digest.as_deref() != Some(approval)
             || Self::dna_design_approval(&proposal)? != approval
@@ -318,7 +330,7 @@ impl GentleEngine {
             || feature_count != proposal.omitted_source_feature_count
             || mapping != proposal.genetic_code_mapping
             || Self::dna_design_hash(&mapping)? != proposal.genetic_code_mapping_sha256
-            || proposal.nonclaims != nonclaims()
+            || proposal.nonclaims != nonclaims(proposal.request.search_strategy)
         {
             return Err(EngineError::invalid_input(
                 "Sequence-design source, annotations, genetic-code mapping or policy changed; prepare and review a new preview",

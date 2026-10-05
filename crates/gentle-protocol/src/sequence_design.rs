@@ -35,6 +35,21 @@ pub enum DnaDesignTarget {
     LoadedSequence { seq_id: String },
 }
 
+/// Explicit solver policy; omitted defaults retain legacy report/digest bytes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DnaDesignSearchStrategy {
+    #[default]
+    FullEnumeration,
+    ConflictDirected,
+}
+
+impl DnaDesignSearchStrategy {
+    pub fn is_full_enumeration(&self) -> bool {
+        *self == Self::FullEnumeration
+    }
+}
+
 /// Only explicitly declared synthetic coding inserts are admitted; annotation labels
 /// never infer permission or CDS geometry. Protein excludes the terminal stop.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +65,11 @@ pub struct DnaSequenceDesignRequest {
     pub protected_intervals: Vec<DesignInterval>,
     pub avoid_motifs: Vec<AvoidDesignMotif>,
     pub max_evaluations: u64,
+    #[serde(
+        default,
+        skip_serializing_if = "DnaDesignSearchStrategy::is_full_enumeration"
+    )]
+    pub search_strategy: DnaDesignSearchStrategy,
     pub output_seq_id: String,
 }
 
@@ -123,4 +143,43 @@ pub struct DnaSequenceDesignReceipt {
     pub created_seq_id: String,
     pub output_sha256: String,
     pub nonclaims: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sequence_design_strategy_preserves_legacy_request_bytes_and_rejects_unknown_modes() {
+        // Literal synthetic MEF insert; recreates the documented request, not a gene.
+        let legacy = serde_json::json!({
+            "schema": REQUEST_SCHEMA,
+            "target": {"kind": "inline_sequence", "sequence": "ATGGAATTCTAA"},
+            "purpose": "synthetic_coding_insert",
+            "cds": {"start_0based": 0, "end_0based_exclusive": 12},
+            "protein_sequence": "MEF", "genetic_code": 1,
+            "protected_intervals": [],
+            "avoid_motifs": [{"pattern": "GAATTC", "strand": "both"}],
+            "max_evaluations": 4096, "output_seq_id": "synthetic_without_ecori"
+        });
+        let request: DnaSequenceDesignRequest = serde_json::from_value(legacy.clone()).unwrap();
+        assert_eq!(
+            request.search_strategy,
+            DnaDesignSearchStrategy::FullEnumeration
+        );
+        assert_eq!(serde_json::to_value(&request).unwrap(), legacy);
+        let mut explicit = legacy.clone();
+        explicit["search_strategy"] = "full_enumeration".into();
+        let request: DnaSequenceDesignRequest = serde_json::from_value(explicit.clone()).unwrap();
+        assert_eq!(serde_json::to_value(request).unwrap(), legacy);
+        explicit["search_strategy"] = "conflict_directed".into();
+        let request: DnaSequenceDesignRequest = serde_json::from_value(explicit.clone()).unwrap();
+        assert_eq!(
+            request.search_strategy,
+            DnaDesignSearchStrategy::ConflictDirected
+        );
+        assert_eq!(serde_json::to_value(request).unwrap(), explicit);
+        explicit["search_strategy"] = "automatic".into();
+        assert!(serde_json::from_value::<DnaSequenceDesignRequest>(explicit).is_err());
+    }
 }

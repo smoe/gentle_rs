@@ -8,6 +8,12 @@ The latter was ahead of the fetched remote at integration time.
 Owner authorized work from the previously Claude-reviewed proposal. This is
 experimental development outside the `.12` release gate, not release acceptance,
 full DNA Chisel compatibility, or a measured performance improvement.
+Owner-requested follow-up on 2026-10-05 adds the explicit conflict-search slice
+below, based on integrated local `main` `d221aa1a`. Glen's first-slice audit is
+still pending; this addition does not substitute local tests for his usefulness,
+performance or independent correctness verdict.
+The earlier Claude review covers the original bounded proposal; no additional
+Claude review of this conflict-search implementation is claimed.
 
 Review rationale is preserved in the [dated review history](dna_sequence_optimization_review_20261005.md)
 and [original consultation prompt](dna_sequence_optimization_claude_prompt.md).
@@ -91,12 +97,56 @@ four-variant fixtures. A coupled-edit fixture has one violation before and after
 either single edit, and none only after the two edits: it falsifies strict greedy
 repair rather than merely containing a two-codon motif.
 
+### Explicit Conflict-Search Slice
+
+The optional `search_strategy` request field selects `conflict_directed`,
+recorded as `synonymous_conflict_search_v1`. Omitted/default `full_enumeration`
+retains the original implementation, output ordering and serialized approval
+basis: the default field is omitted on write, including in old-report replay.
+Unknown modes are invalid; no automatic strategy selection is introduced.
+
+Conflict search starts from original codons. At each fully evaluated violating
+candidate, take the first match in motif-input/local-position/strand order.
+Try every nonoriginal legal synonym of every unassigned codon intersecting that
+window, in local codon order and existing edit-count/lexicographic synonym order.
+Each branch fixes that codon for its descendants. Backtracking restores it to
+the original. The explicit depth-first stack is bounded by admitted CDS length;
+it stores branch indices, not whole sequences, and uses no recursion or visited
+sequence cache. Candidate and motif-work budgets remain unchanged. Counts mean
+fully evaluated tree nodes, not necessarily distinct full-space variants.
+
+Completeness follows from a feasible target needing a different unassigned
+codon somewhere in every current violated window: otherwise that match persists.
+The branches include its synonymous assignment. Follow that path until a
+feasible candidate is reached; it changes a subset of the target's codons.
+Thus a fully resolved tree includes a minimum-edit feasible candidate, including
+the lexicographically preferred equal-cost output. Once a feasible best exists,
+an infeasible node with at least that many edits may be pruned: descendants fix
+additional nonoriginal codons, so they cannot attain equal or lower edit cost.
+No assumed motif-local validity replaces the full validator, including for new
+conflicts outside the original match and across CDS/flank boundaries.
+
+Complete-tree proofs differ from complete full-space enumeration. A budget stop
+still means unresolved or feasible/incomplete, never infeasible/optimal.
+Search-space count overflow is separately unknown and is not a proof either.
+Cancellation discards candidates and proof flags, including after feasibility.
+Apply binds the explicit strategy, algorithm and its non-claims, and freshly
+validates the exact approved output without executing either search.
+
+Independent literal four-state and eight-state oracles check both solvers,
+including degenerate motifs, requested strands, protected bases and tie breaks.
+A CTG/GAA/TTC synthetic case requires repairing a newly introduced motif outside
+the original site. A repeated-GCT insert demonstrates fewer visited candidates
+and completed proof despite an overflowed full search-space count; this is not
+a timing, large-insert suitability or general performance verdict. No GC,
+adaptation, folding, Python dependency or new GUI editor is part of this slice.
+
 | Outcome | Meaning |
 | --- | --- |
 | `invalid` / `unsupported` | Admission/resource rule failed; no applicable preview. |
-| `feasible` | Fully validated exact output; only complete enumeration or unchanged feasible input proves minimum edits. A budget stop can retain a feasible candidate with optimization incomplete. |
+| `feasible` | Fully validated exact output; only complete enumeration/conflict search or unchanged feasible input proves minimum edits. A budget stop can retain a feasible candidate with optimization incomplete. |
 | `search_exhausted` | Budget ended without a feasible candidate; unresolved, not infeasible. |
-| `proven_infeasible` | An initial match lies wholly in frozen bases, or complete enumeration found no admissible variant. |
+| `proven_infeasible` | An initial match lies wholly in frozen bases, or complete enumeration/conflict search found no admissible variant. |
 | `cancelled` | External cancellation; diagnostics only, never output DNA/approval, even if a feasible candidate was already found. |
 
 Core cancellation polls before each candidate and before result publication.
@@ -127,6 +177,9 @@ neither expression, splicing, regulatory function, folding nor experimental
 suitability. Approval is not a laboratory/order decision.
 
 No GUI redesign: GUI Shell and the inner agent use the same shared commands.
+Solver selection is a field of that same request, not a second adapter route.
+The agent must disclose an explicit conflict-search choice and obtain a fresh
+preview/approval after a strategy change, never infer one from a receipt.
 CLI direct forwarding, JSON `op`, MCP `op`, JS/Lua shared shell and Python `op`
 reach the same operation. The agent must ask for unspecified biological inputs,
 inspect actual previews and request explicit application approval; it must not
@@ -136,6 +189,8 @@ alone do not disclose DNA or an approval digest to the model. No additional
 automatic project-content forwarding or approval bypass is introduced.
 
 ## Verification
+
+### First-Slice Verification History
 
 On macOS with Rust/Cargo 1.100.0-beta.1, against the uncommitted implementation
 on local `main` at `564ea09b`, the following checks passed after the rebase:
@@ -177,14 +232,52 @@ files are intentional task edits, and manual plan-fidelity review remains a
 reminder rather than independent acceptance. The release checklist explicitly
 excludes this independently versioned private crate from application rollovers.
 
+### Conflict-Slice Verification
+
+Verified the patched working tree based on `d221aa1accd18b8f83f686279081885b83ade3db`
+on Darwin 27 arm64, Rust/Cargo 1.100.0-beta.1, default development/test features.
+This is local pre-commit verification, not acceptance of a frozen/pushed package.
+
+```sh
+cargo test -p gentle-sequence-design --locked --offline -j 1
+cargo test -p gentle-protocol --locked --offline -j 1 sequence_design
+cargo test --lib --locked --offline -j 1 sequence_design -- --test-threads=1
+cargo test --bin gentle_cli --locked --offline -j 1 sequence_design -- --test-threads=1
+cargo check -q --locked --offline -j 1
+cargo fmt --all --check
+git diff --check
+python3 -m unittest scripts.test_tutorial_checkouts scripts.test_tutorial_walkthroughs scripts.test_publish_tutorial_gui_screenshots -q
+```
+
+All 24 targeted Rust tests passed: 11 core, one protocol, ten engine/shell/MCP
+and two direct-CLI/shared-parser tests. Python passed 25 tests with three expected
+platform skips. Locked Cargo check, formatting and whitespace checks passed.
+Root-test and CLI linking retain the known non-blocking large `__eh_frame`
+warning. These CLI tests execute the forwarding/parser/engine paths in-process,
+not newly packaged native executables. No full workspace, native GUI/Pi,
+Windows/Linux, Rust 1.85, script-runtime or upstream DNA Chisel comparison was
+run. Candidate-count assertions are functional evidence, not benchmarks.
+
+Session-close reported four OK, two warnings and no failures: all 18 changed/new
+files are intentional scoped implementation/test/contract edits, and the manual
+plan-fidelity reminder is not an independent review. No generated catalog,
+scientific fixture/export, Cargo dependency/profile or workflow changed. No
+push, tag, dispatch or release/experimental acceptance is implied.
+
 ## Remaining stages
 
-1. Glen independently reviews the candidate and measures representative and
-   adversarial synthetic inserts. Keep maintenance value, performance and
-   biological suitability as separate claims; no `.12` delay or gate added.
-2. If useful, design a better bounded search against the exhaustive oracle,
-   then decide whether independent publication or further specifications merits
-   its cost. Do not replace global constraints with assumed local checks.
+1. Glen independently reviews the candidates and measures representative and
+   adversarial synthetic inserts, now including both explicit strategies at one
+   authorized exact revision. Keep the [first-slice pinned audit](glen_sequence_design_handoff_20261005.md)
+   historical rather than relabeling its SHA as new-search acceptance. Compare
+   feasibility/edits/proof status separately from candidate counts and wall/RSS;
+   retain coupled/new-conflict cases, budget stops and cancellation. Keep
+   maintenance value, performance and biological suitability as separate claims;
+   no `.12` delay or gate added.
+2. Use that evidence to decide whether further search changes, independent
+   publication or richer specifications merit their cost. GC constraints need
+   their own whole-sequence/window and threshold contract before implementation;
+   do not replace global constraints with assumed local checks.
 3. GC, codon harmonization/adaptation, distant repeat/hairpin interactions,
    RNA folding, other initiation/codes and DNA Chisel comparison remain explicit
    follow-ups with their own contracts, not unfinished obligations of this slice.

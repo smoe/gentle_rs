@@ -14,6 +14,14 @@ Frozen bases, exact protein/start/stop and full-sequence motif evaluation are
 invariants. Bounded-search failure is unresolved, not infeasible; cancellation
 cannot publish an applicable proposal, including a valid intermediate result.
 Feasible incomplete optimization does not establish minimum nucleotide edits.
+Solver selection is explicit and version-bound; default enumeration and its
+serialized approvals stay compatible. Conflict search branches over all legal
+nonoriginal assignments in a current violated window, fixes one codon per level,
+and re-evaluates the full sequence. A complete tree, including sound edit-cost
+pruning, proves feasibility/optimality or infeasibility; a budget stop does not.
+No local-score substitution or performance claim follows from fewer visited
+candidates. Application checks the selected strategy/algorithm/policy binding
+without rerunning search.
 Approval binds exact input/output/protection/mapping/configuration/evaluations;
 apply revalidates without rerunning search and creates one undoable derivation.
 Stale source annotations are omitted rather than inherited. No expression,

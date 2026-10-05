@@ -63,6 +63,24 @@ if you consent to sharing its DNA and paths. This stages a draft, not approval
 or execution; oversized results are refused intact, never truncated. Otherwise
 review locally and supply the actual approval digest yourself.
 
+### Explicit Conflict Search
+
+Add `"search_strategy": "conflict_directed"` to the same request JSON to select
+the experimental second solver. Commands, biological constraints and the
+separate application approval are unchanged. Omission or `"full_enumeration"`
+retains the original algorithm; unknown modes are refused. The inner agent
+must disclose the choice, not silently change it after preview/approval.
+
+The new algorithm tries synonymous changes in a current violating motif window,
+then checks the whole sequence again. It can complete a constrained search
+without enumerating unrelated codons, including when repair creates another
+motif elsewhere. The report records `synonymous_conflict_search_v1`, requested
+and effective candidate budgets, completeness and minimum-edit status.
+Only a completed search proves minimum edits; an interrupted feasible search
+is still a proposal with incomplete optimization, not a proof or speedup claim.
+Changing strategy changes the approval digest: obtain and review a new preview.
+The earlier toy has the same exact output under both strategies.
+
 ## Source-Coherent Transcripts
 
 Existing `gene-locus prepare @request.json` and TSS `--context-manifest` inputs

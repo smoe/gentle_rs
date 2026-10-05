@@ -10,6 +10,10 @@ DNA is unchanged; the derived sequence is undoable and can be opened through
 `ui open sequence-window OUTPUT_ID`. No input, CDS, protein, protection or digest
 may be inferred from a gene label. This is not full DNA Chisel or a `.12` gate.
 See [the exact request and non-claims](cli.md#synthetic-sequence-design).
+The same request optionally selects `search_strategy=conflict_directed`; omission
+retains enumeration. GUI Shell and Agent Assistant share the engine policy and
+need a freshly reviewed approval after a strategy change. This adds no separate
+GUI solver, automatic recoding or experimentally validated design claim.
 
 Source-enriched locus SVGs and detailed TSS figures can show shared physical
 exons/CDS, separate structure-reference rows and colour-labelled Ensembl/RefSeq

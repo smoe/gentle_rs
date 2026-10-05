@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-10-05 - Add Explicit Bounded Conflict Search For Synthetic Inserts
+
+- Continue the owner-requested sequence-design slices from integrated local
+  `main` `d221aa1a`, keeping the default full-enumeration algorithm and old
+  serialized approval basis. Add opt-in `search_strategy=conflict_directed`
+  through the same typed preview/apply request, with a separately bound algorithm
+  ID and policy. No Python/runtime dependency, profile change or GUI-only solver.
+- Reuse complete admission and full-sequence validation. An explicit bounded
+  DFS stack branches on current violations, including newly created conflicts,
+  and performs sound edit-cost pruning; only completed traversal proves minimum
+  edits/infeasibility. Budget interruption and cancellation retain conservative
+  outcomes. Apply validates exact approved DNA without rerunning either search.
+- Extend independent four/eight-state synthetic oracles, new-conflict and
+  large-unrelated-space tests, legacy/default serialization, client-rehashed
+  strategy/policy rejection, undo and shared shell/CLI/MCP confirmation parity.
+  Document explicit inner-agent selection and renewed approval. Candidate-count
+  reductions are not a runtime verdict, biological suitability or `.12` gate;
+  Glen's first-slice audit and new-mode independent measurements remain pending.
+- Local pre-commit verification on patched `d221aa1a`, Darwin 27 arm64,
+  Rust/Cargo 1.100.0-beta.1: all 24 targeted Rust tests pass (11 core, one
+  protocol, ten engine/shell/MCP, two CLI), plus 25 Python tests with three
+  expected platform skips, locked default-feature Cargo check, formatting and
+  whitespace checks. Retain the known large `__eh_frame` linker warning.
+  Full workspace, native Windows/Linux/GUI/Pi, Rust 1.85 and upstream/runtime
+  measurements are unrun. Session-close: four OK, two warnings, zero failures;
+  dirty entries are intentional, with manual plan fidelity still a reminder.
+
 ## 2026-10-05 - Integrate Tutorial Path Repair With TSS Follow-Up
 
 - Merge `gentle_rs_2_main` at `50d1b997` into the annotated TSS follow-up

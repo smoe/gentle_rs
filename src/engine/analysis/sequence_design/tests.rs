@@ -22,8 +22,87 @@ fn request() -> DnaSequenceDesignRequest {
             strand: DesignStrand::Both,
         }],
         max_evaluations: 4096,
+        search_strategy: DnaDesignSearchStrategy::FullEnumeration,
         output_seq_id: "synthetic_without_ecori".into(),
     }
+}
+
+#[test]
+fn sequence_design_conflict_search_is_explicit_bound_and_separately_approved() {
+    let mut engine = GentleEngine::new();
+    let original = serde_json::to_value(engine.state()).unwrap();
+    let legacy = plan(&mut engine, request());
+    assert_eq!(legacy.algorithm, core::ALGORITHM);
+    let legacy_json = serde_json::to_value(&legacy).unwrap();
+    assert!(legacy_json["request"].get("search_strategy").is_none());
+    let old_wire: DnaSequenceDesignReport = serde_json::from_value(legacy_json).unwrap();
+    assert_eq!(
+        GentleEngine::dna_design_approval(&old_wire).unwrap(),
+        legacy.approval_digest.clone().unwrap()
+    );
+
+    let mut directed = request();
+    directed.search_strategy = DnaDesignSearchStrategy::ConflictDirected;
+    let preview = plan(&mut engine, directed.clone());
+    assert_eq!(preview.algorithm, core::CONFLICT_ALGORITHM);
+    assert_eq!(preview.output_sequence, legacy.output_sequence);
+    assert!(preview.minimum_edits_proven && preview.optimization_complete);
+    assert_eq!(preview, plan(&mut engine, directed));
+    assert_ne!(preview.approval_digest, legacy.approval_digest);
+    let roundtrip: DnaSequenceDesignReport =
+        serde_json::from_value(serde_json::to_value(&preview).unwrap()).unwrap();
+    assert_eq!(preview, roundtrip);
+
+    for field in 0..3 {
+        let mut altered = preview.clone();
+        match field {
+            0 => altered.algorithm = core::ALGORITHM.into(),
+            1 => altered.request.search_strategy = DnaDesignSearchStrategy::FullEnumeration,
+            2 => altered.nonclaims = legacy.nonclaims.clone(),
+            _ => unreachable!(),
+        }
+        // A content hash is not a signature: semantic algorithm/policy validation
+        // must reject an inconsistent client-rehashed preview too.
+        altered.approval_digest = Some(GentleEngine::dna_design_approval(&altered).unwrap());
+        assert!(apply(&mut engine, altered).is_err());
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+    let result = apply(&mut engine, roundtrip).unwrap();
+    assert_eq!(result.created_seq_ids, ["synthetic_without_ecori"]);
+    assert_eq!(
+        engine.state.sequences["synthetic_without_ecori"].get_forward_string(),
+        "ATGGAATTTTAA"
+    );
+    engine.undo_last_operation().unwrap();
+    assert!(
+        !engine
+            .state
+            .sequences
+            .contains_key("synthetic_without_ecori")
+    );
+    // The legacy preview/digest is still applicable after undo, without re-planning.
+    apply(&mut engine, old_wire).unwrap();
+}
+
+#[test]
+fn sequence_design_conflict_budget_and_cancellation_never_supply_approval() {
+    let mut engine = GentleEngine::new();
+    let mut directed = request();
+    directed.search_strategy = DnaDesignSearchStrategy::ConflictDirected;
+    directed.max_evaluations = 1;
+    let exhausted = plan(&mut engine, directed.clone());
+    assert_eq!(exhausted.algorithm, core::CONFLICT_ALGORITHM);
+    assert_eq!(exhausted.status, DnaDesignStatus::SearchExhausted);
+    assert!(exhausted.approval_digest.is_none());
+    assert!(apply(&mut engine, exhausted).is_err());
+    directed.max_evaluations = 4096;
+    let cancelled = engine
+        .plan_dna_sequence_design(directed, |evaluated| evaluated == 2)
+        .unwrap();
+    assert_eq!(cancelled.status, DnaDesignStatus::Cancelled);
+    assert!(cancelled.approval_digest.is_none() && cancelled.output_sequence.is_none());
+    assert!(apply(&mut engine, cancelled).is_err());
+    assert!(engine.state.sequences.is_empty());
 }
 
 fn plan(engine: &mut GentleEngine, request: DnaSequenceDesignRequest) -> DnaSequenceDesignReport {
@@ -226,15 +305,22 @@ fn sequence_design_unresolved_cancelled_invalid_and_unsupported_have_no_approval
 
 #[test]
 fn sequence_design_shared_shell_discovery_and_json_file_parity() {
+    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::FullEnumeration);
+}
+
+#[test]
+fn sequence_design_conflict_shared_shell_discovery_and_json_file_parity() {
+    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::ConflictDirected);
+}
+
+fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy) {
     use crate::engine_shell::{execute_shell_command, parse_shell_line, quote_shell_arg};
+    let mut request = request();
+    request.search_strategy = strategy;
     let directory = tempfile::tempdir().unwrap();
     let request_path = directory.path().join("request with apostrophe's.json");
     let output_path = directory.path().join("preview.json");
-    std::fs::write(
-        &request_path,
-        serde_json::to_vec_pretty(&request()).unwrap(),
-    )
-    .unwrap();
+    std::fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
     let command = parse_shell_line(&format!(
         "sequence-design plan {} --path {}",
         quote_shell_arg(&format!("@{}", request_path.display())),
@@ -248,7 +334,7 @@ fn sequence_design_shared_shell_discovery_and_json_file_parity() {
     assert!(!result.state_changed);
     let saved: DnaSequenceDesignReport =
         serde_json::from_slice(&std::fs::read(&output_path).unwrap()).unwrap();
-    assert_eq!(saved, plan(&mut direct, request()));
+    assert_eq!(saved, plan(&mut direct, request));
     assert_eq!(
         result.output["result"]["dna_sequence_design"],
         serde_json::to_value(&saved).unwrap()
@@ -281,6 +367,11 @@ fn sequence_design_shared_shell_discovery_and_json_file_parity() {
         assert!(text.contains(id), "missing {id}");
     }
     assert!(crate::agent_bridge::AGENT_BRIDGE_SYSTEM_PROMPT.contains("sequence-design plan"));
+    assert!(
+        crate::agent_bridge::AGENT_BRIDGE_SYSTEM_PROMPT
+            .contains("search_strategy=conflict_directed")
+    );
+    assert!(text.contains("conflict_directed"));
 }
 
 #[test]

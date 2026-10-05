@@ -25,6 +25,16 @@ ID. Reports bind exact source/output strings and SHA-256, all 64 explicitly keye
 codon/residue entries and their digest, source annotation digest/omission count,
 algorithm, outcomes, initial motif matches, edits and completeness/optimality.
 All coordinates are zero-based half-open; palindrome both-strand hits count once.
+Optional `request.search_strategy` is `full_enumeration` (default) or
+`conflict_directed`. Default serialization omits this field, preserving legacy
+request/report approval bytes. Explicit conflict search uses algorithm
+`synonymous_conflict_search_v1`; default uses `synonymous_full_enumeration_v1`.
+Unknown strategies are rejected. Apply checks the request/algorithm/policy
+combination, then validates exact output without rerunning either search.
+Completeness for conflict search means the full conflict-assignment tree was
+resolved (with sound edit-cost pruning), not all full-space variants evaluated.
+Search-space overflow remains unknown independently of that proof. Every visited
+candidate and the final output use the same full-sequence validator.
 Approval binds the complete report with only its approval field cleared. Apply
 rechecks live source/table/protection and fully evaluates approved output, then
 creates one undoable, lineage-linked sequence and metadata receipt. Existing

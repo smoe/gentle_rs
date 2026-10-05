@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-05 - Merge `gentle_rs_2_main`'s Windows rooted-path repair and `.12` handoff (`a086bbda`, `50d1b997`) with the annotated plus/minus TSS anchor/readiness follow-up (`0cea59f2`). Retain their separate macOS verification records in the changelog and [CI/package handoff](internal_12_candidate_preparation.md); no merged-tree builds/tests were run during conflict resolution. Next: explicit push approval, one green frozen SHA, build-only dispatch approval and the [Glen handoff checks](internal_12_tutorial_regeneration_glen_prompt.md). Real prepared-reference P1/P2, native GUI, Windows/Linux CI, package and scientific acceptance remain pending; compatibility/runner choices remain owner-managed.
+Last session: 2026-10-05 - Continue the experimental [sequence-design slices](dna_sequence_optimization_plan.md) from integrated local `main` `d221aa1a`: add explicit bounded conflict search, preserving default enumeration/legacy approval bytes and shared GUI Shell/CLI/inner-agent/MCP semantics. Independent small-space oracles and exact strategy/approval checks guard the new mode; Glen's representative/adversarial, native-platform and timing/RSS acceptance remains pending. Keep this outside `.12`; the [CI/package handoff](internal_12_candidate_preparation.md), frozen-SHA/push/dispatch decisions and scientific release checks remain open.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
@@ -300,7 +300,7 @@ must remain explicit, inspectable proposals with confirmation before mutation.
 Useful work here improves proposal formats, evidence records, reproducible
 cohort comparisons, and rollback paths for state patches; defer autonomous wet-lab conclusions or unconfirmed mutations.
 ## Parking Lot
-- Experimental [synonymous motif removal](dna_sequence_optimization_plan.md) is owner-authorized outside `.12`; next run the [pinned Glen audit](glen_sequence_design_handoff_20261005.md) before richer specifications/publication. Keep GUI/CLI/inner-agent approval parity and no performance/suitability claims.
+- Experimental [synonymous motif removal](dna_sequence_optimization_plan.md) remains outside `.12`; Glen should compare explicit enumeration/conflict search on one authorized revision, retaining the [first-slice pinned audit](glen_sequence_design_handoff_20261005.md) separately. Keep GUI/CLI/inner-agent approval parity; GC and richer specifications/publication await scoped contracts and usefulness evidence, not implied performance/suitability.
 - Accession-pinned [TSS TFBS profiles](tss_tfbs_profiles.md#rescoring-existing-reports): Glen to rescore original five-gene inputs after the inclusive-tail correction, then repeat PDF pixel/hash, shared-scale and sparse-peak acceptance; the `44b73e4a` audit does not cover this scoring method. Keep the `.10` gate; native wizard and independent reference verification remain follow-ups.
 - Give TP73 Simple-PCR live acceptance a representative small fixture or bounded fast preset; exact interactive defaults exceed the ten-minute smoke budget.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript
