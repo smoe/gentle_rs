@@ -7163,6 +7163,10 @@ Genome convenience commands:
 - `genomes extend-anchor SEQ_ID 5p|3p LENGTH_BP [--output-id ID] [--catalog PATH] [--cache-dir PATH] [--prepared-genome GENOME_ID]`
   - Runs engine `ExtendGenomeAnchor`.
   - Extends an already genome-anchored sequence in-silico on contextual `5'` or `3'`.
+  - Reprojects core gene/transcript annotation from the prepared reference onto
+    the new sequence, including reverse-anchor location/local-CDS transforms.
+    Keep the annotation telemetry/warnings; this does not copy the parent's
+    imported tracks or authorize reusing an earlier TSS approval.
   - If exact anchor genome id is not prepared but one compatible assembly-family
     cache exists, extension auto-uses that cache and emits a warning.
   - If multiple compatible prepared caches exist, command fails and lists

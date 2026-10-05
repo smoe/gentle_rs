@@ -54,6 +54,7 @@ pub(crate) struct TranslationSpeedProfileResolution {
 
 #[derive(Debug, Clone, Default)]
 struct GenomeExtractionProvenanceOverrides {
+    sequence_origin: Option<SequenceOrigin>,
     gene_query: Option<String>,
     occurrence: Option<usize>,
     gene_extract_mode: Option<String>,
@@ -2343,7 +2344,11 @@ impl GentleEngine {
             end_1based
         );
         let base = output_id.unwrap_or(default_id);
-        let seq_id = self.import_genome_slice_sequence(result, sequence, base)?;
+        let origin = provenance_overrides
+            .as_ref()
+            .and_then(|value| value.sequence_origin.clone())
+            .unwrap_or(SequenceOrigin::ImportedGenomic);
+        let seq_id = self.import_genome_slice_sequence(result, sequence, base, origin)?;
         let requested_scope = Self::resolve_extract_region_annotation_scope(
             annotation_scope,
             include_genomic_annotation,
@@ -2443,7 +2448,6 @@ impl GentleEngine {
         if attached_feature_count > 0 {
             if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
                 dna.features_mut().extend(projection.features);
-                Self::prepare_sequence(dna);
             }
             result.messages.push(format!(
                 "Attached {} genomic annotation feature(s) to extracted region '{}' (scope={}, genes={}, transcripts={}, exons={}, cds={})",
@@ -2469,6 +2473,63 @@ impl GentleEngine {
         }
         if let Some(reason) = fallback_reason.as_ref() {
             result.warnings.push(reason.clone());
+        }
+        let reverse_anchor = provenance_overrides
+            .as_ref()
+            .and_then(|value| value.anchor_strand)
+            == Some('-');
+        if (attached_feature_count > 0 || reverse_anchor)
+            && let Some(dna) = self.state.sequences.get_mut(&seq_id)
+        {
+            if reverse_anchor {
+                // Geometry and local CDS ranges must follow the reversed bases;
+                // genomic qualifiers continue to describe the original reference.
+                let source = dna.clone_seq_record();
+                let len = source.seq.len();
+                let mut oriented = source.clone();
+                oriented.seq = Self::reverse_complement_bytes(&source.seq);
+                oriented.features = source
+                    .features
+                    .iter()
+                    .cloned()
+                    .map(|feature| {
+                        let mut cds_ranges =
+                            Self::feature_qualifier_ranges_0based(&feature, "cds_ranges_1based")
+                                .into_iter()
+                                .map(|(start, end)| (len - end + 1, len - start))
+                                .collect::<Vec<_>>();
+                        cds_ranges.sort_unstable();
+                        let genomic_strand = feature
+                            .qualifier_values("strand")
+                            .next()
+                            .map(str::to_string);
+                        let mut feature = source.revcomp_feature(feature).map_err(|error| {
+                            EngineError::invalid_input(format!(
+                                "Could not orient genomic annotation for '{seq_id}': {error}"
+                            ))
+                        })?;
+                        for (key, value) in &mut feature.qualifiers {
+                            if &**key == "strand" {
+                                *value = match value.as_deref() {
+                                    Some("+") => Some("-".into()),
+                                    Some("-") => Some("+".into()),
+                                    _ => value.clone(),
+                                };
+                            } else if &**key == "cds_ranges_1based" {
+                                *value = Self::serialize_ranges_1based(&cds_ranges);
+                            }
+                        }
+                        if let Some(strand) = genomic_strand {
+                            feature
+                                .qualifiers
+                                .push(("genomic_strand".into(), Some(strand)));
+                        }
+                        Ok(feature)
+                    })
+                    .collect::<Result<Vec<_>, EngineError>>()?;
+                *dna = DNAsequence::from_genbank_seq(oriented);
+            }
+            Self::prepare_sequence(dna);
         }
         result.genome_annotation_projection = Some(GenomeAnnotationProjectionTelemetry {
             requested_scope: requested_scope.as_str().to_string(),
@@ -42314,7 +42375,12 @@ impl GentleEngine {
                         promoter_upstream_bp,
                     );
                     let base = output_id.unwrap_or(default_id);
-                    let seq_id = self.import_genome_slice_sequence(&mut result, sequence, base)?;
+                    let seq_id = self.import_genome_slice_sequence(
+                        &mut result,
+                        sequence,
+                        base,
+                        SequenceOrigin::ImportedGenomic,
+                    )?;
                     let preferred_name = self
                         .state
                         .sequences
@@ -42884,102 +42950,30 @@ impl GentleEngine {
                         result.warnings.push(warning);
                     }
                     let effective_genome_id = prepared_resolution.resolved_genome_id;
-                    let mut sequence = catalog
-                        .get_sequence_region_with_cache(
-                            &effective_genome_id,
-                            &anchor.chromosome,
-                            new_start_1based,
-                            new_end_1based,
-                            resolved_cache_dir.as_deref(),
-                        )
-                        .map_err(|e| EngineError {
-                            code: ErrorCode::NotFound,
-                            message: format!(
-                                "Could not load extended genome region {}:{}-{} from '{}': {}",
-                                anchor.chromosome,
-                                new_start_1based,
-                                new_end_1based,
-                                effective_genome_id,
-                                e
-                            ),
-
-                            cause_chain: vec![],
-                        })?;
-                    if anchor_is_reverse {
-                        sequence = Self::reverse_complement(&sequence);
-                    }
-
                     let side_token = side.as_str();
                     let default_id = format!("{seq_id}_ext_{side_token}_{length_bp}");
-                    let base = output_id.unwrap_or(default_id);
-                    let mut dna =
-                        DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
-                            code: ErrorCode::Internal,
-                            message: format!(
-                                "Could not construct DNA sequence from extended anchor: {e}"
-                            ),
-
-                            cause_chain: vec![],
-                        })?;
-                    Self::prepare_sequence(&mut dna);
-                    let extended_seq_id = self.unique_seq_id(&base);
-                    dna.set_name(extended_seq_id.clone());
-                    self.state.sequences.insert(extended_seq_id.clone(), dna);
-                    self.add_lineage_node(
-                        &extended_seq_id,
-                        SequenceOrigin::Derived,
-                        Some(&result.op_id),
-                    );
-                    result.created_seq_ids.push(extended_seq_id.clone());
+                    let extended_seq_id = self.extract_genome_region_into_state(
+                        &mut result,
+                        &effective_genome_id,
+                        &anchor.chromosome,
+                        new_start_1based,
+                        new_end_1based,
+                        output_id.or(Some(default_id)),
+                        Some(GenomeAnnotationScope::Core),
+                        None,
+                        None,
+                        Some(resolved_catalog_path),
+                        resolved_cache_dir,
+                        "ExtendGenomeAnchor",
+                        Some(GenomeExtractionProvenanceOverrides {
+                            sequence_origin: Some(SequenceOrigin::Derived),
+                            strand: anchor.strand,
+                            anchor_strand: Some(anchor.strand.unwrap_or('+')),
+                            anchor_verified: Some(true),
+                            ..Default::default()
+                        }),
+                    )?;
                     parent_seq_ids.push(seq_id.clone());
-
-                    let source_plan = catalog
-                        .source_plan(&effective_genome_id, resolved_cache_dir.as_deref())
-                        .ok();
-                    let inspection = catalog
-                        .inspect_prepared_genome(
-                            &effective_genome_id,
-                            resolved_cache_dir.as_deref(),
-                        )
-                        .ok()
-                        .flatten();
-                    let (
-                        sequence_source_type,
-                        annotation_source_type,
-                        sequence_source,
-                        annotation_source,
-                        sequence_sha1,
-                        annotation_sha1,
-                    ) = Self::genome_source_snapshot(source_plan.as_ref(), inspection.as_ref());
-                    self.append_genome_extraction_provenance(GenomeExtractionProvenance {
-                        seq_id: extended_seq_id.clone(),
-                        recorded_at_unix_ms: Self::now_unix_ms(),
-                        operation: "ExtendGenomeAnchor".to_string(),
-                        genome_id: effective_genome_id.clone(),
-                        catalog_path: resolved_catalog_path.clone(),
-                        cache_dir: resolved_cache_dir.clone(),
-                        chromosome: Some(anchor.chromosome.clone()),
-                        start_1based: Some(new_start_1based),
-                        end_1based: Some(new_end_1based),
-                        gene_query: None,
-                        occurrence: None,
-                        gene_extract_mode: None,
-                        transcript_id: None,
-                        tss_1based: None,
-                        promoter_upstream_bp: None,
-                        promoter_downstream_bp: None,
-                        gene_id: None,
-                        gene_name: None,
-                        strand: anchor.strand,
-                        anchor_strand: Some(anchor.strand.unwrap_or('+')),
-                        anchor_verified: Some(true),
-                        sequence_source_type,
-                        annotation_source_type,
-                        sequence_source,
-                        annotation_source,
-                        sequence_sha1,
-                        annotation_sha1,
-                    });
                     let side_label = match side {
                         GenomeAnchorSide::FivePrime => "5'",
                         GenomeAnchorSide::ThreePrime => "3'",

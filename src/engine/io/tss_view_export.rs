@@ -127,7 +127,7 @@ mod tests {
                 assert_eq!(page.view_sha256, digest(&view).unwrap());
                 assert_eq!(page.geometry, view.geometry);
                 let svg = String::from_utf8(bytes).unwrap();
-                assert!(svg.contains("preserve each window's supplied lane scales"));
+                assert!(svg.contains("preserve each window&apos;s supplied lane scales"));
                 assert!(svg.contains(&page.geometry.genomic_at(0).unwrap().to_string()));
             }
             let index = fs::read(output.join("index.html")).unwrap();

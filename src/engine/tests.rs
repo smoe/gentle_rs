@@ -37940,98 +37940,204 @@ fn test_extend_genome_anchor_plus_strand_adds_lineage_and_provenance() {
 
 #[test]
 fn prepared_anchor_extension_restores_an_unavailable_tss_flank_without_padding() {
-    use gentle_protocol::tss_workspace::{TssInventoryRequest, TssWindowAvailability};
-    // Hand-crafted reference/annotations in a temporary directory, recreated here.
-    // Models an excerpt starting at its transcript start, not TP73 production data.
-    let dir = tempdir().unwrap();
-    let fasta = dir.path().join("reference.fa");
-    let gtf = dir.path().join("reference.gtf");
-    fs::write(&fasta, format!(">chr1\n{}\n", "ACGT".repeat(500))).unwrap();
-    fs::write(&gtf, concat!(
-        "chr1\tsynthetic\tgene\t301\t900\t.\t+\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\";\n",
-        "chr1\tsynthetic\ttranscript\t301\t900\t.\t+\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\";\n",
-        "chr1\tsynthetic\texon\t301\t350\t.\t+\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\"; exon_number \"1\";\n",
-        "chr1\tsynthetic\texon\t851\t900\t.\t+\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\"; exon_number \"2\";\n"
-    )).unwrap();
-    let catalog = dir.path().join("catalog.json");
-    fs::write(
-        &catalog,
-        serde_json::to_vec(&serde_json::json!({
-            "ToyTssReference": { "sequence_local": fasta, "annotations_local": gtf,
-                "cache_dir": dir.path().join("cache") }
-        }))
-        .unwrap(),
-    )
-    .unwrap();
-    let catalog_path = catalog.to_string_lossy().into_owned();
-    let mut engine = GentleEngine::new();
-    engine
-        .apply(Operation::PrepareGenome {
-            genome_id: "ToyTssReference".into(),
-            catalog_path: Some(catalog_path.clone()),
-            cache_dir: None,
-            timeout_seconds: None,
-        })
-        .unwrap();
-    engine
-        .apply(Operation::ExtractGenomeRegion {
-            genome_id: "ToyTssReference".into(),
-            chromosome: "chr1".into(),
-            start_1based: 301,
-            end_1based: 1000,
-            output_id: Some("excerpt".into()),
-            annotation_scope: None,
-            max_annotation_features: None,
-            include_genomic_annotation: None,
-            catalog_path: Some(catalog_path.clone()),
-            cache_dir: None,
-        })
-        .unwrap();
-    let request = TssInventoryRequest {
-        seq_id: "excerpt".into(),
-        gene_query: "TOY".into(),
-        collection_id: "before_extension".into(),
-        upstream_bp: 50,
-        downstream_bp: 20,
+    use gentle_protocol::tss_workspace::{
+        TssInventoryRequest, TssMaterializeRequest, TssWindowAvailability,
     };
-    let before = engine.inspect_tss_inventory(&request).unwrap();
-    assert_eq!(before.rows.len(), 1);
-    assert_eq!(
-        before.rows[0].availability,
-        TssWindowAvailability::MissingFlanks
-    );
-    let original = engine.state.sequences["excerpt"].clone_seq_record();
-    engine
-        .apply(Operation::ExtendGenomeAnchor {
+    // Hand-crafted reference/annotations in a temporary directory, recreated here.
+    // Mirror the same exon/CDS geometry on both strands; no production data.
+    for reverse in [false, true] {
+        let dir = tempdir().unwrap();
+        let fasta = dir.path().join("reference.fa");
+        let gtf = dir.path().join("reference.gtf");
+        fs::write(&fasta, format!(">chr1\n{}\n", "ACGT".repeat(500))).unwrap();
+        let strand = if reverse { '-' } else { '+' };
+        let (gene_start, gene_end, excerpt_start, excerpt_end, first_exon, second_exon) = if reverse
+        {
+            (1101, 1700, 1001, 1700, (1651, 1700), (1101, 1150))
+        } else {
+            (301, 900, 301, 1000, (301, 350), (851, 900))
+        };
+        let mut annotation = format!(
+            "chr1\tsynthetic\tgene\t{gene_start}\t{gene_end}\t.\t{strand}\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\";\n\
+         chr1\tsynthetic\ttranscript\t{gene_start}\t{gene_end}\t.\t{strand}\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\";\n"
+        );
+        for (number, (start, end)) in [(1, first_exon), (2, second_exon)] {
+            annotation.push_str(&format!(
+            "chr1\tsynthetic\texon\t{start}\t{end}\t.\t{strand}\t.\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\"; exon_number \"{number}\";\n\
+             chr1\tsynthetic\tCDS\t{}\t{}\t.\t{strand}\t0\tgene_id \"gene_TOY\"; gene_name \"TOY\"; transcript_id \"tx_TOY\";\n",
+            start + 10, end - 10,
+        ));
+        }
+        fs::write(&gtf, annotation).unwrap();
+        let catalog = dir.path().join("catalog.json");
+        fs::write(
+            &catalog,
+            serde_json::to_vec(&serde_json::json!({
+                "ToyTssReference": { "sequence_local": fasta, "annotations_local": gtf,
+                    "cache_dir": dir.path().join("cache") }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let catalog_path = catalog.to_string_lossy().into_owned();
+        let mut engine = GentleEngine::new();
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "ToyTssReference".into(),
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        engine
+            .apply(Operation::ExtractGenomeRegion {
+                genome_id: "ToyTssReference".into(),
+                chromosome: "chr1".into(),
+                start_1based: excerpt_start,
+                end_1based: excerpt_end,
+                output_id: Some("excerpt".into()),
+                annotation_scope: None,
+                max_annotation_features: None,
+                include_genomic_annotation: None,
+                catalog_path: Some(catalog_path.clone()),
+                cache_dir: None,
+            })
+            .unwrap();
+        if reverse {
+            // Model a correctly reverse-oriented loaded excerpt independently of
+            // extension: exact local exon and CDS ranges, plus a negative anchor.
+            let mut record = engine.state.sequences["excerpt"]
+                .clone_seq_record()
+                .revcomp();
+            for feature in &mut record.features {
+                for (key, value) in &mut feature.qualifiers {
+                    if &**key == "strand" {
+                        *value = Some("+".into());
+                    } else if &**key == "cds_ranges_1based" {
+                        *value = Some("11-40,561-590".into());
+                    }
+                }
+            }
+            engine
+                .state
+                .sequences
+                .insert("excerpt".into(), DNAsequence::from_genbank_seq(record));
+            let anchor = engine
+                .state
+                .metadata
+                .get_mut(PROVENANCE_METADATA_KEY)
+                .unwrap()
+                .get_mut(GENOME_EXTRACTIONS_METADATA_KEY)
+                .unwrap()
+                .as_array_mut()
+                .unwrap()
+                .last_mut()
+                .unwrap();
+            anchor["anchor_strand"] = serde_json::json!("-");
+            anchor["strand"] = serde_json::json!("-");
+        }
+        let request = TssInventoryRequest {
             seq_id: "excerpt".into(),
-            side: GenomeAnchorSide::FivePrime,
-            length_bp: 50,
-            output_id: Some("with_flank".into()),
-            catalog_path: Some(catalog_path),
-            cache_dir: None,
-            prepared_genome_id: Some("ToyTssReference".into()),
-        })
-        .unwrap();
-    let after = engine
-        .inspect_tss_inventory(&TssInventoryRequest {
-            seq_id: "with_flank".into(),
-            collection_id: "after_extension".into(),
-            ..request
-        })
-        .unwrap();
-    assert_eq!(
-        engine.state.sequences["excerpt"].clone_seq_record(),
-        original
-    );
-    assert_eq!(after.rows.len(), 1);
-    assert_eq!(after.rows[0].availability, TssWindowAvailability::Available);
-    assert_eq!(after.rows[0].genomic_tss, before.rows[0].genomic_tss);
-    assert_eq!(after.rows[0].tss_local_0based, 50);
-    assert_ne!(before.approval_sha256, after.approval_sha256);
-    assert_eq!(
-        engine.state.sequences["with_flank"].get_forward_string(),
-        "GTAC".repeat(187) + "GT"
-    );
+            gene_query: "TOY".into(),
+            collection_id: "before_extension".into(),
+            upstream_bp: 50,
+            downstream_bp: 20,
+        };
+        let before = engine.inspect_tss_inventory(&request).unwrap();
+        assert_eq!(before.rows.len(), 1);
+        assert_eq!(
+            before.rows[0].availability,
+            TssWindowAvailability::MissingFlanks
+        );
+        let original = engine.state.sequences["excerpt"].clone_seq_record();
+        let extension = engine
+            .apply(Operation::ExtendGenomeAnchor {
+                seq_id: "excerpt".into(),
+                side: GenomeAnchorSide::FivePrime,
+                length_bp: 50,
+                output_id: Some("with_flank".into()),
+                catalog_path: Some(catalog_path),
+                cache_dir: None,
+                prepared_genome_id: Some("ToyTssReference".into()),
+            })
+            .unwrap();
+        let telemetry = extension.genome_annotation_projection.as_ref().unwrap();
+        assert_eq!(telemetry.requested_scope, "core");
+        assert_eq!(telemetry.effective_scope, "core");
+        assert_eq!(telemetry.genes_attached, 1);
+        assert_eq!(telemetry.transcripts_attached, 1);
+        assert!(!telemetry.fallback_applied);
+        let after = engine
+            .inspect_tss_inventory(&TssInventoryRequest {
+                seq_id: "with_flank".into(),
+                collection_id: "after_extension".into(),
+                ..request
+            })
+            .unwrap();
+        assert_eq!(
+            engine.state.sequences["excerpt"].clone_seq_record(),
+            original
+        );
+        assert_eq!(after.rows.len(), 1);
+        assert_eq!(after.rows[0].availability, TssWindowAvailability::Available);
+        assert_eq!(after.rows[0].genomic_tss, before.rows[0].genomic_tss);
+        assert_eq!(after.rows[0].tss_local_0based, 50);
+        assert_ne!(before.approval_sha256, after.approval_sha256);
+        assert_eq!(
+            engine.state.sequences["with_flank"].get_forward_string(),
+            "GTAC".repeat(187) + "GT"
+        );
+        let dna = &engine.state.sequences["with_flank"];
+        let transcript = dna
+            .features()
+            .iter()
+            .find(|feature| &*feature.kind == "mRNA")
+            .unwrap();
+        let mut exon_ranges = vec![];
+        collect_location_ranges_usize(&transcript.location, &mut exon_ranges);
+        assert_eq!(exon_ranges, vec![(50, 100), (600, 650)]);
+        assert!(!feature_is_reverse(transcript));
+        assert_eq!(transcript.qualifier_values("strand").next(), Some("+"));
+        assert_eq!(
+            transcript.qualifier_values("cds_ranges_1based").next(),
+            Some("61-90,611-640")
+        );
+        if reverse {
+            assert_eq!(
+                transcript.qualifier_values("genomic_strand").next(),
+                Some("-")
+            );
+        }
+        let node_id = &engine.state.lineage.seq_to_node["with_flank"];
+        assert!(matches!(
+            engine.state.lineage.nodes[node_id].origin,
+            SequenceOrigin::Derived
+        ));
+        let anchor = engine.latest_genome_anchor_for_seq("with_flank").unwrap();
+        assert_eq!(anchor.strand, Some(strand));
+        assert_eq!(
+            (anchor.start_1based, anchor.end_1based),
+            if reverse { (1001, 1750) } else { (251, 1000) }
+        );
+        engine
+            .apply(Operation::MaterializeTssWindows {
+                request: TssMaterializeRequest {
+                    inventory: after.request.clone(),
+                    expected_approval_sha256: after.approval_sha256,
+                    selected_tss_ids: vec![after.rows[0].tss_id.clone()],
+                },
+            })
+            .unwrap();
+        let collection = engine.get_tss_collection("after_extension").unwrap();
+        assert_eq!(collection.members.len(), 1);
+        let window = &engine.state.sequences[&collection.members[0].tss.output_seq_id];
+        assert_eq!(window.len(), 71);
+        assert_eq!(window.get_forward_string(), "GTAC".repeat(17) + "GTA");
+        assert_eq!(
+            engine.state.sequences["excerpt"].clone_seq_record(),
+            original
+        );
+    }
 }
 
 #[test]

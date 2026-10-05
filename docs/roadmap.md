@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-05 - Close the local tutorial-review repair with 92 serial workflow tests, 18 LF/CRLF checkout tests, fresh full-clone catalog checks, formatting and locked cargo check green on macOS. Retain the [`.12` CI/package handoff](internal_12_candidate_preparation.md), historical acceptance and owner-managed compatibility/runner choices. Next: push approval, one green frozen SHA, build-only dispatch approval and the [Glen handoff checks](internal_12_tutorial_regeneration_glen_prompt.md), never inferring native-platform, package or scientific acceptance from local replay.
+Last session: 2026-10-05 - Address Claude's TSS follow-up with annotated plus/minus anchor extension, unknown unbound export readiness and the escaped scale-disclosure regression: 124 focused Rust and 18 LF/CRLF checkout tests, formatting, whitespace and locked offline cargo check green on macOS. Tutorial 08.17's real prepared-reference P1/P2 and native GUI acceptance remain Glen's. Retain the [`.12` CI/package handoff](internal_12_candidate_preparation.md) and historical verification separately; next require one green frozen SHA and explicit push/build-only dispatch approval, never inferring package/scientific acceptance from local checks.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

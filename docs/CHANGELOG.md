@@ -1,5 +1,28 @@
 # GENtle Changelog
 
+## 2026-10-05 - Restore Annotated Anchor Extension And Unbound TSS Readiness
+
+- Repair the optional tutorial 08.17 extension route in the shared engine:
+  reuse annotated-region extraction instead of emitting bare bases. Preserve
+  derived lineage, parent records, exact reference provenance and strand-aware
+  extension; expose the existing core-annotation telemetry and warnings.
+  Reverse anchors remap locations/local strands and CDS coordinates, retaining
+  genomic intervals/strand separately. No parent tracks or analyses are copied.
+- Keep a fully unbound nonempty introspection `any` expression unknown, rather
+  than reporting an empty false disjunction. Preserve bound readiness and the
+  existing semantics of deliberately empty `any`/`all` expressions; exercise
+  nested expressions and the real TSS export shell/operation aliases.
+- Correct the collection-export test's apostrophe to the XML-escaped spelling;
+  rendered scale policy, curves, bounds, scores and receipts are unchanged.
+  Extend the inline synthetic flank regression through plus/minus annotation,
+  fresh approval and TSS materialization, without private fixtures or report
+  regeneration. Verification against `fb9e6e00` plus these worktree edits:
+  124 focused Rust tests and 18 LF/CRLF checkout tests passed on macOS; one
+  opt-in sequence-view test remains ignored. Formatting, whitespace and locked
+  offline cargo check passed. Session-close had no failures; uncommitted edits
+  and the pre-existing `outputs/` directory were noted. No live TP73, native
+  Windows/Linux or release acceptance is claimed.
+
 ## 2026-10-05 - Keep Edit-Menu History And Popup Cleanup Consistent
 
 - Address the supplied review of the GUI follow-up committed as `7ff01d83`:

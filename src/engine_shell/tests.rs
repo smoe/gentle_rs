@@ -31000,6 +31000,65 @@ fn execute_introspect_tss_view_svg_declares_sequence_and_artifact_contract() {
         assert_eq!(row["readiness"], "unknown");
         assert_eq!(row["unknown_atoms"][0]["fact"], "sequence.exists");
         assert_eq!(row["unknown_atoms"][0]["reason"], "unbound argument");
+        assert_eq!(row["unknown_atoms"].as_array().unwrap().len(), 2);
+        assert_eq!(row["unknown_atoms"][1]["fact"], "tss_collection.exists");
+        engine.state_mut().sequences.insert(
+            "window".into(),
+            DNAsequence::from_sequence("ACGTACGT").unwrap(),
+        );
+        for (binding, expected) in [
+            ("SEQ_ID=window", "ready"),
+            ("SEQ_ID=absent", "blocked"),
+            ("COLLECTION_ID=absent", "blocked"),
+        ] {
+            let command =
+                parse_shell_line(&format!("introspect readiness {id} --arg {binding}")).unwrap();
+            let output = execute_shell_command(&mut engine, &command).unwrap();
+            assert_eq!(
+                output.output["readiness"][0]["readiness"], expected,
+                "{id}: {binding}"
+            );
+        }
+    }
+}
+
+#[test]
+fn introspection_expression_keeps_unbound_disjunctions_distinct_from_empty_ones() {
+    let disjunction = json!({"any": [
+        {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}},
+        {"fact": "tss_collection.exists", "subject": {"arg": "COLLECTION_ID"}}
+    ]});
+    for expression in [
+        disjunction.clone(),
+        json!({"not": disjunction.clone()}),
+        json!({"all": [disjunction]}),
+    ] {
+        let mut unknown_atoms = vec![];
+        assert!(
+            instantiate_introspection_expression(&expression, &BTreeMap::new(), &mut unknown_atoms)
+                .is_none()
+        );
+        assert_eq!(unknown_atoms.len(), 2);
+        assert!(
+            unknown_atoms
+                .iter()
+                .all(|atom| atom["reason"] == "unbound argument")
+        );
+    }
+    let graph = introspection_project_graph(&GentleEngine::default(), &[], false);
+    for (expression, truth) in [
+        (json!({"any": []}), FactTruth::Unsatisfied),
+        (json!({"all": []}), FactTruth::Satisfied),
+    ] {
+        let mut unknown_atoms = vec![];
+        let instantiated =
+            instantiate_introspection_expression(&expression, &BTreeMap::new(), &mut unknown_atoms)
+                .unwrap();
+        assert!(unknown_atoms.is_empty());
+        assert_eq!(
+            GentleEngine::evaluate_fact_expression_against_graph(&instantiated, &graph).truth,
+            truth
+        );
     }
 }
 

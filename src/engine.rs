@@ -12244,6 +12244,7 @@ impl GentleEngine {
         result: &mut OpResult,
         sequence: String,
         default_id: String,
+        origin: SequenceOrigin,
     ) -> Result<SeqId, EngineError> {
         let mut dna = DNAsequence::from_sequence(&sequence).map_err(|e| EngineError {
             code: ErrorCode::Internal,
@@ -12255,11 +12256,7 @@ impl GentleEngine {
         dna.set_name(seq_id.clone());
         Self::prepare_sequence(&mut dna);
         self.state.sequences.insert(seq_id.clone(), dna);
-        self.add_lineage_node(
-            &seq_id,
-            SequenceOrigin::ImportedGenomic,
-            Some(&result.op_id),
-        );
+        self.add_lineage_node(&seq_id, origin, Some(&result.op_id));
         result.created_seq_ids.push(seq_id.clone());
         Ok(seq_id)
     }

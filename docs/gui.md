@@ -5956,6 +5956,9 @@ How to enlarge the genomic span after extraction:
   - a new derived sequence is created and opened
   - lineage/provenance records include the extended genomic interval
   - 5'/3' direction is contextual to anchor strand (`strand -` flips physical genomic direction)
+  - core gene/transcript annotation is projected again from the prepared
+    reference; parent-specific tracks/analyses are not copied. Keep annotation
+    warnings and preview a fresh TSS inventory before approving new windows.
 
 Equivalent workflow JSON (still supported via workflow runner):
 

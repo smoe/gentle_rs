@@ -4511,6 +4511,16 @@ promoter-to-file maps. Old indices without either map remain readable. See
 - `side` accepts `five_prime` or `three_prime`.
 - Direction is contextual to anchor strand.
 - On anchor strand `-`, `five_prime` increases physical genomic position.
+- The new derived sequence reprojects core gene/transcript annotation from the
+  resolved prepared reference, using the same path as `ExtractGenomeRegion`.
+  It returns `genome_annotation_projection` telemetry and reference provenance;
+  source-specific annotations or analyses on the parent are not copied.
+- Reverse-oriented anchors transform annotation locations, local strand and
+  `cds_ranges_1based` with the bases. Original genomic intervals remain unchanged;
+  `genomic_strand` retains the reference strand when the local strand is flipped.
+  Unsupported or unavailable annotation is reported, not interpreted as absent
+  transcripts. TSS derivation still requires suitable transcript annotation and
+  a new inventory/approval for the extended sequence.
 - If the anchor genome id is not prepared exactly, the engine can auto-resolve
   to one compatible prepared assembly-family entry (for example `GRCh38.p14`
   -> `Human GRCh38 Ensembl 116`).

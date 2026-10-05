@@ -32440,7 +32440,11 @@ fn instantiate_introspection_expression(
             }
         }
         if any.is_empty() {
+            let fully_unbound = !children.is_empty() && !branch_unknown_atoms.is_empty();
             unknown_atoms.extend(branch_unknown_atoms);
+            if fully_unbound {
+                return None;
+            }
         }
         return Some(FactExpression::Any { any });
     }
