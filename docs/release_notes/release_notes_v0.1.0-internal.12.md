@@ -39,6 +39,10 @@ first step, not a return to the former fully optimized release recipe.
 - Approval-bound outer routing for TSS collections remains on the shared
   command/proposal path. Retained branch-local evidence does not imply live
   inner-agent or scientific acceptance of this new candidate.
+- Tutorial review projections now use Git history and repository-relative
+  paths, never checkout timestamps. Unavailable history is an explicit check
+  error; stored catalog age follows the revision date, while live age warnings
+  remain current-date-based. No human review or historical panel is relabelled.
 
 ## Acceptance Before Publication
 
@@ -61,6 +65,16 @@ remain unchanged. The two stale human-review warnings remain expected. This
 is externally reported evidence, not a local rerun or native macOS/Windows
 Actions, `package-opt1` build, or scientific acceptance. The remaining handoff
 checks and native-platform results still need to be recorded.
+
+**CI follow-up, 2026-10-05:** the October 4 run `37235516663` at `f523a757`
+finished with Linux and Windows catalog-test failures; their preceding drift
+checks passed, Windows's full suite was skipped and macOS was not selected.
+`19889dae` already corrects that catalog projection. The separate Git-history
+guard, checkout mock repair and twentieth TSS case counts are locally validated;
+they do not establish current native Actions or package acceptance. The
+[candidate-preparation handoff](../internal_12_candidate_preparation.md)
+records exact historical evidence, permitted local checks, build-only commands
+and open compatibility/runner decisions. No workflow was dispatched.
 
 1. Build the `.12` generator and verify replay against the unchanged historical
    baselines. Regenerate only for a reviewed result change, never merely to
