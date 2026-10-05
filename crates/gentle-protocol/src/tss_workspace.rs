@@ -147,3 +147,42 @@ pub struct TssCollectionReport {
     /// Map operations resolve this typed reference and revalidate member snapshots.
     pub subject: CollectionSubjectRef,
 }
+
+/// Headless native-view artifact receipt. Integrity binding, not scientific approval.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssViewSvgExportReceipt {
+    pub schema: String,
+    /// Exact operation payload, including the caller's explicit output destination.
+    pub request: serde_json::Value,
+    pub request_sha256: String,
+    pub exporter_revision: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection: Option<TssCollectionReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collection_sha256: Option<String>,
+    pub scale_policy: String,
+    pub hover_limit_per_lane_strand: usize,
+    pub pages: Vec<TssViewSvgExportPage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_html_sha256: Option<String>,
+}
+
+/// One ordered page, bound to both its input view and exact exported SVG bytes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TssViewSvgExportPage {
+    pub seq_id: String,
+    pub title: String,
+    pub filename: String,
+    pub svg_sha256: String,
+    pub view_sha256: String,
+    pub sequence_sha256: String,
+    pub geometry: crate::tss_profiles::TssGeometry,
+    pub start_0based: usize,
+    pub end_0based_exclusive: usize,
+    pub width_px: u32,
+    pub lane_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_file_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_score_report_sha256: Option<String>,
+}

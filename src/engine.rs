@@ -1320,6 +1320,8 @@ mod regulatory_fragment_panel;
 mod tata_boxes;
 #[path = "engine/analysis/tss_profiles.rs"]
 mod tss_profiles;
+#[path = "engine/io/tss_view_export.rs"]
+mod tss_view_export;
 #[path = "engine/analysis/tss_workspace.rs"]
 mod tss_workspace;
 pub(crate) use region_homology::validate_genomic_region_homology_report;
@@ -5848,7 +5850,7 @@ pub enum Operation {
     ForgetTssCollection {
         collection_id: String,
     },
-    /// Export the native annotated-TSS presentation of one loaded window, headless.
+    /// Export one annotated-TSS window or a validated collection, headless.
     ///
     /// Renders exactly what the GUI's TSS / Regulatory view would draw for the same
     /// attachments: supplied annotation lanes always, report-backed curves and
@@ -5856,7 +5858,11 @@ pub enum Operation {
     /// `local_motifs` is given. It never retrieves sequence, queries a motif package,
     /// reinterprets an attached report, or modifies the loaded sequence.
     ExportTssViewSvg {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
         seq_id: String,
+        /// Exclusive with seq_id; validates membership before producing ordered pages.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        collection_id: Option<String>,
         path: String,
         /// Validated TSS profile report to attach, exactly as the GUI file picker does.
         #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -14,11 +14,14 @@ use crate::{digest_utils::sha256_hex_bytes, dna_sequence::DNAsequence};
 
 mod local_scoring;
 mod profile;
+mod score_summary;
+pub(crate) use profile::read_tss_profile_file;
 mod svg;
 pub use local_scoring::{TssLocalScoreAttachment, TssLocalScoreRequest};
 #[cfg(test)]
 pub(crate) use profile::tests::fixture as profile_fixture;
 pub use profile::{TssProfileAttachment, TssViewTrace};
+pub use score_summary::{TSS_SCORE_SUMMARY_LIMIT, TSS_SVG_HOVER_LIMIT_PER_STRAND, TssScoreWindow};
 pub use svg::{TssViewSvgOptions, render_tss_view_svg, write_tss_view_svg};
 
 /// Evidence classes remain separate even when their genomic intervals overlap.

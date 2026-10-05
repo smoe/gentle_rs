@@ -12556,6 +12556,7 @@ Error: `{err}`"
                 tss_inventory: None,
                 tss_collection: None,
                 tss_collection_list: None,
+                tss_view_svg_export: None,
                 tss_tfbs_profiles: None,
                 tss_tfbs_profile_receipt: None,
                 gel_image: None,

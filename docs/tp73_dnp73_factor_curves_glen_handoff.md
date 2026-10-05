@@ -9,6 +9,69 @@ local-scoring and export routes, then add screenshots to the new tutorial.
 - Input: `test_files/tp73.ncbi.gb` only. No network, no prepared genome, no
   private data. If a step seems to need any of those, stop and report it.
 
+## 2026-10-05 Native Export Follow-Ups (Unrun Acceptance)
+
+The SVG renderer now emits at most 128 score-window titles per lane and local
+strand, retaining strongest and sampled valid starts. Each lane prints
+emitted/total/omitted counts; all curve points, unavailable bands and scoring
+counts remain. Do not benchmark the historical 4,134-title default as though it
+were current. Both GUI and SVG summarize up to three highest raw-score starts
+within each matrix lane/displayed span, with TSS offsets and local strands.
+
+`promoters tss-view-svg --collection ID OUTPUT_DIR` validates existing membership,
+admits at most 32 windows and stages ordered SVGs, an HTML index and a typed
+receipt to a new directory (32 MiB total). Check every SVG/index hash against
+`receipt.json` and `OpResult.tss_view_svg_export`, plus the recorded collection,
+view/sequence/attachment hashes and geometry. Per-window/per-lane scale policy
+preserves supplied report scaling; no new cross-window calibration is implied.
+Exercise stale members, the 32-member bound, cancellation after a staged page,
+an invalid shared span, unsafe paths and refusal to overwrite a bundle. None may
+publish a partial new directory or modify member sequences.
+
+Tutorial 08.17 now names explicit-state outer agents and headless `applied=false`
+GUI intents. Its optional P1/P2 comparison requires an already prepared compatible
+reference and a **new** preview/approval; this is separate acceptance from the
+offline core above, not permission to download or use private inputs. Review
+reference/annotation diagnostics and real P1 availability rather than assuming
+old excerpt transcript counts. The ClawBio SVG/scoring delegate is not implemented.
+
+Tests are authored but no local build/test/GUI/benchmark run is claimed. Use one
+frozen revision and record exact native package profile, binary/resource hashes
+and timings. Existing screenshots remain historical and unreviewed; these
+changes do not close a `.12` release gate or certify Windows/macOS acceptance.
+
+Changed implementation files: `src/tss_sequence_view.rs` and its
+`score_summary.rs`, `svg.rs`, `profile.rs`; `src/engine/io/tss_view_export.rs`;
+`src/engine.rs`, `src/engine/protocol.rs`, `src/engine/ops/operation_handlers.rs`;
+`crates/gentle-protocol/src/tss_workspace.rs`; `src/engine_shell.rs` and its tests;
+`src/agent_bridge.rs`; `src/main_area_dna/tss_view.rs`; `src/tss_profile_export.rs`;
+and `src/engine/tests.rs`. The new optional receipt requires only `None` plumbing
+in explicit result constructors in `src/app.rs`, `src/app/tests.rs`,
+`src/main_area_dna/tests.rs` and `src/engine/analysis/rna_reads.rs`. Documentation
+changes are in CLI/GUI/protocol/decisions/roadmap/changelog, this handoff and
+08.17's Markdown/source/catalog. Catalog regeneration preserves main's matching
+08.03 stale-review reason/feedback correction; its scientific artifacts and review
+status are unchanged. Unrelated `outputs/` and `Cargo.lock` are untouched.
+
+Focused commands for Glen on the frozen merged revision (not executed here;
+reuse the built test harness between filters):
+
+```bash
+cargo test --lib native_tss_
+cargo test --lib tss_sequence_view::score_summary::tests
+cargo test --lib tss_svg_bounds_hover_titles
+cargo test --lib parse_native_tss_svg_
+cargo test --lib execute_introspect_tss_view_svg_
+cargo test --lib tss_factor_tutorial_
+cargo test --lib prepared_anchor_extension_restores_
+cargo check -q --locked
+```
+
+These synthetic tests are not a replacement for live GUI/headless equivalence,
+optional prepared-reference P1 acceptance or native Windows path/rename checks.
+The proposed hover cap and per-window scale policy are disclosed defaults,
+not a claim of owner acceptance or increased practical export capacity.
+
 ## 2026-09-30 Scoring-Scope Follow-Up (Not Yet Verified)
 
 The headless `--motif --span` route now limits target scanning to complete
@@ -117,18 +180,19 @@ the documented admission ceiling, so it is the honest worst case for the route.
 Note that a fresh run re-resolves the registry and re-derives the background
 calibration per matrix; do not report a warm second run as the cost of the first.
 
-**Render and paint cost** — the current exporter emits one hover title per
+**Historical render and paint baseline** — the original exporter emitted one hover title per
 scored window start. The 701 bp / 3 matrix export is already **1.2 MB** of SVG
 with 4,134 such titles. Please measure how file size and render time grow at
 10,000 and 50,000 bp, and check whether a viewer or a downstream converter
-becomes unusable before the scoring does. If SVG size turns out to be the real
-ceiling rather than scoring, that is a finding worth its own roadmap entry — I
-have deliberately not changed that behaviour.
+becomes unusable before scoring. The new hover policy above changes this
+baseline, not the paint/admission ceilings; compare both recorded policies
+rather than inferring an increased supported span.
 
 For the GUI, please also measure interactive pan/zoom on a 10,000 bp window with
-8 local curves attached, using the actual packaged profile and recipe: currently
-unoptimized `dev` with `incremental=false` and `debug=0`. Do not substitute an
-optimized `release` or `bench-audit` build. Bind the result to the exact revision
+8 local curves attached, using the actual candidate's packaged profile and recipe.
+The original run used unoptimized `dev`; `.12` uses `package-opt1`. Do not
+substitute `release` or `bench-audit`, or conflate those historical profiles.
+Bind the result to the exact revision
 and effective build settings as in our other GUI latency audits.
 
 ## 4. Screenshots for the tutorial

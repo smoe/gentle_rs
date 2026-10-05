@@ -10,6 +10,50 @@
   Extend the checkout regression to require the catalog check and stop on its
   failure. No local builds or tests run; native CI validation remains pending.
 
+## 2026-10-05 - Bound Native TSS Hover Detail And Export Validated Collections
+
+- Add a disclosed default cap of 128 score-window hover titles per matrix lane
+  and local strand, retaining strongest and sampled evaluated starts. Every
+  curve point, validity band and scoring count remains unchanged. Readers lose
+  position-specific coordinate/raw-score/footprint tooltips at unsampled starts;
+  each SVG lane prints emitted/total/omitted counts. Existing paint/file-size
+  limits stay in place. This cap is an explicit proposed presentation default,
+  not new biological evidence or a raised export limit.
+- Use one shared top-three raw-score start summary in the native side panel and
+  SVG, within each matrix lane/displayed span only. Retain TSS offsets, local
+  strands, real zero and raw signed scores; exclude unavailable values and do
+  not rank factors or predict binding. Keep virtualized native TSS row heights
+  consistent so the added summaries cannot shift adjacent row geometry.
+- Extend the existing shared `ExportTssViewSvg`/`promoters tss-view-svg` contract
+  with an exclusive collection target: `--collection ID OUTPUT_DIR`. Validate
+  `GetTssCollection` membership before scoring; stage at most 32 ordered SVG
+  pages, an HTML index and a typed `gentle.tss_view_svg_export.v1` receipt before
+  publication to a new directory, with a 32 MiB total bundle budget. Preserve
+  supplied per-window/per-lane scales, including report-declared scaling, with
+  no new cross-window calibration. Receipts bind the exact request, validated
+  collection, ordered page/view/sequence/attachment hashes, geometry and index.
+  Existing single-window payloads and flags retain their semantics.
+- Document a separately approved prepared-reference anchor extension to reach
+  P1 alongside P2 in tutorial 08.17. Preserve the offline core and `missing_flanks`
+  refusal; no new public sequence or implicit reference download is added.
+  Explicitly distinguish inner Agent Assistant from explicit-state outer
+  MCP/ClawBio/OpenClaw operation, including headless `applied=false` for GUI
+  intents. The ClawBio descriptor extension remains separate and must approve
+  the settled collection target, output directory and artifact-write contract.
+- Preserve the already-landed span-scoring behavior; add deterministic tests
+  for hover bounds/complete curves, within-lane summaries, ordered collection
+  receipts, stale/over-limit/mixed-target refusals, staging cancellation, raw-path
+  and late destination-change refusals, shell
+  compatibility, tutorial guidance and prepared-reference flank restoration.
+  No local builds, Rust/Python tests or live GUI acceptance run for this tranche;
+  only formatting/static inspection and catalog generation are performed.
+  Canonical catalog regeneration preserves main's matching 08.03 stale-review
+  reason/feedback correction, without changing its review status or scientific artifacts;
+  no generated chapter or retained report is rewritten.
+  Cargo.lock, private outputs, screenshots, startup/DNA-feature latency paths,
+  release gates and delegate implementation are untouched. Acceptance/benchmarking
+  remain Glen's; no push, tag or workflow dispatch.
+
 ## 2026-10-05 - Handle Fallible ScreenCaptureKit Filter Construction
 
 - Adapt native window capture to ScreenCaptureKit 11's fallible content-filter

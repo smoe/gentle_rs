@@ -38,13 +38,13 @@
       "regulatory_analysis",
       "wet_lab_biologists"
     ],
-    "notes": "Offline real-locus native TSS walkthrough on the retained public TP73 RefSeq excerpt. Recovers the GenBank REGION anchor, previews all five annotated starts (the P1/TAp73 start is reported missing_flanks because the excerpt has no upstream sequence), approves only the internal ΔNp73 start at 1:3690672, then computes and exports locally scored E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Every step has GUI, Agent Assistant and inner-agent parity; ui open tss-view --local-score is GUI-hosted, while promoters tss-view-svg provides headless local scoring and export. Separate non-cross-calibrated scales, unavailable-not-zero bands, no occupancy or reporter claim. Publication-safe Linux/X11 screenshots were reviewed at the exact recorded display revision; native Windows and human scientific approval remain pending.",
+    "notes": "Offline core walkthrough on the retained public TP73 RefSeq excerpt: recover the anchor, preview five annotated starts, retain P1 missing_flanks, approve the internal DeltaNp73 start and compute/export exact E2F1 MA0024.3, PATZ1 MA1961.2 and TP73 MA0861.2 curves. Inner Agent Assistant and explicit-state MCP/outer agents share derivation and export; GUI-hosted ui intents remain applied=false headless. Span-scoped scoring, top-three within-matrix raw positions, disclosed 128-title per-lane/strand hover cap and validated collection SVG/index/receipt export. Optional P1/P2 comparison requires an already prepared compatible reference, without implicit download or padding. Separate supplied lane scales, unavailable-not-zero bands, no occupancy or reporter claim. Retained Linux/X11 screenshots cover their recorded historical revision; new behavior, native Windows/macOS and human scientific approval remain pending.",
     "estimated_minutes": 15,
     "difficulty": "intermediate",
     "network": "offline",
-    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI headless export"],
+    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI headless export", "MCP / outer agent"],
     "starting_state": "Empty project and the retained public test_files/tp73.ncbi.gb RefSeq excerpt",
-    "produces": ["interactive native TSS evidence view", "deterministic native TSS view SVG"],
+    "produces": ["interactive native TSS evidence view", "deterministic native TSS view SVG", "ordered collection SVG index and hash receipt"],
     "group": "08",
     "group_position": 17,
     "prerequisites": ["tss_regulatory_view_gui"]
@@ -111,6 +111,12 @@
       {
         "id": "export_proximal_factor_curves",
         "command": "promoters tss-view-svg TP73_WINDOW tp73-dnp73-proximal.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10 --span 401..701 --width 1600",
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "export_collection_factor_curves",
+        "command": "promoters tss-view-svg --collection tp73_tss tp73-tss-figures --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10",
         "execution": "ask",
         "mutating": false
       }

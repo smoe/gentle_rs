@@ -14645,6 +14645,7 @@ impl GentleEngine {
             tss_collection_list: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
+            tss_view_svg_export: None,
             gel_image: None,
             gel_image_analysis: None,
         };
@@ -14813,6 +14814,7 @@ impl GentleEngine {
             tss_collection_list: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
+            tss_view_svg_export: None,
             gel_image: None,
             gel_image_analysis: None,
         };

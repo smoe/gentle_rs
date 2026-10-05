@@ -3103,6 +3103,31 @@ Shared shell command:
       SHA-256. Requires GENtle annotated-TSS metadata on `SEQ_ID`: a plain locus
       is refused, not guessed. `--score-kind` is not inherited from the viewer —
       repeat it per export or it falls back to `llr_bits`.
+      The typed result includes `tss_view_svg_export`
+      (`gentle.tss_view_svg_export.v1`): exact operation/request hash, view and
+      sequence hashes, geometry, span and SVG hash. This is artifact integrity,
+      not scientific approval or a full environment audit.
+      Every curve point and validity band is retained, but SVG hover titles are
+      capped at 128 per lane/local strand, retaining strongest and sampled valid
+      starts. Each lane discloses emitted/total/omitted titles. Unsampled starts
+      lose their position-specific tooltip, not their scores. Top-three raw-score
+      starts are summarized within each matrix lane in the displayed span, with
+      TSS offsets and local strands; clipping does not change rank.
+    - `promoters tss-view-svg --collection COLLECTION_ID OUTPUT_DIR` accepts the
+      same optional export flags. Reuses `GetTssCollection` validation of every
+      member and stored membership; no implicit selection, regeneration or
+      approval. At most 32 members and 32 MiB for the complete bundle.
+      The same local `--span` must fit every member. A supplied `--report` must
+      match each member and is read once; no database query is performed.
+      Stage ordered `001.svg`, `002.svg`, ... pages plus `index.html` and
+      `receipt.json`, then publish to a **new directory** with an existing
+      ordinary parent. Failures/cancellation publish no partial bundle; existing
+      destinations are refused. The receipt binds the validated collection and
+      its hash, exact operation, ordered pages and index bytes. Scale policy
+      `per_window_per_lane` preserves each window's supplied lane scales,
+      including a report's declared scaling; it does not recalibrate across
+      windows or rank different matrices. Artifact-write confirmation still
+      applies. ClawBio descriptor support is a separate follow-up.
     - `promoters tss-inventory REQUEST_JSON_OR_@FILE` (read-only exact-start preview)
     - `promoters tss-materialize REQUEST_JSON_OR_@FILE` (approval-bound selected windows)
     - `promoters tss-collection COLLECTION_ID` (persisted collection and member validation; [walkthrough](tss_workspace.md))

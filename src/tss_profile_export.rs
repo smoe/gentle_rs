@@ -1167,7 +1167,8 @@ fn checked_directory(path: &Path) -> Result<PathBuf, EngineError> {
     Ok(resolved)
 }
 
-fn destination(path: &str) -> Result<PathBuf, EngineError> {
+/// Shared fresh-directory admission for TSS artifact bundles, before any writes.
+pub(crate) fn destination(path: &str) -> Result<PathBuf, EngineError> {
     if path.is_empty() || path.chars().any(char::is_control) {
         return Err(invalid(
             "output_dir must be a nonempty path without control characters",

@@ -21175,8 +21175,9 @@ fn tss_view_svg_capability_descriptor(id: &str) -> Value {
         "id": id, "kind": "operation", "mutating": "external",
         "requires_confirmation": true,
         "args": [
-            {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence with valid GENtle annotated-TSS metadata; a plain locus is refused"},
-            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "SVG destination; path on the typed operation"},
+            {"name": "SEQ_ID", "required": false, "subject_kind": "sequence", "detail": "one loaded sequence with valid GENtle annotated-TSS metadata; exactly one SEQ_ID or COLLECTION_ID is required"},
+            {"name": "COLLECTION_ID", "required": false, "subject_kind": "other", "detail": "--collection ID, or collection_id on the typed operation; validates all GetTssCollection members, at most 32, exclusive with SEQ_ID"},
+            {"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "single SVG destination, or a new directory for ordered collection SVGs, index.html and receipt.json"},
             {"name": "REPORT_PATH", "required": false, "subject_kind": "other", "detail": "--report PATH, or report on the typed operation; validates and attaches a saved profile without rescoring it"},
             {"name": "MATRIX_IDS", "required": false, "subject_kind": "other", "detail": "repeat --motif ACCESSION, or local_motifs on the typed operation; exact full-PFM accessions only, no factor aliases"},
             {"name": "SCORE_KIND", "required": false, "subject_kind": "other", "detail": "--score-kind KIND, or score_kind on the typed operation; defaults to llr_bits, never inherited from a GUI"},
@@ -21184,10 +21185,10 @@ fn tss_view_svg_capability_descriptor(id: &str) -> Value {
             {"name": "SPAN", "required": false, "subject_kind": "other", "detail": "--span START..END uses 1-based inclusive local coordinates; typed start_0based/end_0based_exclusive use a half-open interval. Local scoring scans only complete footprints within this span, excluding boundary-crossing windows. Admission limits still use the full annotated window; empirical quantiles use the scored span. Attached reports are only clipped, never rescored"},
             {"name": "WIDTH_PX", "required": false, "subject_kind": "other", "detail": "--width PX, or width_px on the typed operation; defaults to 1600"}
         ],
-        "reads": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}],
-        "precondition_expr": {"all": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}]},
+        "reads": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}, {"fact": "tss_collection.exists", "subject": {"arg": "COLLECTION_ID"}}],
+        "precondition_expr": {"any": [{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}, {"fact": "tss_collection.exists", "subject": {"arg": "COLLECTION_ID"}}]},
         "effects": [{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}],
-        "description": "Export the native annotated-TSS view as SVG without changing project state or requiring a GUI. Runtime validation checks TSS metadata, optional report bindings, exact motif accessions and scoring limits. Local curves and attached evidence retain separate scales; scores do not establish occupancy.",
+        "description": "Export native annotated-TSS SVGs and a typed hash receipt without changing project state or requiring a GUI. Collection export stages at most 32 validated windows in a new directory (32 MiB total). Preserve each window's lane scales, including supplied report scaling; no new cross-window calibration. At most 128 hover titles per lane/strand, with emitted/total/omitted counts and unchanged curves/bands. Top three raw-score starts rank positions only within a matrix lane, never factors or binding likelihood. Runtime validation checks exact target, membership, TSS/report bindings and scoring limits.",
         "annotation_status": "fact_annotated", "registry": registry_metadata_for_introspection(id)
     })
 }
@@ -43040,10 +43041,23 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "tss-view-svg" => {
             // Same native presentation the GUI draws; attachments stay explicit.
             if tokens.len() < 4 {
-                return Err("promoters tss-view-svg SEQ_ID OUTPUT.svg [--report REPORT_JSON] [--motif ACCESSION]... [--score-kind KIND] [--keep-negative] [--span START..END] [--width PX]".into());
+                return Err("promoters tss-view-svg SEQ_ID OUTPUT.svg | --collection COLLECTION_ID OUTPUT_DIR [--report REPORT_JSON] [--motif ACCESSION]... [--score-kind KIND] [--keep-negative] [--span START..END] [--width PX]".into());
             }
-            let seq_id = tokens[2].clone();
-            let path = tokens[3].clone();
+            let (seq_id, collection_id, path, mut idx) = if tokens[2] == "--collection" {
+                let id = tokens
+                    .get(3)
+                    .filter(|id| !id.trim().is_empty() && !id.starts_with("--"))
+                    .ok_or("--collection requires COLLECTION_ID")?
+                    .clone();
+                let path = tokens
+                    .get(4)
+                    .filter(|path| !path.trim().is_empty() && !path.starts_with("--"))
+                    .ok_or("--collection requires a new OUTPUT_DIR")?
+                    .clone();
+                (String::new(), Some(id), path, 5)
+            } else {
+                (tokens[2].clone(), None, tokens[3].clone(), 4)
+            };
             let mut report: Option<String> = None;
             let mut local_motifs: Vec<String> = vec![];
             let mut score_kind = TfbsScoreTrackValueKind::default();
@@ -43051,7 +43065,6 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             let mut start_0based: Option<usize> = None;
             let mut end_0based_exclusive: Option<usize> = None;
             let mut width_px: Option<u32> = None;
-            let mut idx = 4;
             while idx < tokens.len() {
                 match tokens[idx].as_str() {
                     "--report" => {
@@ -43131,6 +43144,7 @@ fn parse_promoters_command(tokens: &[String]) -> Result<ShellCommand, String> {
             Ok(ShellCommand::Op {
                 payload: serde_json::to_string(&Operation::ExportTssViewSvg {
                     seq_id,
+                    collection_id,
                     path,
                     report,
                     local_motifs,

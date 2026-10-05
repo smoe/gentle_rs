@@ -30937,22 +30937,26 @@ fn execute_introspect_tss_view_svg_declares_sequence_and_artifact_contract() {
             assert_eq!(descriptor["requires_confirmation"], true, "{id}");
             assert_eq!(
                 descriptor["reads"],
-                json!([{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}]),
+                json!([{"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}, {"fact": "tss_collection.exists", "subject": {"arg": "COLLECTION_ID"}}]),
                 "{id}"
             );
-            assert_eq!(descriptor["precondition_expr"]["all"], descriptor["reads"]);
+            assert_eq!(descriptor["precondition_expr"]["any"], descriptor["reads"]);
             assert_eq!(
                 descriptor["effects"],
                 json!([{"fact": "artifact.written", "subject": {"arg": "OUTPUT_PATH"}, "effect_kind": "external_handoff"}]),
                 "{id}"
             );
-            for name in ["SEQ_ID", "OUTPUT_PATH"] {
+            for (name, required) in [
+                ("SEQ_ID", false),
+                ("COLLECTION_ID", false),
+                ("OUTPUT_PATH", true),
+            ] {
                 assert!(
                     descriptor["args"]
                         .as_array()
                         .unwrap()
                         .iter()
-                        .any(|arg| { arg["name"] == name && arg["required"] == true })
+                        .any(|arg| { arg["name"] == name && arg["required"] == required })
                 );
             }
         }
@@ -30968,6 +30972,95 @@ fn execute_introspect_tss_view_svg_declares_sequence_and_artifact_contract() {
         assert_eq!(row["unknown_atoms"][0]["fact"], "sequence.exists");
         assert_eq!(row["unknown_atoms"][0]["reason"], "unbound argument");
     }
+}
+
+#[test]
+fn parse_native_tss_svg_single_and_collection_targets_preserves_legacy_payloads() {
+    for (command, collection) in [
+        (
+            "promoters tss-view-svg window 'window figure.svg' --motif MA0861.2 --span 401..701",
+            false,
+        ),
+        (
+            "promoters tss-view-svg --collection windows 'ordered pages' --motif MA0861.2 --span 401..701",
+            true,
+        ),
+    ] {
+        let ShellCommand::Op { payload } = parse_shell_line(command).unwrap() else {
+            panic!("expected shared operation")
+        };
+        let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+        let op: Operation = serde_json::from_str(&payload).unwrap();
+        let Operation::ExportTssViewSvg {
+            seq_id,
+            collection_id,
+            start_0based,
+            end_0based_exclusive,
+            ..
+        } = op
+        else {
+            panic!("expected native export")
+        };
+        assert_eq!(collection_id.as_deref(), collection.then_some("windows"));
+        assert_eq!(seq_id, if collection { "" } else { "window" });
+        assert_eq!((start_0based, end_0based_exclusive), (Some(400), Some(701)));
+        assert_eq!(
+            value["ExportTssViewSvg"].get("collection_id").is_some(),
+            collection
+        );
+        assert!(parse_shell_line("promoters tss-view-svg --collection windows").is_err());
+        assert!(
+            parse_shell_line("promoters tss-view-svg --collection windows --motif MA0861.2")
+                .is_err()
+        );
+    }
+    let legacy: Operation =
+        serde_json::from_str(r#"{"ExportTssViewSvg":{"seq_id":"window","path":"window.svg"}}"#)
+            .unwrap();
+    assert!(matches!(
+        legacy,
+        Operation::ExportTssViewSvg {
+            collection_id: None,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn tss_factor_tutorial_exposes_outer_export_and_explicit_prepared_reference_steps() {
+    let tutorial = include_str!("../../docs/tutorial/08-17_tp73_dnp73_factor_curves.md");
+    assert!(tutorial.contains("01-01_agent_interfaces.md#inner-agent-outer-agent-or-coding-agent"));
+    assert!(tutorial.contains("**outer agent**"));
+    assert!(tutorial.contains("applied=false"));
+    assert!(tutorial.contains("128 scored-position hover titles per lane and local strand"));
+    assert!(tutorial.contains("**three highest raw-score window starts"));
+    let source: Value = serde_json::from_str(include_str!(
+        "../../docs/tutorial/sources/08-17_tp73_dnp73_factor_curves.json"
+    ))
+    .unwrap();
+    let export = source["agent_parity"]["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["id"] == "export_collection_factor_curves")
+        .unwrap();
+    let command = export["command"].as_str().unwrap();
+    assert!(tutorial.contains(command));
+    assert_eq!(
+        export["execution"], "ask",
+        "external artifact writes remain reviewed"
+    );
+    assert!(matches!(
+        parse_shell_line(command).unwrap(),
+        ShellCommand::Op { .. }
+    ));
+    let extend = "genomes extend-anchor tp73_locus 5p 500 --output-id tp73_p1_p2_locus --prepared-genome \"Human GRCh38 NCBI RefSeq GCF_000001405.40\" --catalog assets/genomes.json";
+    assert!(tutorial.contains(extend));
+    assert!(matches!(
+        parse_shell_line(extend).unwrap(),
+        ShellCommand::ReferenceExtendAnchor { .. }
+    ));
+    assert!(tutorial.contains("Do not reuse `tp73_tss`'s old"));
 }
 
 #[test]

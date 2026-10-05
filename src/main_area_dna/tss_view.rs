@@ -12,6 +12,8 @@ use local_scoring::LocalScoreState;
 
 type LoadedView = Result<Arc<TssSequenceView>, String>;
 pub(super) type SvgExportReceiver = Arc<Mutex<Receiver<Result<String, String>>>>;
+// Virtualized rows and their allocated content must have the same stable height.
+const TSS_LANE_HEIGHT: f32 = 196.0;
 
 #[derive(Clone, Debug)]
 struct ProfileLoad {
@@ -583,7 +585,7 @@ impl MainAreaDna {
         egui::ScrollArea::vertical()
             .id_salt(("tss_lanes", self.panel_scope_key()))
             .max_height((ui.available_height() - 115.0).max(120.0))
-            .show_rows(ui, 148.0, lanes.len(), |ui, rows| {
+            .show_rows(ui, TSS_LANE_HEIGHT, lanes.len(), |ui, rows| {
                 for row in rows {
                     let index = lanes[row];
                     if let Some(feature) = paint_lane(
@@ -638,12 +640,13 @@ fn paint_lane(
     start: usize,
     end: usize,
 ) -> Option<TssViewFeature> {
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(width, 144.0), egui::Sense::click());
+    let (rect, response) =
+        ui.allocate_exact_size(egui::vec2(width, TSS_LANE_HEIGHT), egui::Sense::click());
     let plot = egui::Rect::from_min_max(
         egui::pos2(rect.left() + left, rect.top() + 9.0),
         egui::pos2(
             (rect.right() - right).max(rect.left() + left + 50.0),
-            rect.bottom() - 12.0,
+            rect.top() + 132.0,
         ),
     );
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
@@ -1019,8 +1022,26 @@ fn paint_trace(
     } else {
         format!("{valid} valid strand-windows here")
     };
+    let strongest = trace
+        .strongest_windows(start..end)
+        .iter()
+        .map(|window| {
+            format!(
+                "TSS {:+}, {}: {:.3}",
+                window.start_0based as i64 - view.geometry.upstream_bp as i64,
+                if window.reverse { "-" } else { "+" },
+                window.raw_score
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let strongest = if strongest.is_empty() {
+        "No evaluated starts in span"
+    } else {
+        &strongest
+    };
     let summary = format!(
-        "{}\n{status}{}\nLocal + solid / - dashed\n{TSS_UNAVAILABLE_LEGEND}\n{}",
+        "{}\n{status}{}\nHighest raw scores in this lane:\n{strongest}\nLocal + solid / - dashed\n{TSS_UNAVAILABLE_LEGEND}\n{}",
         lane.units,
         if trace.range_is_fallback {
             "; axis 0..1 is a display fallback"

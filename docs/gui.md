@@ -6954,6 +6954,23 @@ curves likewise remain untouched. A cropped existing plot and a newly scored
 subspan therefore need not have the same edge coverage, scale or empirical
 quantiles. Same-window, same-scoring-scope GUI/headless parity remains required.
 
+Each full-curve lane's side summary lists up to three highest raw-score window
+starts in the displayed span, with signed TSS offsets and local strands. Ranking
+is strictly within that matrix lane, using raw scores even when negative values
+are clipped for drawing. Unavailable starts are excluded and valid zero is not.
+Ties use start coordinate, then local `+` before `-`; these positions are not a
+binding-likelihood ranking and do not rank one factor against another.
+
+For all validated collection members, the headless/agent route is
+`promoters tss-view-svg --collection COLLECTION_ID OUTPUT_DIR` with the same
+attachment/scoring/span flags. At most 32 members and 32 MiB per complete bundle
+are allowed; every member is checked before scoring. Ordered SVG pages,
+`index.html` links and a typed `receipt.json` are staged before publishing to a
+new directory. Per-window/per-lane scale policy preserves supplied report
+scaling, with no new cross-window calibration. This command does not change
+approvals, select more starts or open a GUI. The single-window route also returns
+the typed `tss_view_svg_export` artifact receipt.
+
 See the [TP73 ΔNp73 factor-curve walkthrough](tutorial/08-17_tp73_dnp73_factor_curves.md)
 for all three routes on a real locus.
 
@@ -6976,6 +6993,13 @@ substitutes the standard map. A loading or
 stale presentation cannot be exported; excessive work is refused (10,000 items
 per lane, 100,000 overall, 128 lanes and 32 MiB), with a request to narrow the
 span or lane selection, rather than silently dropping evidence.
+
+SVG score-window hover annotations are capped at 128 per lane and local strand,
+retaining strongest and evenly sampled valid starts. Each lane discloses
+emitted/total and omitted-title counts. Unsampled starts lose their own
+coordinate/raw-score/footprint tooltip; every curve point and validity band
+remains. Native GUI hovering is not capped. The same top-three within-lane
+raw-score summary appears in the exported SVG, outside its clipped plot area.
 
 GENtle's annotated TSS export grammar is still required, including existing
 hashed record names. FASTA alone, arbitrary locus features and generic prose

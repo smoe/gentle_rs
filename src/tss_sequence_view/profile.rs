@@ -28,27 +28,33 @@ pub struct TssProfileAttachment {
     pub warnings: Vec<String>,
 }
 
+/// Read a report once so all collection pages bind the same exact file bytes.
+pub(crate) fn read_tss_profile_file(path: &Path) -> Result<(TssProfileReport, String), String> {
+    const LIMIT: u64 = 256 * 1024 * 1024;
+    let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() > LIMIT {
+        return Err("Choose a regular TSS report.json file no larger than 256 MiB".into());
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .map_err(|e| e.to_string())?
+        .take(LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() as u64 > LIMIT {
+        return Err("TSS report exceeds 256 MiB".into());
+    }
+    let report: TssProfileReport =
+        serde_json::from_slice(&bytes).map_err(|e| format!("Not a TSS profile report: {e}"))?;
+    Ok((report, sha256_hex_bytes(&bytes)))
+}
+
 impl TssSequenceView {
     /// Bounded file loading belongs on a worker, never in the paint callback.
     pub fn load_profile(&self, path: &Path) -> Result<Self, String> {
-        const LIMIT: u64 = 256 * 1024 * 1024;
-        let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
-        if !metadata.is_file() || metadata.len() > LIMIT {
-            return Err("Choose a regular TSS report.json file no larger than 256 MiB".into());
-        }
-        let mut bytes = Vec::new();
-        std::fs::File::open(path)
-            .map_err(|e| e.to_string())?
-            .take(LIMIT + 1)
-            .read_to_end(&mut bytes)
-            .map_err(|e| e.to_string())?;
-        if bytes.len() as u64 > LIMIT {
-            return Err("TSS report exceeds 256 MiB".into());
-        }
-        let report: TssProfileReport =
-            serde_json::from_slice(&bytes).map_err(|e| format!("Not a TSS profile report: {e}"))?;
+        let (report, hash) = read_tss_profile_file(path)?;
         let mut view = self.with_profile(&report)?;
-        view.profile.as_mut().unwrap().file_sha256 = sha256_hex_bytes(&bytes);
+        view.profile.as_mut().unwrap().file_sha256 = hash;
         Ok(view)
     }
 

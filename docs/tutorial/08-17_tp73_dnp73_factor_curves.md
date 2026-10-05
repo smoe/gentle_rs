@@ -6,9 +6,11 @@ This tutorial answers one concrete regulatory question on a real human locus:
 > −500..+200 bp window do the E2F1, PATZ1 and TP73 sequence models score, and
 > which windows could not be scored at all?
 
-Everything runs offline from the retained public RefSeq record already in this
-repository. No network request, no prepared genome, no private sample and no
-motif database query is involved.
+The core walkthrough runs offline from the retained public RefSeq record
+already in this repository. No network request, prepared genome, private sample
+or motif database query is involved. The optional P1 comparison at the end
+requires an already prepared compatible genome; it is not an offline fixture
+or an implicit download.
 
 Sequence models locate *candidate* sites. Nothing below shows measured
 occupancy, and a high model score is not evidence that a factor binds, that it
@@ -48,10 +50,21 @@ In about 15 minutes you will:
 5. compute the three local motif curves and read them without over-claiming;
 6. export the same view as a deterministic SVG.
 
-Every step below is available three ways — GUI, Agent Assistant / shared
-operation, and a request you can hand to the inner agent — and all three drive
-the same engine contract. Steps 5 and 6 additionally have a fully headless
-route that needs no GUI host at all.
+The GUI and agents drive the same engine contract. Following
+[01.01's agent vocabulary](01-01_agent_interfaces.md#inner-agent-outer-agent-or-coding-agent),
+the **inner agent** is Agent Assistant on the live project; the **outer agent**
+(MCP or ClawBio/OpenClaw) works against explicit saved state, not the unsaved GUI.
+
+| Steps | Inner agent | Outer agent |
+| --- | --- | --- |
+| 1–3: load, inventory, approved materialization | Live project, reviewed commands | Same shared operations against an explicit state; retain results and approval request |
+| 4 and GUI form of 5: open views, compute in a viewer | GUI-hosted `ui ...` intents | Headless `applied=false`; do not claim a window opened |
+| Headless 5–6: compute and export SVG | Explicit reviewed export | Same shared export, retaining SVG hashes and typed receipt |
+
+The current ClawBio TSS descriptor routes collection lifecycle, not this new
+SVG/scoring surface yet. An outer agent can use MCP/shared operations as in
+[the offline MCP exercise](01-03_mcp_offline_roundtrip.md), or the CLI against
+an explicit state. Do not invent a ClawBio intent that has not been registered.
 
 ## Before you start
 
@@ -67,6 +80,12 @@ route that needs no GUI host at all.
 
 The CLI examples use `target/debug/gentle_cli`; a release or packaged binary
 behaves identically.
+
+For outer-agent work, retain one explicit `STATE.json` through the shared
+operations, for example `gentle_cli --state STATE.json shell 'COMMAND'`.
+Opening/importing and materialization require normal project-change approval;
+SVG export requires artifact-write consent. A receipt establishes what GENtle
+processed and wrote, not biological correctness or visual observation.
 
 ## 1. Open the TP73 locus
 
@@ -97,6 +116,10 @@ You will also see a warning that the anchor could not be verified against a
 local catalog, because GRCh38.p14 is not prepared here. That is expected and
 honest: the coordinates come from the file, and nothing has re-derived them from
 a reference. The warning is not a defect and does not block this tutorial.
+
+**Outer agent:** run the `/open file ...` operation against your explicit state
+and retain the anchor and warnings. The adjacent `ui open sequence-window`
+is GUI-hosted; a headless reply has `applied=false`, not an opened viewer.
 
 ## 2. Preview every annotated start before choosing one
 
@@ -147,8 +170,8 @@ silently returning a shorter or padded window.
 
 That is a presentation limit of *this excerpt*, not a statement about the
 promoter. P1 is real and well studied; it is simply not inspectable in this
-file. To work on it you would extend the anchor upstream from a prepared genome
-first — a separate task, deliberately not hidden inside this tutorial.
+file. The [optional P1 comparison](#optional-compare-p1-and-p2-from-a-prepared-reference)
+below documents that extension without weakening the refusal or hiding retrieval.
 
 `1:3,690,672` is the internal ΔNp73 start, it carries six transcript models,
 and it has the full flank. That is the window used below.
@@ -160,6 +183,10 @@ The disabled P1 row is useful evidence: it remains visible with
 
 The preview also prints an `approval_sha256`. It binds this exact inventory,
 and the next step refuses to run without it.
+
+**Outer agent:** the same `promoters tss-inventory` command is headless. Retain
+its typed inventory, unavailable rows and approval digest before proposing a
+materialization request; do not derive coordinates or IDs in an agent script.
 
 ## 3. Approve exactly one start
 
@@ -207,6 +234,10 @@ output sequence ID reported by your materialization result.
 The window is annotation-derived. Its `Origin=project_annotation_derivation`
 comment states that it is not a verified external report bundle.
 
+**Outer agent:** obtain explicit approval of this exact request, run
+`promoters tss-materialize` against the same state, and retain the created IDs
+and collection report. No GUI window is required for derivation.
+
 ## 4. Inspect the window natively
 
 **GUI**
@@ -242,6 +273,10 @@ absence is not a statement about the sequence.
 This pre-score view is the control for the next image: the transcript context
 is already present, while local factor curves have not yet been computed.
 
+**Outer agent:** this step is GUI-hosted. Report headless `applied=false` honestly;
+use `promoters tss-collection tp73_tss` to validate the member records and the
+headless export below for a figure. Neither is a claim to have seen the live GUI.
+
 ## 5. Compute the three factor curves
 
 **GUI**
@@ -267,6 +302,11 @@ ui open tss-view --local-score MA0861.2,MA0024.3,MA1961.2 --score-kind llr_backg
 ```text
 promoters tss-view-svg TP73_WINDOW tp73-dnp73-factors.svg --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10
 ```
+
+This is the **outer agent's** scoring route, not the `ui ... --local-score`
+intent above. Keep the explicit state, request, typed `tss_view_svg_export`
+receipt and resulting SVG; repeat the chosen score kind rather than borrowing
+settings from a GUI session.
 
 Three **Locally computed** lanes appear, each with its own scale, its own
 printed score kind and its own matrix SHA-256. For this window all three are
@@ -307,6 +347,12 @@ view. Curve height is interpretable only within its own matrix lane.
 - The curves are computed from this window's bases by the shared engine scorer.
   They are independent of any attached report and of imported DuckDB evidence,
   and they never overwrite either.
+- Each curve lane lists up to **three highest raw-score window starts in the
+  displayed span**, with signed TSS offsets and local strands. Ties use start
+  coordinate, then `+` before `-`. Clipping negative display values does not
+  change this ranking; unavailable starts are excluded, real zero is included.
+  These are highest-scoring positions **for that matrix**, not the most likely
+  binding sites. No factor is ranked against another lane.
 
 Locally computed curves are model output on genomic DNA. They do not show
 occupancy, they do not establish that TAp73 autoregulates through a site in this
@@ -376,13 +422,49 @@ two exports that differ only in that flag are not comparable.
 > already-scored GUI view.
 
 The operation reports the lane count, the exported local span and the SVG's
-SHA-256, so the same command can be shown to have produced the same figure. The
-export writes atomically and refuses to render non-finite scores.
+SHA-256, with a typed `tss_view_svg_export` receipt binding the operation, view,
+sequence, geometry and output bytes. Compare hashes before claiming two files
+are identical. The export writes atomically and refuses non-finite scores.
+
+The SVG retains every curve point and unavailable band, but emits at most
+**128 scored-position hover titles per lane and local strand**. It keeps the
+strongest starts plus evenly spaced evaluated starts; each lane prints its
+emitted/total counts and omitted-title count. Missing hover details are not
+missing scores: unsampled positions remain in the curve but lose their own
+coordinate/raw-score/footprint tooltip. The top-three raw-score summary remains
+visible next to each matrix lane. This is a presentation policy, not a peak call.
 
 The headless route accepts `--report REPORT_JSON` as well, so an agent can
 attach a validated TSS profile report and locally computed curves in one
 export. Report-backed curves, imported DuckDB hits and locally computed curves
 then stay in separate lane classes with separate scales.
+
+### Export all approved collection members
+
+```text
+promoters tss-view-svg --collection tp73_tss tp73-tss-figures --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10
+```
+
+Use a **new output directory** with an existing ordinary parent. GENtle validates
+the stored collection and every member through `GetTssCollection`; stale or
+edited members are refused, not silently regenerated. At most 32 windows and
+32 MiB for the complete bundle are allowed. Here the approved collection has
+only one member; this command does not select or approve additional starts.
+
+The bundle contains ordered `001.svg`, `002.svg`, … pages, `index.html` links
+that preserve native SVG hover text, and `receipt.json`. The receipt binds the
+validated collection, exact operation, ordered page hashes, view/sequence hashes
+and index hash. All pages stage before publication; a failure/cancellation
+publishes no partial bundle. Existing destinations are never overwritten.
+
+Scale policy is **per window and per lane**, preserving any supplied report's
+declared scaling rather than recalibrating across windows. Equal-looking heights
+in locally computed lanes are not cross-window calibrated comparisons. For
+report-backed lanes, comparability still depends on that report's explicit
+scale and score-kind contract. `--span` applies the same local coordinates to
+every member and is refused if outside any window.
+The ClawBio delegate must approve this collection target and output directory
+once it gains the export route; this tutorial does not add that descriptor.
 
 ## 7. State the result conservatively
 
@@ -403,6 +485,52 @@ outranks another; or that the unassessed P1 promoter lacks such sites.
 Occupancy needs CUT&RUN or ChIP at this locus; functional relevance needs
 perturbation and a reporter or endogenous readout.
 
+## Optional: compare P1 and P2 from a prepared reference
+
+This extension is separate from the offline core. It requires an already
+prepared, compatible reference with the upstream bases and transcript
+annotations. Do not prepare/download a genome silently and do not pad the
+unavailable P1 row. A concrete built-in catalog entry is
+`Human GRCh38 NCBI RefSeq GCF_000001405.40` (GRCh38.p14):
+
+```text
+genomes status "Human GRCh38 NCBI RefSeq GCF_000001405.40" --catalog assets/genomes.json
+genomes extend-anchor tp73_locus 5p 500 --output-id tp73_p1_p2_locus --prepared-genome "Human GRCh38 NCBI RefSeq GCF_000001405.40" --catalog assets/genomes.json
+```
+
+Inspect status first. If this exact compatible reference is not prepared,
+stop and arrange preparation as a separately authorized task. With another
+local catalog/cache, supply its actual paths and compatible genome ID explicitly;
+never substitute another assembly. Review and approve the extension operation.
+It creates `tp73_p1_p2_locus`, retains the original excerpt, and records actual
+reference, bounds, verification and clipping diagnostics. A chromosome-boundary
+clip is not permission to call an incomplete flank complete.
+
+Now preview a **new collection**, using the returned extended sequence ID:
+
+```text
+promoters tss-inventory '{"seq_id":"tp73_p1_p2_locus","gene_query":"TP73","collection_id":"tp73_p1_p2","upstream_bp":500,"downstream_bp":200}'
+```
+
+Find the P1 and internal P2 rows by the returned annotation and genomic starts;
+require `available` for each. Annotation is projected from the prepared
+reference, so accession membership/counts may differ from this older excerpt.
+Keep source/release and anchor diagnostics rather than asserting the old five-row
+inventory still applies. Missing or unresolved rows remain unavailable.
+
+Copy the new preview's actual approval digest and the two selected TSS IDs into
+a reviewed `promoters tss-materialize` request. Do not reuse `tp73_tss`'s old
+digest or infer the new local coordinates in an agent. Then export:
+
+```text
+promoters tss-view-svg --collection tp73_p1_p2 tp73-p1-p2-figures --motif MA0861.2,MA0024.3,MA1961.2 --score-kind llr_background_tail_log10
+```
+
+This compares model-score positions in two source-annotated promoters. It does
+not measure TAp73-to-ΔNp73 feedback, binding or reporter activity. Inner and
+outer agents can perform the same shared extension/derivation/export against
+their explicit project/state, with approval and the reference diagnostics retained.
+
 ## How this fits the neighbouring tutorials
 
 - [08-15](08-15_tss_collection_gui.md) covers the TSS collection workflow
@@ -418,7 +546,8 @@ perturbation and a reporter or endogenous readout.
 - [08-13](08-13_motif_logo_to_promoter_trace.md) connects a single matrix logo
   to its promoter trace.
 
-This page deliberately stays at one window and one locus.
+The core stays at one window and one locus; the optional prepared-reference
+extension is the explicit route to a P1/P2 comparison.
 
 ## Provenance of the retained teaching input
 

@@ -64,6 +64,16 @@ positions are not interchangeable. Empirical quantiles use the scanned span.
 Cropping existing report/GUI curves remains presentation-only and retains their
 original scope, calibration and scales.
 
+Native TSS SVG hover annotations may be bounded only with a disclosed
+per-lane/per-local-strand emitted/total/omitted count; the default cap is 128,
+retaining strongest and sampled evaluated starts. Every curve point and validity
+band remains. Highest raw-score starts (up to three) are a within-matrix,
+displayed-span position summary, not a factor or binding-likelihood ranking.
+Collection export reuses validated TSS membership and preserves each window's
+supplied lane scales, including report-declared scaling; it introduces no new
+cross-window calibration. Staged artifact receipts do not authorize changing
+approved membership or treating missing flanks as biological absence.
+
 Presentation-size reductions must not discard scores, change sampling or weaken
 receipt checks. Raster-backed PDF image compression is lossless; encoding and
 output hashes are recorded. The separate `vector_pdf` representation preserves

@@ -109,6 +109,9 @@ pub fn render_tss_view_svg(
     let mut notes = vec![
         "Native TSS presentation; export performs no rescoring or retrieval. All selected lanes, not a screenshot. Unavailable is not zero; stored peaks are not full curves.".into(),
         "Report content/sequence binding is not a full receipt audit. Local model scores and imported raw scores have separate scales.".into(),
+        "Export scale policy: preserve each window's supplied lane scales, including a report's declared scaling. No new cross-window calibration or cross-matrix ranking.".into(),
+        format!("Hover policy: at most {TSS_SVG_HOVER_LIMIT_PER_STRAND} scored titles per lane and local strand, retaining strongest and evenly spaced valid starts. Omitted titles lose position-specific tooltip details, not curve points or validity bands."),
+        format!("Highest raw-score summary: up to {TSS_SCORE_SUMMARY_LIMIT} evaluated window starts per matrix lane in the displayed span, across both local strands. These are not the most likely binding sites."),
         TSS_TRACE_LEGEND.into(),
         TSS_UNAVAILABLE_LEGEND.into(),
         view.provenance.clone(),
@@ -149,6 +152,8 @@ pub fn render_tss_view_svg(
         "genome_id": view.genome_id, "annotation_release": view.annotation_release,
         "profile": view.profile,
         "local_scoring": view.local_scoring,
+        "scale_policy": "per_window_per_lane",
+        "hover_limit_per_lane_strand": TSS_SVG_HOVER_LIMIT_PER_STRAND,
     });
     let _ = write!(
         svg,
@@ -245,6 +250,37 @@ pub fn render_tss_view_svg(
                 }
             ),
         );
+        if let Some(trace) = &lane.trace {
+            text(
+                &mut svg,
+                right + 15.0,
+                top + 112.0,
+                "Highest raw scores in this lane:",
+            );
+            let strongest = trace.strongest_windows(start..end);
+            if strongest.is_empty() {
+                text(
+                    &mut svg,
+                    right + 15.0,
+                    top + 126.0,
+                    "No evaluated starts in span",
+                );
+            }
+            for (i, window) in strongest.iter().enumerate() {
+                text(
+                    &mut svg,
+                    right + 15.0,
+                    top + 126.0 + i as f64 * 14.0,
+                    &format!(
+                        "TSS {:+}, {}: {:.3}",
+                        window.start_0based as i64 - view.geometry.upstream_bp as i64,
+                        if window.reverse { "-" } else { "+" },
+                        window.raw_score
+                    ),
+                );
+            }
+        }
+        let mut hover_summary = None;
         let _ = write!(svg, "<g clip-path=\"url(#lane-{row})\">");
         let tss = view.geometry.upstream_bp;
         if (start..end).contains(&tss) {
@@ -255,6 +291,7 @@ pub fn render_tss_view_svg(
             );
         }
         if let Some(trace) = &lane.trace {
+            let mut hover_counts = [(0, 0); 2];
             let visible_end = end.min(trace.start_0based + trace.forward.len());
             if visible_end < end {
                 let _ = write!(
@@ -265,6 +302,8 @@ pub fn render_tss_view_svg(
                 );
             }
             for (reverse, scores) in [(false, &trace.forward), (true, &trace.reverse)] {
+                let (hover_starts, total) = trace.hover_starts(start..visible_end, reverse);
+                hover_counts[usize::from(reverse)] = (hover_starts.len(), total);
                 let [r, g, b] = lane.kind.trace_rgb(reverse);
                 let color = format!("#{r:02x}{g:02x}{b:02x}");
                 let mut path = String::new();
@@ -289,29 +328,31 @@ pub fn render_tss_view_svg(
                             path.push_str("l 0,0 ");
                         }
                         connected = true;
-                        let details = format!(
-                            "{}; {}; local strand {}; {} {}; displayed {}; footprint {}..{}; {}",
-                            lane.label,
-                            view.coordinate_label(p),
-                            if reverse { "-" } else { "+" },
-                            if lane.kind == TssLaneKind::LocalScoreTrace {
-                                "computed score"
-                            } else {
-                                "raw"
-                            },
-                            raw,
-                            value,
-                            p + 1,
-                            p + trace.motif_length_bp,
-                            lane.units
-                        );
-                        let _ = write!(
-                            hovers,
-                            "<circle data-role=\"score-window\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"3\" fill=\"transparent\"><title>{}</title></circle>",
-                            x(p),
-                            y(value),
-                            xml(&details)
-                        );
+                        if hover_starts.contains(&p) {
+                            let details = format!(
+                                "{}; {}; local strand {}; {} {}; displayed {}; footprint {}..{}; {}",
+                                lane.label,
+                                view.coordinate_label(p),
+                                if reverse { "-" } else { "+" },
+                                if lane.kind == TssLaneKind::LocalScoreTrace {
+                                    "computed score"
+                                } else {
+                                    "raw"
+                                },
+                                raw,
+                                value,
+                                p + 1,
+                                p + trace.motif_length_bp,
+                                lane.units
+                            );
+                            let _ = write!(
+                                hovers,
+                                "<circle data-role=\"score-window\" cx=\"{:.2}\" cy=\"{:.2}\" r=\"3\" fill=\"transparent\"><title>{}</title></circle>",
+                                x(p),
+                                y(value),
+                                xml(&details)
+                            );
+                        }
                     } else {
                         connected = false;
                         let gap_top = if reverse { top + 60.0 } else { top };
@@ -335,6 +376,11 @@ pub fn render_tss_view_svg(
                 );
                 svg.push_str(&hovers);
             }
+            let [(forward, forward_total), (reverse, reverse_total)] = hover_counts;
+            hover_summary = Some(format!(
+                "Hover titles + {forward}/{forward_total}, - {reverse}/{reverse_total}; omitted {}",
+                forward_total + reverse_total - forward - reverse
+            ));
         } else {
             let motif = matches!(lane.kind, TssLaneKind::Motif | TssLaneKind::ImportedMotif);
             let middle = motif
@@ -436,7 +482,11 @@ pub fn render_tss_view_svg(
                 );
             }
         }
-        svg.push_str("</g></g>");
+        svg.push_str("</g>");
+        if let Some(summary) = hover_summary {
+            text(&mut svg, left, low + 31.0, &summary);
+        }
+        svg.push_str("</g>");
     }
     for (n, line) in note_lines.iter().enumerate() {
         text(&mut svg, 20.0, bottom + 20.0 + n as f64 * 15.0, line);
@@ -592,6 +642,65 @@ mod tests {
             assert!(svg.contains("stroke=\"#1e69b9\""));
             assert!(svg.contains("stroke=\"#aa4669\""));
             assert!(svg.contains("upper half local +, lower half local -"));
+        }
+    }
+
+    #[test]
+    fn tss_svg_bounds_hover_titles_without_dropping_curve_points_or_gaps() {
+        // Extend the hand-crafted profile geometry; no biological fixture is used.
+        for count in [130, 700, 10_000] {
+            let (mut view, mut options) = fixture(false);
+            let index = view
+                .lanes
+                .iter()
+                .position(|lane| lane.trace.is_some())
+                .unwrap();
+            view.geometry.upstream_bp = 4;
+            view.geometry.downstream_bp = count - 3;
+            view.geometry.tss_1based = view.geometry.start_1based + 4;
+            view.geometry.end_1based = view.geometry.start_1based + count as u64 + 1;
+            options.end_0based_exclusive = count + 2;
+            options.lane_indices = vec![index];
+            view.lanes[index].scale_max = 10.0;
+            let trace = view.lanes[index].trace.as_mut().unwrap();
+            trace.end_0based_exclusive = count + 2;
+            trace.forward = vec![Some(0.0); count];
+            trace.reverse = vec![Some(0.0); count];
+            trace.forward[7] = None;
+            trace.reverse[9] = None;
+            trace.forward[count / 2] = Some(10.0);
+            let svg = render_tss_view_svg(&view, &options).unwrap();
+            assert_eq!(svg, render_tss_view_svg(&view, &options).unwrap());
+            let emitted = 2 * TSS_SVG_HOVER_LIMIT_PER_STRAND;
+            assert_eq!(svg.matches("data-role=\"score-window\"").count(), emitted);
+            assert!(svg.contains(&format!(
+                "Hover titles + 128/{}, - 128/{}; omitted {}",
+                count - 1,
+                count - 1,
+                2 * (count - 1) - emitted
+            )));
+            assert_eq!(svg.matches("data-role=\"unavailable-score\"").count(), 2);
+            assert_eq!(svg.matches("data-role=\"terminal-unavailable\"").count(), 1);
+            for curve in svg.split("<path data-role=\"score-curve\"").skip(1) {
+                let path = curve
+                    .split(" d=\"")
+                    .nth(1)
+                    .unwrap()
+                    .split('"')
+                    .next()
+                    .unwrap();
+                assert_eq!(
+                    path.matches("M ").count() + path.matches("L ").count(),
+                    count - 1
+                );
+            }
+            let clip = svg.find("<g clip-path=").unwrap();
+            assert!(svg.find("Highest raw scores in this lane:").unwrap() < clip);
+            assert!(
+                svg[clip..].contains("</g><text"),
+                "disclosure must be outside the clipped plot"
+            );
+            assert!(svg.contains(&format!("TSS {:+}, +: 10.000", count as i64 / 2 - 4)));
         }
     }
 

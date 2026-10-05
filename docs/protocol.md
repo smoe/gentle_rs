@@ -101,6 +101,27 @@ an oversized annotated sequence. Empirical quantiles and local scales use the
 scored span. Saved report attachment and native GUI export do not rescore or
 change their original calibration. See [native TSS export](gui.md#export-the-native-tss-view).
 
+`ExportTssViewSvg` additionally accepts `collection_id`, exclusive with `seq_id`
+(omitted/empty for collection requests). The same `GetTssCollection` contract
+validates membership and every member snapshot. Native export admits at most
+32 members and 32 MiB for the full SVG/index/receipt bundle, staged to a new
+directory. Existing single-sequence JSON remains valid; the optional collection
+field is omitted when absent, preserving existing operation serialization.
+`OpResult.tss_view_svg_export` holds `gentle.tss_view_svg_export.v1`: exact
+operation and unprefixed SHA-256, optional validated collection and content hash,
+exporter revision, explicit `per_window_per_lane` scale policy, hover cap, ordered
+page hashes, view/sequence identity, geometry/span, attachment hashes and optional
+index hash. This receipt is integrity evidence, not a signature, biological
+approval or independent reference/environment verification.
+
+The scale policy retains supplied lane ranges and any report-declared scaling;
+it introduces no new cross-window calibration. Highest raw-score positions are
+selected only within each matrix lane and displayed span (up to three, ties by
+start then local forward before reverse); unavailable positions are never zero.
+SVGs retain all score points and validity bands but cap score-window hover titles
+at 128 per lane/local strand, disclosing emitted/total/omitted counts. This
+annotation-only bound never changes evaluated-window counts or scientific output.
+
 `ComputeTssTfbsProfiles {request, export?}` validates a transcript-oriented
 FASTA bundle and a strict, exact-version JASPAR panel. It returns
 `tss_tfbs_profiles` (`gentle.tss_tfbs_profiles.v1`) and, when requested,

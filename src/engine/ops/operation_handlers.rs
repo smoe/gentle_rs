@@ -40139,6 +40139,7 @@ impl GentleEngine {
             tss_inventory: None,
             tss_collection: None,
             tss_collection_list: None,
+            tss_view_svg_export: None,
             tss_tfbs_profiles: None,
             tss_tfbs_profile_receipt: None,
         };
@@ -51547,92 +51548,11 @@ impl GentleEngine {
                     self.forget_tss_collection(&collection_id)?;
                     result.messages.push(format!("Forgot TSS collection '{collection_id}' metadata; member sequences and lineage retained"));
                 }
-                Operation::ExportTssViewSvg {
-                    seq_id,
-                    path,
-                    report,
-                    local_motifs,
-                    score_kind,
-                    clip_negative,
-                    start_0based,
-                    end_0based_exclusive,
-                    width_px,
-                } => {
-                    let dna = self.state.sequences.get(&seq_id).ok_or_else(|| {
-                        EngineError::new(
-                            ErrorCode::NotFound,
-                            format!("Sequence '{seq_id}' not found"),
-                        )
-                    })?;
-                    let sequence = dna.get_forward_string();
-                    // Decoding validates the hash, geometry and per-feature metadata; a
-                    // sequence without GENtle annotated-TSS metadata is refused, not guessed.
-                    let mut view = crate::tss_sequence_view::TssSequenceView::from_dna(dna)
-                        .map_err(EngineError::invalid_input)?;
-                    let length = view
-                        .geometry
-                        .length()
-                        .ok_or_else(|| EngineError::invalid_input("Invalid TSS geometry"))?;
-                    let span = start_0based.unwrap_or(0)..end_0based_exclusive.unwrap_or(length);
-                    if span.start >= span.end || span.end > length {
-                        return Err(EngineError::invalid_input(
-                            "Invalid TSS SVG span within the annotated window",
-                        ));
-                    }
-                    if let Some(report_path) = report.as_deref() {
-                        view = view
-                            .load_profile(std::path::Path::new(report_path))
-                            .map_err(EngineError::invalid_input)?;
-                        result.messages.push(format!(
-                            "Attached validated TSS profile report '{report_path}'; no rescoring or database query"
-                        ));
-                    }
-                    if !local_motifs.is_empty() {
-                        let request = crate::tss_sequence_view::TssLocalScoreRequest {
-                            matrix_ids: local_motifs.clone(),
-                            score_kind,
-                            clip_negative,
-                        };
-                        let tracks = view
-                            .compute_local_scores_in_span(
-                                &sequence,
-                                &request,
-                                span.clone(),
-                                on_progress,
-                            )
-                            .map_err(EngineError::invalid_input)?;
-                        view = view
-                            .with_local_scores_in_span(&sequence, &request, &tracks, span.clone())
-                            .map_err(EngineError::invalid_input)?;
-                        result.messages.push(format!(
-                            "Computed local {} curves for {} exact matrix accession(s) in local {}..{}; only complete footprints within the span, excluding boundary-crossing windows; admission budget uses the full {}-bp annotated window",
-                            score_kind.as_str(),
-                            local_motifs.len(),
-                            span.start + 1,
-                            span.end,
-                            length
-                        ));
-                    }
-                    let options = crate::tss_sequence_view::TssViewSvgOptions {
-                        start_0based: span.start,
-                        end_0based_exclusive: span.end,
-                        lane_indices: (0..view.lanes.len()).collect(),
-                        width_px: width_px.unwrap_or(1600),
-                        print_size_mm: None,
-                    };
-                    let svg_sha256 = crate::tss_sequence_view::write_tss_view_svg(
-                        &view,
-                        &options,
-                        std::path::Path::new(&path),
-                    )
-                    .map_err(EngineError::invalid_input)?;
-                    result.warnings.extend(view.warnings.iter().cloned());
-                    result.messages.push(format!(
-                        "Wrote the native TSS view for '{seq_id}' ({} lanes, local {}..{}) to '{path}' (SVG SHA-256 {svg_sha256})",
-                        view.lanes.len(),
-                        options.start_0based + 1,
-                        options.end_0based_exclusive
-                    ));
+                operation @ Operation::ExportTssViewSvg { .. } => {
+                    let outcome = self.export_native_tss_svg(&operation, on_progress)?;
+                    result.messages.extend(outcome.messages);
+                    result.warnings.extend(outcome.warnings);
+                    result.tss_view_svg_export = Some(Box::new(outcome.receipt));
                 }
                 Operation::PlanEvidenceGuidedFragmentCandidates { request, path } => {
                     let report = self.plan_reporter_fragment_selection(*request)?;
