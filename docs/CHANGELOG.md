@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-05 - Pin Independent Sequence-Design Audit And Preserve Review History
+
+- Commit the bounded synthetic-insert implementation and rebase onto local
+  `main` `560be14b`, preserving newer TSS/GUI changes and both agent guidance
+  paths. Archive the original `7669ed1c` review verbatim with a historical
+  status banner; retain one active owner-authorized implementation contract.
+- Add a forwardable [Glen audit prompt](glen_sequence_design_handoff_20261005.md)
+  pinned to implementation `85d23ddb`, covering independent small-space oracles,
+  exact-approval safety, shared-interface replay and bounded timing/RSS samples.
+  Require SHA/profile/input-bound findings and retained evidence returned to
+  Steffen; do not substitute nearby tips, claim `.12` acceptance or publish.
+- Separate earlier `022af181`'s 27 passing targeted Rust checks from incomplete
+  post-rebase verification. Pure-core tests and patched-tree Cargo checks pass;
+  the slow `86ce6580` root-test rebuild was explicitly interrupted under
+  concurrent build pressure, with final focused/native tests handed to Glen.
+- Record the inherited Python checkout-test `NameError` at line 528: one test
+  fails in eight subcases, with three platform skips among 27 tests. Leave
+  that unrelated repair out of this scope; do not describe its gate as green.
+
 ## 2026-10-05 - Preserve Unknown Spacers In Negative-Strand Exon Regression
 
 - Correct the negative-strand genome-extraction test to expect the documented
