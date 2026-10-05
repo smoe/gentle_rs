@@ -259,9 +259,13 @@ fn rejects_raw_absolute_traversal_and_windows_paths_before_normalizing() {
     for path in [
         "../request.json",
         "child/../request.json",
+        "/request.json",
         "/tmp/request.json",
+        "//server/share/request.json",
+        "C:request.json",
         "C:/request.json",
         r"C:\request.json",
+        r"\request.json",
         r"\\server\request.json",
     ] {
         let command = format!(
@@ -276,6 +280,62 @@ fn rejects_raw_absolute_traversal_and_windows_paths_before_normalizing() {
             "{path}: {:?}",
             report.findings
         );
+    }
+}
+
+#[test]
+fn rejects_rooted_guide_template_and_payload_paths_before_file_lookup() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut original = unit(json!([case(
+        "preview",
+        "promoters tss-inventory @learner.json",
+        "ask",
+        false
+    )]));
+    original.agent_parity.as_mut().unwrap().cases[0].parser_payload =
+        Some(TutorialAgentParserPayload {
+            file: "learner.json".into(),
+            template: "template.json".into(),
+        });
+    let payload =
+        json!({"seq_id": "synthetic", "gene_query": "SYNTHETIC", "collection_id": "synthetic_tss"});
+    fs::write(temp.path().join("template.json"), payload.to_string()).unwrap();
+    let extra = format!("```json\n{payload}\n```\n");
+    for raw in [
+        "/missing.json",
+        "//server/share/missing.json",
+        r"\missing.json",
+        "C:missing.json",
+    ] {
+        for surface in ["guide", "template", "payload"] {
+            let mut invalid = original.clone();
+            match surface {
+                "guide" => invalid.catalog.as_mut().unwrap().path = raw.into(),
+                "template" => {
+                    invalid.agent_parity.as_mut().unwrap().cases[0]
+                        .parser_payload
+                        .as_mut()
+                        .unwrap()
+                        .template = raw.into();
+                }
+                "payload" => {
+                    let case = &mut invalid.agent_parity.as_mut().unwrap().cases[0];
+                    case.parser_payload.as_mut().unwrap().file = raw.into();
+                    case.command = format!(
+                        "promoters tss-inventory {}",
+                        shell_quote(&format!("@{raw}"))
+                    );
+                }
+                _ => unreachable!(),
+            }
+            write_guide(temp.path(), &invalid, &extra);
+            let report = check_tutorial_agent_parity(&[invalid], temp.path());
+            assert_eq!(report.findings.len(), 1, "{surface}: {raw}: {report:?}");
+            assert_eq!(
+                report.findings[0].code, "unsafe_path",
+                "{surface}: {raw}: {report:?}"
+            );
+        }
     }
 }
 

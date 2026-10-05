@@ -7,8 +7,9 @@ the published `.11` artifacts.
 
 ## Changed Files
 
-- CI logic/regressions: `src/workflow_examples.rs` and
-  `scripts/test_tutorial_checkouts.py`.
+- CI logic/regressions: `src/workflow_examples.rs`,
+  `scripts/test_tutorial_checkouts.py`, `src/workflow_examples/agent_parity.rs`
+  and its `tests.rs`.
 - Contract/testing guidance: `docs/architecture.md`, `docs/protocol.md` and
   `docs/testing.md`.
 - Status/handoff: `docs/CHANGELOG.md`, `docs/roadmap.md`,
@@ -17,6 +18,21 @@ the published `.11` artifacts.
 
 ## Corrected CI Evidence
 
+- A later [run 37292637621](https://github.com/smoe/gentle_rs/actions/runs/37292637621)
+  at `462b5ffe848e53bd287545ded11154bb9bee0288` is also red. Its fast checkout
+  gate reports the unbound mock, and both selected desktop jobs report the
+  outdated 19-versus-20 TSS case count. `42867017` already fixes those failures.
+  Windows additionally fails
+  `rejects_raw_absolute_traversal_and_windows_paths_before_normalizing`:
+  `/tmp/request.json` produces `file_unavailable` instead of `unsafe_path`.
+  That rooted path lacks a drive prefix, so Windows `Path::is_absolute()` is
+  false. Reject roots with `Path::has_root()` before joining/canonicalizing,
+  covering guide, template and payload bindings as well as direct `@file`.
+  Preserve raw traversal, Windows spelling and symlink guards; do not change
+  command grammar or regenerate the catalog. A new native Windows verdict is
+  still required; this red run is not evidence about the unpushed repair.
+  The additional repair is local commit
+  `a086bbda5d372f1caf00c6034d88a3862f029910`, not a selected candidate.
 - [Run 37235516663](https://github.com/smoe/gentle_rs/actions/runs/37235516663)
   at `f523a757cd2a2861196b1a5c0b36df67983ce0e6` completed with Linux and Windows
   failing the two catalog tests; their preceding tutorial-drift checks passed.
@@ -52,6 +68,30 @@ the published `.11` artifacts.
 Host: macOS, Rust `1.100.0-beta.1 (e3feeb59c 2026-09-27)`. These are functional
 working-tree checks, not package, GUI, performance or frozen-candidate receipts.
 No catalog, historical report or retained screenshot was regenerated.
+
+### Integrated-Head Recheck
+
+The follow-up started at `7387beb4` and fast-forwarded this clean branch to
+local `main` `fb9e6e00e4c6b6d7994b7979326b5e999f047ab6`, which already includes
+the two scoped commits `42867017` and `d1883dde`. A fetch still placed public
+`origin/main` at `462b5ffe`; no new push or dispatch was performed.
+
+At the unchanged integrated HEAD, both original catalog tests pass separately
+and from a fresh full clone at
+`/private/tmp/gentle-internal12-current-fb9e6e00` (not shallow, not a worktree
+copy). Reuse the just-built test executable by absolute path with the clone
+as CWD and `RUST_MIN_STACK=16777216`; its SHA-256 before the rooted-path repair
+is `02fc0c69ed00787d934e8eaa874b080d93b79c944ed21f4bd5c4891c6c1443a0`.
+The lockfile SHA-256 remains
+`3dfe44c7a08bf779e32289cf1312103ea1fb5883e44bba5f6e1912ce3ed77745`.
+The combined checkout/walkthrough/publication Python checks run 28 tests:
+25 pass and three have expected platform skips. Formatting and locked Cargo
+check also pass. These are pre-repair checks, not evidence that Windows has
+accepted the new path guard.
+Post-repair results are recorded separately below; do not merge their identity
+with the earlier 92-test verification.
+
+### Earlier Scoped Verification
 
 ```bash
 python3 -m unittest scripts.test_tutorial_checkouts -q
@@ -118,6 +158,43 @@ this documentation handoff. The final locked check and 92-test serial replay
 are green. Manual plan-fidelity review confirms these scoped changes; the
 historical CI diff correction, extra mock/count repairs and age-fixture repair
 are recorded above, not silently treated as the original timestamp hypothesis.
+
+### Rooted-Path Repair Verification
+
+On Darwin 27 arm64 with Rust/Cargo 1.100.0-beta.1, the patched tree based on
+`fb9e6e00` passes **93/93 workflow-example library tests**, including all
+**11 agent-parity tests**, with no ignored cases. The latter tests also pass
+as a separate targeted run. This uses CI's serial library-test order; the
+full workspace/all-target invocation was not run locally.
+
+```bash
+cargo test -q --locked --offline -j 1 --lib workflow_examples::agent_parity \
+  -- --test-threads=1
+cargo test -q --locked --offline -j 1 --lib workflow_examples \
+  -- --test-threads=1
+python3 -m unittest scripts.test_tutorial_checkouts \
+  scripts.test_tutorial_walkthroughs \
+  scripts.test_publish_tutorial_gui_screenshots -q
+cargo check -q --locked --offline -j 1
+cargo fmt --check
+git diff --check
+```
+
+The Python run has **25 passes / 3 expected platform skips**. Locked Cargo
+check, formatting and whitespace checks pass. The linker emits the existing
+non-blocking `__eh_frame` compact-unwind warning. The rebuilt test executable
+SHA-256 is `510c1e1157ba303d411d7ceb62096b2114bef49d4fb64e5ae5460886adb6dc05`.
+Both original catalog tests pass separately in the worktree and again from
+the same fresh clone, using this rebuilt executable by absolute path and
+the existing 16 MiB test-thread stack. Catalog and manifest bytes, historical
+reports, owner prompt files, dependencies and workflows remain unchanged.
+
+These are pre-commit functional checks, not exact packaged-candidate receipts:
+the clone's data remains bound to `fb9e6e00`, and the executable was built from
+the patched working tree before `a086bbda`. Native Windows/Linux reruns, the
+full workspace suite, package/container builds, benchmarks and live GUI or
+scientific acceptance remain unrun. Rerun frozen-candidate gates after the
+owner selects and pushes the final SHA; do not relabel this evidence.
 
 ## First package-opt1 Build-Only Runs
 

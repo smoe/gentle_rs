@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-10-05 - Integrate Tutorial Path Repair With TSS Follow-Up
+
+- Merge `gentle_rs_2_main` at `50d1b997` into the annotated TSS follow-up
+  `0cea59f2`. Preserve both changelog records and the `.12` CI/package handoff;
+  reconcile the roadmap summary without combining branch-specific verification
+  into a merged-candidate verdict. Only documentation conflicts were resolved;
+  no local builds/tests, push, tag or workflow dispatch.
+
 ## 2026-10-05 - Restore Annotated Anchor Extension And Unbound TSS Readiness
 
 - Repair the optional tutorial 08.17 extension route in the shared engine:
@@ -22,6 +30,33 @@
   offline cargo check passed. Session-close had no failures; uncommitted edits
   and the pre-existing `outputs/` directory were noted. No live TP73, native
   Windows/Linux or release acceptance is claimed.
+
+## 2026-10-05 - Reject Rooted Tutorial Paths On Windows
+
+- Reconcile the supplied `.12` preparation prompt against integrated local
+  `main` `fb9e6e00`: the catalog-history fix and candidate/roadmap handoff are
+  already present in `42867017` and `d1883dde`. Preserve their original
+  verification and the corrected historical catalog diff; no catalog or
+  scientific artifact is regenerated.
+- Read the newer public CI run `37292637621` at `462b5ffe`. The unbound Python
+  mock and twentieth TSS case are already repaired locally, but Windows exposes
+  one remaining path-admission failure: `/tmp/request.json` is rooted without
+  a drive prefix and is not `Path::is_absolute()`. Reject `has_root()` before
+  file lookup; retain traversal, quoting, Windows-spelling, symlink and mutation
+  guards. This affects only the non-executing tutorial validator.
+- Extend the actual parser/validator regression for slash-rooted, UNC-like,
+  backslash-rooted and drive-relative inputs across guide, template and learner
+  payload bindings. Document the policy and latest CI evidence in the existing
+  candidate-preparation handoff. Native Windows, package/container, GUI,
+  scientific and performance acceptance remain pending. No push, tag, dispatch,
+  release-profile change or adjacent sequence-design work is included.
+- Verification on the patched tree based on `fb9e6e00`, Darwin 27 arm64,
+  Rust/Cargo 1.100.0-beta.1: 11 agent-parity tests and all 93 serial
+  workflow-example library tests pass (no ignored cases). Both catalog tests
+  also pass individually and from a fresh full clone. The 28 Python checks
+  have 25 passes and three expected platform skips. Locked Cargo check,
+  formatting and whitespace checks pass; retain the non-blocking linker
+  `__eh_frame` warning. This is not the full workspace/all-target CI gate.
 
 ## 2026-10-05 - Keep Edit-Menu History And Popup Cleanup Consistent
 

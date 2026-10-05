@@ -378,8 +378,10 @@ The `@file` token must occur exactly once. The template must equal a fenced
 `json` block in the guide as a JSON value, independent of formatting, object
 key order or LF/CRLF. All placeholders remain intact: parsing a materialization
 request cannot approve it. Unmapped `@file` inputs are read from the explicit
-repository root, with raw traversal, absolute paths and symlink escapes
-rejected before parsing. Existing command grammar and execution are unchanged.
+repository root, with raw traversal, rooted paths (including `/file` without
+a Windows drive prefix), absolute paths and symlink escapes rejected before
+parsing. The same policy binds guide, template and payload paths. Existing
+command grammar and execution are unchanged.
 
 Author-declared `mutating=true` requires a parser-mutating command, but the
 reverse is not required: generic `op` inspect/export routes are conservatively
