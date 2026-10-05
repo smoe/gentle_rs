@@ -455,15 +455,15 @@ impl GENtleApp {
                 )
             });
         }
+        let subject = response
+            .ctx
+            .data(|data| data.get_temp::<LineageContextSubject>(id))?;
         if !response.secondary_clicked() && !response.context_menu_opened() {
             response
                 .ctx
                 .data_mut(|data| data.remove::<LineageContextSubject>(id));
             return None;
         }
-        let subject = response
-            .ctx
-            .data(|data| data.get_temp::<LineageContextSubject>(id))?;
         if !subject.engine.ptr_eq(&Arc::downgrade(&self.engine)) {
             return None;
         }
@@ -524,6 +524,7 @@ impl GENtleApp {
                 {
                     self.open_pool_window(&row.seq_id, row.pool_members.clone());
                     ui.close();
+                    return;
                 }
             }
             LineageNodeKind::Sequence => {
@@ -4506,10 +4507,41 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::{
-        clipped_semantic_interaction_rect, container_pool_export_readiness,
-        lineage_graph_canvas_width,
+        GENtleApp, LineageContextSubject, clipped_semantic_interaction_rect,
+        container_pool_export_readiness, lineage_graph_canvas_width,
     };
     use eframe::egui;
+
+    #[test]
+    fn closed_lineage_context_clears_only_its_stored_subject() {
+        // Synthetic popup state, recreated in memory without native windows or captures.
+        let app = GENtleApp::default();
+        let ctx = egui::Context::default();
+        ctx.run_ui(egui::RawInput::default(), |ui| {
+            let response = ui.allocate_response(egui::vec2(100.0, 50.0), egui::Sense::click());
+            let id = response.id.with("lineage_context_subject");
+            let unrelated_id = response.id.with("unrelated_popup_state");
+            response.ctx.data_mut(|data| {
+                data.insert_temp(unrelated_id, 7usize);
+            });
+            assert!(app.lineage_context_row(&response, &[], None).is_none());
+            response.ctx.data_mut(|data| {
+                data.insert_temp(
+                    id,
+                    LineageContextSubject {
+                        engine: std::sync::Arc::downgrade(&app.engine),
+                        node_id: Some("closed_node".into()),
+                    },
+                );
+            });
+            assert!(app.lineage_context_row(&response, &[], None).is_none());
+            response.ctx.data(|data| {
+                assert!(data.get_temp::<LineageContextSubject>(id).is_none());
+                assert_eq!(data.get_temp::<usize>(unrelated_id), Some(7));
+            });
+        })
+        .drop_without_applying_deltas();
+    }
 
     #[test]
     fn lineage_graph_canvas_width_uses_parent_viewport_snapshot() {

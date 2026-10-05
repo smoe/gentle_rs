@@ -16625,10 +16625,6 @@ Error: `{err}`"
             self.last_native_window_entries = native_window_entries.clone();
             self.last_native_active_window_key = active_window_key;
         }
-        let undo_count = self.root_engine_summary_cache.history.undo_count;
-        let redo_count = self.root_engine_summary_cache.history.redo_count;
-        let history_limit = self.root_engine_summary_cache.history.history_limit;
-        let history_ops_enabled = !self.has_active_background_jobs();
         egui::MenuBar::new().ui(ui, |ui| {
             ui.menu_button(self.tr("menu.file"), |ui| {
                 if ui
@@ -17006,14 +17002,7 @@ Error: `{err}`"
                     self.execute_command_palette_action(ui.ctx(), CommandPaletteAction::Redo);
                     ui.close();
                 }
-                if !history_ops_enabled {
-                    ui.small("Undo/redo disabled while background jobs are running.");
-                } else {
-                    ui.small(format!(
-                        "Undo {undo_count} | Redo {redo_count} | limit {}",
-                        history_limit
-                    ));
-                }
+                ui.small(launch.history_summary_label());
                 ui.separator();
                 let palette_resp = self.track_hover_status(
                     ui.button(self.tr("menu.edit.command_palette"))

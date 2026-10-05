@@ -4474,6 +4474,9 @@ launcher can be used, not that its analysis passed scientific validation.
     result brought into view on arrow navigation
   - Undo/Redo use the same current session-history and background-job checks as
     the egui Edit menu, including a fresh check when invoked
+  - Edit-menu checkpoint counts use the same nonblocking live snapshot as its
+    buttons, not the status-bar cache. A busy project reports unavailable
+    history instead of stale counts; the history limit remains in Operation History
 - Operation History panel:
   - open via `Edit -> Operation History...` or `Window -> Show Operation History`
   - includes undo/redo buttons, available counts, history limit, next transition

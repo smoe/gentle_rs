@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-05 - Keep Edit-Menu History And Popup Cleanup Consistent
+
+- Address the supplied review of the GUI follow-up committed as `7ff01d83`:
+  show Edit-menu checkpoint counts from the same nonblocking live snapshot as
+  Undo/Redo readiness, not the root status cache. A busy project reports
+  unavailable history instead of stale counts. Keep the history limit in
+  Operation History rather than formatting full operation summaries during
+  menu paint; disabled-button hovers retain the background-job explanation.
+- Skip popup-data writes for lineage rows without a stored context subject,
+  preserve cleanup after closing a menu, and return immediately after opening
+  a pool. Clicked-project/subject identity and existing setup routes are unchanged.
+- Add inline synthetic regressions for stale-cache/live-count divergence,
+  snapshot consistency through Undo, busy/job readiness and closed-popup cleanup.
+  The original 54-test verification below predates integration; no local builds
+  or tests were run for this follow-up. Native/hosted acceptance remains Glen's;
+  CI must validate the current commit. Poster outputs, `paper` and Cargo.lock
+  are untouched; no push, tag or workflow dispatch.
+- Verification: `cargo fmt --all --check` and `git diff --check` passed.
+  Session-close: 4 ok, 2 warn, 0 fail (intentional dirty/local artifacts and
+  manual plan-fidelity reminder); the diff stays within the supplied GUI review.
+
 ## 2026-10-05 - Preserve Unknown Spacers In Negative-Strand Exon Regression
 
 - Correct the negative-strand genome-extraction test to expect the documented
@@ -95,13 +116,16 @@
   popup identity, history, stale dispatch, minimum-window, disabled-hover and
   keyboard regressions; refresh the GUI manual and bounded availability plan. Live native/hosted acceptance remains
   pending; this changes no biology, permissions, dependency or release gate.
-- Verification: 54 focused default-feature library tests passed for action
+- Historical implementation verification (before integration): 54 focused
+  default-feature library tests passed for action
   readiness, subject selection, palette/history and lineage context/artifact
   routing; `cargo check -q --locked --offline -j 1`, `cargo fmt --all --check`
-  and `git diff --check` passed. Tested patched HEAD `564ea09` on Darwin 27 arm64,
+  and `git diff --check` passed. Tested patched baseline `564ea09` on Darwin 27 arm64,
   Rust `1.101.0-nightly (c1070d693 2026-09-28)`. Test linking emitted a large
   `__eh_frame` compact-unwind warning. No native GUI/Windows acceptance checks,
   screenshot captures or external scientific probes were run.
+  This 54-test run predates integration at `7ff01d83`; it is historical evidence,
+  not a test verdict for current main.
 - Session-close: 4 ok, 2 warn, 0 fail (intentional dirty/unrelated artifacts and
   the manual plan-fidelity reminder). Scoped diff review matches the approved
   availability follow-up plus the owner's object-context discovery request;

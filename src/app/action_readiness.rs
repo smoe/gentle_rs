@@ -260,6 +260,7 @@ pub(super) struct LaunchContext {
     empty: bool,
     pcr_open: bool,
     confirmation_open: bool,
+    history_counts: Option<(usize, usize)>,
     undo: ActionReadiness,
     redo: ActionReadiness,
 }
@@ -274,7 +275,7 @@ impl LaunchContext {
                 detail: detail.clone(),
             },
         };
-        let (dna, guides, empty, undo, redo) = match engine {
+        let (dna, guides, empty, history_counts, undo, redo) = match engine {
             Ok(engine) => {
                 let dna = match &selected {
                     Ok((id, _)) if engine.sequence_kind(id) == Some("dna") => {
@@ -293,20 +294,18 @@ impl LaunchContext {
                     ActionReadiness::Ready
                 };
                 let background_jobs = app.has_active_background_jobs();
+                let history_counts = (engine.undo_available(), engine.redo_available());
+                let undo =
+                    ActionReadiness::history_action(history_counts.0, background_jobs, "Undo");
+                let redo =
+                    ActionReadiness::history_action(history_counts.1, background_jobs, "Redo");
                 (
                     dna,
                     guides,
                     engine.state().sequences.is_empty(),
-                    ActionReadiness::history_action(
-                        engine.undo_available(),
-                        background_jobs,
-                        "Undo",
-                    ),
-                    ActionReadiness::history_action(
-                        engine.redo_available(),
-                        background_jobs,
-                        "Redo",
-                    ),
+                    Some(history_counts),
+                    undo,
+                    redo,
                 )
             }
             Err(_) => {
@@ -317,6 +316,7 @@ impl LaunchContext {
                     checking.clone(),
                     checking.clone(),
                     false,
+                    None,
                     checking.clone(),
                     checking,
                 )
@@ -329,8 +329,16 @@ impl LaunchContext {
             empty,
             pcr_open: app.show_pcr_design_dialog && !app.pcr_design_seq_id.is_empty(),
             confirmation_open: app.show_sequencing_confirmation_dialog,
+            history_counts,
             undo,
             redo,
+        }
+    }
+
+    pub(super) fn history_summary_label(&self) -> String {
+        match self.history_counts {
+            Some((undo, redo)) => format!("Undo {undo} | Redo {redo}"),
+            None => "Session history unavailable while the project is busy; try again".into(),
         }
     }
 
@@ -434,6 +442,46 @@ mod tests {
 
     // Synthetic in-memory project/history and egui inputs, recreated by these tests.
     // No file fixtures, provider calls or screenshot capture are involved.
+    #[test]
+    fn history_summary_and_readiness_share_a_live_snapshot_not_the_root_cache() {
+        let mut app = GENtleApp::default();
+        app.root_engine_summary_cache.history.undo_count = 99;
+        app.root_engine_summary_cache.history.redo_count = 98;
+        app.root_engine_summary_cache.history.history_limit = 97;
+        let revision = app.engine.read().unwrap().mutation_revision();
+        for palette in [false, true] {
+            let launch = LaunchContext::capture(&app, palette);
+            assert_eq!(launch.history_summary_label(), "Undo 0 | Redo 0");
+            assert!(!launch.readiness(CommandPaletteAction::Undo).is_ready());
+            assert!(!launch.readiness(CommandPaletteAction::Redo).is_ready());
+        }
+        assert_eq!(revision, app.engine.read().unwrap().mutation_revision());
+
+        app.engine
+            .write()
+            .unwrap()
+            .apply(Operation::SetDisplayVisibility {
+                target: crate::engine::DisplayTarget::Features,
+                visible: false,
+            })
+            .unwrap();
+        let before_undo = LaunchContext::capture(&app, false);
+        assert_eq!(before_undo.history_summary_label(), "Undo 1 | Redo 0");
+        assert!(before_undo.readiness(CommandPaletteAction::Undo).is_ready());
+        assert!(!before_undo.readiness(CommandPaletteAction::Redo).is_ready());
+        app.engine.write().unwrap().undo_last_operation().unwrap();
+        assert_eq!(before_undo.history_summary_label(), "Undo 1 | Redo 0");
+        assert!(before_undo.readiness(CommandPaletteAction::Undo).is_ready());
+        for palette in [false, true] {
+            let launch = LaunchContext::capture(&app, palette);
+            assert_eq!(launch.history_summary_label(), "Undo 0 | Redo 1");
+            assert!(!launch.readiness(CommandPaletteAction::Undo).is_ready());
+            assert!(launch.readiness(CommandPaletteAction::Redo).is_ready());
+        }
+        assert_eq!(app.root_engine_summary_cache.history.undo_count, 99);
+        assert_eq!(app.root_engine_summary_cache.history.redo_count, 98);
+    }
+
     #[test]
     fn history_actions_follow_checkpoints_and_reject_stale_palette_entries() {
         let ctx = egui::Context::default();
@@ -543,8 +591,10 @@ mod tests {
             receiver,
         });
         let before = app.engine.read().unwrap().mutation_revision();
+        let launch = LaunchContext::capture(&app, false);
+        assert_eq!(launch.history_summary_label(), "Undo 1 | Redo 1");
         for action in [CommandPaletteAction::Undo, CommandPaletteAction::Redo] {
-            let menu = LaunchContext::capture(&app, false).readiness(action);
+            let menu = launch.readiness(action);
             let palette = app.palette_action_readiness(action);
             assert_eq!(menu, palette);
             assert_eq!(palette.label(), "Unavailable");
@@ -559,7 +609,14 @@ mod tests {
         app.agent_task = None;
         let engine = app.engine.clone();
         let locked = engine.write().unwrap();
+        let launch = LaunchContext::capture(&app, false);
+        assert!(launch.history_summary_label().contains("project is busy"));
+        assert!(!launch.history_summary_label().contains("Undo 1"));
         for action in [CommandPaletteAction::Undo, CommandPaletteAction::Redo] {
+            assert!(matches!(
+                launch.readiness(action),
+                ActionReadiness::Checking { .. }
+            ));
             assert!(matches!(
                 app.palette_action_readiness(action),
                 ActionReadiness::Checking { .. }
