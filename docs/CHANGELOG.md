@@ -60,6 +60,46 @@
   length and negative-strand orientation remain guarded. No local builds or
   tests run; execution remains for CI.
 
+## 2026-10-05 - Prepare Internal .12 Gates Without Dispatching
+
+- Verify Windows job `109794599955` in run `36686854112` at `a51bbc06` ran the
+  unfiltered locked workspace suite under normal parallelism. Close only the
+  historical forwarded-services JASPAR-lock recheck; keep the separate CertUtil
+  SHA-1 warning and every current native/scientific/GUI gate open.
+- Carry `.10`/`.11` acceptance into `.12` without changing published ledgers.
+  Keep 25 deprecated ClawBio compatibility modes; retention/removal now remains
+  an explicit `.12` owner decision rather than a passed removal deadline.
+- Add `internal_12_candidate_preparation.md` with frozen-SHA build-only command
+  templates, receipt/smoke/resource requirements, compatibility call sites and
+  the rolling Ubuntu job inventory. The installer matrix already pins Ubuntu
+  24.04; propose other pinning for approval, without modifying workflows.
+- No push, dispatch, package/container build, benchmark, tag, upload or acceptance
+  verdict was performed. Missing measurements/image bytes remain unavailable.
+
+## 2026-10-05 - Guard Tutorial Review History And Checkout Failure Checks
+
+- Verify the October 4 CI failure against `f523a757`: its catalog retained the
+  graphic-based reason while the generator chose the same-date source JSON.
+  The review reversed that diff; `19889dae` already fixes it. Preserve the
+  catalog correction and human-review status rather than regenerating reports
+  or claiming that a timestamp fallback caused that historical failure.
+- Remove the latent mtime fallback for reviewed dependency dates. Failed/empty
+  Git history is an explicit generation/check error. Preserve missing-graphic,
+  newest UTC commit date and dependency-priority ordering; render relative
+  paths even for absolute source inputs. Bind committed-catalog review age to
+  the revision date, keeping live warnings current-date-based.
+- Add synthetic Git/date/history regressions and LF/CRLF date-tie coverage.
+  Fix the unbound checkout-test mock introduced by the earlier catalog check,
+  retaining stop-on-first-failure assertions. Align agent-parity counts with
+  the new twentieth TSS export case, without changing approval guards.
+- On macOS, all 92 serial workflow-example tests, the independent catalog/
+  history/age checks, 18 fast checkout tests and `cargo check -q --locked`
+  pass. Give the age-only fixture a tracked synthetic workflow rather than
+  relaxing the error. Both catalog checks pass in a fresh full clone of the
+  repair. No full workspace suite, package, benchmark, GUI, native Windows/Linux
+  rerun or publication is claimed. Private outputs, report hashes, retained
+  screenshots and package recipes are unchanged.
+
 ## 2026-10-05 - Synchronize Promoter Tutorial Catalog Review Metadata
 
 - Refresh tutorial 08.03's catalog stale-review reason and feedback route to

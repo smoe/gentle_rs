@@ -280,9 +280,10 @@ Deprecated in `v0.1.0-internal.8`, earliest removal `v0.1.0-internal.11`:
 Each deprecated mode still executes and adds a `warnings[]` entry naming the
 equivalent `mode: "shell"` form.
 
-All listed compatibility modes remain available in `v0.1.0-internal.10`.
-Removal in or after `.11` requires a separate compatibility discussion rather
-than following automatically from the earliest-removal marker.
+All listed compatibility modes remain available in `v0.1.0-internal.12`.
+The published `.11` did not remove them. Retention or removal is an open owner
+decision for `.12`, not an automatic consequence of the earliest-removal marker;
+see the [mode/call-site inventory](internal_12_candidate_preparation.md#clawbio-compatibility-decision).
 
 ## Drift Guards
 

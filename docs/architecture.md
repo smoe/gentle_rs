@@ -1175,6 +1175,15 @@ Implementation direction:
 - keep screenshot capture behind explicit runtime/feature opt-in policy gates
   even after relaunch
 
+Tutorial review projection invariant:
+
+- Generated review metadata uses committed Git dates and repository-relative
+  dependency paths, never checkout mtimes. The committed catalog's review-age
+  reference is the checked-out commit date; live warnings use the current date.
+- Unavailable dependency history is an explicit generation/check failure, not
+  evidence that a reviewed tutorial is fresh. Missing graphics remain the first
+  staleness reason, followed by newest UTC commit date and dependency priority.
+
 ### Context-labelled tutorial action graph (design direction)
 
 Tutorials will often reuse the same engine capability in different biological,
