@@ -56,10 +56,11 @@ type Diagnostic = (&'static str, String);
 
 // Contracts use portable repository-relative paths. Check the original spelling
 // before canonicalization so traversal is rejected even when it resolves inside.
+// Windows paths such as /file have a root without being absolute.
 fn validate_relative_path(raw: &str) -> Result<(), Diagnostic> {
     if raw.is_empty()
         || raw.contains(['\\', ':'])
-        || Path::new(raw).is_absolute()
+        || Path::new(raw).has_root()
         || raw.split('/').any(|part| part == "..")
     {
         return Err((
