@@ -36760,7 +36760,7 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
         .expect("expected negative-strand exon-concatenated synthetic sequence");
     assert_eq!(
         exon_concat.get_forward_string(),
-        format!("CCCC{}TTTT", " ".repeat(24))
+        format!("CCCC{}TTTT", "N".repeat(24))
     );
     let exon_features: Vec<_> = exon_concat
         .features()
@@ -36768,11 +36768,21 @@ fn test_extract_genome_gene_exon_concat_respects_negative_strand_orientation() {
         .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("exon"))
         .collect();
     assert_eq!(exon_features.len(), 2);
+    let mut exon_ranges = vec![];
+    for feature in &exon_features {
+        collect_location_ranges_usize(&feature.location, &mut exon_ranges);
+    }
+    assert_eq!(exon_ranges, vec![(0, 4), (28, 32)]);
     let first_genomic_start = exon_features[0]
         .qualifier_values("genomic_start_1based")
         .next()
         .unwrap_or_default();
     assert_eq!(first_genomic_start, "9");
+    let second_genomic_start = exon_features[1]
+        .qualifier_values("genomic_start_1based")
+        .next()
+        .unwrap_or_default();
+    assert_eq!(second_genomic_start, "1");
 }
 
 #[test]

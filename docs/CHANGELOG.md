@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-05 - Preserve Unknown Spacers In Negative-Strand Exon Regression
+
+- Correct the negative-strand genome-extraction test to expect the documented
+  24 `N` spacers, not spaces. Production already inserts unknown bases and
+  preserves them during reverse complementation; extraction behavior is unchanged.
+- Pin both projected exon ranges and their reverse genomic order so spacer
+  length and negative-strand orientation remain guarded. No local builds or
+  tests run; execution remains for CI.
+
 ## 2026-10-05 - Synchronize Promoter Tutorial Catalog Review Metadata
 
 - Refresh tutorial 08.03's catalog stale-review reason and feedback route to
