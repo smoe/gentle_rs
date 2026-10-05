@@ -1,5 +1,68 @@
 # GENtle CLI Manual
 
+## Synthetic Sequence Design
+
+Experimental, outside the `.12` release gate. This is bounded synonymous motif
+removal for explicitly synthetic coding inserts, not full DNA Chisel.
+
+```sh
+gentle_cli sequence-design plan @request.json --path preview.json
+# Review status, exact DNA, nucleotide edits, completeness and non-claims first.
+gentle_cli --state project.json sequence-design apply @preview.json --approve sha256:THE_REVIEWED_DIGEST
+```
+
+The same commands run in GUI Shell and through inner-agent suggestions. The
+second command must not run until the user approves the exact feasible preview.
+Use its actual `approval_digest`, never the illustrative placeholder above.
+Planning never changes source/project sequences; application creates a derived
+sequence without rerunning search, retains a receipt, and is undoable. Stale
+input/protection/table/output bindings and existing output IDs are refused.
+
+A minimal **synthetic** request (12 bp, protein MEF, one EcoRI recognition
+sequence on both strands; not a natural gene or functional assay):
+
+```json
+{
+  "schema": "gentle.dna_sequence_design_request.v1",
+  "target": {"kind": "inline_sequence", "sequence": "ATGGAATTCTAA"},
+  "purpose": "synthetic_coding_insert",
+  "cds": {"start_0based": 0, "end_0based_exclusive": 12},
+  "protein_sequence": "MEF",
+  "genetic_code": 1,
+  "protected_intervals": [],
+  "avoid_motifs": [{"pattern": "GAATTC", "strand": "both"}],
+  "max_evaluations": 4096,
+  "output_seq_id": "synthetic_without_ecori"
+}
+```
+
+For a loaded insert use `{"kind":"loaded_sequence","seq_id":"EXACT_ID"}`.
+In the CLI, supply the same `--state project.json` to both planning and applying;
+the loaded source must still match the preview when it is applied.
+Coordinates are zero-based half-open, not shell `START..END` syntax. DNA must be
+uppercase A/C/G/T, linear, with one complete forward code-1 CDS, literal ATG,
+terminal stop and no internal stops. Protein excludes stop. Flanks, start/stop
+triplets and protected bases are frozen. Motifs are finite IUPAC strings, not
+enzyme aliases/regexes; all overlapping/boundary windows are tested.
+
+Expected toy output is `ATGGAATTTTAA`, one nucleotide edit at position 8.
+`search_exhausted` is unresolved, never infeasible; `cancelled` cannot be applied.
+Incomplete feasible search does not prove minimum edits. Translation preservation
+does not establish expression, folding, splicing or experimental suitability.
+Original source annotations are omitted from the new sequence. Full limits and
+algorithm: [design contract](dna_sequence_optimization_plan.md).
+
+Inner-agent example: "For this explicitly synthetic coding insert, preserve MEF,
+the start/stop and my protected bases, and preview synonymous removal of GAATTC
+on both strands. Show the exact edits and search status; do not apply yet."
+The agent uses shared capabilities/readiness and the preview, not invented DNA
+or hashes. GC/codon adaptation and broader specifications remain deferred.
+Execution receipts do not expose report contents to the model. In Agent
+Assistant, review the result and use **Use reviewed result in next prompt** only
+if you consent to sharing its DNA and paths. This stages a draft, not approval
+or execution; oversized results are refused intact, never truncated. Otherwise
+review locally and supply the actual approval digest yourself.
+
 ## Source-Coherent Transcripts
 
 Existing `gene-locus prepare @request.json` and TSS `--context-manifest` inputs

@@ -1,5 +1,43 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Synthetic Sequence Design
+
+`PlanDnaSequenceDesign { request, path? }` is a read-only bounded synonymous
+motif-removal preview for explicit synthetic inserts. `ApplyDnaSequenceDesign
+{ proposal, approval_digest }` creates the exact separately approved derived
+sequence without rerunning optimization. Shared shell routes are
+`sequence-design plan REQUEST_JSON_OR_@FILE [--path PREVIEW.json]` and
+`sequence-design apply PREVIEW_JSON_OR_@FILE --approve DIGEST`.
+
+Portable schemas in `gentle_protocol::sequence_design`:
+`gentle.dna_sequence_design_request.v1`,
+`gentle.dna_sequence_design_report.v1`,
+`gentle.dna_sequence_design_receipt.v1`. `OpResult.dna_sequence_design` carries
+the preview; `dna_sequence_design_receipt` carries the application result.
+`OperationProgress::SequenceDesign` reports evaluated candidates and requested
+budget, not a time estimate. The actual effective work-limited budget is in the
+preview. Only feasible previews contain output/approval digests; cancellation
+discards a previously found valid candidate too.
+
+Requests bind explicit synthetic purpose, inline/loaded DNA, one forward CDS,
+expected protein, code, protected intervals, motifs/strands, budget and output
+ID. Reports bind exact source/output strings and SHA-256, all 64 explicitly keyed
+codon/residue entries and their digest, source annotation digest/omission count,
+algorithm, outcomes, initial motif matches, edits and completeness/optimality.
+All coordinates are zero-based half-open; palindrome both-strand hits count once.
+Approval binds the complete report with only its approval field cleared. Apply
+rechecks live source/table/protection and fully evaluates approved output, then
+creates one undoable, lineage-linked sequence and metadata receipt. Existing
+output IDs are refused; stale biological features are not copied. Only the
+explicit synthetic CDS/translation/code and non-claims are newly annotated.
+
+Supported scope, resource limits, scientific non-claims and unresolved versus
+infeasible semantics are defined in the [design contract](dna_sequence_optimization_plan.md).
+The independent core has no serialization/GUI/Python/files/network dependency.
+This is not full DNA Chisel compatibility or a `.12` acceptance requirement.
+The generic MCP `op` tool retains its existing `confirm=true` requirement for
+both operations (preview may write a report); it is not a bypass of approval.
+
 ## Host Command Execution
 
 The headless `CommandExecutionService` exposes submission, cached status,

@@ -14084,6 +14084,14 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
+        // Only this narrowly read-only operation is exempted; all other generic
+        // op payloads keep their existing conservative confirmation behavior.
+        if let Self::Op { payload } = self
+            && let Ok(Operation::PlanDnaSequenceDesign { .. }) =
+                serde_json::from_str::<Operation>(payload)
+        {
+            return false;
+        }
         if let Self::FeaturesEditLocation { dry_run, .. }
         | Self::FeaturesCreate { dry_run, .. }
         | Self::FeaturesDelete { dry_run, .. }
@@ -14355,7 +14363,7 @@ fn default_cache_dir(helper_mode: bool) -> String {
     }
 }
 
-fn quote_shell_arg(raw: &str) -> String {
+pub(crate) fn quote_shell_arg(raw: &str) -> String {
     if raw.is_empty() {
         "''".to_string()
     } else if raw
@@ -21170,6 +21178,32 @@ fn tss_profile_capability_descriptor(id: &str, compute: bool) -> Value {
     })
 }
 
+fn sequence_design_capability_descriptor(id: &str, apply: bool) -> Value {
+    let mut args = vec![
+        json!({"name":"REQUEST", "required":true, "subject_kind":"other", "detail": if apply {
+        "Exact gentle.dna_sequence_design_report.v1 feasible preview JSON or @file; request.output_seq_id is never overwritten"
+    } else { "gentle.dna_sequence_design_request.v1 JSON or @file: explicit synthetic purpose, inline/loaded DNA, local half-open CDS, supplied protein, code 1, protected intervals, finite IUPAC motifs/strands, budget and output ID" }}),
+    ];
+    if apply {
+        args.push(json!({"name":"APPROVAL_DIGEST", "required":true, "subject_kind":"other", "detail":"--approve exact preview.approval_digest, only after explicit review/approval; never fabricated or reused after edits"}));
+    }
+    args.push(json!({"name":"OUTPUT_ID", "required":false, "subject_kind":"sequence", "detail":"exact request.output_seq_id, also inside a preview.request"}));
+    if !apply {
+        args.push(json!({"name":"OUTPUT_PATH", "required":false, "subject_kind":"other", "detail":"optional --path writes the preview, including unresolved/infeasible outcomes"}));
+    }
+    json!({
+        "id":id, "kind":if id.starts_with("sequence-design ") {"command"} else {"operation"},
+        "mutating":if apply {"true"} else {"false"}, "requires_confirmation":apply,
+        "args":args, "reads":[], "precondition_expr":{"all":[]},
+        "effects":if apply {vec![json!({"fact":"sequence.exists", "subject":{"arg":"OUTPUT_ID"}, "effect_kind":"may_on_success"})]} else {vec![json!({"fact":"artifact.written", "subject":{"arg":"OUTPUT_PATH"}, "effect_kind":"external_handoff"})]},
+        "description":if apply {
+            "Create exact approved synthetic DNA without rerunning search. Execution validates source/table/protection/output bindings; cancelled, unresolved, altered or stale previews are refused. One undoable derivation; original annotations omitted. No functional, order or experimental approval."
+        } else {
+            "Read-only bounded synonymous motif removal for synthetic coding inserts, not natural assay targets or full DNA Chisel. Runtime admission validates explicit CDS/protein/code and frozen bases. Both-strand/overlap/flank motifs supported. Search exhaustion is unresolved, never infeasibility; no performance claim."
+        }, "annotation_status":"fact_annotated", "registry":registry_metadata_for_introspection(id)
+    })
+}
+
 fn tss_view_svg_capability_descriptor(id: &str) -> Value {
     json!({
         "id": id, "kind": "operation", "mutating": "external",
@@ -21547,6 +21581,10 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "Assess conserved promoter-module hypotheses through the shared read-only engine operation.",
         ),
         tss_workspace_capability_descriptor("InspectTssInventory", false, false),
+        sequence_design_capability_descriptor("PlanDnaSequenceDesign", false),
+        sequence_design_capability_descriptor("sequence-design plan", false),
+        sequence_design_capability_descriptor("ApplyDnaSequenceDesign", true),
+        sequence_design_capability_descriptor("sequence-design apply", true),
         tss_workspace_capability_descriptor("promoters tss-inventory", false, false),
         tss_workspace_capability_descriptor("MaterializeTssWindows", true, false),
         tss_workspace_capability_descriptor("promoters tss-materialize", true, false),
@@ -49583,6 +49621,7 @@ pub fn parse_shell_tokens(tokens: &[String]) -> Result<ShellCommand, String> {
         "guides" => parse_guides_command(tokens),
         "features" => parse_features_command(tokens),
         "primers" => parse_primers_command(tokens),
+        "sequence-design" => parse_sequence_design_command(tokens),
         "display" => parse_display_command(tokens),
         "set-param" => {
             if tokens.len() < 3 {
@@ -65681,6 +65720,7 @@ fn execute_op_command(
     if matches!(
         &op,
         Operation::ImportGelImage { .. }
+            | Operation::PlanDnaSequenceDesign { .. }
             | Operation::SaveGelImageDraft { .. }
             | Operation::AnalyzeGelImage { .. }
             | Operation::InspectGelImageAnalysis { .. }
@@ -65700,7 +65740,9 @@ fn execute_op_command(
         );
         let result = if matches!(
             &op,
-            Operation::ComputeTssTfbsProfiles { .. } | Operation::ExportTssTfbsProfiles { .. }
+            Operation::ComputeTssTfbsProfiles { .. }
+                | Operation::ExportTssTfbsProfiles { .. }
+                | Operation::PlanDnaSequenceDesign { .. }
         ) {
             engine.apply_with_progress(op, |progress| {
                 forward_shell_progress(options, progress).unwrap_or(false)

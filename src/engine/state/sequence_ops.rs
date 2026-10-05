@@ -2688,6 +2688,25 @@ impl GentleEngine {
                 summary.sequence_ids = nested.sequence_ids;
                 summary.file_paths = nested.file_paths;
             }
+            Operation::PlanDnaSequenceDesign { request, path } => {
+                if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
+                    seq_id,
+                } = &request.target
+                {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+                if let Some(path) = path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
+            Operation::ApplyDnaSequenceDesign { proposal, .. } => {
+                if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
+                    seq_id,
+                } = &proposal.request.target
+                {
+                    Self::push_unique_token(&mut summary.sequence_ids, seq_id);
+                }
+            }
             Operation::MaterializePromoterReporterPanel { proposal, .. } => {
                 Self::push_unique_token(&mut summary.sequence_ids, &proposal.request.vector_seq_id);
                 if let Some(path) = proposal.request.helper_catalog_path.as_deref() {

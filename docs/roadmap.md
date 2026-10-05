@@ -298,9 +298,9 @@ richer assistant-facing findings records, deeper wet-lab process modeling,
 repeat/mobile-element curation, and cohort-scale comparative reasoning. These
 must remain explicit, inspectable proposals with confirmation before mutation.
 Useful work here improves proposal formats, evidence records, reproducible
-cohort comparisons, and rollback paths for state patches; defer autonomous
-wet-lab conclusions or unconfirmed mutations.
+cohort comparisons, and rollback paths for state patches; defer autonomous wet-lab conclusions or unconfirmed mutations.
 ## Parking Lot
+- Experimental [synonymous motif removal](dna_sequence_optimization_plan.md) is owner-authorized outside `.12`; next run the [pinned Glen audit](glen_sequence_design_handoff_20261005.md) before richer specifications/publication. Keep GUI/CLI/inner-agent approval parity and no performance/suitability claims.
 - Accession-pinned [TSS TFBS profiles](tss_tfbs_profiles.md#rescoring-existing-reports): Glen to rescore original five-gene inputs after the inclusive-tail correction, then repeat PDF pixel/hash, shared-scale and sparse-peak acceptance; the `44b73e4a` audit does not cover this scoring method. Keep the `.10` gate; native wizard and independent reference verification remain follow-ups.
 - Give TP73 Simple-PCR live acceptance a representative small fixture or bounded fast preset; exact interactive defaults exceed the ten-minute smoke budget.
 - Replace whole-transcriptome FASTA materialization in UniProt linked-transcript

@@ -2422,6 +2422,22 @@
       },
       {
          "aliases": [],
+         "engine_operations": ["PlanDnaSequenceDesign"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "sequence-design plan",
+         "summary": "Preview bounded synonymous motif removal for an explicitly synthetic coding insert, preserving supplied translation, frozen flanks, start/stop and protected bases. No source changes; not full DNA Chisel compatibility.",
+         "usage": "sequence-design plan REQUEST_JSON_OR_@FILE [--path PREVIEW.json]"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ApplyDnaSequenceDesign"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp-op"],
+         "path": "sequence-design apply",
+         "summary": "Create exactly approved synonymous synthetic DNA after source/table/output checks without rerunning optimization. Requires explicit digest approval; original sequence remains unchanged and stale source annotations are omitted.",
+         "usage": "sequence-design apply PREVIEW_JSON_OR_@FILE --approve DIGEST"
+      },
+      {
+         "aliases": [],
          "engine_operations": [
             "MaterializeRegulatoryFragmentPanel"
          ],

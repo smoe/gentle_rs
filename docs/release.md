@@ -500,7 +500,9 @@ Do not advance while `.11` is still the active candidate, or infer completed
 publication from a tag push, a successful build, or a draft GitHub Release.
 
 1. Update `[workspace.package].version` in root `Cargo.toml` and every local
-   workspace-package entry in `Cargo.lock`. Do not run a broad `cargo update`
+   workspace-version-inheriting package entry in `Cargo.lock`. Independently
+   versioned `gentle-sequence-design` keeps its own private component version.
+   Do not run a broad `cargo update`
    or change dependency resolutions as part of the rollover.
 2. Update the README badge/current version/release-note link, the roadmap's
    `Current candidate` and `Published baseline`, the changelog version heading,

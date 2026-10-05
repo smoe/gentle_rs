@@ -27,6 +27,8 @@ pub mod promoter_cofactors;
 pub mod region_homology;
 pub mod regulatory_partners;
 pub mod reporter;
+/// Synthetic CDS motif-removal previews and separately approved exact outputs.
+pub mod sequence_design;
 pub mod tata_boxes;
 /// Source-neutral exon/structure identities retaining independent annotation provenance.
 pub mod transcript_presentation;

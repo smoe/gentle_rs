@@ -22,6 +22,7 @@ dependencies = [
  "gentle-gui",
  "gentle-protocol",
  "gentle-render",
+ "gentle-sequence-design",
  "gentle-shell",
  "image",
  "itertools 0.15.0",
@@ -2678,6 +2679,10 @@ dependencies = [
  "serde_json",
  "svg",
 ]
+
+[[package]]
+name = "gentle-sequence-design"
+version = "0.1.0"
 
 [[package]]
 name = "gentle-shell"

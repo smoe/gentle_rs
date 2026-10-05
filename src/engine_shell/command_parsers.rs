@@ -12,6 +12,28 @@
 //! - places to extend when a shell family gets too large for `engine_shell.rs`
 
 use super::*;
+pub(super) fn parse_sequence_design_command(tokens: &[String]) -> Result<ShellCommand, String> {
+    use gentle_protocol::sequence_design::{DnaSequenceDesignReport, DnaSequenceDesignRequest};
+    let operation = match tokens.get(1).map(String::as_str) {
+        Some("plan") if tokens.len() == 3 || (tokens.len() == 5 && tokens[3] == "--path") => {
+            Operation::PlanDnaSequenceDesign {
+                request: Box::new(parse_required_json_payload::<DnaSequenceDesignRequest>(&tokens[2], "synthetic sequence-design request")?),
+                path: tokens.get(4).cloned(),
+            }
+        }
+        Some("apply") if tokens.len() == 5 && tokens[3] == "--approve" => {
+            Operation::ApplyDnaSequenceDesign {
+                proposal: Box::new(parse_required_json_payload::<DnaSequenceDesignReport>(&tokens[2], "exact sequence-design preview")?),
+                approval_digest: tokens[4].clone(),
+            }
+        }
+        _ => return Err("Use sequence-design plan REQUEST_JSON_OR_@FILE [--path PREVIEW.json] or sequence-design apply PREVIEW_JSON_OR_@FILE --approve DIGEST".into()),
+    };
+    Ok(ShellCommand::Op {
+        payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+    })
+}
+
 use crate::engine::{
     CdnaAssayTranscriptMapCoordinateMode, CdnaAssayTranscriptOrder, CutRunAlignConfig,
     CutRunCoverageKind, CutRunInputFormat, CutRunReadLayout, CutRunSeedFilterConfig,

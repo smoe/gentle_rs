@@ -558,6 +558,7 @@ const SHELL_FORWARDED_COMMANDS: &[&str] = &[
     "splicing-refs",
     "align",
     "reverse-translate",
+    "sequence-design",
     "rna-reads",
     "cutrun",
     "tracks",
@@ -1008,6 +1009,12 @@ impl ProgressPrinter {
 
     fn on_progress(&mut self, progress: OperationProgress) {
         match progress {
+            OperationProgress::SequenceDesign {
+                evaluated_candidates,
+                requested_candidate_budget,
+            } => {
+                self.print_line(&format!("progress sequence-design evaluated_candidates={evaluated_candidates} requested_budget={requested_candidate_budget}"));
+            }
             OperationProgress::Workflow { completed, total } => {
                 self.print_line(&format!(
                     "progress workflow completed={completed} total={total}"
@@ -1503,6 +1510,51 @@ mod tests {
         )
         .expect("execute shared shell command");
         (run.state_changed, run.output, engine.state().clone())
+    }
+
+    #[test]
+    fn sequence_design_cli_and_shared_shell_preview_apply_parity() {
+        // Literal synthetic MEF insert, not a natural assay template.
+        let request = serde_json::json!({
+            "schema":"gentle.dna_sequence_design_request.v1",
+            "target":{"kind":"inline_sequence", "sequence":"ATGGAATTCTAA"},
+            "purpose":"synthetic_coding_insert",
+            "cds":{"start_0based":0, "end_0based_exclusive":12},
+            "protein_sequence":"MEF", "genetic_code":1,
+            "avoid_motifs":[{"pattern":"GAATTC", "strand":"both"}],
+            "max_evaluations":4096, "output_seq_id":"synthetic_without_ecori"
+        });
+        let tokens = vec!["sequence-design".into(), "plan".into(), request.to_string()];
+        let mut args = vec!["gentle_cli".into()];
+        args.extend(tokens.clone());
+        let state = ProjectState::default();
+        let (changed, cli_output, planned_state) = execute_forwarded_like_cli(state.clone(), args);
+        let (shell_changed, shell_output, _) = execute_shared_shell_tokens(state.clone(), tokens);
+        assert!(!changed && !shell_changed);
+        assert_eq!(cli_output, shell_output);
+        assert_eq!(
+            serde_json::to_value(&planned_state).unwrap(),
+            serde_json::to_value(&state).unwrap()
+        );
+        let preview = &cli_output["result"]["dna_sequence_design"];
+        assert_eq!(preview["output_sequence"], "ATGGAATTTTAA");
+        let tokens = vec![
+            "sequence-design".into(),
+            "apply".into(),
+            preview.to_string(),
+            "--approve".into(),
+            preview["approval_digest"].as_str().unwrap().into(),
+        ];
+        let mut args = vec!["gentle_cli".into()];
+        args.extend(tokens.clone());
+        let (changed, cli_output, cli_state) = execute_forwarded_like_cli(state.clone(), args);
+        let (shell_changed, shell_output, shell_state) = execute_shared_shell_tokens(state, tokens);
+        assert!(changed && shell_changed);
+        assert_eq!(cli_output, shell_output);
+        assert_eq!(
+            cli_state.sequences["synthetic_without_ecori"].get_forward_string(),
+            shell_state.sequences["synthetic_without_ecori"].get_forward_string()
+        );
     }
 
     #[test]

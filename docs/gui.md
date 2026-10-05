@@ -2,6 +2,15 @@
 
 This page documents the current graphical interface of GENtle.
 
+Experimental synthetic sequence redesign is available through the existing
+GUI Shell / Agent Assistant, not a new editor: `sequence-design plan @request.json`
+previews synonymous motif removal, and `sequence-design apply @preview.json
+--approve DIGEST` requires explicit approval of exact feasible output. The source
+DNA is unchanged; the derived sequence is undoable and can be opened through
+`ui open sequence-window OUTPUT_ID`. No input, CDS, protein, protection or digest
+may be inferred from a gene label. This is not full DNA Chisel or a `.12` gate.
+See [the exact request and non-claims](cli.md#synthetic-sequence-design).
+
 Source-enriched locus SVGs and detailed TSS figures can show shared physical
 exons/CDS, separate structure-reference rows and colour-labelled Ensembl/RefSeq
 annotated starts. Hover retains all source identifiers without crowding print.

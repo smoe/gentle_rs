@@ -1,152 +1,190 @@
-# Rust sequence design proposal after Claude review
+# Bounded synthetic sequence design
 
-Updated 2026-10-05 against `f523a757cd2a2861196b1a5c0b36df67983ce0e6`.
-Status: proposed future work, not approved implementation or a `.12` release gate.
-The owner supplied the Claude review; Codex checked the cited local behavior
-without invoking another consultation, running tests, or changing runtime code.
+Updated 2026-10-05, implementation started from `fc4458c3`.
+Rebased during implementation onto fetched `main` at
+`4a71d5bd15f6b0da60709ee79a431668756d110f`, then onto local `main` at
+`564ea09be48149649748d620f57973d5f87cfff7` after its dependency/Help update.
+The latter was ahead of the fetched remote at integration time.
+Owner authorized work from the previously Claude-reviewed proposal. This is
+experimental development outside the `.12` release gate, not release acceptance,
+full DNA Chisel compatibility, or a measured performance improvement.
 
-The recommendation is a small Rust component for synonymous motif removal from
-synthetic coding inserts, not a full DNA Chisel clone. GC constraints and a
-general specification framework are deferred. Independent maintenance remains
-the design aim; Rust alone establishes neither a speedup nor a reduction in
-GENtle's build memory.
+Review rationale is preserved in the [dated review history](dna_sequence_optimization_review_20261005.md)
+and [original consultation prompt](dna_sequence_optimization_claude_prompt.md).
+Those historical proposal stages do not override this owner-authorized contract.
 
-## Original proposal and review reconciliation
+## Adopted first slice
 
-The [original Codex proposal](dna_sequence_optimization_claude_prompt.md) called
-for an independent crate with translation preservation, protected bases, motif
-avoidance and GC constraints, followed by bounded search and engine integration.
-Claude recommended reducing the first slice to motif removal, clarifying
-initiation/cancellation/negative-result semantics, and postponing crate
-extraction until an engine-internal prototype demonstrates value.
+Remove explicitly specified finite IUPAC motifs from a synthetic coding insert
+using synonymous substitutions. Preserve the supplied protein sequence, literal
+ATG, literal terminal stop, flanks and protected bases. Changed nucleotides are
+the secondary objective; do not infer minimum edits from incomplete search.
+Natural PATZ1 assay templates, reverse translation and existing primer design
+are unchanged. A label never implies permission to recode a sequence.
 
-| Review finding | Codex disposition |
+The reviewed proposal reduced four constraint families to motif removal.
+Translation/protection are mutation invariants, not optional objectives. GC,
+codon adaptation, repeats/hairpins, folding and a general specification/plugin
+framework remain deferred. The independent component option is adopted as
+`crates/gentle-sequence-design`, version 0.1.0, private/unpublished, original MIT
+code, no dependencies. It supports Rust 1.85 / edition 2024. No Python runtime,
+new dynamic ABI, GUI dependency or published separate repository is introduced.
+The core does not receive the root codon asset's positional 64-character string:
+the root resolves every explicit codon/residue pair through the existing table
+and binds the actual complete mapping and identity in the report.
+
+Upstream [DNA Chisel](https://github.com/Edinburgh-Genome-Foundry/DnaChisel)
+offers broader Python specifications and a GenBank-annotation CLI. GENtle's
+initial parity is across its own shared operation, shell/CLI and inner agent;
+its request format does not claim compatibility with DNA Chisel's annotation
+language or algorithm. A future pinned comparison may use upstream CLI as
+optional development tooling, comparing semantics, not identical chosen DNA.
+
+## Admission and coordinates
+
+- Required request schema: `gentle.dna_sequence_design_request.v1`.
+- Explicit `purpose=synthetic_coding_insert`; exact inline DNA or loaded sequence.
+- Uppercase A/C/G/T only; linear DNA, one explicit forward contiguous CDS,
+  length divisible by three, complete ATG-to-stop, no internal stops.
+- Required protein includes initial M but excludes stop; it must match input.
+- Standard genetic code 1 only. The frozen ATG is not an initiation-efficiency
+  model or proof of an authentic CDS. No inferred translation exceptions.
+- All intervals are local zero-based half-open. Flanks and the start/stop triplets
+  are frozen; intersect synonymous choices with every protected base.
+- Patterns are uppercase finite IUPAC strings, not regexes/enzyme aliases.
+  Explicit strand is `forward`, `reverse` or `both`. Reverse scanning uses the
+  reverse-complement pattern on the unchanged supplied sequence.
+- All full-sequence overlapping windows and CDS/flank boundary matches count.
+  A palindromic mask pattern requested on both strands yields one `both` match.
+  Other patterns can yield separate forward/reverse matches at the same span.
+- Ambiguous DNA, incomplete/reverse/joined CDS requests, other codes, indels and
+  circular topology are unsupported or invalid, never silently converted.
+  Source annotations do not determine CDS geometry or synthetic intent.
+
+Numeric limits, checked before search allocation: 12,000 bases, 16 motifs,
+32 bases/motif, 256 protected intervals, 1..100,000 requested candidate
+evaluations, 4,096 recorded matches. A conservative 50,000,000 full-evaluation
+work-unit ceiling reduces the effective budget when necessary; reports disclose
+both requested and effective budgets. Work includes full DNA traversal plus all
+possible motif/base/strand checks. Excessive matches are a typed invalid resource
+outcome, not truncated evidence. Search-space counting uses checked `u64`;
+overflow is unknown, never infeasible.
+At the engine approval boundary, loaded source IDs are capped at 4,096 bytes
+and digest fields at 128 bytes before preview copying/hashing. Oversized inline
+targets and mismatched request schema/purpose are also rejected before that work;
+an attacker-supplied recomputed approval hash does not bypass these limits.
+
+## Algorithm and outcomes
+
+`synonymous_full_enumeration_v1` is a correctness-first prototype, deliberately
+not an efficient general large-insert solver. Original codons precede synonyms
+ordered by nucleotide edit count then lexicographic DNA. Codons intersecting
+initial violations are enumerated first, then remaining codons by local position;
+the first codon is the least significant mixed-radix digit. Feasible outputs
+are compared by changed nucleotide count, then lexicographic whole DNA. There is
+no random seed, cache, localized evaluator or hidden source mutation.
+
+Each candidate receives complete translation/protection/motif evaluation.
+Any chosen output receives a fresh full validation. Complete tiny-space
+enumeration establishes feasibility/optimality and is checked against explicit
+four-variant fixtures. A coupled-edit fixture has one violation before and after
+either single edit, and none only after the two edits: it falsifies strict greedy
+repair rather than merely containing a two-codon motif.
+
+| Outcome | Meaning |
 | --- | --- |
-| Four initial constraint families are too much. | Accept the scope reduction. Translation and protected bases remain mandatory mutation invariants; motif removal is the sole initial design goal. Defer global/window GC. |
-| The codon mapping does not describe initiation. | Confirmed. `assets/codon_tables.json` has elongation mappings and stop markers, not start-codon sets. State the limitation and narrow initial admission below. |
-| Ambiguous codons always return unknown. | Correct this claim: `codon2aa` resolves degenerate codons when every expansion has the same translation. Existing tests assert `GCN -> A` and `GAN -> UNKNOWN_CODON`. Reject ambiguous input here to simplify redesign, not because GENtle cannot translate any ambiguous codon. |
-| An engine-internal module is sufficient initially. | Valid alternative, not a correctness finding. Prefer a minimal independent crate to serve the requested standalone-maintenance aim; defer publication, a separate repository and general extensibility. Use an internal pure module as a fallback if Stage A identifies a concrete ownership or integration obstacle. |
-| Cancellation is outside deterministic completion. | Accept. External cancellation can occur at different work counts and must never produce an applicable proposal, even if a valid intermediate candidate exists. |
-| Exhaustive infeasibility proof is rarely practical. | Accept the clarification. Exhaustive enumeration is a tiny-space correctness oracle, not the production strategy for realistic inserts. Bounded-search failure means unresolved, not infeasible. |
-| Reverse-translation diagnostics were omitted. | Add `reverse_translation_choice_diagnostics` as reporting precedent. Preferred/alternative codon counts are not nucleotide edit counts and must not be relabeled as such. |
-| Stage A lacks an owner and checkable output. | Assign proposed ownership and require a written semantic contract with resolved admission and resource limits before implementation. |
+| `invalid` / `unsupported` | Admission/resource rule failed; no applicable preview. |
+| `feasible` | Fully validated exact output; only complete enumeration or unchanged feasible input proves minimum edits. A budget stop can retain a feasible candidate with optimization incomplete. |
+| `search_exhausted` | Budget ended without a feasible candidate; unresolved, not infeasible. |
+| `proven_infeasible` | An initial match lies wholly in frozen bases, or complete enumeration found no admissible variant. |
+| `cancelled` | External cancellation; diagnostics only, never output DNA/approval, even if a feasible candidate was already found. |
 
-The existing exact-product approval mechanism is confirmed in
-`src/engine/analysis/regulatory_fragment_panel/materialization.rs`. It binds
-products in a digest, rejects altered or stale proposals, creates the approved
-sequence strings in detached execution, and checks their hashes before commit.
-It is a useful precedent, not evidence that the new solver integration already
-exists. Its source re-planning must not become optimization re-execution during
-approval of a redesigned sequence.
+Core cancellation polls before each candidate and before result publication.
+The engine exposes typed sequence-design progress, with candidate counts rather
+than a wall-clock estimate, through the existing shared callback. Timing of an
+external cancellation is not claimed deterministic.
 
-## First useful capability
+## Shared engine and approval
 
-Given an explicitly selected synthetic insert, remove specified finite-length
-IUPAC motifs using synonymous substitutions while preserving the supplied
-protein translation, frozen flanks and protected bases. Never recode natural
-PATZ1 assay targets or change current reverse-translation/primer behavior
-implicitly. Minimize changed nucleotides as a secondary objective; report when
-that objective has not been proven optimal.
+`PlanDnaSequenceDesign` / `sequence-design plan` prepares a read-only portable
+`gentle.dna_sequence_design_report.v1`. It binds exact source/output DNA hashes,
+complete codon mapping/hash, request/protection/motif policies, algorithm,
+budget/outcome, matches and nucleotide edits. Preferred/alternative codon counts
+from reverse-translation are not reused or relabeled as nucleotide edit counts.
+Only `feasible` reports carry `approval_digest`.
 
-Initial admission is unambiguous A/C/G/T DNA with one forward, contiguous CDS,
-length divisible by three, an ATG start, a terminal stop under explicitly
-resolved standard genetic code 1, and no internal stops or translation
-exceptions. Freeze the literal start and terminal stop codons. This does not
-infer a biologically authentic CDS or model initiation efficiency. Alternative
-initiators and other genetic codes remain unsupported in this first slice,
-rather than being guessed from an elongation table.
+`ApplyDnaSequenceDesign` / `sequence-design apply --approve DIGEST` is a separate
+explicit mutation. It rechecks digest, source bytes, source annotations/topology,
+current mapping and policies, and freshly validates approved output/edits.
+It never reruns optimization. The exact unused output ID is created in detached
+execution, checked before one undoable commit, with source lineage and retained
+`gentle.dna_sequence_design_receipt.v1`. Original DNA remains unchanged.
 
-The root engine resolves context and converts the existing table into explicit
-codon-to-residue entries; do not pass the asset's positional 64-character string
-without declaring its ordering. Bind the resolved identity and mapping content.
-The core consumes that validated mapping without depending on the root crate,
-but the first supported contract remains standard code 1 with the frozen ATG
-start. Do not extract all amino-acid code merely to supply this input.
+Source features are intentionally omitted, even though coordinates did not
+change. The derived sequence carries only the explicitly supplied synthetic CDS,
+translation/table, approval and non-claims. Translation preservation establishes
+neither expression, splicing, regulatory function, folding nor experimental
+suitability. Approval is not a laboratory/order decision.
 
-Freeze everything outside the CDS and intersect synonymous choices with every
-protected base inside it. Motif evaluation covers the full supplied sequence,
-including CDS/flank boundaries, overlapping matches and explicitly selected
-strands. Define reverse-complement and palindromic duplicate semantics. A match
-entirely within frozen bases is a specific contradiction proof. Partial CDS,
-ambiguous bases, joined/overlapping CDS, reverse-oriented requests, circular
-topology and indels receive explicit unsupported/invalid outcomes.
+No GUI redesign: GUI Shell and the inner agent use the same shared commands.
+CLI direct forwarding, JSON `op`, MCP `op`, JS/Lua shared shell and Python `op`
+reach the same operation. The agent must ask for unspecified biological inputs,
+inspect actual previews and request explicit application approval; it must not
+invent codons, output strings or digest values. See [CLI usage](cli.md#synthetic-sequence-design).
+The existing reviewed-result draft handoff remains opt-in; execution receipts
+alone do not disclose DNA or an approval digest to the model. No additional
+automatic project-content forwarding or approval bypass is introduced.
 
-Preserving translation does not establish preservation of expression,
-splicing, regulatory function, folding or experimental suitability. Report
-these non-claims alongside the proposed sequence, not only in documentation.
+## Verification
 
-## Core and search boundaries
+On macOS with Rust/Cargo 1.100.0-beta.1, against the uncommitted implementation
+on local `main` at `564ea09b`, the following checks passed after the rebase:
 
-Prefer a tiny independent workspace crate with a provisional neutral name and
-independent version. Keep it private/unpublished until the first useful API has
-been reviewed. Its initial surface is validated input, legal codon choices,
-motif evaluation, bounded search, outcome records and a nucleotide edit script.
-Do not build a plugin system, GenBank design language or generic weighted
-optimizer in this slice. Keep GENtle state, GUI, files, network and external
-tools outside it; optional serialization is a separate interface concern.
+- `cargo test -p gentle-sequence-design --locked --offline`: 7 pure-core tests,
+  including the independent exhaustive oracle and cancellation after feasibility.
+- `cargo test --lib --no-default-features --locked --offline -j1 sequence_design
+  -- --test-threads=1`: 6 engine/MCP tests covering exact apply, undo/redo,
+  stale/tampered inputs, admission, shared shell discovery and denied confirmation.
+- The same headless library test invocation with `glossary_cli_usage`: both
+  glossary usage/parser checks passed, also rerun directly on the rebuilt test
+  binary after the final admission guard.
+- `cargo test --bin gentle_cli --no-default-features --locked --offline -j1
+  sequence_design -- --test-threads=1`: direct CLI preview/apply parity passed.
+- `cargo check -q --locked --offline -j1` with default features.
+- `cargo check -q --locked --offline --lib --tests -j1` compiles desktop/test
+  code; it does not execute native GUI workflows.
+- `cargo test --no-default-features --locked --offline -j1
+  --test mcp_capability_surface --test parity_matrix_freshness
+  --test release_version_consistency`: 6 MCP surface, 1 canonical generated
+  matrix and 4 version-consistency checks passed.
+- `python3 -m unittest scripts.test_tutorial_checkouts
+  scripts.test_tutorial_walkthroughs scripts.test_publish_tutorial_gui_screenshots`:
+  27 tests, with 3 expected platform skips.
+- `cargo fmt --all --check` and `git diff --check`.
 
-Implement full evaluators and complete enumeration for tiny spaces first.
-Validate coupled edits with independently enumerated fixtures; merely spanning
-two codons does not prove that a motif needs a multi-codon repair. Add bounded
-deterministic search for larger inputs only after those fixtures establish the
-correctness baseline. Freeze candidate order, tie-breaks, algorithm version,
-work budget and any future RNG algorithm/seed. Admit resource limits before
-allocation, including sequence length, motif work and search-space counting.
+The final admission regression re-hashes oversized previews to ensure early
+rejection does not merely rely on a stale approval digest. Existing headless
+unused-code and macOS large-unwind linker warnings remain visible and unchanged.
+The temporary canonical-renderer helper's own Cargo target was cleaned; the
+repository target and other sessions were not cleaned or interrupted.
 
-Do not cache or localize evaluation initially. Every accepted output receives a
-fresh full-sequence check of translation, protected bases and every requested
-motif. Future GC bounds are a second slice with their own threshold/window-edge
-contract. Repeat/hairpin specifications may depend on pairs of distant regions;
-do not assume all later evaluators can be reduced to one local window.
+Full-workspace tests, native GUI/Pi, native Windows, script-adapter runtime,
+the declared Rust 1.85 MSRV, upstream DNA Chisel comparison and Glen's
+independent review/measurements have not been run. Compile time and
+focused test success are not runtime-performance or release acceptance evidence.
+Session-close maintenance reported 4 OK, 2 warnings and no failures: all dirty
+files are intentional task edits, and manual plan-fidelity review remains a
+reminder rather than independent acceptance. The release checklist explicitly
+excludes this independently versioned private crate from application rollovers.
 
-| Outcome | Meaning and proposal eligibility |
-| --- | --- |
-| Invalid or unsupported | Admission failed; no proposal. |
-| Feasible | Full validation passed. A proposal may be produced with edit count and explicit optimization-completion/optimality status. |
-| Search exhausted | Budget ended without a feasible result; no proposal and no infeasibility claim. |
-| Proven infeasible | A recorded sound contradiction or completed tiny-space enumeration excluded every admitted variant; no proposal. |
-| Cancelled | Externally interrupted, potentially at a nondeterministic work count; diagnostics only, never an applicable proposal. |
+## Remaining stages
 
-A normal work-budget stop with a fully validated best candidate is `feasible`
-with optimization incomplete, not cancellation or proof of minimum edits.
-Preparation/search never mutates the caller's original input or project state.
-
-## Delivery stages
-
-Proposed owners below describe future work, not dispatches or acceptance.
-
-| Stage | Owner and checkable output |
-| --- | --- |
-| A: semantic decision | Codex drafts the bounded contract; the owner decides scope/component ownership, with biological review for the claims. Resolve numeric admission/work limits, mapping/ordering, motif/coordinate semantics, dependency/license alternatives and supported Rust version in this scoped design document. Record active invariants in `docs/decisions.md` only once adopted. |
-| B: smallest proof | Implementer builds the pure core and tiny-space oracle. Independent tests cover translation, start/stop freezing, protected bases, both strands, overlapping sites, flanking-boundary sites, unchanged feasible input and frozen-site contradiction. A crafted coupled-edit case must falsify a naive greedy repair. |
-| C: bounded useful search | Implementer adds larger-space search and records all outcomes above. Compare feasibility and edit optimality against exhaustive tiny cases; test budget stops and cancellation after a valid candidate is found. No global-optimum or complete-solver claim for bounded runs. |
-| D: GENtle integration | Codex adds only the engine request/report/planning/materialization and shared-shell route required for this capability. Test tampering, source/table/protection drift, exact approved output, undo/lineage and adapter reachability. No GUI redesign. |
-| E: ownership and measurements | Glen measures exact-revision representative and adversarial inserts. Assess maintenance and standalone API readiness before publication or further specifications; performance results are separate from biological validity. |
-
-GENtle proposals bind exact source/output DNA, CDS geometry, frozen bases, motif
-specifications, mapping identity/content, solver version/configuration, final
-evaluations and edits. Materialization checks current inputs and validates the
-approved output without rerunning search, then creates a derived sequence in
-one undoable transaction. Labels do not authorize edits. Avoid carrying stale
-biological annotation claims forward simply because coordinates are unchanged.
-
-Python/DNA Chisel comparison is optional development tooling only. It is not a
-dependency of the Rust core, normal CI, GENtle packages or runtime. Any future
-separate comparison job needs its own pinned environment and explicit scope;
-do not silently add a Python platform matrix. Compare specified semantics, not
-identical final DNA among multiple valid solutions, and retain independent
-evaluators as the correctness oracle.
-
-CI/core tests should cover Linux, macOS and Windows without pulling in the GUI.
-Fixtures require origin/recreation/use documentation. Any committed byte-exact
-projection or hash-bound artifact also requires the scoped LF/CRLF checkout
-policy. No local test, build, benchmark, commit or implementation has been run
-as part of this planning revision.
-
-## Deferred work
-
-GC constraints, codon adaptation/harmonization, repeats/hairpins, RNA folding,
-external aligners, broader genetic codes/initiation models, circular/joined or
-reverse-strand CDS, indels, arbitrary plugins, GenBank design annotations and
-full DNA Chisel compatibility remain separate future decisions. The `.12`
-roadmap and release gates are unchanged.
+1. Glen independently reviews the candidate and measures representative and
+   adversarial synthetic inserts. Keep maintenance value, performance and
+   biological suitability as separate claims; no `.12` delay or gate added.
+2. If useful, design a better bounded search against the exhaustive oracle,
+   then decide whether independent publication or further specifications merits
+   its cost. Do not replace global constraints with assumed local checks.
+3. GC, codon harmonization/adaptation, distant repeat/hairpin interactions,
+   RNA folding, other initiation/codes and DNA Chisel comparison remain explicit
+   follow-ups with their own contracts, not unfinished obligations of this slice.
