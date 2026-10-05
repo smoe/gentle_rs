@@ -13,11 +13,22 @@
   a pool. Clicked-project/subject identity and existing setup routes are unchanged.
 - Add inline synthetic regressions for stale-cache/live-count divergence,
   snapshot consistency through Undo, busy/job readiness and closed-popup cleanup.
-  The original 54-test verification below predates integration; no local builds
-  or tests were run for this follow-up. Native/hosted acceptance remains Glen's;
-  CI must validate the current commit. Poster outputs, `paper` and Cargo.lock
-  are untouched; no push, tag or workflow dispatch.
-- Verification: `cargo fmt --all --check` and `git diff --check` passed.
+  The original 54-test verification below predates integration. Native/hosted
+  acceptance remains Glen's; full-suite/native CI remains pending. Poster outputs,
+  `paper` and Cargo.lock are untouched; no push, tag or workflow dispatch.
+- Post-merge verification at `462b5ffe848e53bd287545ded11154bb9bee0288`:
+  58 focused default-feature library tests passed, including the new live-snapshot
+  and popup-cleanup regressions plus two engine-history tests. Ran
+  `cargo test --lib --locked --offline -j 1` with the palette/readiness/subject,
+  lineage-context/artifact and engine-history filters, `--test-threads=2`.
+  `cargo check -q --locked --offline -j 1`, `cargo fmt --all --check` and
+  `git diff --check` passed. HEAD and tracked source remained unchanged through
+  verification on Darwin 27 arm64, Rust `1.101.0-nightly (c1070d693 2026-09-28)`.
+  Test linking retained the large `__eh_frame` compact-unwind warning. No native
+  GUI/Windows checks, screenshots or external scientific probes were run.
+- Source inspection confirms Undo/Redo checkpoints are skipped by engine serde
+  and project rehydration uses `GentleEngine::from_state` with empty stacks;
+  the existing recovery text describes current behavior.
   Session-close: 4 ok, 2 warn, 0 fail (intentional dirty/local artifacts and
   manual plan-fidelity reminder); the diff stays within the supplied GUI review.
 
