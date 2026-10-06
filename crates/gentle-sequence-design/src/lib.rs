@@ -291,7 +291,10 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
         }
         frozen[interval.start..interval.end].fill(true);
     }
-    if input.motifs.is_empty() && input.gc_content.is_none() || input.motifs.len() > MAX_MOTIFS {
+    if input.motifs.is_empty() && input.gc_content.is_none() {
+        return Err(fail("at_least_one_motif_or_explicit_gc_bounds_required"));
+    }
+    if input.motifs.len() > MAX_MOTIFS {
         return Err(fail("one_to_16_motifs_required"));
     }
     let mut patterns = vec![];

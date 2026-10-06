@@ -98,36 +98,46 @@ fn sequence_design_gc_facts_exact_apply_and_undo_share_the_validated_contract() 
 
 #[test]
 fn sequence_design_gc_rehashed_invalid_output_and_false_facts_are_rejected() {
-    let mut engine = GentleEngine::new();
-    let original = serde_json::to_value(engine.state()).unwrap();
-    let preview = plan(&mut engine, gc_request());
-    for kind in 0..5 {
-        let mut changed = preview.clone();
-        match kind {
-            0 => {
-                // Valid translation/frozen bases and no motifs, but GC is below minimum.
-                changed.output_sequence = Some("ATGTTTAAATAA".into());
-                changed.output_sha256 = Some(sha256_prefixed_str("ATGTTTAAATAA"));
-                changed.edits.clear();
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        let mut engine = GentleEngine::new();
+        let original = serde_json::to_value(engine.state()).unwrap();
+        let mut request = gc_request();
+        request.search_strategy = strategy;
+        let preview = plan(&mut engine, request);
+        for kind in 0..5 {
+            let mut changed = preview.clone();
+            match kind {
+                0 => {
+                    // Valid translation/frozen bases and no motifs, but GC is below minimum.
+                    changed.output_sequence = Some("ATGTTTAAATAA".into());
+                    changed.output_sha256 = Some(sha256_prefixed_str("ATGTTTAAATAA"));
+                    changed.edits.clear();
+                }
+                1 => {
+                    changed
+                        .gc_content
+                        .as_mut()
+                        .unwrap()
+                        .output
+                        .as_mut()
+                        .unwrap()
+                        .gc_bases = 3
+                }
+                2 => changed.gc_content.as_mut().unwrap().input.gc_bases = 2,
+                3 => changed.request.gc_content = None,
+                4 => changed.algorithm = search_strategy(strategy).algorithm().into(),
+                _ => unreachable!(),
             }
-            1 => {
-                changed
-                    .gc_content
-                    .as_mut()
-                    .unwrap()
-                    .output
-                    .as_mut()
-                    .unwrap()
-                    .gc_bases = 3
-            }
-            2 => changed.gc_content.as_mut().unwrap().input.gc_bases = 2,
-            3 => changed.request.gc_content = None,
-            4 => changed.algorithm = core::ALGORITHM.into(),
-            _ => unreachable!(),
+            changed.approval_digest = Some(GentleEngine::dna_design_approval(&changed).unwrap());
+            assert!(
+                apply(&mut engine, changed).is_err(),
+                "tamper {kind} {strategy:?}"
+            );
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
         }
-        changed.approval_digest = Some(GentleEngine::dna_design_approval(&changed).unwrap());
-        assert!(apply(&mut engine, changed).is_err(), "tamper {kind}");
-        assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
     }
 }
 

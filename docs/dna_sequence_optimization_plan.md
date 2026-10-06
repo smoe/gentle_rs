@@ -470,11 +470,42 @@ run the following on one frozen committed revision and report its SHA/platform;
 these are acceptance instructions, not local pass claims:
 
 ```sh
+cargo test -p gentle-sequence-design --locked --offline -j 1
 cargo test -p gentle-protocol --locked --offline -j 1 sequence_design
 cargo test --lib --no-default-features --locked --offline -j 1 sequence_design -- --test-threads=1
 cargo test --bin gentle_cli --no-default-features --locked --offline -j 1 sequence_design -- --test-threads=1
 cargo check -q --locked --offline -j 1
+cargo run --bin gentle_examples_docs --locked --offline -j 1 -- parity-matrix-check
 ```
 
 Live GUI, native-platform packaging, independent search/usefulness/performance
 and `.12` acceptance remain separate. No private reports are regenerated.
+
+## GC Review Reconciliation (2026-10-06)
+
+Claude's extra GC review examined `dc8c5252`, before the implementation in
+`164b44ce`; apply ownership was subsequently repaired in `13377b12`. Recheck the
+actual shared paths instead of rebuilding the proposed slice:
+
+| Finding | Current implementation and scoped follow-up |
+| --- | --- |
+| F-1: false GC-only infeasibility | `conflict_search.rs` selects motif or global GC conflicts and all synonyms of direction-capable codons. Literal unrestricted eight/36-state tests already check the restriction. |
+| F-2: apply missing GC validation | Core `validate_output` uses the full predicate; root apply rederives GC facts. Extend the honestly rehashed output/facts/stripped-policy test to both strategies. |
+| F-3: drifting feasibility predicates | `Prepared::validate` and `Violations::satisfied` are already shared by both solvers, final checks and fresh apply validation. |
+| F-4: GC-only admission | Explicit bounds already permit empty motifs. Clarify missing-both admission as `at_least_one_motif_or_explicit_gc_bounds_required`; keep invalid status, the motif cap and zero evaluated candidates. |
+| F-5: approval/policy identity | GC algorithms, the GC-specific nonclaim and complete optional request/report facts are already bound. `decisions.md` owns the CDS/integer/approval invariants; legacy GC-absent feasible previews remain unchanged. |
+| F-6: cheap negative proof | `PreparedGc` already separates malformed bounds, empty count windows and disjoint relaxed extrema before candidate evaluation. Extend malformed-bound status assertions to both strategies. |
+| F-7: work admission | Preparation already adds one CDS-only GC pass. Replace the loose budget comparison with exact assertions for motif-only, motif+GC and GC-only requests on a flanked synthetic CDS, under both solvers. This is a work-budget contract, not timing evidence. |
+| F-8: discovery/parity | Capability request text, inner-agent guidance and the CLI GC walkthrough already describe the policy and nonclaims. No new routes/progress fields or generated rows are needed; Glen/CI still checks the canonical matrix at the exact follow-up SHA. |
+
+The original D-1 example needs care: for a 21-bp CDS, bounds 4762..5238 give
+minimum 11 and maximum 10, an empty count window. Bounds 4761..5239 permit 10..11.
+The existing integer-only endpoint test checks both examples, accepted endpoints
+and one-base-outside refusal. Existing frozen/extrema, coupled motif/GC, both-
+strategy oracle, absent/unknown output, legacy-byte and cancellation tests stay
+in scope; no new solver, constraint framework or heuristics are introduced.
+
+The follow-up command set above includes the pure core and canonical parity
+check. Rust execution remains deferred under the owner's no-local-build rule;
+neither static review nor `164b44ce`'s recorded passes certify this patch.
+Keep independent usefulness, native, performance and release acceptance pending.

@@ -41,6 +41,9 @@ flanks. For CDS length L, prepare converts to `ceil(min*L/10000)` and
 `floor(max*L/10000)` once. All evaluations compare integer GC counts; valid empty
 count windows are infeasible, malformed bounds invalid. GC-only requests may
 have empty motifs; without GC at least one motif remains required.
+An empty motif list with no GC bounds is `invalid`, with reason
+`at_least_one_motif_or_explicit_gc_bounds_required`; it is not evidence that no
+synonymous design exists. The existing 16-motif maximum remains unchanged.
 GC-enabled algorithms are `synonymous_full_enumeration_gc_v1` and
 `synonymous_conflict_search_gc_v1`. Omitted GC preserves legacy report/request
 bytes and algorithm identities. `report.gc_content` is absent when unrequested

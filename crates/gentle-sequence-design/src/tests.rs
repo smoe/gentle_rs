@@ -60,7 +60,15 @@ fn gc_count_bounds_are_integer_inclusive_and_empty_windows_are_infeasible() {
     }
     for (min, max) in [(5001, 5000), (0, 10001)] {
         request.gc_content = gc_bounds(min, max);
-        assert_eq!(solve(&request, |_| false).status, Status::Invalid);
+        for strategy in [
+            SearchStrategy::FullEnumeration,
+            SearchStrategy::ConflictDirected,
+        ] {
+            assert_eq!(
+                solve_with_strategy(&request, strategy, |_| false).status,
+                Status::Invalid
+            );
+        }
     }
 }
 
@@ -107,7 +115,19 @@ fn gc_only_design_and_coupled_constraints_are_fully_validated() {
         }
     }
     let empty = input("ATGTTTAAATAA", "MFK", &[]);
-    assert_eq!(solve(&empty, |_| false).status, Status::Invalid);
+    for strategy in [
+        SearchStrategy::FullEnumeration,
+        SearchStrategy::ConflictDirected,
+    ] {
+        let result = solve_with_strategy(&empty, strategy, |_| false);
+        assert_eq!(result.status, Status::Invalid);
+        assert_eq!(
+            result.reason,
+            "at_least_one_motif_or_explicit_gc_bounds_required"
+        );
+        assert!(result.sequence.is_none());
+        assert_eq!(result.evaluated_candidates, 0);
+    }
 }
 
 #[test]
@@ -349,16 +369,58 @@ fn gc_budget_and_cancellation_never_publish_output_measurements_or_proofs() {
         );
         request.max_evaluations = 1;
     }
+}
+
+#[test]
+fn gc_work_budget_accounts_exactly_for_cds_pass_and_motif_work() {
+    // Synthetic alanine repeat with fixed flanks; literal lengths independently
+    // distinguish whole-DNA work from the added CDS-only GC pass, not runtime.
     let mut request = input(
-        &format!("ATG{}TAA", "GCT".repeat(1000)),
+        &format!(
+            "{}ATG{}TAA{}",
+            "C".repeat(100),
+            "GCT".repeat(1000),
+            "G".repeat(100)
+        ),
         &format!("M{}", "A".repeat(1000)),
         &["GAATTC"],
     );
+    request.cds = Interval {
+        start: 100,
+        end: 3106,
+    };
     request.max_evaluations = MAX_EVALUATIONS;
-    let without_gc = solve(&request, |_| false).effective_evaluation_budget;
-    request.gc_content = gc_bounds(0, 10000);
-    let with_gc = solve(&request, |_| false).effective_evaluation_budget;
-    assert!(with_gc < without_gc && with_gc > 0);
+    assert_eq!(request.sequence.len(), 3206);
+    let dna_work = 3206 * 4;
+    // GAATTC is palindromic; requesting both strands performs one motif pass.
+    let motif_work = (3206 - 6 + 1) * 6;
+    let cds_gc_work = 3006;
+    for strategy in [
+        SearchStrategy::FullEnumeration,
+        SearchStrategy::ConflictDirected,
+    ] {
+        let result = solve_with_strategy(&request, strategy, |_| false);
+        assert_eq!(result.status, Status::Feasible);
+        assert_eq!(
+            result.effective_evaluation_budget,
+            MAX_TOTAL_MOTIF_WORK / (dna_work + motif_work)
+        );
+        let mut gc_request = request.clone();
+        gc_request.gc_content = gc_bounds(0, 10000);
+        let result = solve_with_strategy(&gc_request, strategy, |_| false);
+        assert_eq!(result.status, Status::Feasible);
+        assert_eq!(
+            result.effective_evaluation_budget,
+            MAX_TOTAL_MOTIF_WORK / (dna_work + motif_work + cds_gc_work)
+        );
+        gc_request.motifs.clear();
+        let result = solve_with_strategy(&gc_request, strategy, |_| false);
+        assert_eq!(result.status, Status::Feasible);
+        assert_eq!(
+            result.effective_evaluation_budget,
+            MAX_TOTAL_MOTIF_WORK / (dna_work + cds_gc_work)
+        );
+    }
 }
 
 fn code() -> GeneticCode {

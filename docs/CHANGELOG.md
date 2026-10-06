@@ -1,5 +1,34 @@
 # GENtle Changelog
 
+## 2026-10-06 - Reconcile The Pre-GC Review Without Reimplementing The Slice
+
+- Commit the preceding apply/provenance repair as `13377b12`, leaving the
+  unrelated deleted handoff and private outputs untouched. Claude's additional
+  review targeted `dc8c5252`; static inspection of `164b44ce` confirms the joint
+  validator, GC conflict selection, integer bounds/extrema, output-dependent
+  facts, policy identity and adapter discovery already implement its requirements.
+  Record F-1 through F-8 against the actual paths in the existing design plan.
+- Clarify the only missing admission diagnostic: an empty motif list without
+  explicit GC bounds is invalid with
+  `at_least_one_motif_or_explicit_gc_bounds_required`, not biological
+  infeasibility. Preserve the motif cap, valid-input behavior, feasible
+  report/approval bytes, algorithm IDs and schemas.
+- Strengthen synthetic tests: malformed bounds and missing constraints under
+  both strategies; exact motif-only, joint and GC-only budgets distinguishing
+  full DNA length from the CDS GC pass; and honestly rehashed output/fact/policy
+  tampering through both strategy-specific apply gates. Keep existing unrestricted
+  eight/36-state oracles and cancellation/legacy tests, and correct the review's
+  21-bp example in the handoff rather than weakening its empty-window test.
+- No search algorithm, heuristics, dependency, adapters, fixtures, catalogs or
+  private reports change. Formatting and whitespace checks pass; session-close
+  reports four OK, two warnings, no failures. Warnings identify intentional and
+  unrelated dirty files plus the manual scope-fidelity reminder.
+  Rust builds/tests/checks and canonical parity execution remain
+  deferred to Glen/CI under the owner's no-local-build restriction; prior GC
+  results and static inspection are not acceptance of the new patch. The handoff
+  lists the pure-core, protocol, root, CLI and parity commands at one frozen SHA.
+  No push, dispatch, performance verdict or `.12` acceptance is implied.
+
 ## 2026-10-06 - Close Sequence-Design Apply Ownership And Metadata Gaps
 
 - Reconcile Claude's `2f3a60f0` review on local `main` `164b44ce`, preserving

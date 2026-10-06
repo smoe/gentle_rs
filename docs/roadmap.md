@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-06 - Reconcile Claude's [sequence-design apply follow-up](dna_sequence_optimization_plan.md#claude-follow-up-apply-metadata-and-execution-ownership) on local `main` `164b44ce`, preserving the GC slice and approval bytes. Glen/CI must run the new tagged-metadata, saved-container/origin and detached commit/stale-rejection regressions at one frozen SHA; local Rust builds/tests/checks were deliberately not run. Independent native/usefulness/search audits and `.12` candidate gates remain pending, not implied by this outside-release repair.
+Last session: 2026-10-06 - Commit the apply/provenance repair as `13377b12`, then [reconcile Claude's older GC review](dna_sequence_optimization_plan.md#gc-review-reconciliation-2026-10-06) against `164b44ce`. Glen/CI must run the tagged-metadata, saved-container/origin, detached/stale, exact GC work-budget and both-strategy rehashed-tamper regressions at one frozen SHA; local Rust execution remains deliberately deferred. Preserve feasible preview approvals and keep independent native/usefulness/search audits and `.12` gates pending.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
