@@ -1,5 +1,31 @@
 # GENtle Changelog
 
+## 2026-10-06 - Separate Sequence-Design Validation From Search Claims
+
+- Address Glen's 2026-10-05 `needs_fix` audit: source inspection confirms both
+  reporting/provenance defects still exist at `dc8c5252`. Approval remains an
+  exact content binding, not an authenticated search signature. Apply freshly
+  validates output constraints/edits without rerunning optimization; receipts
+  explicitly distinguish `output_constraints_verified=true` from
+  `search_claims_verified=false`. Retain the unchanged approved preview only as
+  `submitted_proposal`, with a search non-claim in receipt/CDS annotation and
+  user-visible result. Legacy receipt fields default to no verification claim;
+  historical metadata is not rewritten or certified.
+- Materialize validated DNA without a nested public sequence-creation operation.
+  The outer apply owns one journal/undo entry, one derived lineage node and one
+  singleton container with the same operation ID. The public engine apply
+  helper delegates to that shared operation rather than bypassing provenance.
+- Add the valid but non-minimum two-edit MEF reproducer for both strategies,
+  client-rehashed frozen-stop rejection, legacy receipt parsing, exact provenance
+  counts, loaded-source edges, public-helper/shared-shell parity and full state
+  undo/redo coverage. Preserve preview approval bytes, solver behavior, existing
+  sources and unrelated `paper`/`output/` changes. Commit/push requested by the
+  owner; no local builds/tests, tag or workflow dispatch. Independent repair
+  acceptance remains pending; no `.12` gate or performance claim is added.
+- Formatting and whitespace checks pass. Session-close: four OK, two warnings,
+  no failures; warnings identify the intentional uncommitted patch plus
+  unrelated dirty artifacts and the manual scope-fidelity reminder.
+
 ## 2026-10-05 - Add Explicit Bounded Conflict Search For Synthetic Inserts
 
 - Continue the owner-requested sequence-design slices from integrated local

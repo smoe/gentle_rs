@@ -37,9 +37,23 @@ Search-space overflow remains unknown independently of that proof. Every visited
 candidate and the final output use the same full-sequence validator.
 Approval binds the complete report with only its approval field cleared. Apply
 rechecks live source/table/protection and fully evaluates approved output, then
-creates one undoable, lineage-linked sequence and metadata receipt. Existing
-output IDs are refused; stale biological features are not copied. Only the
+creates one undoable, lineage-linked sequence and metadata receipt. Its single
+singleton container and lineage node use the outer apply operation ID; no
+nested creation operation is recorded. Existing output IDs are refused;
+stale biological features are not copied. Only the
 explicit synthetic CDS/translation/code and non-claims are newly annotated.
+
+Approval hashes bind content, not authenticated search provenance. Apply does
+not re-prove a preview's completeness/minimum, evaluation counts or reason.
+New receipts emit `output_constraints_verified=true` and
+`search_claims_verified=false`, plus an explicit non-claim. Both fields default
+to false when absent in legacy receipts: absence is not verification or proof
+that DNA constraints failed. The persisted `dna_sequence_design:OUTPUT_ID`
+record holds `submitted_proposal` (the unchanged caller-supplied approved
+preview, including unverified claims) and `receipt` (apply-time checks).
+Historical records using `proposal` are unverified search evidence too; they
+are not rewritten or promoted to verified reports. Request/preview schemas and
+approval bytes are unchanged. Neither portable reports nor receipts are signed.
 
 Supported scope, resource limits, scientific non-claims and unresolved versus
 infeasible semantics are defined in the [design contract](dna_sequence_optimization_plan.md).

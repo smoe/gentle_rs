@@ -169,6 +169,19 @@ current mapping and policies, and freshly validates approved output/edits.
 It never reruns optimization. The exact unused output ID is created in detached
 execution, checked before one undoable commit, with source lineage and retained
 `gentle.dna_sequence_design_receipt.v1`. Original DNA remains unchanged.
+One outer apply owns the journal/undo entry, derived lineage node and singleton
+container; their operation IDs agree, without nested public creation hooks.
+
+The approval digest identifies reviewed content, not authenticated search
+provenance. A caller can change a valid output and recompute that digest, so
+apply must not certify the preview's completeness/minimum, counts or reason.
+The engine receipt records `output_constraints_verified=true` and
+`search_claims_verified=false`. The exact approved preview is retained only as
+`submitted_proposal`, separate from apply-time checks; no false proof is copied
+into an engine-verified report. Missing legacy receipt fields and historical
+`proposal` metadata establish no search-verification claim. This does not reject
+valid non-minimum DNA or rerun either solver. Preview/approval bytes remain
+unchanged; serialized receipts themselves are not authenticated signatures.
 
 Source features are intentionally omitted, even though coordinates did not
 change. The derived sequence carries only the explicitly supplied synthetic CDS,
@@ -264,9 +277,33 @@ plan-fidelity reminder is not an independent review. No generated catalog,
 scientific fixture/export, Cargo dependency/profile or workflow changed. No
 push, tag, dispatch or release/experimental acceptance is implied.
 
+### Approval-Boundary Audit Follow-Up
+
+Glen's 2026-10-05 Linux audit of `85d23ddb` found correct constrained outputs on
+its tested cases, but a `needs_fix` reporting/provenance verdict. Both defects
+are visible by source inspection at current `dc8c5252`: client-rehashed valid
+two-edit `ATGGAGTTTTAA` could retain fabricated minimum/completeness claims,
+and nested creation produced duplicate containers with split operation IDs.
+Its enumeration-only acceptance does not certify the later conflict solver,
+native GUI/Windows/macOS or `.12` packages; its independent evidence remains
+separate from local verification.
+
+The scoped repair separates verified output constraints from submitted search
+claims, and materializes once under the outer apply. Added regressions cover
+that two-edit example and rehashed frozen-stop rejection in both strategies,
+legacy receipt defaults, one journal/checkpoint/container/node, loaded-source
+edges, unchanged source provenance, full state undo/redo and shared-shell
+receipts. No solver, dependency, budget or performance change is included.
+Local builds/tests are deliberately unrun at the owner's request. Repeat the
+focused protocol/engine/shell tests and direct CLI/confirmed MCP replay at the
+committed repair SHA before calling these findings independently closed.
+
 ## Remaining stages
 
-1. Glen independently reviews the candidates and measures representative and
+1. Glen rechecks the approval/provenance repair at its exact integrated SHA,
+   including the two-edit/non-minimum example, unverified search receipt and
+   one coherent derivation through direct CLI, shared shell and confirmed MCP.
+   Then independently reviews the candidates and measures representative and
    adversarial synthetic inserts, now including both explicit strategies at one
    authorized exact revision. Keep the [first-slice pinned audit](glen_sequence_design_handoff_20261005.md)
    historical rather than relabeling its SHA as new-search acceptance. Compare

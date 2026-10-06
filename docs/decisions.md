@@ -24,6 +24,16 @@ candidates. Application checks the selected strategy/algorithm/policy binding
 without rerunning search.
 Approval binds exact input/output/protection/mapping/configuration/evaluations;
 apply revalidates without rerunning search and creates one undoable derivation.
+The digest is a content binding, not an authenticated engine signature or proof
+of search history. Apply verifies output constraints and exact edits only;
+completeness, minimum-edit claims, search counts and reasons remain unverified.
+Retain the exact approved bytes as `submitted_proposal`, separate from the
+engine receipt (`output_constraints_verified=true`, `search_claims_verified=false`).
+Missing legacy verification fields establish no claim; historical `proposal`
+metadata must not be interpreted as engine-verified search evidence. One apply
+owns one derived sequence, one singleton container and one lineage node, all
+with the outer operation ID; materialization must not invoke nested public
+sequence-creation hooks.
 Stale source annotations are omitted rather than inherited. No expression,
 splicing, folding or suitability claim follows from translation preservation.
 See [the scoped contract](dna_sequence_optimization_plan.md). This is outside

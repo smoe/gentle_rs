@@ -1,5 +1,6 @@
 //! Inline hand-crafted synthetic coding inserts, recreated from literal strings.
 //! Used only for the shared engine/shell approval boundary, never as natural genes.
+//! The two-edit MEF example recreates Glen's 2026-10-05 reporting-integrity audit.
 
 use super::*;
 
@@ -127,6 +128,44 @@ fn apply(
     })
 }
 
+fn assert_single_design_derivation(engine: &GentleEngine, seq_id: &str, op_id: &str) {
+    let containers = engine
+        .state
+        .container_state
+        .containers
+        .values()
+        .filter(|container| container.members.iter().any(|member| member == seq_id))
+        .collect::<Vec<_>>();
+    assert_eq!(containers.len(), 1, "one apply must create one container");
+    let container = containers[0];
+    assert!(matches!(&container.kind, ContainerKind::Singleton));
+    assert_eq!(container.members, vec![seq_id.to_string()]);
+    assert_eq!(container.created_by_op.as_deref(), Some(op_id));
+    assert_eq!(
+        engine
+            .state
+            .container_state
+            .seq_to_latest_container
+            .get(seq_id),
+        Some(&container.container_id)
+    );
+    let nodes = engine
+        .state
+        .lineage
+        .nodes
+        .values()
+        .filter(|node| node.seq_id == seq_id)
+        .collect::<Vec<_>>();
+    assert_eq!(nodes.len(), 1, "one apply must create one lineage node");
+    let node = nodes[0];
+    assert!(matches!(&node.origin, SequenceOrigin::Derived));
+    assert_eq!(node.created_by_op.as_deref(), Some(op_id));
+    assert_eq!(
+        engine.state.lineage.seq_to_node.get(seq_id),
+        Some(&node.node_id)
+    );
+}
+
 #[test]
 fn sequence_design_engine_preview_exact_apply_and_undo() {
     let mut engine = GentleEngine::new();
@@ -139,9 +178,19 @@ fn sequence_design_engine_preview_exact_apply_and_undo() {
     let roundtrip: DnaSequenceDesignReport =
         serde_json::from_str(&serde_json::to_string(&preview).unwrap()).unwrap();
     assert_eq!(preview, roundtrip);
+    let journal_len = engine.journal.len();
+    let undo_count = engine.undo_available();
     let applied = apply(&mut engine, roundtrip).unwrap();
     let receipt = applied.dna_sequence_design_receipt.unwrap();
     assert_eq!(applied.created_seq_ids, [receipt.created_seq_id.clone()]);
+    assert_eq!(engine.journal.len(), journal_len + 1);
+    assert_eq!(engine.undo_available(), undo_count + 1);
+    assert!(receipt.output_constraints_verified);
+    assert!(!receipt.search_claims_verified);
+    assert_single_design_derivation(&engine, &receipt.created_seq_id, &applied.op_id);
+    assert_eq!(engine.state.container_state.containers.len(), 1);
+    assert_eq!(engine.state.lineage.nodes.len(), 1);
+    assert!(engine.state.lineage.edges.is_empty());
     let dna = &engine.state.sequences[&receipt.created_seq_id];
     assert_eq!(
         dna.get_forward_string(),
@@ -149,13 +198,15 @@ fn sequence_design_engine_preview_exact_apply_and_undo() {
     );
     assert_eq!(dna.features().len(), 1);
     assert_eq!(&*dna.features()[0].kind, "CDS");
-    assert!(
-        engine
-            .state
-            .metadata
-            .contains_key(&format!("dna_sequence_design:{}", receipt.created_seq_id))
+    let record = &engine.state.metadata[&format!("dna_sequence_design:{}", receipt.created_seq_id)];
+    assert_eq!(
+        record["submitted_proposal"],
+        serde_json::to_value(&preview).unwrap()
     );
+    assert!(record.get("proposal").is_none());
+    let applied_state = serde_json::to_value(engine.state()).unwrap();
     assert!(apply(&mut engine, preview.clone()).is_err());
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), applied_state);
     engine.undo_last_operation().unwrap();
     assert!(!engine.state.sequences.contains_key(&receipt.created_seq_id));
     assert!(
@@ -164,11 +215,117 @@ fn sequence_design_engine_preview_exact_apply_and_undo() {
             .metadata
             .contains_key(&format!("dna_sequence_design:{}", receipt.created_seq_id))
     );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+    assert_eq!(engine.journal.len(), journal_len);
+    assert_eq!(engine.undo_available(), undo_count);
     engine.redo_last_operation().unwrap();
-    assert_eq!(
-        engine.state.sequences[&receipt.created_seq_id].get_forward_string(),
-        "ATGGAATTTTAA"
-    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), applied_state);
+    assert_single_design_derivation(&engine, &receipt.created_seq_id, &applied.op_id);
+    assert_eq!(engine.journal.len(), journal_len + 1);
+    assert_eq!(engine.undo_available(), undo_count + 1);
+}
+
+#[test]
+fn sequence_design_direct_apply_method_uses_one_operation_and_undo_boundary() {
+    let mut engine = GentleEngine::new();
+    let preview = plan(&mut engine, request());
+    let original = serde_json::to_value(engine.state()).unwrap();
+    let journal_len = engine.journal.len();
+    let approval = preview.approval_digest.clone().unwrap();
+    let receipt = engine
+        .apply_dna_sequence_design(preview, &approval)
+        .unwrap();
+    assert_eq!(engine.journal.len(), journal_len + 1);
+    let operation = engine.journal.last().unwrap();
+    assert!(matches!(
+        &operation.op,
+        Operation::ApplyDnaSequenceDesign { .. }
+    ));
+    assert_single_design_derivation(&engine, &receipt.created_seq_id, &operation.result.op_id);
+    assert_eq!(engine.undo_available(), 1);
+    engine.undo_last_operation().unwrap();
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+}
+
+#[test]
+fn sequence_design_rehashed_nonminimum_output_does_not_verify_search_claims() {
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        let mut engine = GentleEngine::new();
+        let mut request = request();
+        request.search_strategy = strategy;
+        let mut submitted = plan(&mut engine, request);
+        assert_eq!(submitted.output_sequence.as_deref(), Some("ATGGAATTTTAA"));
+        assert_eq!(submitted.edits.len(), 1);
+        assert!(submitted.minimum_edits_proven && submitted.optimization_complete);
+        let original = serde_json::to_value(engine.state()).unwrap();
+
+        // GAG and TTT still encode EF, but need two edits instead of the one above.
+        submitted.output_sequence = Some("ATGGAGTTTTAA".into());
+        submitted.output_sha256 = Some(sha256_prefixed_str("ATGGAGTTTTAA"));
+        submitted.edits = vec![
+            DesignNucleotideEdit {
+                position_0based: 5,
+                before: "A".into(),
+                after: "G".into(),
+            },
+            DesignNucleotideEdit {
+                position_0based: 8,
+                before: "C".into(),
+                after: "T".into(),
+            },
+        ];
+        submitted.reason = "Fabricated completed search proving a two-edit minimum".into();
+        submitted.evaluated_candidates = 0;
+        submitted.approval_digest = Some(GentleEngine::dna_design_approval(&submitted).unwrap());
+
+        let mut invalid = submitted.clone();
+        invalid.output_sequence = Some("ATGGAGTTTTAG".into());
+        invalid.output_sha256 = Some(sha256_prefixed_str("ATGGAGTTTTAG"));
+        invalid.edits.push(DesignNucleotideEdit {
+            position_0based: 11,
+            before: "A".into(),
+            after: "G".into(),
+        });
+        invalid.approval_digest = Some(GentleEngine::dna_design_approval(&invalid).unwrap());
+        assert!(
+            apply(&mut engine, invalid).is_err(),
+            "frozen stop must remain enforced"
+        );
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+
+        let applied = apply(&mut engine, submitted.clone()).unwrap();
+        let receipt = applied.dna_sequence_design_receipt.unwrap();
+        assert!(receipt.output_constraints_verified);
+        assert!(!receipt.search_claims_verified);
+        assert_eq!(
+            receipt.approval_digest,
+            submitted.approval_digest.clone().unwrap()
+        );
+        assert_eq!(
+            engine.state.sequences[&receipt.created_seq_id].get_forward_string(),
+            "ATGGAGTTTTAA"
+        );
+        assert!(
+            receipt
+                .nonclaims
+                .iter()
+                .any(|statement| statement == APPLY_SEARCH_NONCLAIM)
+        );
+        let record =
+            &engine.state.metadata[&format!("dna_sequence_design:{}", receipt.created_seq_id)];
+        assert_eq!(
+            record["submitted_proposal"],
+            serde_json::to_value(&submitted).unwrap()
+        );
+        assert_eq!(record["receipt"], serde_json::to_value(&receipt).unwrap());
+        assert!(record.get("proposal").is_none());
+        assert_single_design_derivation(&engine, &receipt.created_seq_id, &applied.op_id);
+        engine.undo_last_operation().unwrap();
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+    }
 }
 
 #[test]
@@ -239,7 +396,7 @@ fn sequence_design_rejects_tampering_stale_sources_and_preserves_lineage() {
         .state
         .sequences
         .insert("synthetic_source".into(), source);
-    apply(&mut engine, preview.clone()).unwrap();
+    let applied = apply(&mut engine, preview.clone()).unwrap();
     assert_eq!(
         engine.state.sequences["synthetic_source"].get_forward_string(),
         "ATGGAATTCTAA"
@@ -250,8 +407,32 @@ fn sequence_design_rejects_tampering_stale_sources_and_preserves_lineage() {
             .len(),
         1
     );
-    let lineage = serde_json::to_value(engine.state()).unwrap()["lineage"].to_string();
-    assert!(lineage.contains("synthetic_source"), "{lineage}");
+    assert_single_design_derivation(&engine, "synthetic_without_ecori", &applied.op_id);
+    assert_eq!(engine.state.container_state.containers.len(), 2);
+    assert_eq!(engine.state.lineage.nodes.len(), 2);
+    assert_eq!(engine.state.lineage.edges.len(), 1);
+    let edge = &engine.state.lineage.edges[0];
+    assert_eq!(
+        edge.from_node_id,
+        engine.state.lineage.seq_to_node["synthetic_source"]
+    );
+    assert_eq!(
+        edge.to_node_id,
+        engine.state.lineage.seq_to_node["synthetic_without_ecori"]
+    );
+    assert_eq!(edge.op_id, applied.op_id);
+    assert_eq!(edge.run_id, "interactive");
+    let source_node = &edge.from_node_id;
+    assert_eq!(
+        serde_json::to_value(&engine.state.lineage.nodes[source_node]).unwrap(),
+        original["lineage"]["nodes"][source_node]
+    );
+    let source_container =
+        &engine.state.container_state.seq_to_latest_container["synthetic_source"];
+    assert_eq!(
+        serde_json::to_value(&engine.state.container_state.containers[source_container]).unwrap(),
+        original["container_state"]["containers"][source_container]
+    );
 }
 
 #[test]
@@ -346,10 +527,17 @@ fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy) {
     ))
     .unwrap();
     assert!(command.is_state_mutating());
-    assert!(
-        execute_shell_command(&mut shell_engine, &command)
-            .unwrap()
-            .state_changed
+    let applied = execute_shell_command(&mut shell_engine, &command).unwrap();
+    assert!(applied.state_changed);
+    let direct_applied = apply(&mut direct, saved).unwrap();
+    assert_eq!(
+        applied.output["result"]["dna_sequence_design_receipt"],
+        serde_json::to_value(direct_applied.dna_sequence_design_receipt.unwrap()).unwrap()
+    );
+    assert_single_design_derivation(
+        &shell_engine,
+        "synthetic_without_ecori",
+        applied.output["result"]["op_id"].as_str().unwrap(),
     );
     assert!(parse_shell_line("sequence-design apply @preview.json").is_err());
     let capability = execute_shell_command(

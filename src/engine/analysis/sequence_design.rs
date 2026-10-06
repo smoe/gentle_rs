@@ -1,6 +1,7 @@
 //! Root context/approval boundary for the dependency-free synonymous design core.
 //! Search is read-only. Apply validates the approved bytes, never reruns search,
 //! and deliberately drops source biological annotations rather than copying claims.
+//! Submitted search claims are retained as unverified evidence, not engine proof.
 
 use super::*;
 use gentle_protocol::sequence_design::*;
@@ -8,6 +9,7 @@ use gentle_sequence_design as core;
 
 const MAX_SOURCE_ID_BYTES: usize = 4_096;
 const MAX_DIGEST_BYTES: usize = 128;
+const APPLY_SEARCH_NONCLAIM: &str = "Apply verified output constraints and exact edits only; preview search history, completeness and minimum edits remain unverified. A content digest is not authenticated search provenance.";
 
 fn interval(value: &DesignInterval) -> core::Interval {
     core::Interval {
@@ -270,8 +272,28 @@ impl GentleEngine {
         Ok(report)
     }
 
-    /// Validate and install only the exact approved output; no optimization is rerun.
+    /// Execute the shared apply operation with one provenance/undo boundary.
+    /// Output constraints are revalidated; search claims are not re-proven.
     pub fn apply_dna_sequence_design(
+        &mut self,
+        proposal: DnaSequenceDesignReport,
+        approval: &str,
+    ) -> Result<DnaSequenceDesignReceipt, EngineError> {
+        self.apply(Operation::ApplyDnaSequenceDesign {
+            proposal: Box::new(proposal),
+            approval_digest: approval.into(),
+        })?
+        .dna_sequence_design_receipt
+        .ok_or_else(|| EngineError {
+            code: ErrorCode::Internal,
+            message: "Sequence-design apply returned no receipt".into(),
+            cause_chain: vec![],
+        })
+    }
+
+    /// Materialize validated bytes without nested public-operation hooks.
+    /// The outer apply owns lineage, container creation, journaling and undo.
+    pub(super) fn materialize_approved_dna_design(
         &mut self,
         proposal: DnaSequenceDesignReport,
         approval: &str,
@@ -353,31 +375,23 @@ impl GentleEngine {
                 "Approved nucleotide edit script disagrees with full output validation",
             ));
         }
+        let mut receipt_nonclaims = proposal.nonclaims.clone();
+        receipt_nonclaims.push(APPLY_SEARCH_NONCLAIM.into());
         let receipt = DnaSequenceDesignReceipt {
             schema: RECEIPT_SCHEMA.into(),
             approval_digest: approval.into(),
             created_seq_id: proposal.request.output_seq_id.clone(),
             output_sha256: sha256_prefixed_str(output),
-            nonclaims: proposal.nonclaims.clone(),
+            output_constraints_verified: true,
+            search_claims_verified: false,
+            nonclaims: receipt_nonclaims,
         };
-        let mut detached = self.fork_detached_execution();
-        let engine = detached.engine_mut();
-        let created = engine.apply(Operation::CreateSequenceFromText {
-            sequence_text: output.into(),
-            output_id: Some(receipt.created_seq_id.clone()),
-            name: Some(receipt.created_seq_id.clone()),
-            circular: false,
+        let mut dna = DNAsequence::from_sequence(output).map_err(|error| {
+            EngineError::invalid_input(format!("Could not materialize approved DNA: {error}"))
         })?;
-        if created.created_seq_ids != [receipt.created_seq_id.clone()] {
-            return Err(EngineError::invalid_input(
-                "Exact approved design output identity was not preserved",
-            ));
-        }
-        let dna = engine
-            .state
-            .sequences
-            .get_mut(&receipt.created_seq_id)
-            .unwrap();
+        dna.set_circular(false);
+        dna.set_name(Some(receipt.created_seq_id.clone()));
+        Self::prepare_sequence(&mut dna);
         if sha256_prefixed_str(&dna.get_forward_string()) != receipt.output_sha256 {
             return Err(EngineError::invalid_input(
                 "Materialized DNA differs from the approved output",
@@ -400,12 +414,18 @@ impl GentleEngine {
                 ),
                 ("transl_table".into(), Some("1".into())),
                 ("gentle_design_approval".into(), Some(approval.into())),
-                ("note".into(), Some(proposal.nonclaims.join(" "))),
+                ("note".into(), Some(receipt.nonclaims.join(" "))),
             ],
         }];
+        let mut detached = self.fork_detached_execution();
+        let engine = detached.engine_mut();
+        engine
+            .state_mut()
+            .sequences
+            .insert(receipt.created_seq_id.clone(), dna);
         engine.state.metadata.insert(
             format!("dna_sequence_design:{}", receipt.created_seq_id),
-            serde_json::json!({"proposal": proposal, "receipt": receipt}),
+            serde_json::json!({"submitted_proposal": proposal, "receipt": receipt}),
         );
         self.commit_detached_execution(&mut detached)?;
         Ok(receipt)

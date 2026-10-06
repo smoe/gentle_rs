@@ -18,6 +18,16 @@ Planning never changes source/project sequences; application creates a derived
 sequence without rerunning search, retains a receipt, and is undoable. Stale
 input/protection/table/output bindings and existing output IDs are refused.
 
+The approval digest binds reviewed bytes, not proof that GENtle produced their
+search claims. Apply freshly verifies DNA constraints and exact edits, but does
+not verify completeness or minimum edits, even for an unchanged preview.
+Its receipt says `output_constraints_verified=true` and
+`search_claims_verified=false`. The retained `submitted_proposal` is explicitly
+unverified search evidence, not a new engine-certified optimization report.
+Legacy records without these fields establish no verification claim. A valid
+two-edit output may be approved/applied even if a one-edit alternative exists;
+application must not turn a submitted minimum claim into proof of optimality.
+
 A minimal **synthetic** request (12 bp, protein MEF, one EcoRI recognition
 sequence on both strands; not a natural gene or functional assay):
 

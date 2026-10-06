@@ -130,7 +130,9 @@ pub struct DnaSequenceDesignReport {
     pub evaluated_candidates: u64,
     pub effective_evaluation_budget: u64,
     pub search_space: Option<u64>,
+    /// Preview search claims; apply does not authenticate or re-prove them.
     pub optimization_complete: bool,
+    /// Minimum-edit claim from the preview search, not apply-time verification.
     pub minimum_edits_proven: bool,
     pub approval_digest: Option<String>,
     pub nonclaims: Vec<String>,
@@ -142,12 +144,40 @@ pub struct DnaSequenceDesignReceipt {
     pub approval_digest: String,
     pub created_seq_id: String,
     pub output_sha256: String,
+    /// Apply rechecked the DNA constraints and exact nucleotide edits.
+    /// Missing legacy fields do not establish verification.
+    #[serde(default)]
+    pub output_constraints_verified: bool,
+    /// A content-bound preview is not authenticated search provenance.
+    /// Currently always false: apply does not rerun either search strategy.
+    #[serde(default)]
+    pub search_claims_verified: bool,
     pub nonclaims: Vec<String>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sequence_design_legacy_receipt_does_not_imply_verified_claims() {
+        // Hand-crafted legacy receipt shape, not retained scientific evidence.
+        let legacy = serde_json::json!({
+            "schema": RECEIPT_SCHEMA,
+            "approval_digest": "sha256:synthetic-example",
+            "created_seq_id": "synthetic_without_ecori",
+            "output_sha256": "sha256:synthetic-output",
+            "nonclaims": []
+        });
+        let mut receipt: DnaSequenceDesignReceipt = serde_json::from_value(legacy).unwrap();
+        assert!(!receipt.output_constraints_verified);
+        assert!(!receipt.search_claims_verified);
+        receipt.output_constraints_verified = true;
+        let roundtrip: DnaSequenceDesignReceipt =
+            serde_json::from_value(serde_json::to_value(&receipt).unwrap()).unwrap();
+        assert_eq!(roundtrip, receipt);
+        assert!(!roundtrip.search_claims_verified);
+    }
 
     #[test]
     fn sequence_design_strategy_preserves_legacy_request_bytes_and_rejects_unknown_modes() {
