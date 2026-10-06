@@ -27,8 +27,17 @@ start/stop, never flanks or inferred organism defaults. Inclusive basis-point
 bounds become integer counts once; all search and apply predicates check both
 motifs and GC. Missing GC/output facts are absent, not zero. Disjoint synonymous
 count extrema prove impossibility only; overlap does not establish feasibility.
+Windowed GC is separately explicit: every full one-base-step window contained
+in the CDS, including frozen bases, with no flanks, shortened windows or stride.
+Each fixed-length window uses integer count bounds; whole-CDS GC, motifs and
+windowed GC must all pass. Conflict branching considers a codon's contribution
+inside the conflicting window, not its whole-codon GC count, and retains all
+synonyms of direction-capable unassigned codons. Reports retain every exact
+window interval/count; apply rederives them. Unrequested/unadmitted facts and
+missing output are absent, never zeros. Prefix counting checks complete windows
+without sampling or substituting local checks for full validation.
 GC presence is explicitly algorithm/policy-bound without changing legacy
-GC-absent serialization. Recomputed approval hashes cannot bypass output
+GC/window-absent serialization. Recomputed approval hashes cannot bypass output
 constraint or GC-fact verification; they still do not authenticate search claims.
 Approval binds exact input/output/protection/mapping/configuration/evaluations;
 apply revalidates without rerunning search and creates one undoable derivation.

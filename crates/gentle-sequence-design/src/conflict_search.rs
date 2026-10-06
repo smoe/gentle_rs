@@ -1,8 +1,8 @@
 //! Bounded conflict-directed codon assignment with full-candidate evaluation.
 //!
 //! A feasible sequence must change an unassigned codon implicated by a current
-//! motif or whole-CDS GC violation. Branch over its synonymous assignments, fixing one
-//! per level. Complete traversal therefore covers a feasible/minimum-edit path
+//! motif, whole-CDS or sliding-window GC violation. Branch over its synonymous
+//! assignments, fixing one per level. Complete traversal covers a feasible/minimum-edit path
 //! if one exists; budget interruption does not establish either conclusion.
 //! The explicit depth-first stack avoids recursion and a sequence-sized frontier.
 
@@ -34,6 +34,13 @@ impl Frame {
                         &prepared.input.sequence.as_bytes()[*start..*start + 3],
                         alternatives,
                         violation,
+                    ),
+                    Conflict::WindowGc(interval, direction) => gc_window::direction_capable(
+                        *start,
+                        &prepared.input.sequence.as_bytes()[*start..*start + 3],
+                        alternatives,
+                        interval,
+                        direction,
                     ),
                 };
                 if implicated && self.next_synonym < alternatives.len() {

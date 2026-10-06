@@ -21,6 +21,11 @@ The owner approved the CDS-wide GC slice after Claude's read-only review of
 output validation from submitted search claims and its single apply/undo boundary.
 The GC proposal, review and reconciliation are recorded below; no runtime,
 native-platform, Glen or release acceptance follows from this authorization.
+The owner authorized the next bounded slice on 2026-10-06: explicit sliding-window
+GC through the same shared contract. Implementation starts from fetched `main`
+`afbef44451ed61e5f347c3aeb586e7124201cf22`, retaining its typed unverified-preview
+wrapper and single materialization boundary. An optional read-only Claude review
+was offered, not performed; this windowed slice is not Claude-reviewed.
 
 Review rationale is preserved in the [dated review history](dna_sequence_optimization_review_20261005.md)
 and [original consultation prompt](dna_sequence_optimization_claude_prompt.md).
@@ -37,8 +42,8 @@ are unchanged. A label never implies permission to recode a sequence.
 
 The first reviewed proposal reduced four constraint families to motif removal.
 Translation/protection are mutation invariants, not optional objectives. The
-later owner-approved GC slice adds only the CDS-wide constraint below; windowed
-GC, codon adaptation, repeats/hairpins, folding and a general specification/plugin
+later owner-approved GC slices add CDS-wide and explicit sliding-window constraints
+below; codon adaptation, repeats/hairpins, folding and a general specification/plugin
 framework remain deferred. The independent component option is adopted as
 `crates/gentle-sequence-design`, version 0.1.0, private/unpublished, original MIT
 code, no dependencies. It supports Rust 1.85 / edition 2024. No Python runtime,
@@ -425,6 +430,95 @@ exercise parser/forwarding/engine paths in-process, not packaged executables.
 Glen must audit the exact authorized committed candidate separately; earlier
 motif-only evidence does not certify the GC slice or its search claims.
 
+## Sliding-Window GC Slice (2026-10-06)
+
+`gc_window={window_bp,min_basis_points,max_basis_points}` is optional. Check every
+complete window in the declared CDS at a fixed one-base step, ascending local
+coordinates, including frozen start/stop/protected bases. Exclude flanks and
+shortened edge windows. Length must be 1..CDS length; bounds are inclusive
+0..10000 basis points. No stride, arbitrary interval, strand, organism default
+or percentage tolerance is inferred. Window-only design permits empty motifs;
+whole-CDS GC may coexist and is never replaced by window checks.
+
+Convert bounds once using the fixed window denominator. Malformed geometry or
+bounds are invalid; an empty integer count interval is infeasible. A violating
+fully frozen window also proves impossibility, after the first cancellation poll.
+No per-window reachable-extrema shortcut or general infeasibility heuristic is
+added. All other failures remain unresolved until the bounded search proves
+infeasibility. Candidate validation constructs complete CDS prefix counts and
+checks all windows; work admission adds CDS length plus one and window count to
+the previous conservative per-evaluation cost. Workspace/report rows are linear
+in the admitted 12,000-bp sequence limit, not a runtime-performance claim.
+
+The common predicate covers motifs, whole-CDS GC and windows in that order.
+For the earliest violating window, conflict search selects unassigned codons
+capable of changing **their overlapping bases'** GC in the needed direction.
+It branches over all their nonoriginal synonyms, including neutral/worsening
+assignments. A feasible target must net-change GC inside that window in the
+needed direction, so at least one differing unassigned codon is direction-capable.
+Whole-codon GC would be an unsound substitute when a window cuts through a codon.
+Full candidate/final/apply validation and edit-cost pruning remain unchanged.
+
+Window-enabled algorithms are `synonymous_full_enumeration_window_gc_v1` and
+`synonymous_conflict_search_window_gc_v1`, independent of whole-CDS GC presence.
+Omitting windows preserves prior algorithm and serialized approval bytes.
+`report.gc_window` retains length/count, integer bounds and every input window's
+exact interval/count/satisfaction in order. Output facts exist only with actual
+validated DNA. Apply caps rows before hashing, rederives all facts and checks the
+approved DNA without rerunning search; false rehashed facts are refused. Receipts
+continue to verify constraints, not submitted minimum/completeness claims.
+
+Deterministic coverage includes literal synthetic MFK global-vs-local divergence,
+flanks, non-codon edges, complete-CDS-sized windows, frozen/empty/malformed cases,
+budget/cancellation, partial-codon GC-neutral synonyms, and a literal 36-state
+L/R oracle with coupled motifs/global GC/protection. Shared shell/file, direct
+CLI and confirmed MCP tests use both strategies with/without global GC.
+The [CLI walkthrough](cli.md#sliding-window-gc-walkthrough) is shared with GUI
+Shell/inner-agent guidance, not a generated tutorial chapter or dedicated editor.
+Independent Glen, native GUI/platform, MSRV, upstream comparison and runtime
+acceptance remain open; no `.12` gate is added.
+
+### Sliding-Window Verification
+
+Local verification on Darwin 27.0.0 arm64, Rust/Cargo 1.100.0-beta.1, used
+`afbef444` plus this slice's working changes before commit, with default features
+and Cargo's unoptimized test/dev profiles, not a performance baseline:
+
+```sh
+cargo test -p gentle-sequence-design --locked --offline -j 1
+cargo test -p gentle-protocol sequence_design --locked --offline -j 1
+cargo test --lib sequence_design --locked --offline -j 1 -- --test-threads=1
+cargo test --bin gentle_cli sequence_design --locked --offline -j 1 -- --test-threads=1
+python3 -m unittest scripts.test_tutorial_checkouts
+cargo run --bin gentle_examples_docs --locked --offline -j 1 -- parity-matrix-check
+cargo check -q --locked --offline -j 1
+cargo fmt --all --check
+git diff --check
+```
+
+Core **23/23**, protocol **5/5**, engine/MCP **26/26**, CLI **4/4** and checkout
+**18/18** pass, with no ignored tests in these focused sets. The canonical parity
+matrix is current. Locked offline check, formatting and whitespace checks pass.
+The newly merged persistence test initially failed on widened `f32` JSON values
+and, after fixing that, nondeterministic row order in the restriction-group
+`HashMap` serialized as pairs. Compare the same JSON-text path and sort only that
+map's pairs for comparison, preserving all values and every other state field;
+do not change approval bytes, caches or production serialization. Final focused
+tests include this correction and the executable Markdown JSON walkthrough.
+The corrected persistence test passes ten separate process repetitions.
+macOS debug links emit the large-unwind-table warning, without a profile change.
+
+Full workspace, live GUI/Pi, native Windows/Linux, MSRV, upstream DNA Chisel
+comparison and runtime/RSS measurements remain unrun. Earlier local-build
+deferrals above describe prior patches; these focused results cover the current
+integrated code, not independent scientific, usefulness or release acceptance.
+Glen should rerun these commands at one committed authorized SHA and retain
+source, toolchain/profile, inputs, results and limitations before issuing a verdict.
+Session-close has four OK, two warnings and no failures: intentional dirty files
+(including an unrelated handoff deletion) and the manual plan-fidelity reminder.
+The persistence-test repair is the sole named prerequisite beyond windowed GC;
+no generated catalog, fixture, dependency, profile or release changes are included.
+
 ## Remaining stages
 
 1. Glen rechecks the approval/provenance repair at its exact integrated SHA,
@@ -438,12 +532,12 @@ motif-only evidence does not certify the GC slice or its search claims.
    retain coupled/new-conflict cases, budget stops and cancellation. Keep
    maintenance value, performance and biological suitability as separate claims;
    no `.12` delay or gate added.
-2. Glen should now include the explicitly requested CDS-wide GC contract and
+2. Glen should now include the explicitly requested CDS-wide and sliding-window GC contracts and
    coupled constraints at one authorized revision, without treating prior
    motif-only proofs as GC acceptance. Decide usefulness before further search,
    publication or specification expansion; never substitute local checks for
    global constraints.
-3. Sliding-window GC, codon harmonization/adaptation, distant repeat/hairpin interactions,
+3. Codon harmonization/adaptation, distant repeat/hairpin interactions,
    RNA folding, other initiation/codes and DNA Chisel comparison remain explicit
    follow-ups with their own contracts, not unfinished obligations of this slice.
 

@@ -52,7 +52,11 @@ fn search_strategy(value: DnaDesignSearchStrategy) -> core::SearchStrategy {
     }
 }
 
-fn nonclaims(strategy: DnaDesignSearchStrategy, gc_requested: bool) -> Vec<String> {
+fn nonclaims(
+    strategy: DnaDesignSearchStrategy,
+    gc_requested: bool,
+    window_requested: bool,
+) -> Vec<String> {
     let mut statements = vec![
         "Synthetic coding-insert redesign only; no natural assay target is implicitly recoded.".into(),
         "Translation preservation does not establish expression, splicing, regulatory function, folding or experimental suitability.".into(),
@@ -65,6 +69,9 @@ fn nonclaims(strategy: DnaDesignSearchStrategy, gc_requested: bool) -> Vec<Strin
     }
     if gc_requested {
         statements.push("Inclusive integer GC bounds apply to the complete declared CDS, including frozen start/stop, not flanks; they do not establish expression, folding or synthesis success.".into());
+    }
+    if window_requested {
+        statements.push("Inclusive integer GC bounds apply to every complete one-base-step window within the declared CDS, including frozen bases; flanks and shortened edge windows are excluded. This does not establish expression, folding or synthesis success.".into());
     }
     statements
 }
@@ -88,6 +95,38 @@ fn gc_assessment(
                     reachable_maximum_gc_bases: gc.reachable_maximum_gc_bases,
                     input: measurement(gc.input),
                     output: gc.output.map(measurement),
+                }
+            })
+        })
+        .map_err(EngineError::invalid_input)
+}
+
+fn window_gc_assessment(
+    input: &core::Input,
+    output: Option<&str>,
+) -> Result<Option<DesignWindowGcAssessment>, EngineError> {
+    core::assess_window_gc(input, output)
+        .map(|assessment| {
+            assessment.map(|gc| {
+                let measurements = |rows: Vec<core::WindowGcMeasurement>| {
+                    rows.into_iter()
+                        .map(|row| DesignWindowGcMeasurement {
+                            interval: DesignInterval {
+                                start_0based: row.interval.start,
+                                end_0based_exclusive: row.interval.end,
+                            },
+                            gc_bases: row.gc_bases,
+                            satisfies_bounds: row.satisfies_bounds,
+                        })
+                        .collect()
+                };
+                DesignWindowGcAssessment {
+                    window_bp: gc.window_bp,
+                    window_count: gc.window_count,
+                    minimum_gc_bases: gc.minimum_gc_bases,
+                    maximum_gc_bases: gc.maximum_gc_bases,
+                    input: measurements(gc.input),
+                    output: gc.output.map(measurements),
                 }
             })
         })
@@ -233,6 +272,11 @@ impl GentleEngine {
                     min_basis_points: gc.min_basis_points,
                     max_basis_points: gc.max_basis_points,
                 }),
+                gc_window: request.gc_window.as_ref().map(|gc| core::WindowGcBounds {
+                    window_bp: gc.window_bp,
+                    min_basis_points: gc.min_basis_points,
+                    max_basis_points: gc.max_basis_points,
+                }),
             },
             mapping,
         ))
@@ -255,6 +299,7 @@ impl GentleEngine {
         let (input, mapping) = Self::dna_design_input(&request, sequence.clone())?;
         let strategy = request.search_strategy;
         let gc_requested = request.gc_content.is_some();
+        let window_requested = request.gc_window.is_some();
         let result = core::solve_with_strategy(&input, search_strategy(strategy), cancel);
         let status = match result.status {
             core::Status::Invalid => DnaDesignStatus::Invalid,
@@ -273,6 +318,15 @@ impl GentleEngine {
         } else {
             None
         };
+        let gc_window = if window_requested
+            && !matches!(
+                status,
+                DnaDesignStatus::Invalid | DnaDesignStatus::Unsupported
+            ) {
+            window_gc_assessment(&input, result.sequence.as_deref())?
+        } else {
+            None
+        };
         let mut report = DnaSequenceDesignReport {
             schema: REPORT_SCHEMA.into(),
             request,
@@ -283,7 +337,7 @@ impl GentleEngine {
             genetic_code_mapping_sha256: Self::dna_design_hash(&mapping)?,
             genetic_code_mapping: mapping,
             algorithm: search_strategy(strategy)
-                .algorithm_with_gc(gc_requested)
+                .algorithm_with_constraints(gc_requested, window_requested)
                 .into(),
             status,
             reason: result.reason,
@@ -308,8 +362,9 @@ impl GentleEngine {
             optimization_complete: result.optimization_complete,
             minimum_edits_proven: result.minimum_edits_proven,
             approval_digest: None,
-            nonclaims: nonclaims(strategy, gc_requested),
+            nonclaims: nonclaims(strategy, gc_requested, window_requested),
             gc_content,
+            gc_window,
         };
         if status == DnaDesignStatus::Feasible {
             report.approval_digest = Some(Self::dna_design_approval(&report)?);
@@ -370,10 +425,18 @@ impl GentleEngine {
                 .iter()
                 .any(|e| e.before.len() != 1 || e.after.len() != 1)
             || proposal.initial_matches.len() > core::MAX_REPORTED_MATCHES
+            || proposal.gc_window.as_ref().is_some_and(|gc| {
+                gc.input.len() > core::MAX_SEQUENCE_BP
+                    || gc
+                        .output
+                        .as_ref()
+                        .is_some_and(|rows| rows.len() > core::MAX_SEQUENCE_BP)
+            })
             || proposal.nonclaims
                 != nonclaims(
                     proposal.request.search_strategy,
                     proposal.request.gc_content.is_some(),
+                    proposal.request.gc_window.is_some(),
                 )
             || proposal.reason.len() > 1024
             || proposal.algorithm.len() > 128
@@ -385,8 +448,10 @@ impl GentleEngine {
         }
         if proposal.schema != REPORT_SCHEMA
             || proposal.algorithm
-                != search_strategy(proposal.request.search_strategy)
-                    .algorithm_with_gc(proposal.request.gc_content.is_some())
+                != search_strategy(proposal.request.search_strategy).algorithm_with_constraints(
+                    proposal.request.gc_content.is_some(),
+                    proposal.request.gc_window.is_some(),
+                )
             || proposal.status != DnaDesignStatus::Feasible
             || proposal.approval_digest.as_deref() != Some(approval)
             || Self::dna_design_approval(&proposal)? != approval
@@ -407,6 +472,7 @@ impl GentleEngine {
                 != nonclaims(
                     proposal.request.search_strategy,
                     proposal.request.gc_content.is_some(),
+                    proposal.request.gc_window.is_some(),
                 )
         {
             return Err(EngineError::invalid_input(
@@ -433,6 +499,16 @@ impl GentleEngine {
         if proposal.gc_content != expected_gc {
             return Err(EngineError::invalid_input(
                 "Approved GC facts disagree with full constraint validation",
+            ));
+        }
+        let expected_window_gc = if proposal.request.gc_window.is_some() {
+            window_gc_assessment(&input, Some(output))?
+        } else {
+            None
+        };
+        if proposal.gc_window != expected_window_gc {
+            return Err(EngineError::invalid_input(
+                "Approved window-GC facts disagree with full constraint validation",
             ));
         }
         if wire_edits(validated_edits) != proposal.edits {

@@ -40,8 +40,8 @@ Optional `request.gc_content={min_basis_points,max_basis_points}` uses inclusive
 flanks. For CDS length L, prepare converts to `ceil(min*L/10000)` and
 `floor(max*L/10000)` once. All evaluations compare integer GC counts; valid empty
 count windows are infeasible, malformed bounds invalid. GC-only requests may
-have empty motifs; without GC at least one motif remains required.
-An empty motif list with no GC bounds is `invalid`, with reason
+have empty motifs; without either GC constraint at least one motif remains required.
+An empty motif list with neither CDS-wide nor windowed GC bounds is `invalid`, with reason
 `at_least_one_motif_or_explicit_gc_bounds_required`; it is not evidence that no
 synonymous design exists. The existing 16-motif maximum remains unchanged.
 GC-enabled algorithms are `synonymous_full_enumeration_gc_v1` and
@@ -53,6 +53,25 @@ only with validated output DNA, never a cancelled/unresolved placeholder zero.
 Apply rederives GC facts and checks full motif/GC constraints without searching.
 Integer report facts and GC policy are part of the exact approval basis; a
 rehashed valid proposal still does not authenticate minimum-edit/search claims.
+Optional `request.gc_window={window_bp,min_basis_points,max_basis_points}` checks
+every full window inside the declared CDS with a fixed one-base step. Length
+must be 1..CDS length, with inclusive 0..10000 bounds; frozen bases count, flanks
+and shortened windows do not. No stride/partial-window policy is admitted.
+Convert once to `ceil(min*window_bp/10000)` and `floor(max*window_bp/10000)`.
+Window-only requests may have empty motifs. All requested constraints share the
+candidate/final/apply validator; whole-CDS GC is never replaced by window checks.
+Window-enabled algorithms are `synonymous_full_enumeration_window_gc_v1` and
+`synonymous_conflict_search_window_gc_v1`, whether or not whole-CDS GC is present.
+Omitting the window policy preserves earlier serialization/algorithm/approval
+bytes. `report.gc_window` is absent for unrequested/unadmitted input. Otherwise
+it contains window length/count, integer bounds and all input measurements in
+ascending local-coordinate order. Each measurement contains `interval`,
+`gc_bases` and `satisfies_bounds`; output measurements exist only for actual
+validated output. At most 12,000 rows per input/output are admitted before
+copying/hashing a proposal. Apply rederives coordinates/counts as well as DNA
+constraints, so honestly rehashed false facts remain invalid. Work admission
+includes the complete CDS prefix-count pass and every window check; no new
+runtime-efficiency or independent search-verification claim follows.
 Approval binds the complete report with only its approval field cleared. Apply
 rechecks live source/table/protection and fully evaluates approved output, then
 creates one undoable, lineage-linked sequence and metadata receipt. Its single

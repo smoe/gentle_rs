@@ -16,6 +16,16 @@ output validator use one full motif/GC predicate. `assess_gc` returns integer
 input facts and output facts only for present, validated DNA. Absent GC has no
 assessment. GC-enabled algorithm identities are distinct; legacy identities stay
 unchanged. Reachability extrema can prove impossibility, never feasibility.
+Optional `gc_window` specifies explicit window length and inclusive basis-point
+bounds on every complete CDS-contained window, stepping one base at a time.
+No flanks, partial edges, configurable stride or defaults. Whole-CDS and window
+constraints coexist. Prefix counting fully evaluates every window with linear
+workspace; `assess_window_gc` retains every coordinate/count in order and output
+facts only for validated DNA. Empty integer count intervals and entirely frozen
+violating windows can prove infeasibility; no per-window reachable-extrema claim
+is made. Window-enabled algorithms have separate IDs and legacy approvals omit
+the new policy/facts. Conflict direction uses only the codon bases within the
+violating window, retaining neutral/worsening synonyms as branches.
 
 Code 1 only, literal frozen ATG and terminal stop, uppercase A/C/G/T, one forward
 contiguous CDS, frozen flanks/protected bases, finite IUPAC patterns. Coordinates
@@ -57,5 +67,5 @@ cargo test -p gentle-sequence-design
 
 Preserved translation does not establish expression, splicing, folding,
 regulatory function or experimental suitability. General DNA Chisel
-specifications, sliding-window GC/codon adaptation, nonstandard codes and
+specifications, codon adaptation, nonstandard codes and
 publication are deferred.

@@ -23,6 +23,7 @@ fn request() -> DnaSequenceDesignRequest {
             strand: DesignStrand::Both,
         }],
         gc_content: None,
+        gc_window: None,
         max_evaluations: 4096,
         search_strategy: DnaDesignSearchStrategy::FullEnumeration,
         output_seq_id: "synthetic_without_ecori".into(),
@@ -42,6 +43,230 @@ fn gc_request() -> DnaSequenceDesignRequest {
     });
     request.output_seq_id = "synthetic_gc".into();
     request
+}
+
+fn window_gc_request() -> DnaSequenceDesignRequest {
+    let mut request = gc_request();
+    request.gc_content = None;
+    request.gc_window = Some(DesignWindowGcBounds {
+        window_bp: 6,
+        min_basis_points: 1666,
+        max_basis_points: 1667,
+    });
+    request.output_seq_id = "synthetic_window_gc".into();
+    request
+}
+
+#[test]
+fn sequence_design_window_gc_documented_walkthrough_is_replayable() {
+    let docs = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/cli.md"));
+    let section = docs
+        .split("### Sliding-Window GC Walkthrough")
+        .nth(1)
+        .unwrap();
+    let mut in_json = false;
+    let mut json = String::new();
+    for line in section.lines() {
+        if line == "```json" {
+            in_json = true;
+            continue;
+        }
+        if in_json && line == "```" {
+            break;
+        }
+        if in_json {
+            json.push_str(line);
+            json.push('\n');
+        }
+    }
+    let request: DnaSequenceDesignRequest = serde_json::from_str(&json).unwrap();
+    let mut engine = GentleEngine::new();
+    let preview = plan(&mut engine, request);
+    assert_eq!(preview.output_sequence.as_deref(), Some("ATGTTTAAGTAA"));
+    assert_eq!(
+        preview.edits,
+        [DesignNucleotideEdit {
+            position_0based: 8,
+            before: "A".into(),
+            after: "G".into()
+        }]
+    );
+    let applied = apply(&mut engine, preview).unwrap();
+    assert_eq!(applied.created_seq_ids, ["synthetic_window_gc"]);
+}
+
+#[test]
+fn sequence_design_window_gc_exact_facts_apply_undo_and_global_constraints_agree() {
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        for global_gc in [false, true] {
+            let mut engine = GentleEngine::new();
+            let original = serde_json::to_value(engine.state()).unwrap();
+            let mut request = window_gc_request();
+            request.search_strategy = strategy;
+            if global_gc {
+                request.gc_content = gc_request().gc_content;
+            }
+            let preview = plan(&mut engine, request);
+            assert_eq!(
+                preview.algorithm,
+                search_strategy(strategy).algorithm_with_constraints(global_gc, true)
+            );
+            assert_eq!(preview.output_sequence.as_deref(), Some("ATGTTTAAGTAA"));
+            assert!(preview.minimum_edits_proven && preview.optimization_complete);
+            let facts = preview.gc_window.as_ref().unwrap();
+            assert_eq!(
+                (
+                    facts.window_bp,
+                    facts.window_count,
+                    facts.minimum_gc_bases,
+                    facts.maximum_gc_bases
+                ),
+                (6, 7, 1, 1)
+            );
+            assert_eq!(
+                facts.input.iter().map(|r| r.gc_bases).collect::<Vec<_>>(),
+                [1, 1, 1, 0, 0, 0, 0]
+            );
+            for (offset, row) in facts.output.as_ref().unwrap().iter().enumerate() {
+                assert_eq!(
+                    row.interval,
+                    DesignInterval {
+                        start_0based: offset,
+                        end_0based_exclusive: offset + 6
+                    }
+                );
+                assert_eq!(row.gc_bases, 1);
+                assert!(row.satisfies_bounds);
+            }
+            assert_eq!(preview.gc_content.is_some(), global_gc);
+            let decoded: DnaSequenceDesignReport =
+                serde_json::from_str(&serde_json::to_string(&preview).unwrap()).unwrap();
+            assert_eq!(decoded, preview);
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+            let applied = apply(&mut engine, decoded).unwrap();
+            let receipt = applied.dna_sequence_design_receipt.unwrap();
+            assert!(receipt.output_constraints_verified && !receipt.search_claims_verified);
+            assert_single_design_derivation(&engine, "synthetic_window_gc", &applied.op_id);
+            engine.undo_last_operation().unwrap();
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+        }
+    }
+}
+
+#[test]
+fn sequence_design_window_gc_rehashed_invalid_dna_counts_coordinates_and_policy_fail_closed() {
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        let mut engine = GentleEngine::new();
+        let original = serde_json::to_value(engine.state()).unwrap();
+        let mut request = window_gc_request();
+        request.search_strategy = strategy;
+        request.gc_content = gc_request().gc_content;
+        let preview = plan(&mut engine, request);
+        for kind in 0..9 {
+            let mut changed = preview.clone();
+            match kind {
+                0 => {
+                    // Valid global GC and translation, but not all window bounds.
+                    changed.output_sequence = Some("ATGTTCAAATAA".into());
+                    changed.output_sha256 = Some(sha256_prefixed_str("ATGTTCAAATAA"));
+                    changed.edits = vec![DesignNucleotideEdit {
+                        position_0based: 5,
+                        before: "T".into(),
+                        after: "C".into(),
+                    }];
+                }
+                1 => changed.gc_window.as_mut().unwrap().output.as_mut().unwrap()[0].gc_bases = 2,
+                2 => changed.gc_window.as_mut().unwrap().input[3].satisfies_bounds = true,
+                3 => {
+                    changed.gc_window.as_mut().unwrap().output.as_mut().unwrap()[0]
+                        .interval
+                        .start_0based = 1
+                }
+                4 => {
+                    changed
+                        .gc_window
+                        .as_mut()
+                        .unwrap()
+                        .output
+                        .as_mut()
+                        .unwrap()
+                        .pop();
+                }
+                5 => changed.gc_window.as_mut().unwrap().window_count = 6,
+                6 => changed.gc_window = None,
+                7 => changed.request.gc_window = None,
+                8 => changed.algorithm = core::GC_ALGORITHM.into(),
+                _ => unreachable!(),
+            }
+            changed.approval_digest = Some(GentleEngine::dna_design_approval(&changed).unwrap());
+            assert!(
+                apply(&mut engine, changed).is_err(),
+                "tamper {kind} {strategy:?}"
+            );
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+        }
+        let mut oversized = preview;
+        let row = oversized.gc_window.as_ref().unwrap().input[0].clone();
+        oversized
+            .gc_window
+            .as_mut()
+            .unwrap()
+            .input
+            .resize(core::MAX_SEQUENCE_BP + 1, row);
+        assert!(apply(&mut engine, oversized).is_err());
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+    }
+}
+
+#[test]
+fn sequence_design_window_gc_invalid_unresolved_cancelled_and_infeasible_do_not_offer_approval() {
+    let mut engine = GentleEngine::new();
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        let mut request = window_gc_request();
+        request.search_strategy = strategy;
+        request.max_evaluations = 1;
+        let preview = plan(&mut engine, request.clone());
+        assert_eq!(preview.status, DnaDesignStatus::SearchExhausted);
+        assert!(preview.approval_digest.is_none());
+        assert!(preview.gc_window.unwrap().output.is_none());
+        request.max_evaluations = 4096;
+        let cancelled = engine
+            .plan_dna_sequence_design(request.clone(), |n| n == 2)
+            .unwrap();
+        assert_eq!(cancelled.status, DnaDesignStatus::Cancelled);
+        assert!(cancelled.approval_digest.is_none() && cancelled.output_sequence.is_none());
+        assert!(cancelled.gc_window.unwrap().output.is_none());
+        for (length, min, max, expected) in [
+            (0, 0, 10000, DnaDesignStatus::Invalid),
+            (13, 0, 10000, DnaDesignStatus::Invalid),
+            (6, 5001, 5000, DnaDesignStatus::Invalid),
+            (6, 1667, 1667, DnaDesignStatus::ProvenInfeasible),
+            (1, 0, 0, DnaDesignStatus::ProvenInfeasible),
+        ] {
+            request.gc_window = Some(DesignWindowGcBounds {
+                window_bp: length,
+                min_basis_points: min,
+                max_basis_points: max,
+            });
+            let preview = plan(&mut engine, request.clone());
+            assert_eq!(preview.status, expected);
+            assert!(preview.approval_digest.is_none());
+            assert_eq!(
+                preview.gc_window.is_none(),
+                expected == DnaDesignStatus::Invalid
+            );
+        }
+    }
+    assert!(engine.state.sequences.is_empty());
 }
 
 #[test]
@@ -218,6 +443,8 @@ fn sequence_design_conflict_search_is_explicit_bound_and_separately_approved() {
     assert!(legacy_json["request"].get("search_strategy").is_none());
     assert!(legacy_json["request"].get("gc_content").is_none());
     assert!(legacy_json.get("gc_content").is_none());
+    assert!(legacy_json["request"].get("gc_window").is_none());
+    assert!(legacy_json.get("gc_window").is_none());
     let old_wire: DnaSequenceDesignReport = serde_json::from_value(legacy_json).unwrap();
     assert_eq!(
         GentleEngine::dna_design_approval(&old_wire).unwrap(),
@@ -413,6 +640,16 @@ fn sequence_design_engine_preview_exact_apply_and_undo() {
 
 #[test]
 fn sequence_design_persisted_metadata_and_single_container_keep_target_origin() {
+    let canonicalize_groups = |mut json: serde_json::Value| {
+        // DNAsequence serializes this HashMap as pairs, not an ordered lane.
+        for sequence in json["sequences"].as_object_mut().unwrap().values_mut() {
+            sequence["restriction_enzyme_groups"]
+                .as_array_mut()
+                .unwrap()
+                .sort_by_cached_key(|pair| pair[0].to_string());
+        }
+        json
+    };
     for loaded_source in [false, true] {
         let mut engine = GentleEngine::new();
         let mut request = request();
@@ -478,10 +715,12 @@ fn sequence_design_persisted_metadata_and_single_container_keep_target_origin() 
         assert!(serde_json::from_value::<DnaSequenceDesignMaterializationRecord>(unknown).is_err());
 
         let restored = GentleEngine::from_state(serde_json::from_slice(&encoded).unwrap());
-        // Compare typed states alike: to_value widens f32 instead of parsing its JSON decimal.
+        // Both sides must use persisted JSON text: to_value widens f32 values.
+        let restored_json: serde_json::Value =
+            serde_json::from_slice(&serde_json::to_vec(restored.state()).unwrap()).unwrap();
         assert_eq!(
-            serde_json::to_value(restored.state()).unwrap(),
-            serde_json::to_value(engine.state()).unwrap()
+            canonicalize_groups(restored_json),
+            canonicalize_groups(saved_json)
         );
         assert_single_design_derivation(&restored, &receipt.created_seq_id, &applied.op_id);
         let node = &restored.state.lineage.nodes
@@ -863,12 +1102,12 @@ fn sequence_design_unresolved_cancelled_invalid_and_unsupported_have_no_approval
 
 #[test]
 fn sequence_design_shared_shell_discovery_and_json_file_parity() {
-    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::FullEnumeration, false);
+    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::FullEnumeration, false, false);
 }
 
 #[test]
 fn sequence_design_conflict_shared_shell_discovery_and_json_file_parity() {
-    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::ConflictDirected, false);
+    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::ConflictDirected, false, false);
 }
 
 #[test]
@@ -877,17 +1116,35 @@ fn sequence_design_gc_shared_shell_discovery_and_json_file_parity() {
         DnaDesignSearchStrategy::FullEnumeration,
         DnaDesignSearchStrategy::ConflictDirected,
     ] {
-        assert_sequence_design_shell_parity(strategy, true);
+        assert_sequence_design_shell_parity(strategy, true, false);
     }
 }
 
-fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy, gc: bool) {
+#[test]
+fn sequence_design_window_gc_shared_shell_discovery_and_json_file_parity() {
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        for global in [false, true] {
+            assert_sequence_design_shell_parity(strategy, global, true);
+        }
+    }
+}
+
+fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy, gc: bool, window: bool) {
     use crate::engine_shell::{execute_shell_command, parse_shell_line, quote_shell_arg};
     let mut request = request();
     if gc {
         request = gc_request();
     }
+    if window {
+        let global = request.gc_content.clone();
+        request = window_gc_request();
+        request.gc_content = global;
+    }
     request.search_strategy = strategy;
+    let output_id = request.output_seq_id.clone();
     let directory = tempfile::tempdir().unwrap();
     let request_path = directory.path().join("request with apostrophe's.json");
     let output_path = directory.path().join("preview.json");
@@ -926,11 +1183,7 @@ fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy, gc: bo
     );
     assert_single_design_derivation(
         &shell_engine,
-        if gc {
-            "synthetic_gc"
-        } else {
-            "synthetic_without_ecori"
-        },
+        &output_id,
         applied.output["result"]["op_id"].as_str().unwrap(),
     );
     assert!(parse_shell_line("sequence-design apply @preview.json").is_err());
@@ -955,6 +1208,8 @@ fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy, gc: bo
     );
     assert!(text.contains("conflict_directed"));
     assert!(text.contains("gc_content"));
+    assert!(text.contains("gc_window"));
+    assert!(crate::agent_bridge::AGENT_BRIDGE_SYSTEM_PROMPT.contains("gc_window"));
     assert!(crate::agent_bridge::AGENT_BRIDGE_SYSTEM_PROMPT.contains("min_basis_points"));
 }
 

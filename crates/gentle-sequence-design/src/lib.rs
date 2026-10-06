@@ -9,11 +9,16 @@ use std::collections::BTreeMap;
 mod gc;
 pub use gc::{GcAssessment, GcBounds, GcMeasurement, assess_gc};
 use gc::{GcViolation, PreparedGc};
+mod gc_window;
+use gc_window::PreparedWindowGc;
+pub use gc_window::{WindowGcAssessment, WindowGcBounds, WindowGcMeasurement, assess_window_gc};
 
 pub const ALGORITHM: &str = "synonymous_full_enumeration_v1";
 pub const CONFLICT_ALGORITHM: &str = "synonymous_conflict_search_v1";
 pub const GC_ALGORITHM: &str = "synonymous_full_enumeration_gc_v1";
 pub const GC_CONFLICT_ALGORITHM: &str = "synonymous_conflict_search_gc_v1";
+pub const WINDOW_GC_ALGORITHM: &str = "synonymous_full_enumeration_window_gc_v1";
+pub const WINDOW_GC_CONFLICT_ALGORITHM: &str = "synonymous_conflict_search_window_gc_v1";
 pub const MAX_SEQUENCE_BP: usize = 12_000;
 pub const MAX_MOTIFS: usize = 16;
 pub const MAX_MOTIF_BP: usize = 32;
@@ -43,6 +48,18 @@ impl SearchStrategy {
             (_, false) => self.algorithm(),
             (Self::FullEnumeration, true) => GC_ALGORITHM,
             (Self::ConflictDirected, true) => GC_CONFLICT_ALGORITHM,
+        }
+    }
+
+    pub fn algorithm_with_constraints(
+        self,
+        gc_requested: bool,
+        window_requested: bool,
+    ) -> &'static str {
+        match (self, window_requested) {
+            (_, false) => self.algorithm_with_gc(gc_requested),
+            (Self::FullEnumeration, true) => WINDOW_GC_ALGORITHM,
+            (Self::ConflictDirected, true) => WINDOW_GC_CONFLICT_ALGORITHM,
         }
     }
 }
@@ -84,6 +101,7 @@ pub struct Input {
     pub protected: Vec<Interval>,
     pub motifs: Vec<Motif>,
     pub gc_content: Option<GcBounds>,
+    pub gc_window: Option<WindowGcBounds>,
     pub max_evaluations: u64,
 }
 
@@ -152,22 +170,25 @@ struct Prepared<'a> {
     budget: u64,
     space: Option<u64>,
     gc: Option<PreparedGc>,
+    gc_window: Option<PreparedWindowGc>,
 }
 
 struct Violations {
     matches: Vec<Match>,
     gc: Option<GcViolation>,
+    gc_window: Option<(Interval, GcViolation)>,
 }
 
 #[derive(Clone, Copy)]
 enum Conflict {
     Motif(Interval),
     Gc(GcViolation),
+    WindowGc(Interval, GcViolation),
 }
 
 impl Violations {
     fn satisfied(&self) -> bool {
-        self.matches.is_empty() && self.gc.is_none()
+        self.matches.is_empty() && self.gc.is_none() && self.gc_window.is_none()
     }
 
     fn first_conflict(&self) -> Option<Conflict> {
@@ -175,6 +196,10 @@ impl Violations {
             .first()
             .map(|hit| Conflict::Motif(hit.interval))
             .or_else(|| self.gc.map(Conflict::Gc))
+            .or_else(|| {
+                self.gc_window
+                    .map(|(interval, direction)| Conflict::WindowGc(interval, direction))
+            })
     }
 }
 
@@ -260,6 +285,9 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
     if let Some(bounds) = input.gc_content {
         bounds.validate().map_err(fail)?;
     }
+    if let Some(bounds) = input.gc_window {
+        bounds.validate(cds.end - cds.start).map_err(fail)?;
+    }
     if &input.sequence.as_bytes()[cds.start..cds.start + 3] != b"ATG" {
         return Err(Outcome::empty(
             Status::Unsupported,
@@ -291,7 +319,7 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
         }
         frozen[interval.start..interval.end].fill(true);
     }
-    if input.motifs.is_empty() && input.gc_content.is_none() {
+    if input.motifs.is_empty() && input.gc_content.is_none() && input.gc_window.is_none() {
         return Err(fail("at_least_one_motif_or_explicit_gc_bounds_required"));
     }
     if input.motifs.len() > MAX_MOTIFS {
@@ -302,6 +330,10 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
     let mut work = n as u64 * 4;
     if input.gc_content.is_some() {
         work += (cds.end - cds.start) as u64;
+    }
+    if let Some(bounds) = input.gc_window {
+        work +=
+            (cds.end - cds.start + 1) as u64 + (cds.end - cds.start - bounds.window_bp + 1) as u64;
     }
     for motif in &input.motifs {
         if motif.pattern.is_empty() || motif.pattern.len() > MAX_MOTIF_BP {
@@ -373,6 +405,7 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
         budget,
         space,
         gc,
+        gc_window: input.gc_window.map(|_| PreparedWindowGc::new(input)),
     })
 }
 
@@ -447,6 +480,10 @@ impl Prepared<'_> {
                 .gc
                 .as_ref()
                 .and_then(|gc| gc.violation(sequence, self.input.cds)),
+            gc_window: self
+                .gc_window
+                .as_ref()
+                .and_then(|gc| gc.violation(sequence)),
         })
     }
 
@@ -458,7 +495,14 @@ impl Prepared<'_> {
         }) {
             Some("forbidden_match_entirely_in_frozen_bases")
         } else {
-            self.gc.as_ref().and_then(PreparedGc::infeasibility)
+            self.gc
+                .as_ref()
+                .and_then(PreparedGc::infeasibility)
+                .or_else(|| {
+                    self.gc_window
+                        .as_ref()
+                        .and_then(|gc| gc.infeasibility(&self.frozen))
+                })
         }
     }
 }
@@ -470,8 +514,10 @@ pub fn validate_output(input: &Input, output: &str) -> Result<Vec<Edit>, String>
     if !violations.satisfied() {
         return Err(if !violations.matches.is_empty() {
             "forbidden_motifs_remain"
-        } else {
+        } else if violations.gc.is_some() {
             "gc_bounds_not_satisfied"
+        } else {
+            "gc_window_bounds_not_satisfied"
         }
         .into());
     }

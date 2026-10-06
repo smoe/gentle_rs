@@ -20,6 +20,12 @@ Bounds are explicit, not organism presets; flanks are excluded. Empty motifs are
 allowed only with explicit GC bounds. GUI Shell/Agent Assistant use the same
 preview, integer facts and renewed approval as CLI/MCP; no standalone GC editor.
 See the [synthetic GC walkthrough](cli.md#cds-wide-gc-walkthrough).
+Optional `gc_window={window_bp,min_basis_points,max_basis_points}` checks every
+complete overlapping CDS window at a fixed one-base step. Flanks/partial edge
+windows are excluded; length and bounds must be explicit. The same shared
+preview shows every interval/count and apply validates them afresh. See the
+[windowed synthetic example](cli.md#sliding-window-gc-walkthrough); this remains
+GUI Shell/Agent Assistant integration, not a new optimization editor.
 
 Source-enriched locus SVGs and detailed TSS figures can show shared physical
 exons/CDS, separate structure-reference rows and colour-labelled Ensembl/RefSeq

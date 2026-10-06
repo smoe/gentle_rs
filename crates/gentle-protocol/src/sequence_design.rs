@@ -56,6 +56,35 @@ pub struct DesignGcAssessment {
     pub output: Option<DesignGcMeasurement>,
 }
 
+/// Inclusive GC bounds on all full windows inside the CDS, with a fixed 1-bp step.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignWindowGcBounds {
+    pub window_bp: usize,
+    pub min_basis_points: u16,
+    pub max_basis_points: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignWindowGcMeasurement {
+    pub interval: DesignInterval,
+    pub gc_bases: usize,
+    pub satisfies_bounds: bool,
+}
+
+/// Every complete window in ascending local order. Missing output is not zero.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignWindowGcAssessment {
+    pub window_bp: usize,
+    pub window_count: usize,
+    pub minimum_gc_bases: usize,
+    pub maximum_gc_bases: usize,
+    pub input: Vec<DesignWindowGcMeasurement>,
+    pub output: Option<Vec<DesignWindowGcMeasurement>>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DnaDesignTarget {
@@ -94,6 +123,8 @@ pub struct DnaSequenceDesignRequest {
     pub avoid_motifs: Vec<AvoidDesignMotif>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gc_content: Option<DesignGcBounds>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gc_window: Option<DesignWindowGcBounds>,
     pub max_evaluations: u64,
     #[serde(
         default,
@@ -168,6 +199,8 @@ pub struct DnaSequenceDesignReport {
     pub nonclaims: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gc_content: Option<DesignGcAssessment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gc_window: Option<DesignWindowGcAssessment>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,6 +347,32 @@ mod tests {
         assert!(serde_json::from_value::<DnaSequenceDesignRequest>(unknown).is_err());
         let mut fractional = wire;
         fractional["gc_content"]["min_basis_points"] = serde_json::json!(16.66);
+        assert!(serde_json::from_value::<DnaSequenceDesignRequest>(fractional).is_err());
+    }
+
+    #[test]
+    fn sequence_design_window_gc_roundtrip_preserves_explicit_policy_and_rejects_stride() {
+        // Synthetic MFK request with every 6-bp CDS window, recreated literally.
+        let wire = serde_json::json!({
+            "schema": REQUEST_SCHEMA,
+            "target": {"kind": "inline_sequence", "sequence": "ATGTTTAAATAA"},
+            "purpose": "synthetic_coding_insert",
+            "cds": {"start_0based": 0, "end_0based_exclusive": 12},
+            "protein_sequence": "MFK", "genetic_code": 1,
+            "protected_intervals": [], "avoid_motifs": [],
+            "gc_window": {"window_bp": 6, "min_basis_points": 1666, "max_basis_points": 1667},
+            "max_evaluations": 4096, "output_seq_id": "synthetic_window_gc"
+        });
+        let request: DnaSequenceDesignRequest = serde_json::from_value(wire.clone()).unwrap();
+        assert!(request.gc_content.is_none());
+        assert_eq!(serde_json::to_value(request).unwrap(), wire);
+        for field in ["stride", "include_partial", "strand"] {
+            let mut unknown = wire.clone();
+            unknown["gc_window"][field] = 1.into();
+            assert!(serde_json::from_value::<DnaSequenceDesignRequest>(unknown).is_err());
+        }
+        let mut fractional = wire;
+        fractional["gc_window"]["min_basis_points"] = serde_json::json!(16.66);
         assert!(serde_json::from_value::<DnaSequenceDesignRequest>(fractional).is_err());
     }
 }

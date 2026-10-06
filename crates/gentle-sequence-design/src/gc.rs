@@ -47,7 +47,7 @@ pub(super) struct PreparedGc {
     pub assessment: GcAssessment,
 }
 
-fn count(sequence: &[u8]) -> usize {
+pub(super) fn count(sequence: &[u8]) -> usize {
     sequence.iter().filter(|b| matches!(b, b'G' | b'C')).count()
 }
 

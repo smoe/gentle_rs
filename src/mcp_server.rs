@@ -4967,22 +4967,31 @@ mod tests {
 
     #[test]
     fn sequence_design_mcp_confirmation_preview_and_exact_apply_parity() {
-        assert_sequence_design_mcp_parity(false, false);
+        assert_sequence_design_mcp_parity(false, false, false);
     }
 
     #[test]
     fn sequence_design_conflict_mcp_confirmation_preview_and_exact_apply_parity() {
-        assert_sequence_design_mcp_parity(true, false);
+        assert_sequence_design_mcp_parity(true, false, false);
     }
 
     #[test]
     fn sequence_design_gc_mcp_confirmation_preview_and_exact_apply_parity() {
         for conflict in [false, true] {
-            assert_sequence_design_mcp_parity(conflict, true);
+            assert_sequence_design_mcp_parity(conflict, true, false);
         }
     }
 
-    fn assert_sequence_design_mcp_parity(conflict_directed: bool, gc: bool) {
+    #[test]
+    fn sequence_design_window_gc_mcp_confirmation_preview_and_exact_apply_parity() {
+        for conflict in [false, true] {
+            for global in [false, true] {
+                assert_sequence_design_mcp_parity(conflict, global, true);
+            }
+        }
+    }
+
+    fn assert_sequence_design_mcp_parity(conflict_directed: bool, gc: bool, window: bool) {
         // Hand-crafted 12-bp synthetic MEF insert, recreated from this literal.
         let temp = tempdir().unwrap();
         let state_path = temp.path().join("design project.json");
@@ -5002,6 +5011,10 @@ mod tests {
         if gc {
             design_request["gc_content"] =
                 json!({"min_basis_points": 2500, "max_basis_points": 2500});
+        }
+        if window {
+            design_request["gc_window"] =
+                json!({"window_bp": 6, "min_basis_points": 0, "max_basis_points": 5000});
         }
         let mut request = json!({
             "jsonrpc":"2.0", "id":1, "method":"tools/call",
@@ -5029,13 +5042,27 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&preview_path).unwrap()).unwrap();
         assert_eq!(
             preview.algorithm,
-            match (conflict_directed, gc) {
-                (true, true) => "synonymous_conflict_search_gc_v1",
-                (false, true) => "synonymous_full_enumeration_gc_v1",
-                (true, false) => "synonymous_conflict_search_v1",
-                (false, false) => "synonymous_full_enumeration_v1",
+            match (conflict_directed, gc, window) {
+                (true, _, true) => "synonymous_conflict_search_window_gc_v1",
+                (false, _, true) => "synonymous_full_enumeration_window_gc_v1",
+                (true, true, false) => "synonymous_conflict_search_gc_v1",
+                (false, true, false) => "synonymous_full_enumeration_gc_v1",
+                (true, false, false) => "synonymous_conflict_search_v1",
+                (false, false, false) => "synonymous_full_enumeration_v1",
             }
         );
+        if window {
+            let facts = preview.gc_window.as_ref().unwrap();
+            assert_eq!(facts.window_count, 7);
+            assert!(
+                facts
+                    .output
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .all(|r| r.satisfies_bounds)
+            );
+        }
         let mut direct = GentleEngine::new();
         let direct_result = direct
             .apply(

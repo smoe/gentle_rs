@@ -5,6 +5,298 @@
 
 use super::*;
 
+fn window_bounds(
+    window_bp: usize,
+    min_basis_points: u16,
+    max_basis_points: u16,
+) -> Option<WindowGcBounds> {
+    Some(WindowGcBounds {
+        window_bp,
+        min_basis_points,
+        max_basis_points,
+    })
+}
+
+#[test]
+fn window_gc_checks_all_overlaps_non_codon_edges_and_excludes_flanks() {
+    // Literal synthetic MFK: global GC alone favours the F edit; local windows
+    // require the K edit instead. G/C-rich flanks must not alter these facts.
+    let mut request = input("GGGATGTTTAAATAACCC", "MFK", &[]);
+    request.cds = Interval { start: 3, end: 15 };
+    request.gc_content = gc_bounds(1666, 1667);
+    request.gc_window = window_bounds(6, 1666, 1667);
+    for strategy in [
+        SearchStrategy::FullEnumeration,
+        SearchStrategy::ConflictDirected,
+    ] {
+        let result = solve_with_strategy(&request, strategy, |_| false);
+        assert_eq!(result.sequence.as_deref(), Some("GGGATGTTTAAGTAACCC"));
+        assert!(result.minimum_edits_proven);
+        let facts = assess_window_gc(&request, result.sequence.as_deref())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                facts.window_bp,
+                facts.window_count,
+                facts.minimum_gc_bases,
+                facts.maximum_gc_bases
+            ),
+            (6, 7, 1, 1)
+        );
+        assert_eq!(
+            facts.input.iter().map(|r| r.gc_bases).collect::<Vec<_>>(),
+            [1, 1, 1, 0, 0, 0, 0]
+        );
+        for (offset, row) in facts.output.unwrap().iter().enumerate() {
+            assert_eq!(
+                row.interval,
+                Interval {
+                    start: 3 + offset,
+                    end: 9 + offset
+                }
+            );
+            assert_eq!(row.gc_bases, 1);
+            assert!(row.satisfies_bounds);
+        }
+        assert_eq!(
+            validate_output(&request, "GGGATGTTCAAATAACCC").unwrap_err(),
+            "gc_window_bounds_not_satisfied"
+        );
+    }
+    request.gc_window = window_bounds(5, 0, 10000);
+    let facts = assess_window_gc(&request, None).unwrap().unwrap();
+    assert_eq!(facts.window_count, 8);
+    assert_eq!(
+        facts.input.last().unwrap().interval,
+        Interval { start: 10, end: 15 }
+    );
+    assert!(facts.output.is_none());
+    request.gc_window = window_bounds(12, 1666, 1667);
+    let result = solve(&request, |_| false);
+    assert_eq!(result.sequence.as_deref(), Some("GGGATGTTCAAATAACCC"));
+    assert_eq!(
+        assess_window_gc(&request, result.sequence.as_deref())
+            .unwrap()
+            .unwrap()
+            .window_count,
+        1
+    );
+}
+
+#[test]
+fn window_gc_invalid_empty_frozen_and_cancelled_are_distinct() {
+    let mut request = input("ATGTTTAAATAA", "MFK", &[]);
+    for bounds in [
+        (0, 0, 10000),
+        (13, 0, 10000),
+        (6, 5001, 5000),
+        (6, 0, 10001),
+    ] {
+        request.gc_window = window_bounds(bounds.0, bounds.1, bounds.2);
+        assert_eq!(solve(&request, |_| false).status, Status::Invalid);
+        assert!(assess_window_gc(&request, None).is_err());
+    }
+    for (bounds, reason) in [
+        ((6, 1667, 1667), "gc_window_integer_count_bounds_empty"),
+        (
+            (1, 10000, 10000),
+            "gc_window_violation_entirely_in_frozen_bases",
+        ),
+        ((1, 0, 0), "gc_window_violation_entirely_in_frozen_bases"),
+    ] {
+        request.gc_window = window_bounds(bounds.0, bounds.1, bounds.2);
+        for strategy in [
+            SearchStrategy::FullEnumeration,
+            SearchStrategy::ConflictDirected,
+        ] {
+            let result = solve_with_strategy(&request, strategy, |_| false);
+            assert_eq!(result.status, Status::ProvenInfeasible);
+            assert_eq!(result.evaluated_candidates, 0);
+            assert_eq!(result.reason, reason);
+            assert!(
+                assess_window_gc(&request, None)
+                    .unwrap()
+                    .unwrap()
+                    .output
+                    .is_none()
+            );
+            assert_eq!(
+                solve_with_strategy(&request, strategy, |_| true).status,
+                Status::Cancelled
+            );
+        }
+    }
+    request.gc_window = window_bounds(6, 1666, 1667);
+    request.protected = vec![Interval { start: 8, end: 9 }];
+    assert_eq!(solve(&request, |_| false).status, Status::ProvenInfeasible);
+    request.protected.clear();
+    request.max_evaluations = 1;
+    for strategy in [
+        SearchStrategy::FullEnumeration,
+        SearchStrategy::ConflictDirected,
+    ] {
+        let result = solve_with_strategy(&request, strategy, |_| false);
+        assert_eq!(result.status, Status::SearchExhausted);
+        assert!(result.sequence.is_none() && !result.minimum_edits_proven);
+        assert!(
+            assess_window_gc(&request, result.sequence.as_deref())
+                .unwrap()
+                .unwrap()
+                .output
+                .is_none()
+        );
+        request.max_evaluations = 4096;
+        let result = solve_with_strategy(&request, strategy, |n| n == 2);
+        assert_eq!(result.status, Status::Cancelled);
+        assert!(result.sequence.is_none() && !result.minimum_edits_proven);
+        request.max_evaluations = 1;
+    }
+}
+
+#[test]
+fn window_gc_partial_codon_direction_is_not_whole_codon_direction() {
+    // CGT -> AGG is GC-neutral globally, but lowers its first base and raises its
+    // third. Such a synonym must remain reachable when a partial codon conflicts.
+    assert!(gc_window::direction_capable(
+        6,
+        b"CGT",
+        &[*b"AGG"],
+        Interval { start: 6, end: 7 },
+        GcViolation::AboveMaximum
+    ));
+    assert!(gc_window::direction_capable(
+        6,
+        b"CGT",
+        &[*b"AGG"],
+        Interval { start: 8, end: 9 },
+        GcViolation::BelowMinimum
+    ));
+    assert!(!gc::direction_capable(
+        b"CGT",
+        &[*b"AGG"],
+        GcViolation::BelowMinimum
+    ));
+    assert!(!gc_window::direction_capable(
+        6,
+        b"CGT",
+        &[*b"AGG"],
+        Interval { start: 9, end: 12 },
+        GcViolation::BelowMinimum
+    ));
+}
+
+#[test]
+fn window_gc_both_solvers_match_independent_36_state_joint_oracle() {
+    // Literal standard-code L/R synonyms, not produced by the solver. Count every
+    // byte window independently using cross multiplication, not its integer helper.
+    let source = "CATGCTACGTTAAG";
+    let variants = ["TTA", "TTG", "CTT", "CTC", "CTA", "CTG"]
+        .into_iter()
+        .flat_map(|l| {
+            ["CGT", "CGC", "CGA", "CGG", "AGA", "AGG"]
+                .into_iter()
+                .map(move |r| format!("CATG{l}{r}TAAG"))
+        })
+        .collect::<Vec<_>>();
+    for window_bp in [1, 2, 4, 5, 6, 7, 8, 12] {
+        for (min, max) in [
+            (0, 0),
+            (0, 2500),
+            (0, 5000),
+            (1428, 4286),
+            (1666, 1667),
+            (2500, 7500),
+            (0, 10000),
+        ] {
+            for global in [None, gc_bounds(2500, 3334)] {
+                for patterns in [vec![], vec!["CTA", "CGT"], vec!["CTACGC", "CTGCGT"]] {
+                    for protected in [vec![], vec![Interval { start: 6, end: 7 }]] {
+                        let mut request = input(source, "MLR", &patterns);
+                        request.cds = Interval { start: 1, end: 13 };
+                        request.gc_content = global;
+                        request.gc_window = window_bounds(window_bp, min, max);
+                        request.protected = protected;
+                        for motif in &mut request.motifs {
+                            motif.strand = Strand::Forward;
+                        }
+                        let valid = |dna: &str| {
+                            let cds = &dna.as_bytes()[1..13];
+                            cds.windows(window_bp).all(|window| {
+                                let gc = window.iter().filter(|b| b"GC".contains(b)).count();
+                                gc * 10000 >= usize::from(min) * window_bp
+                                    && gc * 10000 <= usize::from(max) * window_bp
+                            }) && global.is_none_or(|g| {
+                                let gc = cds.iter().filter(|b| b"GC".contains(b)).count();
+                                gc * 10000 >= usize::from(g.min_basis_points) * 12
+                                    && gc * 10000 <= usize::from(g.max_basis_points) * 12
+                            }) && patterns.iter().all(|p| !dna.contains(p))
+                                && request
+                                    .protected
+                                    .iter()
+                                    .all(|p| dna[p.start..p.end] == source[p.start..p.end])
+                        };
+                        let expected = variants.iter().filter(|dna| valid(dna)).min_by_key(|dna| {
+                            (
+                                dna.bytes()
+                                    .zip(source.bytes())
+                                    .filter(|(a, b)| a != b)
+                                    .count(),
+                                dna.as_str(),
+                            )
+                        });
+                        for strategy in [
+                            SearchStrategy::FullEnumeration,
+                            SearchStrategy::ConflictDirected,
+                        ] {
+                            let result = solve_with_strategy(&request, strategy, |_| false);
+                            assert_eq!(
+                                result.sequence.as_ref(),
+                                expected,
+                                "{window_bp} {min} {max} {global:?} {patterns:?} {strategy:?}"
+                            );
+                            assert_eq!(
+                                result.status,
+                                if expected.is_some() {
+                                    Status::Feasible
+                                } else {
+                                    Status::ProvenInfeasible
+                                }
+                            );
+                            if expected.is_some() {
+                                assert!(result.minimum_edits_proven);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn window_gc_work_and_report_are_bounded_by_every_requested_window() {
+    let dna = format!("ATG{}TAA", "GCT".repeat(1000));
+    let mut request = input(&dna, &format!("M{}", "A".repeat(1000)), &[]);
+    request.gc_window = window_bounds(100, 0, 10000);
+    request.max_evaluations = MAX_EVALUATIONS;
+    let length = dna.len() as u64;
+    let count = length - 100 + 1;
+    let result = solve(&request, |_| false);
+    assert_eq!(
+        result.effective_evaluation_budget,
+        MAX_TOTAL_MOTIF_WORK / (length * 4 + length + 1 + count)
+    );
+    assert_eq!(
+        assess_window_gc(&request, result.sequence.as_deref())
+            .unwrap()
+            .unwrap()
+            .input
+            .len(),
+        count as usize
+    );
+}
+
 fn gc_bounds(min: u16, max: u16) -> Option<GcBounds> {
     Some(GcBounds {
         min_basis_points: min,
@@ -457,6 +749,7 @@ fn input(sequence: &str, protein: &str, patterns: &[&str]) -> Input {
             .collect(),
         max_evaluations: 4096,
         gc_content: None,
+        gc_window: None,
     }
 }
 

@@ -38,6 +38,46 @@
   Glen/CI under the existing no-local-build restriction; they are not claimed
   by static review. The broader readability work remains separate.
 
+## 2026-10-06 - Add Explicit Sliding-Window GC To Synthetic Design
+
+- Start the owner-authorized next slice after rebasing onto fetched `main`
+  `afbef444`. Optional `gc_window` checks every full one-base-step window in the
+  declared CDS, including frozen bases but not flanks/partial edges. Integer
+  bounds, full-window coordinates/counts and distinct invalid/infeasible/
+  unresolved/cancelled outcomes are shared across both solvers and fresh apply.
+- Conflict direction uses the codon's overlapping bases, retaining all synonyms
+  of direction-capable codons; whole-codon GC is not substituted at partial edges.
+  Prefix counts and explicit work/row caps bound complete evaluations. Window
+  algorithm/policy identities are explicit; omitted windows preserve legacy
+  approvals. Rehashed invalid DNA/facts/coordinates are refused. Preserve main's
+  unverified-preview wrapper, verified-output/unverified-search receipts and one
+  outer derivation/undo boundary.
+- Add independent literal synthetic oracles, joint motif/global/window checks,
+  partial codons, frozen/invalid/empty geometry, budgets/cancellation and shared
+  shell/CLI/MCP/discovery tests. Extend the CLI/GUI Shell/inner-agent walkthrough
+  without a separate editor, route, dependency, generated catalog or natural-gene
+  fixture. This remains outside `.12`; Claude review, Glen's independent verdict,
+  native/platform, upstream compatibility and performance are not claimed.
+- Repair the newly merged persistence regression test exposed by verification:
+  compare both sides through persisted JSON text rather than widened in-memory
+  `f32` values, and canonicalize only the unordered restriction-group map's
+  serialized pairs. Every coordinate/name and the remaining full project state,
+  approvals, metadata and origins remain checked; no production behavior changes.
+  The corrected persistence test also passes ten separate process repetitions.
+- Local macOS arm64 verification: core 23/23, protocol 5/5, engine/MCP 26/26,
+  CLI 4/4 and LF/CRLF checkout 18/18 pass. Canonical parity-matrix check,
+  locked offline Cargo check, formatting and whitespace checks pass. Debug links
+  emit the large-unwind-table warning; no profile change or performance inference.
+  Full workspace, native Windows/Linux, live GUI/Pi, MSRV and upstream comparison
+  are unrun. The unrelated handoff deletion stays untouched; no push/tag/dispatch
+  or `.12` acceptance follows.
+- Session-close reports four OK, two warnings and no failures: intentional dirty
+  files (including the unrelated deletion) and the manual plan-fidelity reminder.
+  The sole extra change is the prerequisite persistence-test repair above.
+- Rebase onto fetched `main` `9014f54e` preserves the exact UniProt work and
+  reconciles the overlapping persistence-test repair. The test counts above
+  describe `afbef444` plus this slice, not acceptance of the new splicing work.
+
 ## 2026-10-06 - Reconcile The Pre-GC Review Without Reimplementing The Slice
 
 - Commit the preceding apply/provenance repair as `13377b12`, leaving the

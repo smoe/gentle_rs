@@ -71,7 +71,7 @@ Inner-agent example: "For this explicitly synthetic coding insert, preserve MEF,
 the start/stop and my protected bases, and preview synonymous removal of GAATTC
 on both strands. Show the exact edits and search status; do not apply yet."
 The agent uses shared capabilities/readiness and the preview, not invented DNA
-or hashes. Sliding-window GC, codon adaptation and broader specifications remain deferred.
+or hashes. Codon adaptation and broader specifications remain deferred.
 Execution receipts do not expose report contents to the model. In Agent
 Assistant, review the result and use **Use reviewed result in next prompt** only
 if you consent to sharing its DNA and paths. This stages a draft, not approval
@@ -143,6 +143,62 @@ Preview synonymous redesign with CDS [0,12), code 1 and GC bounds 1666..1667
 basis points over that entire CDS. No forbidden motifs. Show integer GC counts,
 edits and status; do not apply." The agent must ask for any missing request
 fields, read the real preview and obtain separate exact-output approval.
+
+### Sliding-Window GC Walkthrough
+
+A reasonable GC fraction across the whole insert can conceal a locally extreme
+stretch. Optional `gc_window` constrains **every complete overlapping window
+inside the declared CDS**, stepping one base at a time. It includes frozen bases
+but excludes flanks and shortened edge windows. `window_bp` must be 1..CDS length;
+there is no stride or organism preset. Bounds are inclusive integer basis points,
+using the same exact rounding as whole-CDS GC. Both constraints may be requested
+together and are enforced jointly with motifs, translation and protection.
+
+This is another literal synthetic MFK example, not a natural gene or a suggested
+production threshold. Use its JSON as `request.json` with the preview/apply
+commands above, in CLI or GUI Shell:
+
+```json
+{
+  "schema": "gentle.dna_sequence_design_request.v1",
+  "target": {"kind": "inline_sequence", "sequence": "ATGTTTAAATAA"},
+  "purpose": "synthetic_coding_insert",
+  "cds": {"start_0based": 0, "end_0based_exclusive": 12},
+  "protein_sequence": "MFK",
+  "genetic_code": 1,
+  "protected_intervals": [],
+  "avoid_motifs": [],
+  "gc_content": {"min_basis_points": 1666, "max_basis_points": 1667},
+  "gc_window": {"window_bp": 6, "min_basis_points": 1666, "max_basis_points": 1667},
+  "search_strategy": "conflict_directed",
+  "max_evaluations": 4096,
+  "output_seq_id": "synthetic_window_gc"
+}
+```
+
+The seven 6-bp windows are `[0,6)` through `[6,12)`. Each must contain exactly
+one G/C base; the complete CDS must contain two. Expected output is
+`ATGTTTAAGTAA`, changing only position 8, still encoding MFK. The previous
+whole-CDS-only output, `ATGTTCAAATAA`, satisfies global GC but **fails** the local
+window requirement. This demonstrates why the two constraints are not substitutes.
+
+Review `gc_window.input` and `gc_window.output`: every window retains its exact
+zero-based half-open `interval`, integer `gc_bases` and `satisfies_bounds`.
+Also inspect count bounds, DNA, edits, status and non-claims before approving.
+Omit `gc_content` for window-only design; omit `search_strategy` for enumeration
+with the same tiny-space optimum. After separately approved application,
+`ui open sequence-window synthetic_window_gc` opens the derived DNA in GENtle.
+
+Invalid lengths/bounds differ from infeasible rounded count intervals. A budget
+stop is unresolved; cancellation publishes no output/approval. Absent output
+measurements are not zeros. Changing either GC constraint needs a new reviewed
+preview. Passing these checks does not establish expression, folding or synthesis
+success; apply checks output constraints, not submitted optimization claims.
+
+Inner-agent example: "This is an explicitly synthetic ATGTTTAAATAA insert for
+MFK, CDS [0,12), code 1. Preview GC 1666..1667 basis points globally and in every
+6-bp CDS window, no forbidden motifs. Show exact window counts and edits; do not
+apply." The agent must obtain missing fields and use the actual report/digest.
 
 ## Source-Coherent Transcripts
 
