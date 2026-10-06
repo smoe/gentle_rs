@@ -387,7 +387,7 @@ Author-declared `mutating=true` requires a parser-mutating command, but the
 reverse is not required: generic `op` inspect/export routes are conservatively
 classified. `auto` on any parser-mutating command or undo/redo is diagnosed as
 `auto_blocked_by_runtime`, matching existing runtime protection. Counts are
-derived; only the repository regression pins today's 3 tutorials / 20 cases /
+derived; only the repository regression pins today's 4 tutorials / 22 cases /
 5 author-declared mutations / 12 parser-classified mutations.
 
 ```sh
@@ -427,6 +427,22 @@ These exercises are not live GUI acceptance, real BLAST/vendor execution, or
 scientific approval. The transcript guide preserves the synthetic fixture's
 missing differential-threshold provenance instead of manufacturing a positive
 selection result.
+
+Tutorial [06.07](tutorial/06-07_synthetic_sequence_design.md) has a literal,
+four-word synonymous oracle, LF/CRLF request/prose checks and actual CLI
+plan/apply/approval-refusal regressions under both strategies:
+
+```sh
+GENTLE_TUTORIAL_BIN_DIR=/absolute/path/to/binary/directory \
+  python3 -m unittest scripts.test_sequence_design_tutorial
+cargo test --lib sequence_design_tutorial --locked --offline -j 1 -- --test-threads=1
+```
+
+Without the variable only CLI cases skip; the fast source/oracle checks still
+run. With it set, missing binaries fail. The Rust test executes apply/undo/redo
+through the shared parser in one engine session, not separate CLI processes.
+All DNA is explicitly synthetic and output goes to temporary directories. No
+new solver, automatic human approval or live GUI/inner-model verdict is implied.
 
 Without `GENTLE_TUTORIAL_BIN_DIR`, binary-dependent tests explicitly skip; with
 it set, missing tools, confirmation errors and command/report drift fail. The

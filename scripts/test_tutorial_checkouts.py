@@ -115,6 +115,33 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), self.payload)
 
+    def test_sequence_design_tutorial_semantics_survive_both_checkout_modes(self):
+        from scripts.test_sequence_design_tutorial import fenced_request
+
+        request_path = Path("docs/tutorial/inputs/synthetic_sequence_design.json")
+        guide_path = Path("docs/tutorial/06-07_synthetic_sequence_design.md")
+        source_path = Path("docs/tutorial/sources/06-07_synthetic_sequence_design.json")
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for relative in (request_path, guide_path, source_path):
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes((checker.ROOT / relative).read_bytes())
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "synthetic sequence-design teaching request")
+        request = json.loads((checker.ROOT / request_path).read_bytes())
+        source = json.loads((checker.ROOT / source_path).read_bytes())
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"sequence-design-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                guide_bytes = (target / guide_path).read_bytes()
+                if mode[0] == "crlf":
+                    self.assertIn(b"\r\n", guide_bytes, "Exercise the real CRLF boundary")
+                self.assertEqual(fenced_request(guide_bytes.decode("utf-8")), request)
+                self.assertEqual(json.loads((target / request_path).read_bytes()), request)
+                self.assertEqual(json.loads((target / source_path).read_bytes()), source)
+
     def test_review_dependencies_keep_commit_dates_despite_newer_graphic_mtime(self):
         source = Path("docs/tutorial/sources/synthetic.json")
         graphic = Path("docs/screenshots/synthetic.png")

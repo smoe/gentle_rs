@@ -521,6 +521,11 @@ no generated catalog, fixture, dependency, profile or release changes are includ
 
 ## Remaining stages
 
+The executable [synthetic tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md)
+provides a joint motif/global/window-GC starting point and independent four-word
+oracle. Its local command checks and Codex source review do not close the
+independent native, usefulness or search audit stages below.
+
 1. Glen rechecks the approval/provenance repair at its exact integrated SHA,
    including the two-edit/non-minimum example, unverified search receipt and
    one coherent derivation through direct CLI, shared shell and confirmed MCP.

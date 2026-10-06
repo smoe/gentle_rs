@@ -9,7 +9,9 @@ previews synonymous motif removal, and `sequence-design apply @preview.json
 DNA is unchanged; the derived sequence is undoable and can be opened through
 `ui open sequence-window OUTPUT_ID`. No input, CDS, protein, protection or digest
 may be inferred from a gene label. This is not full DNA Chisel or a `.12` gate.
-See [the exact request and non-claims](cli.md#synthetic-sequence-design).
+See [the exact request and non-claims](cli.md#synthetic-sequence-design) and
+[tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) for the offline
+joint motif/GC preview, separately approved apply and same-session undo/redo.
 The same request optionally selects `search_strategy=conflict_directed`; omission
 retains enumeration. GUI Shell and Agent Assistant share the engine policy and
 need a freshly reviewed approval after a strategy change. This adds no separate

@@ -3,6 +3,15 @@
   "warn_after_months": 12,
   "entries": [
     {
+      "tutorial_id": "synthetic_sequence_design",
+      "tutorial_kind": "guided_walkthrough",
+      "tutorial_status": "active",
+      "replaced_by": null,
+      "codex_reviewed_at": "2026-10-06",
+      "human_reviewed_at": null,
+      "human_reviewer": null
+    },
+    {
       "tutorial_id": "gene_assay_study_gui",
       "tutorial_kind": "guided_walkthrough",
       "tutorial_status": "active",

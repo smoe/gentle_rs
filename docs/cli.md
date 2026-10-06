@@ -2,6 +2,10 @@
 
 ## Synthetic Sequence Design
 
+Start with [tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) for an
+executable, synthetic joint motif/global/window-GC example with exact-output
+review, separate approval and the session-local undo boundary.
+
 Experimental, outside the `.12` release gate. This is bounded synonymous motif
 removal for explicitly synthetic coding inserts, not full DNA Chisel.
 

@@ -1,0 +1,44 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "synthetic_sequence_design",
+  "title": "Redesign a synthetic coding insert: remove a motif and control GC",
+  "catalog": {
+    "order": 64,
+    "path": "docs/tutorial/06-07_synthetic_sequence_design.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["wet_lab_biologists", "gui_first", "cli_first", "agent_users"],
+    "notes": "Offline, executable synthetic MFK example: synonymous motif removal with joint whole-CDS and sliding-window GC constraints. Preview exact edits/counts, separately approve the real digest, apply a new sequence, then undo/redo in the same GUI Shell session. CLI and inner-agent routes use the same contract; no dedicated editor, automatic approval, natural-gene recoding, expression claim or DNA Chisel compatibility. Independent Glen/native/scientific acceptance remains pending; outside the .12 gate.",
+    "estimated_minutes": 10,
+    "difficulty": "introductory",
+    "network": "offline",
+    "interfaces": ["GUI Shell", "CLI / shared shell", "Agent Assistant (inner, review-first)"],
+    "starting_state": "Disposable empty project; no genome, motif database or inner agent required",
+    "produces": ["reviewable synonymous-design preview", "explicitly approved synthetic DNA and receipt"],
+    "group": "06",
+    "group_position": 7,
+    "prerequisites": ["agent_interfaces"]
+  },
+  "agent_parity": {
+    "schema": "gentle.tutorial_agent_parity.v1",
+    "cases": [
+      {
+        "id": "preview_joint_constraints",
+        "command": "sequence-design plan @request.json --path preview.json",
+        "parser_payload": {
+          "file": "request.json",
+          "template": "docs/tutorial/inputs/synthetic_sequence_design.json"
+        },
+        "execution": "ask",
+        "mutating": false
+      },
+      {
+        "id": "inspect_approved_product",
+        "command": "ui open sequence-window synthetic_mfk_redesign",
+        "execution": "ask",
+        "mutating": false
+      }
+    ]
+  }
+}

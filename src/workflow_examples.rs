@@ -9033,8 +9033,8 @@ mod tests {
             .expect("load tutorial sources");
         let check = check_tutorial_agent_parity(&units, root);
         assert!(check.findings.is_empty(), "{:?}", check.findings);
-        assert_eq!(check.summary.tutorials, 3);
-        assert_eq!(check.summary.cases, 20);
+        assert_eq!(check.summary.tutorials, 4);
+        assert_eq!(check.summary.cases, 22);
         assert_eq!(check.summary.declared_mutating, 5);
         assert_eq!(check.summary.parser_state_mutating, 12);
     }

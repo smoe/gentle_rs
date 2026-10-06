@@ -2099,6 +2099,44 @@
       ]
     },
     {
+      "id": "synthetic_sequence_design",
+      "title": "Redesign a synthetic coding insert: remove a motif and control GC",
+      "path": "docs/tutorial/06-07_synthetic_sequence_design.md",
+      "group": "06",
+      "group_label": "Transcript, Protein & Projection",
+      "group_order": 6,
+      "group_position": 7,
+      "decimal_id": "06.07",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "wet_lab_biologists",
+        "gui_first",
+        "cli_first",
+        "agent_users"
+      ],
+      "notes": "Offline, executable synthetic MFK example: synonymous motif removal with joint whole-CDS and sliding-window GC constraints. Preview exact edits/counts, separately approve the real digest, apply a new sequence, then undo/redo in the same GUI Shell session. CLI and inner-agent routes use the same contract; no dedicated editor, automatic approval, natural-gene recoding, expression claim or DNA Chisel compatibility. Independent Glen/native/scientific acceptance remains pending; outside the .12 gate.",
+      "estimated_minutes": 10,
+      "difficulty": "introductory",
+      "network": "offline",
+      "interfaces": [
+        "GUI Shell",
+        "CLI / shared shell",
+        "Agent Assistant (inner, review-first)"
+      ],
+      "starting_state": "Disposable empty project; no genome, motif database or inner agent required",
+      "produces": [
+        "reviewable synonymous-design preview",
+        "explicitly approved synthetic DNA and receipt"
+      ],
+      "prerequisites": [
+        "agent_interfaces"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-06"
+    },
+    {
       "id": "tss_collection_gui",
       "title": "From annotated transcript starts to reusable TSS windows (offline)",
       "path": "docs/tutorial/generated/chapters/08-15_tss_collection_gui.md",

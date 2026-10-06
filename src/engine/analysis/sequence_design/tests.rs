@@ -58,6 +58,142 @@ fn window_gc_request() -> DnaSequenceDesignRequest {
 }
 
 #[test]
+fn sequence_design_tutorial_shared_commands_apply_undo_redo_in_one_session() {
+    use crate::engine_shell::{execute_shell_command, parse_shell_line, quote_shell_arg};
+
+    let fixture = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/docs/tutorial/inputs/synthetic_sequence_design.json"
+    ));
+    let guide = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/docs/tutorial/06-07_synthetic_sequence_design.md"
+    ));
+    let documented_json = guide
+        .lines()
+        .skip_while(|line| *line != "```json")
+        .skip(1)
+        .take_while(|line| *line != "```")
+        .collect::<Vec<_>>()
+        .join("\n");
+    let documented: DnaSequenceDesignRequest = serde_json::from_str(&documented_json).unwrap();
+    assert_eq!(documented, serde_json::from_str(fixture).unwrap());
+    let directory = tempfile::tempdir().unwrap();
+    let request_path = directory.path().join("tutorial's request.json");
+    let preview_path = directory.path().join("tutorial's preview.json");
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        let mut request = documented.clone();
+        request.search_strategy = strategy;
+        std::fs::write(&request_path, serde_json::to_vec_pretty(&request).unwrap()).unwrap();
+        let mut engine = GentleEngine::new();
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let preview = execute_shell_command(
+            &mut engine,
+            &parse_shell_line(&format!(
+                "sequence-design plan {} --path {}",
+                quote_shell_arg(&format!("@{}", request_path.display())),
+                quote_shell_arg(&preview_path.display().to_string())
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(!preview.state_changed);
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        let report_bytes = std::fs::read(&preview_path).unwrap();
+        let report: DnaSequenceDesignReport = serde_json::from_slice(&report_bytes).unwrap();
+        assert_eq!(report.status, DnaDesignStatus::Feasible);
+        assert_eq!(report.output_sequence.as_deref(), Some("ATGTTTAAGTAA"));
+        assert_eq!(
+            report.edits,
+            [DesignNucleotideEdit {
+                position_0based: 8,
+                before: "A".into(),
+                after: "G".into()
+            }]
+        );
+        assert_eq!(
+            report.initial_matches,
+            [DesignMotifMatch {
+                motif_index: 0,
+                interval: DesignInterval {
+                    start_0based: 3,
+                    end_0based_exclusive: 9
+                },
+                strand: DesignStrand::Both
+            }]
+        );
+        assert!(report.optimization_complete && report.minimum_edits_proven);
+        assert_eq!(
+            report
+                .gc_content
+                .as_ref()
+                .unwrap()
+                .output
+                .as_ref()
+                .unwrap()
+                .gc_bases,
+            2
+        );
+        let windows = report.gc_window.as_ref().unwrap();
+        assert_eq!(
+            windows
+                .input
+                .iter()
+                .map(|row| row.gc_bases)
+                .collect::<Vec<_>>(),
+            [1, 1, 1, 0, 0, 0, 0]
+        );
+        assert_eq!(windows.output.as_ref().unwrap().len(), 7);
+        for (start, row) in windows.output.as_ref().unwrap().iter().enumerate() {
+            assert_eq!(
+                row.interval,
+                DesignInterval {
+                    start_0based: start,
+                    end_0based_exclusive: start + 6
+                }
+            );
+            assert_eq!(row.gc_bases, 1);
+            assert!(row.satisfies_bounds);
+        }
+        let approved = parse_shell_line(&format!(
+            "sequence-design apply {} --approve {}",
+            quote_shell_arg(&format!("@{}", preview_path.display())),
+            report.approval_digest.as_deref().unwrap()
+        ))
+        .unwrap();
+        let applied = execute_shell_command(&mut engine, &approved).unwrap();
+        assert!(applied.state_changed);
+        assert_single_design_derivation(
+            &engine,
+            &request.output_seq_id,
+            applied.output["result"]["op_id"].as_str().unwrap(),
+        );
+        let receipt = &applied.output["result"]["dna_sequence_design_receipt"];
+        assert_eq!(receipt["output_constraints_verified"], true);
+        assert_eq!(receipt["search_claims_verified"], false);
+        let record =
+            &engine.state.metadata[&format!("dna_sequence_design:{}", request.output_seq_id)];
+        assert_eq!(
+            record["submitted_proposal"]["verification"],
+            "unverified_portable_preview"
+        );
+        let applied_state = serde_json::to_value(engine.state()).unwrap();
+        assert!(
+            execute_shell_command(&mut engine, &parse_shell_line("history status").unwrap())
+                .is_ok()
+        );
+        execute_shell_command(&mut engine, &parse_shell_line("history undo").unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(std::fs::read(&preview_path).unwrap(), report_bytes);
+        execute_shell_command(&mut engine, &parse_shell_line("history redo").unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), applied_state);
+    }
+}
+
+#[test]
 fn sequence_design_window_gc_documented_walkthrough_is_replayable() {
     let docs = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/docs/cli.md"));
     let section = docs

@@ -1,5 +1,39 @@
 # GENtle Changelog
 
+## 2026-10-06 - Teach Joint Synonymous Motif And GC Design In Tutorial 06.07
+
+- From `cee1aef4`, add a human-readable, offline synthetic MFK walkthrough with
+  one literal forbidden motif, CDS-wide GC and all seven sliding windows.
+  Explain exact integer/coordinate facts, the global-only counterexample,
+  separate real-digest approval, output/search verification boundaries, and
+  same-session undo/redo rather than promising cross-process CLI history.
+- Register the hand-written page in the canonical tutorial source/catalog and
+  Help navigation, with Codex source review and pending human/native acceptance.
+  Keep the 29-chapter generated manifest unchanged. The small teaching request
+  has explicit synthetic provenance and recreation steps, not a natural-gene
+  label or production thresholds. Link it from GUI/CLI docs.
+- Add a literal independent four-word oracle, LF/CRLF semantic checks using
+  real temporary Git checkouts, actual CLI tests under both strategies, and
+  a shared-parser apply/undo/redo regression. Agent draft discovery now covers
+  four tutorials and 22 cases; confirmation/undo safety remains unchanged.
+  Actual CLI cases skip explicitly without a configured built binary, and
+  authorize only synthetic test inputs when enabled, not learner approval.
+- Local macOS arm64 verification on `cee1aef4` plus this tutorial diff: all
+  25 source/actual-CLI/checkout checks pass without skips, as do 27 focused
+  engine/MCP tests and the tutorial agent-contract regression. Catalog/manifest
+  checks and the full 29-chapter tutorial check pass, retaining the two existing
+  stale human-review warnings. Locked offline Cargo check, formatting and
+  whitespace checks pass. Debug linking retains
+  the previously observed large-unwind-table warning; no performance inference.
+  Glen's exact-revision CLI/native review, screenshots, usefulness/performance
+  and human scientific approval remain pending. No solver, production route,
+  dependency, generated scientific artifact, release profile or `.12` gate
+  changes; full-workspace and native Windows/Linux checks are unrun.
+- Session-close reports four OK, two warnings and no failures: intentional
+  tutorial edits plus the unrelated, untouched handoff deletion, and the manual
+  plan-fidelity reminder. Changes stay within the requested executable tutorial,
+  its registration/provenance, shared-command tests and documentation links.
+
 ## 2026-10-06 - Correct The Sequence-Design Persistence Test's JSON Comparison
 
 - Keep the real project-byte serialization and reload, but compare the original

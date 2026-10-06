@@ -1,0 +1,15 @@
+{
+  "schema": "gentle.dna_sequence_design_request.v1",
+  "target": {"kind": "inline_sequence", "sequence": "ATGTTTAAATAA"},
+  "purpose": "synthetic_coding_insert",
+  "cds": {"start_0based": 0, "end_0based_exclusive": 12},
+  "protein_sequence": "MFK",
+  "genetic_code": 1,
+  "protected_intervals": [],
+  "avoid_motifs": [{"pattern": "TTTAAA", "strand": "both"}],
+  "gc_content": {"min_basis_points": 1666, "max_basis_points": 1667},
+  "gc_window": {"window_bp": 6, "min_basis_points": 1666, "max_basis_points": 1667},
+  "search_strategy": "conflict_directed",
+  "max_evaluations": 4096,
+  "output_seq_id": "synthetic_mfk_redesign"
+}
