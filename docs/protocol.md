@@ -12573,6 +12573,35 @@ Cryptic-splicing inspection (implemented):
     use the validated stable identity without walking transcript/exon/junction
     vectors. Older payloads without the field remain supported through the same
     one-time normalization and a local fallback digest if serialization fails
+  - `SplicingMatrixRow.uniprot_reference` is an additive typed record shared
+    with its lane via `transcript_feature_id`. Missing legacy fields default to
+    `not_evaluated`, never evaluated absence. `referenced` requires an exact
+    normalized match between a stored UniProt `ensembl_xrefs.transcript_id` and
+    an explicit locus `transcript_id` qualifier. Normalization trims whitespace,
+    uppercases and removes only a numeric version suffix, using the same matcher
+    as UniProt link resolution; labels and fallback display IDs are not identities.
+    `not_referenced` means relevant loaded evidence was assessed for an explicitly
+    identified transcript but supplied no exact xref, not global UniProt absence.
+  - Each loaded entry is relevant only if its transcript xref exactly matches
+    an explicit transcript in the displayed locus scope, or its Ensembl gene
+    xref exactly matches the single stable Ensembl gene ID from the seed/included
+    transcript `gene_id` qualifiers. The gene path admits strict Ensembl IDs,
+    stripping numeric versions, with no gene-symbol/alias matching. Multiple
+    distinct gene IDs disable gene-only relevance rather than choosing one.
+    Gene names, labels, protein lengths and saved projections are never evidence
+    of relevance. Without either exact relation, status is `not_evaluated`.
+    A row lacking an explicit transcript ID also stays `not_evaluated` even
+    when gene-level relevance exists, with a diagnostic rather than a fake match.
+  - Relevant sources preserve local entry ID, accession, optional review status,
+    SHA-256 of the serialized stored entry, exact matched locus IDs and original
+    transcript/protein/gene/isoform xref tuples. Multiple matches and ambiguous
+    protein/gene tuples remain explicit; no preferred entry is inferred.
+    Sources and xrefs are stably sorted. Evidence participates in the view's
+    presentation fingerprint; it is not a sequence-identity, completeness,
+    functionality or assay-readiness claim. Inspection remains read-only and
+    rendering performs no fetch. GUI matrix-label hovers and SVG lane/matrix
+    `<title>` text project the same typed record; SVG labels also carry
+    `data-uniprot-reference-status`.
   - shared splicing expert payloads also carry conservative intron-signal
     heuristics per intron:
     - donor/acceptor positions and intron length

@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-06 - Commit the apply/provenance repair as `13377b12`, then [reconcile Claude's older GC review](dna_sequence_optimization_plan.md#gc-review-reconciliation-2026-10-06) against `164b44ce`. Glen/CI must run the tagged-metadata, saved-container/origin, detached/stale, exact GC work-budget and both-strategy rehashed-tamper regressions at one frozen SHA; local Rust execution remains deliberately deferred. Preserve feasible preview approvals and keep independent native/usefulness/search audits and `.12` gates pending.
+Last session: 2026-10-06 - Enforce exact transcript/stable Ensembl gene-ID relations for loaded UniProt relevance in the shared Splicing Expert payload, with source-bound evidence and legacy `not_evaluated` defaults. Glen/CI must run the new protocol/engine/shell/SVG/GUI-cache regressions; local Rust execution and live FLNA/readability acceptance remain deferred. Retain the [sequence-design review's](dna_sequence_optimization_plan.md#gc-review-reconciliation-2026-10-06) pending exact-SHA tests and all independent `.12` gates; no release or performance verdict is implied.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

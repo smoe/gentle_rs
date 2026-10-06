@@ -1,5 +1,31 @@
 # GENtle Changelog
 
+## 2026-10-06 - Require Exact UniProt Relations For Splicing Reference Evidence
+
+- Starting from `afbef444`, implement the owner's exact-relevance clarification,
+  not the attached proposal's broader dense-figure/grouping redesign. Add one
+  default-safe transcript-reference record to the shared splicing matrix rows,
+  keyed to lanes by feature ID. Reuse UniProt transcript normalization/matching
+  and the strict stable Ensembl gene-ID parser. Gene names, labels, protein
+  lengths, partial IDs and saved projections cannot establish relevance; absent
+  exact relations remain `not_evaluated`. An exact gene-only relation can make
+  an entry relevant, but not a transcript referenced. Unknown transcript identity
+  and multi-gene scopes remain explicit rather than producing absence claims.
+- Bind source entry/accession, review availability, exact relations and raw
+  xref tuples to content hashes and the existing presentation fingerprint.
+  GUI matrix hovers and SVG lane/matrix titles consume this shared evidence;
+  keep geometry, ordering, existing routes, project state and scientific
+  selection unchanged. Move the existing plain xref record into the shared
+  protocol with the original engine re-export, without changing its wire shape.
+- Add inline synthetic protocol, engine/shared-shell, SVG and GUI-cache tests
+  for legacy availability, normalized matches, gene-only relations, false
+  label/name/projection paths, missing IDs, ambiguity, deterministic ordering,
+  read-only inspection and provenance/fingerprint changes. No public natural-gene
+  data, catalogs, dependencies, new routes or online operations are introduced.
+  Rust tests/builds/Cargo check and live FLNA acceptance remain deferred to
+  Glen/CI under the existing no-local-build restriction; they are not claimed
+  by static review. The broader readability work remains separate.
+
 ## 2026-10-06 - Reconcile The Pre-GC Review Without Reimplementing The Slice
 
 - Commit the preceding apply/provenance repair as `13377b12`, leaving the

@@ -1071,6 +1071,17 @@ Feature tree grouping:
 - Very large `Transcript x exon` or `Exon -> exon` matrices may open collapsed
   by default to reduce idle CPU usage; expand the section header to render the
   full table.
+- Hover a transcript label in `Transcript x exon` to inspect its UniProt
+  reference status and source xrefs. Evidence comes from entries already loaded
+  into this project (`uniprot import-swissprot` or explicit `uniprot fetch` in
+  the shared shell); refresh/reopen the expert view after loading evidence.
+  An entry is relevant only through an exact normalized transcript xref or an
+  exact stable Ensembl gene-ID xref. Names, labels, protein lengths and unrelated
+  projections do not count. With no exact relation, status is `not_evaluated`.
+  Gene-only relevance does not make a transcript `referenced`; `not_referenced`
+  is scoped to the relevant loaded entries, not a global absence claim. The
+  shared JSON and exported SVG hover titles retain the same source hashes and
+  identifiers. Transcript geometry and ordering are unchanged.
 - For debugging Splicing Expert launch stalls, launching GENtle with
   `GENTLE_TRACE_SPLICING_EXPERT=1` emits coarse open/render stage tracing to
   the terminal and mirrors it into the sequence-window status line.

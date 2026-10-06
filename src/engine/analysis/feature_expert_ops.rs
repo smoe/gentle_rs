@@ -25,7 +25,9 @@ use crate::ensembl_protein::{
     resolve_query as resolve_ensembl_query,
 };
 use crate::exon_frame::exon_cds_phase_cues;
-use crate::uniprot::{UniprotFeature, UniprotFeatureProjection, parse_alternative_products};
+use crate::uniprot::{
+    UniprotEnsemblXref, UniprotFeature, UniprotFeatureProjection, parse_alternative_products,
+};
 use crate::{AMINO_ACIDS, amino_acids::STOP_CODON};
 use gentle_protocol::{
     AttractPwmMappingPolicy, AttractRegionClass, AttractSpeciesMatchMode,
@@ -2119,6 +2121,18 @@ impl GentleEngine {
         }
     }
 
+    fn uniprot_xref_matches_transcript(
+        xref: &UniprotEnsemblXref,
+        normalized_transcript: &str,
+    ) -> bool {
+        !normalized_transcript.is_empty()
+            && xref
+                .transcript_id
+                .as_deref()
+                .map(Self::normalize_transcript_probe)
+                .is_some_and(|candidate| candidate == normalized_transcript)
+    }
+
     fn build_uniprot_link_resolution_row(
         entry: &UniprotEntry,
         transcript_projection: &UniprotTranscriptProjection,
@@ -2128,12 +2142,7 @@ impl GentleEngine {
         let matched = entry
             .ensembl_xrefs
             .iter()
-            .filter(|xref| {
-                xref.transcript_id
-                    .as_deref()
-                    .map(Self::normalize_transcript_probe)
-                    .is_some_and(|candidate| candidate == normalized_transcript)
-            })
+            .filter(|xref| Self::uniprot_xref_matches_transcript(xref, &normalized_transcript))
             .cloned()
             .collect::<Vec<_>>();
         let normalized_xref_transcript_ids = matched
@@ -9148,6 +9157,191 @@ impl GentleEngine {
         Ok(matched)
     }
 
+    fn splicing_uniprot_references(
+        &self,
+        features: &[gb_io::seq::Feature],
+        transcript_feature_ids: &[usize],
+        target_feature_id: usize,
+    ) -> Result<BTreeMap<usize, SplicingUniprotReferenceEvidence>, EngineError> {
+        // Only explicit annotation IDs are evidence. Display-label fallbacks and
+        // saved projections must not establish relevance or evaluated absence.
+        let transcript_ids = transcript_feature_ids
+            .iter()
+            .map(|id| {
+                let ids = features[*id]
+                    .qualifier_values("transcript_id")
+                    .map(Self::normalize_transcript_probe)
+                    .filter(|id| !id.is_empty())
+                    .collect::<BTreeSet<_>>();
+                (*id, ids)
+            })
+            .collect::<BTreeMap<_, _>>();
+        let locus_transcript_ids = transcript_ids
+            .values()
+            .flat_map(|ids| ids.iter().cloned())
+            .collect::<BTreeSet<_>>();
+        let locus_gene_ids = transcript_feature_ids
+            .iter()
+            .copied()
+            .chain(std::iter::once(target_feature_id))
+            .flat_map(|id| features[id].qualifier_values("gene_id"))
+            .filter_map(crate::genomes::ensembl_gene_stable_id)
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        // A multi-gene scope cannot select a preferred gene from symbols.
+        let locus_gene_id = (locus_gene_ids.len() == 1)
+            .then(|| locus_gene_ids.first().expect("one gene ID").as_str());
+
+        let store = self.read_uniprot_entry_store();
+        let mut relevant_entries = Vec::new();
+        for entry in store.entries.values() {
+            let matched_locus_transcript_ids = locus_transcript_ids
+                .iter()
+                .filter(|id| {
+                    entry
+                        .ensembl_xrefs
+                        .iter()
+                        .any(|xref| Self::uniprot_xref_matches_transcript(xref, id))
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            let matched_locus_gene_id = locus_gene_id
+                .filter(|id| {
+                    entry.ensembl_xrefs.iter().any(|xref| {
+                        xref.gene_id
+                            .as_deref()
+                            .and_then(crate::genomes::ensembl_gene_stable_id)
+                            == Some(*id)
+                    })
+                })
+                .map(str::to_string);
+            if matched_locus_transcript_ids.is_empty() && matched_locus_gene_id.is_none() {
+                continue;
+            }
+            let entry_bytes = serde_json::to_vec(entry).map_err(|error| EngineError {
+                code: ErrorCode::Internal,
+                message: format!(
+                    "Could not bind UniProt entry '{}' for splicing: {error}",
+                    entry.entry_id
+                ),
+                cause_chain: vec![],
+            })?;
+            relevant_entries.push((
+                entry,
+                SplicingUniprotReferenceSource {
+                    entry_id: entry.entry_id.clone(),
+                    accession: entry.accession.clone(),
+                    reviewed: entry.reviewed,
+                    entry_sha256: crate::digest_utils::sha256_prefixed_bytes(&entry_bytes),
+                    matched_locus_transcript_ids,
+                    matched_locus_gene_id,
+                    matched_transcript_xrefs: vec![],
+                },
+            ));
+        }
+        relevant_entries.sort_by(|(_, a), (_, b)| {
+            a.entry_id
+                .cmp(&b.entry_id)
+                .then_with(|| a.accession.cmp(&b.accession))
+        });
+
+        let mut references = BTreeMap::new();
+        for (feature_id, ids) in transcript_ids {
+            let mut sources = Vec::new();
+            for (entry, source) in &relevant_entries {
+                let mut source = source.clone();
+                source.matched_transcript_xrefs = entry
+                    .ensembl_xrefs
+                    .iter()
+                    .filter(|xref| {
+                        ids.iter()
+                            .any(|id| Self::uniprot_xref_matches_transcript(xref, id))
+                    })
+                    .map(|xref| UniprotEnsemblLinkedXref {
+                        transcript_id: xref.transcript_id.clone(),
+                        protein_id: xref.protein_id.clone(),
+                        gene_id: xref.gene_id.clone(),
+                        isoform_id: xref.isoform_id.clone(),
+                    })
+                    .collect();
+                source.matched_transcript_xrefs.sort_by(|a, b| {
+                    (&a.transcript_id, &a.protein_id, &a.gene_id, &a.isoform_id).cmp(&(
+                        &b.transcript_id,
+                        &b.protein_id,
+                        &b.gene_id,
+                        &b.isoform_id,
+                    ))
+                });
+                source.matched_transcript_xrefs.dedup();
+                sources.push(source);
+            }
+            let status = if sources.is_empty() || ids.is_empty() {
+                SplicingUniprotReferenceStatus::NotEvaluated
+            } else if sources
+                .iter()
+                .any(|source| !source.matched_transcript_xrefs.is_empty())
+            {
+                SplicingUniprotReferenceStatus::Referenced
+            } else {
+                SplicingUniprotReferenceStatus::NotReferenced
+            };
+            let mut diagnostics = vec![];
+            if ids.is_empty() {
+                diagnostics.push(
+                    "No explicit transcript_id annotation; labels do not establish transcript identity."
+                        .to_string(),
+                );
+            }
+            if locus_gene_ids.len() > 1 {
+                diagnostics.push(
+                    "Multiple explicit locus gene IDs; gene-only relevance was not inferred."
+                        .to_string(),
+                );
+            }
+            let matched_entry_count = sources
+                .iter()
+                .filter(|source| !source.matched_transcript_xrefs.is_empty())
+                .count();
+            if matched_entry_count > 1 {
+                diagnostics.push(
+                    "Multiple loaded entries have exact transcript xrefs; no preferred entry was selected."
+                        .to_string(),
+                );
+            }
+            for source in &sources {
+                let protein_ids = source
+                    .matched_transcript_xrefs
+                    .iter()
+                    .filter_map(|xref| xref.protein_id.as_deref())
+                    .map(normalize_ensembl_protein_entry_id)
+                    .filter(|id| !id.is_empty())
+                    .collect::<BTreeSet<_>>();
+                let gene_ids = source
+                    .matched_transcript_xrefs
+                    .iter()
+                    .filter_map(|xref| xref.gene_id.as_deref())
+                    .map(normalize_ensembl_protein_entry_id)
+                    .filter(|id| !id.is_empty())
+                    .collect::<BTreeSet<_>>();
+                if protein_ids.len() > 1 || gene_ids.len() > 1 {
+                    diagnostics.push(format!(
+                        "Entry '{}' has ambiguous exact transcript xrefs across protein/gene IDs.",
+                        source.entry_id
+                    ));
+                }
+            }
+            references.insert(
+                feature_id,
+                SplicingUniprotReferenceEvidence {
+                    status,
+                    sources,
+                    diagnostics,
+                },
+            );
+        }
+        Ok(references)
+    }
+
     pub(super) fn build_splicing_expert_view(
         &self,
         seq_id: &str,
@@ -9311,6 +9505,14 @@ impl GentleEngine {
         }
 
         transcripts.sort_by(|a, b| a.transcript_id.cmp(&b.transcript_id));
+        let mut uniprot_references = self.splicing_uniprot_references(
+            features,
+            &transcripts
+                .iter()
+                .map(|transcript| transcript.feature_id)
+                .collect::<Vec<_>>(),
+            feature_id,
+        )?;
 
         let mut exon_support: HashMap<(usize, usize), HashSet<usize>> = HashMap::new();
         let mut junction_support: HashMap<(usize, usize), HashSet<usize>> = HashMap::new();
@@ -9390,6 +9592,9 @@ impl GentleEngine {
                     transcript_id: transcript.transcript_id.clone(),
                     label: transcript.label.clone(),
                     exon_presence: unique_exons.iter().map(|exon| set.contains(exon)).collect(),
+                    uniprot_reference: uniprot_references
+                        .remove(&transcript.feature_id)
+                        .unwrap_or_default(),
                 }
             })
             .collect();

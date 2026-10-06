@@ -27,6 +27,7 @@ use crate::ensembl_protein::{
 };
 use crate::genomes::{BlastHit, BlastSubjectAnnotation, BlastSubjectAnnotationSource};
 use crate::lineage_export::{LineageSvgNodeKind, build_lineage_svg_graph, export_lineage_svg};
+use crate::uniprot::UniprotEnsemblXref;
 use bio::io::fasta;
 use flate2::{Compression, write::GzEncoder};
 use gentle_protocol::GeneLocusRegulatorySourceFactorBinding;
@@ -44298,6 +44299,411 @@ fn test_build_splicing_expert_view_carries_stable_content_fingerprint() {
         GentleEngine::normalize_splicing_expert_view_fingerprint(&mut modified)
             .expect("revalidate normalized fingerprint")
     );
+}
+
+// Hand-crafted synthetic locus/entries, recreated from the inline splicing
+// fixture. Identifiers model exact relations, not any natural gene or protein.
+fn splicing_uniprot_test_engine(entries: Vec<UniprotEntry>, gene_id: Option<&str>) -> GentleEngine {
+    let mut dna = splicing_seed_feature_sequence();
+    for (index, feature) in dna.features_mut().iter_mut().take(2).enumerate() {
+        feature.qualifiers = vec![
+            ("gene".into(), Some("GENE1".to_string())),
+            (
+                "transcript_id".into(),
+                Some(format!("ENST0000090000{}.7", index + 1)),
+            ),
+            (
+                "label".into(),
+                Some("same synthetic display label".to_string()),
+            ),
+        ];
+    }
+    if let Some(gene_id) = gene_id {
+        for feature in dna.features_mut() {
+            feature
+                .qualifiers
+                .push(("gene_id".into(), Some(gene_id.to_string())));
+        }
+    }
+    let mut state = ProjectState::default();
+    state.sequences.insert("s".to_string(), dna);
+    state.metadata.insert(
+        UNIPROT_ENTRIES_METADATA_KEY.to_string(),
+        serde_json::to_value(UniprotEntryStore {
+            schema: UNIPROT_ENTRIES_SCHEMA.to_string(),
+            entries: entries
+                .into_iter()
+                .map(|entry| (entry.entry_id.clone(), entry))
+                .collect(),
+            ..Default::default()
+        })
+        .expect("synthetic UniProt store"),
+    );
+    GentleEngine::from_state(state)
+}
+
+fn splicing_uniprot_test_entry(entry_id: &str, xrefs: Vec<UniprotEnsemblXref>) -> UniprotEntry {
+    UniprotEntry {
+        entry_id: entry_id.to_string(),
+        accession: format!("SYNTHETIC_{entry_id}"),
+        reviewed: Some(true),
+        gene_names: vec!["GENE1".to_string()],
+        protein_name: Some("same synthetic display label".to_string()),
+        sequence: "MA".to_string(),
+        sequence_length: 2,
+        ensembl_xrefs: xrefs,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn test_splicing_uniprot_reference_ignores_names_lengths_and_unrelated_projections() {
+    let baseline_engine = splicing_uniprot_test_engine(vec![], Some("ENSG00000900001"));
+    let baseline = baseline_engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let entries = vec![
+        splicing_uniprot_test_entry("name_only", vec![]),
+        splicing_uniprot_test_entry(
+            "unrelated",
+            vec![UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900003.7".to_string()),
+                gene_id: Some("ENSG00000900002".to_string()),
+                ..Default::default()
+            }],
+        ),
+        splicing_uniprot_test_entry(
+            "prefix_only",
+            vec![UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900001_extra".to_string()),
+                gene_id: Some("ENSG00000900001_extra".to_string()),
+                ..Default::default()
+            }],
+        ),
+    ];
+    let mut engine = splicing_uniprot_test_engine(entries, Some("ENSG00000900001"));
+    let projection = UniprotGenomeProjection {
+        projection_id: "unrelated_projection".to_string(),
+        entry_id: "unrelated".to_string(),
+        seq_id: "s".to_string(),
+        transcript_projections: vec![UniprotTranscriptProjection {
+            transcript_id: "ENST00000900001".to_string(),
+            transcript_feature_id: Some(0),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    engine.state_mut().metadata.insert(
+        UNIPROT_GENOME_PROJECTIONS_METADATA_KEY.to_string(),
+        serde_json::to_value(UniprotGenomeProjectionStore {
+            projections: HashMap::from([(projection.projection_id.clone(), projection)]),
+            ..Default::default()
+        })
+        .unwrap(),
+    );
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert!(view.matrix_rows.iter().all(|row| {
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated
+            && row.uniprot_reference.sources.is_empty()
+    }));
+    assert_eq!(
+        view.presentation_fingerprint_sha256,
+        baseline.presentation_fingerprint_sha256
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn test_splicing_uniprot_reference_requires_explicit_annotation_ids_not_labels() {
+    let entry = splicing_uniprot_test_entry(
+        "label_only",
+        vec![UniprotEnsemblXref {
+            transcript_id: Some("ENST00000900001".to_string()),
+            gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+    );
+    let mut engine = splicing_uniprot_test_engine(vec![entry], None);
+    for feature in engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .unwrap()
+        .features_mut()
+    {
+        feature.qualifiers = vec![
+            ("gene".into(), Some("ENSG00000900001".to_string())),
+            ("label".into(), Some("ENST00000900001".to_string())),
+            ("protein_id".into(), Some("ENST00000900001".to_string())),
+        ];
+    }
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert!(
+        view.transcripts
+            .iter()
+            .all(|lane| lane.transcript_id == "ENST00000900001")
+    );
+    assert!(view.matrix_rows.iter().all(|row|
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated));
+}
+
+#[test]
+fn test_splicing_uniprot_reference_normalizes_exact_transcripts_and_binds_sources() {
+    let entry = splicing_uniprot_test_entry(
+        "matched",
+        vec![UniprotEnsemblXref {
+            transcript_id: Some(" enst00000900001.99 ".to_string()),
+            protein_id: Some("ENSP00000900001.2".to_string()),
+            gene_id: Some("ENSG00000900001".to_string()),
+            isoform_id: Some("SYNTHETIC_matched-2".to_string()),
+        }],
+    );
+    let expected_hash =
+        crate::digest_utils::sha256_prefixed_bytes(&serde_json::to_vec(&entry).unwrap());
+    let mut engine = splicing_uniprot_test_engine(vec![entry], None);
+    let target = FeatureExpertTarget::SplicingFeature {
+        feature_id: 2,
+        scope: SplicingScopePreset::AllOverlappingAnyStrand,
+    };
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let FeatureExpertView::Splicing(view) = engine.inspect_feature_expert("s", &target).unwrap()
+    else {
+        panic!("splicing view");
+    };
+    let matched = view.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(matched.status, SplicingUniprotReferenceStatus::Referenced);
+    assert_eq!(matched.sources.len(), 1);
+    let source = &matched.sources[0];
+    assert_eq!(source.entry_id, "matched");
+    assert_eq!(source.accession, "SYNTHETIC_matched");
+    assert_eq!(source.reviewed, Some(true));
+    assert_eq!(source.entry_sha256, expected_hash);
+    assert_eq!(
+        source.matched_locus_transcript_ids,
+        vec!["ENST00000900001".to_string()]
+    );
+    assert!(source.matched_locus_gene_id.is_none());
+    assert_eq!(
+        source.matched_transcript_xrefs[0].transcript_id.as_deref(),
+        Some(" enst00000900001.99 ")
+    );
+    assert_eq!(
+        source.matched_transcript_xrefs[0].isoform_id.as_deref(),
+        Some("SYNTHETIC_matched-2")
+    );
+    assert_eq!(
+        view.uniprot_reference_for_transcript(1).unwrap().status,
+        SplicingUniprotReferenceStatus::NotReferenced
+    );
+    assert_eq!(
+        view.transcripts
+            .iter()
+            .map(|lane| lane.transcript_feature_id)
+            .collect::<Vec<_>>(),
+        view.matrix_rows
+            .iter()
+            .map(|row| row.transcript_feature_id)
+            .collect::<Vec<_>>()
+    );
+    let command =
+        crate::engine_shell::parse_shell_line("inspect-feature-expert s splicing 2").unwrap();
+    let result = execute_shell_command(&mut engine, &command).unwrap();
+    assert!(!result.state_changed);
+    assert_eq!(
+        result.output,
+        serde_json::to_value(FeatureExpertView::Splicing(view)).unwrap()
+    );
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn test_splicing_uniprot_reference_accepts_only_exact_stable_gene_relations() {
+    let entry = splicing_uniprot_test_entry(
+        "gene_only",
+        vec![UniprotEnsemblXref {
+            transcript_id: Some("ENST00000900003".to_string()),
+            gene_id: Some("ENSG00000900001.9".to_string()),
+            ..Default::default()
+        }],
+    );
+    let engine = splicing_uniprot_test_engine(vec![entry], Some("ENSG00000900001.3"));
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    for row in &view.matrix_rows {
+        assert_eq!(
+            row.uniprot_reference.status,
+            SplicingUniprotReferenceStatus::NotReferenced
+        );
+        let source = &row.uniprot_reference.sources[0];
+        assert_eq!(
+            source.matched_locus_gene_id.as_deref(),
+            Some("ENSG00000900001")
+        );
+        assert!(source.matched_locus_transcript_ids.is_empty());
+        assert!(source.matched_transcript_xrefs.is_empty());
+    }
+    let entry = splicing_uniprot_test_entry(
+        "symbol_gene_id",
+        vec![UniprotEnsemblXref {
+            gene_id: Some("GENE1".to_string()),
+            ..Default::default()
+        }],
+    );
+    let engine = splicing_uniprot_test_engine(vec![entry], Some("GENE1"));
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert!(view.matrix_rows.iter().all(|row|
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated));
+}
+
+#[test]
+fn test_splicing_uniprot_reference_gene_relevance_does_not_identify_an_unlabelled_transcript() {
+    let entry = splicing_uniprot_test_entry(
+        "gene_only",
+        vec![UniprotEnsemblXref {
+            gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+    );
+    let mut engine = splicing_uniprot_test_engine(vec![entry], Some("ENSG00000900001"));
+    let feature = &mut engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .unwrap()
+        .features_mut()[0];
+    feature
+        .qualifiers
+        .retain(|(key, _)| key.to_string() != "transcript_id");
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let unidentified = view.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(
+        unidentified.status,
+        SplicingUniprotReferenceStatus::NotEvaluated
+    );
+    assert_eq!(unidentified.sources.len(), 1);
+    assert!(unidentified.summary_lines()[0].contains("no explicit transcript identity"));
+    assert_eq!(
+        view.uniprot_reference_for_transcript(1).unwrap().status,
+        SplicingUniprotReferenceStatus::NotReferenced
+    );
+}
+
+#[test]
+fn test_splicing_uniprot_reference_preserves_ambiguity_and_fingerprint_binding() {
+    let mut entry = splicing_uniprot_test_entry(
+        "ambiguous",
+        vec![
+            UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900001".to_string()),
+                protein_id: Some("ENSP00000900001".to_string()),
+                ..Default::default()
+            },
+            UniprotEnsemblXref {
+                transcript_id: Some("ENST00000900001.2".to_string()),
+                protein_id: Some("ENSP00000900002".to_string()),
+                ..Default::default()
+            },
+        ],
+    );
+    let first_engine = splicing_uniprot_test_engine(vec![entry.clone()], None);
+    let first = first_engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let evidence = first.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(evidence.status, SplicingUniprotReferenceStatus::Referenced);
+    assert_eq!(evidence.sources[0].matched_transcript_xrefs.len(), 2);
+    assert!(
+        evidence
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("ambiguous"))
+    );
+    entry.reviewed = Some(false);
+    let second_engine = splicing_uniprot_test_engine(vec![entry.clone()], None);
+    let second = second_engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert_eq!(
+        second.uniprot_reference_for_transcript(0).unwrap().status,
+        evidence.status
+    );
+    assert_ne!(
+        second.presentation_fingerprint_sha256,
+        first.presentation_fingerprint_sha256
+    );
+    assert_ne!(
+        second.uniprot_reference_for_transcript(0).unwrap().sources[0].entry_sha256,
+        evidence.sources[0].entry_sha256
+    );
+
+    let mut other = entry.clone();
+    other.entry_id = "another".to_string();
+    other.reviewed = None;
+    let a = splicing_uniprot_test_engine(vec![entry.clone(), other.clone()], None)
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    let b = splicing_uniprot_test_engine(vec![other, entry], None)
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::TargetGroupTargetStrand)
+        .unwrap();
+    assert_eq!(
+        a.presentation_fingerprint_sha256,
+        b.presentation_fingerprint_sha256
+    );
+    let evidence = a.uniprot_reference_for_transcript(0).unwrap();
+    assert_eq!(evidence.sources[0].entry_id, "ambiguous");
+    assert_eq!(evidence.sources[1].entry_id, "another");
+    assert_eq!(evidence.sources[1].reviewed, None);
+    assert!(
+        evidence
+            .diagnostics
+            .iter()
+            .any(|line| line.contains("Multiple loaded entries"))
+    );
+}
+
+#[test]
+fn test_splicing_uniprot_reference_does_not_choose_a_gene_in_a_multigene_scope() {
+    let entry = splicing_uniprot_test_entry(
+        "gene_only",
+        vec![UniprotEnsemblXref {
+            gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+    );
+    let mut engine = splicing_uniprot_test_engine(vec![entry], Some("ENSG00000900001"));
+    let feature = &mut engine
+        .state_mut()
+        .sequences
+        .get_mut("s")
+        .unwrap()
+        .features_mut()[1];
+    feature
+        .qualifiers
+        .retain(|(key, _)| key.to_string() != "gene_id");
+    feature
+        .qualifiers
+        .push(("gene_id".into(), Some("ENSG00000900002".to_string())));
+    let view = engine
+        .build_splicing_expert_view("s", 2, SplicingScopePreset::AllOverlappingAnyStrand)
+        .unwrap();
+    assert!(view.matrix_rows.iter().all(|row| {
+        row.uniprot_reference.status == SplicingUniprotReferenceStatus::NotEvaluated
+            && row
+                .uniprot_reference
+                .diagnostics
+                .iter()
+                .any(|line| line.contains("Multiple explicit"))
+    }));
 }
 
 #[test]

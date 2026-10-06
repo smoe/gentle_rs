@@ -9,12 +9,12 @@ use gentle_protocol::{
     GeneLocusRegulatoryScoreProviderKind, GeneLocusRegulatoryScoreTrack, GeneLocusScaleBarMode,
     GenomicRegionEvidenceAvailability, GenomicRegionHomologySupportClass, GenomicRegionPurpose,
     IsoformArchitectureExpertView, RestrictionSiteExpertView, SplicingExonSummary,
-    SplicingExpertView, SplicingJunctionArc, TfbsExpertView,
+    SplicingExpertView, SplicingJunctionArc, SplicingUniprotReferenceEvidence, TfbsExpertView,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use svg::Document;
 use svg::node::element::path::Data;
-use svg::node::element::{Circle, Line, Link, Path, Rectangle, Text};
+use svg::node::element::{Circle, Line, Link, Path, Rectangle, Text, Title};
 
 const W: f32 = 1200.0;
 const H: f32 = 700.0;
@@ -2004,8 +2004,12 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         }
     }
 
+    let unassessed_reference = SplicingUniprotReferenceEvidence::default();
     for (lane_idx, lane) in view.transcripts.iter().enumerate() {
         let y = chart_top + lane_idx as f32 * (lane_height + lane_gap) + lane_height * 0.5;
+        let uniprot_reference = view
+            .uniprot_reference_for_transcript(lane.transcript_feature_id)
+            .unwrap_or(&unassessed_reference);
         if lane.has_target_feature {
             doc = doc.add(
                 Rectangle::new()
@@ -2032,6 +2036,11 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             .set("text-anchor", "end")
             .set("font-family", "monospace")
             .set("font-size", 11)
+            .set(
+                "data-uniprot-reference-status",
+                uniprot_reference.status.as_str(),
+            )
+            .add(Title::new(uniprot_reference.summary_lines().join("\n")))
             .set(
                 "fill",
                 if lane.has_target_feature {
@@ -2280,6 +2289,11 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                 .set("y", y + 10.0)
                 .set("font-family", "monospace")
                 .set("font-size", 10)
+                .set(
+                    "data-uniprot-reference-status",
+                    row.uniprot_reference.status.as_str(),
+                )
+                .add(Title::new(row.uniprot_reference.summary_lines().join("\n")))
                 .set("fill", "#1f2937"),
         );
         for (col_idx, present) in row.exon_presence.iter().copied().enumerate() {
@@ -7415,12 +7429,14 @@ mod tests {
                     transcript_id: "NM_demo_1".to_string(),
                     label: "demo 1".to_string(),
                     exon_presence: vec![true, true, false],
+                    uniprot_reference: Default::default(),
                 },
                 SplicingMatrixRow {
                     transcript_feature_id: 9,
                     transcript_id: "NM_demo_2".to_string(),
                     label: "demo 2".to_string(),
                     exon_presence: vec![true, false, true],
+                    uniprot_reference: Default::default(),
                 },
             ],
             boundaries: vec![
@@ -7765,6 +7781,60 @@ mod tests {
         assert!(
             max_text_y < height - 8.0,
             "expected all text to stay inside SVG canvas: max_text_y={max_text_y}, height={height}"
+        );
+    }
+
+    #[test]
+    fn splicing_uniprot_reference_svg_preserves_typed_status_without_inference() {
+        // Extend only synthetic in-memory presentation data; no UniProt lookup.
+        let mut view = splicing_test_view_with_long_footer();
+        let legacy_svg = render_splicing(&view);
+        assert_eq!(
+            legacy_svg
+                .matches("data-uniprot-reference-status=\"not_evaluated\"")
+                .count(),
+            4
+        );
+        assert!(legacy_svg.contains("no exact transcript or stable Ensembl gene-ID relation"));
+        view.matrix_rows[0].uniprot_reference = SplicingUniprotReferenceEvidence {
+            status: gentle_protocol::SplicingUniprotReferenceStatus::Referenced,
+            sources: vec![gentle_protocol::SplicingUniprotReferenceSource {
+                entry_id: "synthetic_entry".to_string(),
+                accession: "SYNTHETIC_ACCESSION".to_string(),
+                reviewed: Some(true),
+                entry_sha256: format!("sha256:{}", "ab".repeat(32)),
+                matched_locus_transcript_ids: vec!["NM_demo_1".to_string()],
+                matched_transcript_xrefs: vec![gentle_protocol::UniprotEnsemblLinkedXref {
+                    transcript_id: Some("NM_demo_1".to_string()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        view.matrix_rows[1].uniprot_reference.status =
+            gentle_protocol::SplicingUniprotReferenceStatus::NotReferenced;
+        let svg = render_splicing(&view);
+        assert_eq!(
+            svg.matches("data-uniprot-reference-status=\"referenced\"")
+                .count(),
+            2
+        );
+        assert_eq!(
+            svg.matches("data-uniprot-reference-status=\"not_referenced\"")
+                .count(),
+            2
+        );
+        assert!(svg.contains("SYNTHETIC_ACCESSION"));
+        assert!(svg.contains("reviewed"));
+        assert!(svg.contains("not a global absence claim"));
+        assert_eq!(
+            extract_svg_root_height(&svg),
+            extract_svg_root_height(&legacy_svg)
+        );
+        assert_eq!(
+            view.transcripts[0].transcript_feature_id,
+            view.matrix_rows[0].transcript_feature_id
         );
     }
 

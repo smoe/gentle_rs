@@ -15528,12 +15528,14 @@ fn splicing_expert_presentation_test_view() -> SplicingExpertView {
                 transcript_id: "tx1".to_string(),
                 label: "tx1".to_string(),
                 exon_presence: vec![true, true],
+                uniprot_reference: Default::default(),
             },
             SplicingMatrixRow {
                 transcript_feature_id: 12,
                 transcript_id: "tx2".to_string(),
                 label: "tx2".to_string(),
                 exon_presence: vec![true, false],
+                uniprot_reference: Default::default(),
             },
         ],
         boundaries: vec![],
@@ -15629,6 +15631,67 @@ fn splicing_expert_window_validates_fingerprint_once_before_cached_rendering() {
     assert_eq!(
         revised_presentation.transcript_rows[0].label,
         "n-11 content_revised_before_ingress"
+    );
+}
+
+#[test]
+fn splicing_uniprot_reference_presentation_revalidates_changed_evidence() {
+    let dna = DNAsequence::from_sequence("ACGT").expect("synthetic sequence");
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let mut view = splicing_expert_presentation_test_view();
+    area.open_splicing_expert_window_for_view(&view);
+    let stored = area.splicing_expert_window_view.clone().unwrap();
+    let first = area.splicing_expert_presentation_for_view(&stored);
+    assert!(
+        first.transcript_rows[0]
+            .uniprot_tooltip
+            .contains("not evaluated")
+    );
+    view.presentation_fingerprint_sha256 = stored.presentation_fingerprint_sha256.clone();
+    view.matrix_rows[0].uniprot_reference = gentle_protocol::SplicingUniprotReferenceEvidence {
+        status: gentle_protocol::SplicingUniprotReferenceStatus::NotReferenced,
+        sources: vec![gentle_protocol::SplicingUniprotReferenceSource {
+            entry_id: "synthetic_entry".to_string(),
+            accession: "SYNTHETIC_ACCESSION".to_string(),
+            reviewed: Some(false),
+            entry_sha256: format!("sha256:{}", "ab".repeat(32)),
+            matched_locus_gene_id: Some("ENSG00000900001".to_string()),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    area.open_splicing_expert_window_for_view(&view);
+    let revised = area.splicing_expert_window_view.clone().unwrap();
+    assert_ne!(
+        revised.presentation_fingerprint_sha256,
+        stored.presentation_fingerprint_sha256
+    );
+    let second = area.splicing_expert_presentation_for_view(&revised);
+    assert!(!Arc::ptr_eq(&first, &second));
+    assert_eq!(
+        second.transcript_rows[0].uniprot_tooltip,
+        view.matrix_rows[0]
+            .uniprot_reference
+            .summary_lines()
+            .join("\n")
+    );
+    assert!(
+        second.transcript_rows[0]
+            .uniprot_tooltip
+            .contains("unreviewed")
+    );
+    assert!(
+        second.transcript_rows[0]
+            .uniprot_tooltip
+            .contains("not a global absence claim")
+    );
+    assert_eq!(
+        second.transcript_rows[0].label,
+        first.transcript_rows[0].label
+    );
+    assert_eq!(
+        second.transcript_rows[0].exon_presence,
+        first.transcript_rows[0].exon_presence
     );
 }
 

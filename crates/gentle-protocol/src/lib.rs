@@ -3085,12 +3085,112 @@ pub struct SplicingTranscriptLane {
     pub has_target_feature: bool,
 }
 
+/// Exact UniProt Ensembl cross-reference, preserving each identifier tuple.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct UniprotEnsemblLinkedXref {
+    pub transcript_id: Option<String>,
+    pub protein_id: Option<String>,
+    pub gene_id: Option<String>,
+    pub isoform_id: Option<String>,
+}
+
+/// Classification against relevant loaded evidence, never all of UniProt.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SplicingUniprotReferenceStatus {
+    Referenced,
+    NotReferenced,
+    #[default]
+    NotEvaluated,
+}
+
+impl SplicingUniprotReferenceStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Referenced => "referenced",
+            Self::NotReferenced => "not_referenced",
+            Self::NotEvaluated => "not_evaluated",
+        }
+    }
+}
+
+/// Loaded entry and the exact relations that make it relevant to this locus.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct SplicingUniprotReferenceSource {
+    pub entry_id: String,
+    pub accession: String,
+    pub reviewed: Option<bool>,
+    pub entry_sha256: String,
+    /// Normalized explicit locus transcript IDs matched by this entry's xrefs.
+    pub matched_locus_transcript_ids: Vec<String>,
+    /// Exact stable Ensembl gene-ID relation, independent of transcript matching.
+    pub matched_locus_gene_id: Option<String>,
+    /// Exact transcript xrefs for this row; a gene-only relation leaves this empty.
+    pub matched_transcript_xrefs: Vec<UniprotEnsemblLinkedXref>,
+}
+
+/// Transcript evidence shared by lane, matrix, GUI and export consumers.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct SplicingUniprotReferenceEvidence {
+    pub status: SplicingUniprotReferenceStatus,
+    pub sources: Vec<SplicingUniprotReferenceSource>,
+    pub diagnostics: Vec<String>,
+}
+
+impl SplicingUniprotReferenceEvidence {
+    /// Human-readable projection of the typed evidence, without new inference.
+    pub fn summary_lines(&self) -> Vec<String> {
+        let mut lines = vec![match self.status {
+            SplicingUniprotReferenceStatus::Referenced =>
+                "UniProt: exact transcript xref in relevant loaded evidence.".to_string(),
+            SplicingUniprotReferenceStatus::NotReferenced =>
+                "UniProt: no exact transcript xref in relevant loaded evidence; not a global absence claim.".to_string(),
+            SplicingUniprotReferenceStatus::NotEvaluated if self.sources.is_empty() =>
+                "UniProt: not evaluated; no exact transcript or stable Ensembl gene-ID relation establishes relevant loaded evidence.".to_string(),
+            SplicingUniprotReferenceStatus::NotEvaluated =>
+                "UniProt: not evaluated; this row has no explicit transcript identity for xref assessment.".to_string(),
+        }];
+        for source in &self.sources {
+            let review = match source.reviewed {
+                Some(true) => "reviewed",
+                Some(false) => "unreviewed",
+                None => "review status unknown",
+            };
+            lines.push(format!(
+                "{} (local entry {}, {}, {}); locus transcript xrefs: {}; locus gene xref: {}",
+                source.accession,
+                source.entry_id,
+                review,
+                source.entry_sha256,
+                source.matched_locus_transcript_ids.join(", "),
+                source.matched_locus_gene_id.as_deref().unwrap_or("none"),
+            ));
+            for xref in &source.matched_transcript_xrefs {
+                lines.push(format!(
+                    "Transcript {}; protein {}; gene {}; isoform {}",
+                    xref.transcript_id.as_deref().unwrap_or("unknown"),
+                    xref.protein_id.as_deref().unwrap_or("unknown"),
+                    xref.gene_id.as_deref().unwrap_or("unknown"),
+                    xref.isoform_id.as_deref().unwrap_or("unknown"),
+                ));
+            }
+        }
+        lines.extend(self.diagnostics.iter().cloned());
+        lines
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SplicingMatrixRow {
     pub transcript_feature_id: usize,
     pub transcript_id: String,
     pub label: String,
     pub exon_presence: Vec<bool>,
+    #[serde(default)]
+    pub uniprot_reference: SplicingUniprotReferenceEvidence,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3124,6 +3224,100 @@ pub struct SplicingExpertView {
     pub intron_signals: Vec<SplicingIntronSignal>,
     pub junctions: Vec<SplicingJunctionArc>,
     pub events: Vec<SplicingEventSummary>,
+}
+
+impl SplicingExpertView {
+    /// A missing legacy row/evidence never establishes evaluated absence.
+    pub fn uniprot_reference_for_transcript(
+        &self,
+        transcript_feature_id: usize,
+    ) -> Option<&SplicingUniprotReferenceEvidence> {
+        self.matrix_rows
+            .iter()
+            .find(|row| row.transcript_feature_id == transcript_feature_id)
+            .map(|row| &row.uniprot_reference)
+    }
+}
+
+#[cfg(test)]
+mod splicing_uniprot_reference_tests {
+    use super::*;
+
+    #[test]
+    fn legacy_splicing_uniprot_reference_is_not_evaluated() {
+        // Hand-crafted synthetic legacy payload, not a biological gene record.
+        let json = serde_json::json!({
+            "seq_id": "synthetic", "target_feature_id": 4, "group_label": "SYNTHETIC",
+            "strand": "+", "region_start_1based": 1, "region_end_1based": 12,
+            "transcript_count": 1, "unique_exon_count": 0, "instruction": "synthetic",
+            "transcripts": [{ "transcript_feature_id": 4, "transcript_id": "TX_SYNTHETIC",
+                "label": "synthetic", "strand": "+", "exons": [], "introns": [],
+                "has_target_feature": true }],
+            "matrix_rows": [{ "transcript_feature_id": 4, "transcript_id": "TX_SYNTHETIC",
+                "label": "synthetic", "exon_presence": [] }],
+            "unique_exons": [], "boundaries": [], "junctions": [], "events": []
+        });
+        let view: SplicingExpertView = serde_json::from_value(json).expect("legacy view");
+        let evidence = view
+            .uniprot_reference_for_transcript(4)
+            .expect("linked matrix row");
+        assert_eq!(
+            evidence.status,
+            SplicingUniprotReferenceStatus::NotEvaluated
+        );
+        assert!(evidence.sources.is_empty());
+        assert!(evidence.summary_lines()[0].contains("not evaluated"));
+        assert!(view.uniprot_reference_for_transcript(8).is_none());
+    }
+
+    #[test]
+    fn splicing_uniprot_reference_round_trips_exact_relations() {
+        // Synthetic identifiers and hash only; no live UniProt data.
+        let evidence = SplicingUniprotReferenceEvidence {
+            status: SplicingUniprotReferenceStatus::Referenced,
+            sources: vec![SplicingUniprotReferenceSource {
+                entry_id: "synthetic_entry".to_string(),
+                accession: "SYNTHETIC_ACCESSION".to_string(),
+                reviewed: None,
+                entry_sha256: format!("sha256:{}", "ab".repeat(32)),
+                matched_locus_transcript_ids: vec!["ENST00000900001".to_string()],
+                matched_locus_gene_id: Some("ENSG00000900001".to_string()),
+                matched_transcript_xrefs: vec![UniprotEnsemblLinkedXref {
+                    transcript_id: Some("ENST00000900001.7".to_string()),
+                    protein_id: Some("ENSP00000900001.2".to_string()),
+                    gene_id: Some("ENSG00000900001".to_string()),
+                    isoform_id: Some("SYNTHETIC_ACCESSION-2".to_string()),
+                }],
+            }],
+            diagnostics: vec!["Synthetic ambiguity diagnostic".to_string()],
+        };
+        let json = serde_json::to_value(&evidence).expect("serialize reference");
+        assert_eq!(json["status"], "referenced");
+        let decoded: SplicingUniprotReferenceEvidence =
+            serde_json::from_value(json).expect("reference");
+        assert_eq!(decoded, evidence);
+        let summary = decoded.summary_lines().join("\n");
+        assert!(summary.contains("review status unknown"));
+        assert!(summary.contains("SYNTHETIC_ACCESSION-2"));
+        assert!(summary.contains("ENST00000900001.7"));
+    }
+
+    #[test]
+    fn splicing_uniprot_reference_nonmatch_is_scoped_to_loaded_evidence() {
+        let evidence = SplicingUniprotReferenceEvidence {
+            status: SplicingUniprotReferenceStatus::NotReferenced,
+            ..Default::default()
+        };
+        assert!(evidence.summary_lines()[0].contains("not a global absence claim"));
+        assert_eq!(
+            serde_json::to_value(evidence).unwrap()["status"],
+            "not_referenced"
+        );
+        assert_eq!(
+            SplicingUniprotReferenceStatus::default().as_str(),
+            "not_evaluated"
+        );
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

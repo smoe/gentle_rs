@@ -162,6 +162,7 @@ pub(super) struct SplicingExpertExonPresentation {
 pub(super) struct SplicingExpertTranscriptPresentationRow {
     pub(super) label: String,
     pub(super) exon_presence: Vec<bool>,
+    pub(super) uniprot_tooltip: String,
 }
 
 #[derive(Clone, Debug)]
@@ -6190,6 +6191,7 @@ impl MainAreaDna {
             .map(|row| SplicingExpertTranscriptPresentationRow {
                 label: format!("n-{} {}", row.transcript_feature_id, row.transcript_id),
                 exon_presence: row.exon_presence.clone(),
+                uniprot_tooltip: row.uniprot_reference.summary_lines().join("\n"),
             })
             .collect::<Vec<_>>();
 
@@ -6871,7 +6873,7 @@ impl MainAreaDna {
                                             egui::RichText::new(row.label.as_str())
                                                 .monospace()
                                                 .size(9.0),
-                                        );
+                                        ).on_hover_text(row.uniprot_tooltip.as_str());
                                     });
                                     for (column_index, exon) in
                                         presentation.exons.iter().enumerate()

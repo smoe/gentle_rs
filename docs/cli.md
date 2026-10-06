@@ -1348,6 +1348,14 @@ Feature-expert SVG parity status:
 - `gentle_lua`: supported via `render_feature_expert_svg(...)` wrapper over
   shared engine operation `RenderFeatureExpertSvg`
 - splicing expert SVG now includes:
+  - UniProt-reference status/provenance in transcript-label hover titles, also
+    exposed as `matrix_rows[].uniprot_reference` by `inspect-feature-expert`.
+    Only an exact normalized transcript xref or an exact stable Ensembl gene-ID
+    xref makes a loaded entry relevant. Names, labels, lengths and projections
+    do not. No exact relation means `not_evaluated`, not absence; a gene-only
+    match never establishes a transcript xref. Load evidence with
+    `uniprot import-swissprot PATH [--entry-id ID]` or an explicitly requested
+    `uniprot fetch` before inspecting; rendering itself does not access the network.
   - explicit junction transition support labels/table
   - frequency-encoded transcript-vs-exon matrix cell coloring
   - predicted exon-to-exon transition matrix with frequency-encoded cell

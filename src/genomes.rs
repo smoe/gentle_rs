@@ -11970,7 +11970,8 @@ pub(crate) fn ensembl_transcript_stable_id(raw: &str) -> Option<&str> {
     ensembl_stable_id_without_version(raw, b'T')
 }
 
-fn ensembl_gene_stable_id(raw: &str) -> Option<&str> {
+/// Return a stable Ensembl gene ID only from a strict explicit identifier.
+pub(crate) fn ensembl_gene_stable_id(raw: &str) -> Option<&str> {
     ensembl_stable_id_without_version(raw, b'G')
 }
 

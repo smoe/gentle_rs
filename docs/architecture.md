@@ -2527,6 +2527,13 @@ Splicing expert semantics:
 - Mark donor/acceptor boundaries with canonical/non-canonical motif context.
 - Summarize alternative-splicing events and transcript-vs-exon membership in a
   matrix.
+- Loaded UniProt evidence is relevant only through an exact normalized xref to
+  an explicitly identified transcript in the displayed locus, or an exact
+  stable Ensembl gene-ID xref to its unambiguous annotated gene ID. Names,
+  labels, lengths and projections do not establish relevance. Without either
+  relation, transcript reference status stays `not_evaluated`; a gene-only
+  relation never establishes a transcript xref. The engine owns classification
+  and content-bound evidence shared by all presentation adapters.
 - Render junction-support arcs from the same engine payload used by GUI and
   SVG export.
 

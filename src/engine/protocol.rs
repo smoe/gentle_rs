@@ -185,11 +185,12 @@ pub use gentle_protocol::{
     SequencingPrimerProblemGuidanceRow, SequencingPrimerProblemKind, SequencingPrimerProposalRow,
     SequencingTraceChannelData, SequencingTraceChannelSummary, SequencingTraceFormat,
     SequencingTraceImportReport, SequencingTraceRecord, SequencingTraceSummary,
-    SharedAssetActivityStatus, SplicingScopePreset, TfThresholdOverride, TfbsProgress,
-    TranscriptAssaySpecificityRequest, TranscriptProteinDerivation,
+    SharedAssetActivityStatus, SplicingScopePreset, SplicingUniprotReferenceEvidence,
+    SplicingUniprotReferenceSource, SplicingUniprotReferenceStatus, TfThresholdOverride,
+    TfbsProgress, TranscriptAssaySpecificityRequest, TranscriptProteinDerivation,
     TranscriptProteinDerivationMode, TranscriptProteinTranslationTableSource, TranslationSpeedMark,
-    TranslationSpeedProfile, TranslationSpeedProfileSource, UniprotFeatureCodingDnaExonPair,
-    UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
+    TranslationSpeedProfile, TranslationSpeedProfileSource, UniprotEnsemblLinkedXref,
+    UniprotFeatureCodingDnaExonPair, UniprotFeatureCodingDnaExonSpan, UniprotFeatureCodingDnaMatch,
     UniprotFeatureCodingDnaQueryMode, UniprotFeatureCodingDnaQueryReport,
     UniprotFeatureCodingDnaSegment, canonical_collection_membership_json, collection_lift_policy,
     homogeneous_collection_biological_context, validate_collection_context_target_genome,
@@ -11546,15 +11547,6 @@ impl UniprotProjectionAuditRowStatus {
             Self::MissingEvidence => "missing_evidence",
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct UniprotEnsemblLinkedXref {
-    pub transcript_id: Option<String>,
-    pub protein_id: Option<String>,
-    pub gene_id: Option<String>,
-    pub isoform_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
