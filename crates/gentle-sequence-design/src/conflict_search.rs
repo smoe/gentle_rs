@@ -1,7 +1,7 @@
 //! Bounded conflict-directed codon assignment with full-candidate evaluation.
 //!
-//! A feasible sequence must change an unassigned codon overlapping the first
-//! current violation. Branch over all such synonymous assignments, fixing one
+//! A feasible sequence must change an unassigned codon implicated by a current
+//! motif or whole-CDS GC violation. Branch over its synonymous assignments, fixing one
 //! per level. Complete traversal therefore covers a feasible/minimum-edit path
 //! if one exists; budget interruption does not establish either conclusion.
 //! The explicit depth-first stack avoids recursion and a sequence-sized frontier.
@@ -10,18 +10,43 @@ use super::*;
 
 struct Frame {
     assigned_choice: Option<usize>,
-    branches: Vec<(usize, usize)>,
-    next: usize,
+    conflict: Option<Conflict>,
+    next_codon: usize,
+    next_synonym: usize,
 }
 
-fn cancelled(mut outcome: Outcome) -> Outcome {
-    outcome.status = Status::Cancelled;
-    outcome.reason = "externally_cancelled".into();
-    outcome.sequence = None;
-    outcome.edits.clear();
-    outcome.optimization_complete = false;
-    outcome.minimum_edits_proven = false;
-    outcome
+impl Frame {
+    fn next_branch(
+        &mut self,
+        prepared: &Prepared<'_>,
+        assigned: &[bool],
+    ) -> Option<(usize, usize)> {
+        let conflict = self.conflict?;
+        while let Some((start, alternatives)) = prepared.choices.get(self.next_codon) {
+            if !assigned[self.next_codon] {
+                let implicated = match conflict {
+                    Conflict::Motif(interval) => {
+                        *start < interval.end && start + 3 > interval.start
+                    }
+                    // Capability filters codons, never individual assignments:
+                    // neutral/worsening synonyms remain branches.
+                    Conflict::Gc(violation) => gc::direction_capable(
+                        &prepared.input.sequence.as_bytes()[*start..*start + 3],
+                        alternatives,
+                        violation,
+                    ),
+                };
+                if implicated && self.next_synonym < alternatives.len() {
+                    let branch = (self.next_codon, self.next_synonym);
+                    self.next_synonym += 1;
+                    return Some(branch);
+                }
+            }
+            self.next_codon += 1;
+            self.next_synonym = 1;
+        }
+        None
+    }
 }
 
 pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
@@ -44,13 +69,9 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
     if cancel(0) {
         return cancelled(outcome);
     }
-    if initial.iter().any(|hit| {
-        prepared.frozen[hit.interval.start..hit.interval.end]
-            .iter()
-            .all(|base| *base)
-    }) {
+    if let Some(reason) = prepared.initial_infeasibility(&initial) {
         outcome.status = Status::ProvenInfeasible;
-        outcome.reason = "forbidden_match_entirely_in_frozen_bases".into();
+        outcome.reason = reason.into();
         return outcome;
     }
 
@@ -77,7 +98,7 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
             .zip(&candidate)
             .filter(|(before, after)| before != after)
             .count();
-        if hits.is_empty()
+        if hits.satisfied()
             && best
                 .as_ref()
                 .is_none_or(|(old_count, old)| (count, &candidate) < (*old_count, old))
@@ -89,37 +110,28 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
             }
         }
 
-        let mut branches = vec![];
         // Assigned codons cannot revert in a descendant, so edit cost increases.
         // Prune only infeasible nodes already as costly as a validated best.
-        if best
+        let conflict = if best
             .as_ref()
             .is_none_or(|(best_count, _)| count < *best_count)
         {
-            if let Some(hit) = hits.first() {
-                for (index, (start, alternatives)) in prepared.choices.iter().enumerate() {
-                    if !assigned[index]
-                        && *start < hit.interval.end
-                        && start + 3 > hit.interval.start
-                    {
-                        // Unassigned codons remain original; alternative zero is original.
-                        branches.extend((1..alternatives.len()).map(|choice| (index, choice)));
-                    }
-                }
-            }
-        }
+            hits.first_conflict()
+        } else {
+            None
+        };
         frames.push(Frame {
             assigned_choice,
-            branches,
-            next: 0,
+            conflict,
+            next_codon: 0,
+            next_synonym: 1,
         });
         loop {
             let Some(frame) = frames.last_mut() else {
                 complete = true;
                 break 'search;
             };
-            if let Some(&(index, choice)) = frame.branches.get(frame.next) {
-                frame.next += 1;
+            if let Some((index, choice)) = frame.next_branch(&prepared, &assigned) {
                 let (start, alternatives) = &prepared.choices[index];
                 candidate[*start..*start + 3].copy_from_slice(&alternatives[choice]);
                 assigned[index] = true;
@@ -139,7 +151,7 @@ pub(super) fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outco
     outcome.optimization_complete = complete;
     if let Some((_, sequence)) = best {
         if let Err(reason) = prepared.validate(&sequence).and_then(|hits| {
-            hits.is_empty()
+            hits.satisfied()
                 .then_some(())
                 .ok_or_else(|| "final_motif_validation_failed".into())
         }) {

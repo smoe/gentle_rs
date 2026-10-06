@@ -1514,15 +1514,22 @@ mod tests {
 
     #[test]
     fn sequence_design_cli_and_shared_shell_preview_apply_parity() {
-        assert_sequence_design_cli_parity(false);
+        assert_sequence_design_cli_parity(false, false);
     }
 
     #[test]
     fn sequence_design_conflict_cli_and_shared_shell_preview_apply_parity() {
-        assert_sequence_design_cli_parity(true);
+        assert_sequence_design_cli_parity(true, false);
     }
 
-    fn assert_sequence_design_cli_parity(conflict_directed: bool) {
+    #[test]
+    fn sequence_design_gc_cli_and_shared_shell_preview_apply_parity() {
+        for conflict in [false, true] {
+            assert_sequence_design_cli_parity(conflict, true);
+        }
+    }
+
+    fn assert_sequence_design_cli_parity(conflict_directed: bool, gc: bool) {
         // Literal synthetic MEF insert, not a natural assay template.
         let mut request = serde_json::json!({
             "schema":"gentle.dna_sequence_design_request.v1",
@@ -1535,6 +1542,10 @@ mod tests {
         });
         if conflict_directed {
             request["search_strategy"] = "conflict_directed".into();
+        }
+        if gc {
+            request["gc_content"] =
+                serde_json::json!({"min_basis_points": 2500, "max_basis_points": 2500});
         }
         let tokens = vec!["sequence-design".into(), "plan".into(), request.to_string()];
         let mut args = vec!["gentle_cli".into()];
@@ -1549,15 +1560,22 @@ mod tests {
             serde_json::to_value(&state).unwrap()
         );
         let preview = &cli_output["result"]["dna_sequence_design"];
-        assert_eq!(preview["output_sequence"], "ATGGAATTTTAA");
+        assert_eq!(
+            preview["output_sequence"],
+            if gc { "ATGGAGTTTTAA" } else { "ATGGAATTTTAA" }
+        );
         assert_eq!(
             preview["algorithm"],
-            if conflict_directed {
-                "synonymous_conflict_search_v1"
-            } else {
-                "synonymous_full_enumeration_v1"
+            match (conflict_directed, gc) {
+                (true, true) => "synonymous_conflict_search_gc_v1",
+                (false, true) => "synonymous_full_enumeration_gc_v1",
+                (true, false) => "synonymous_conflict_search_v1",
+                (false, false) => "synonymous_full_enumeration_v1",
             }
         );
+        if gc {
+            assert_eq!(preview["gc_content"]["output"]["gc_bases"], 3);
+        }
         let tokens = vec![
             "sequence-design".into(),
             "apply".into(),

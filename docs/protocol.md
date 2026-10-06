@@ -35,6 +35,21 @@ Completeness for conflict search means the full conflict-assignment tree was
 resolved (with sound edit-cost pruning), not all full-space variants evaluated.
 Search-space overflow remains unknown independently of that proof. Every visited
 candidate and the final output use the same full-sequence validator.
+Optional `request.gc_content={min_basis_points,max_basis_points}` uses inclusive
+0..10000 bounds on the complete declared CDS, including frozen ATG/stop, not
+flanks. For CDS length L, prepare converts to `ceil(min*L/10000)` and
+`floor(max*L/10000)` once. All evaluations compare integer GC counts; valid empty
+count windows are infeasible, malformed bounds invalid. GC-only requests may
+have empty motifs; without GC at least one motif remains required.
+GC-enabled algorithms are `synonymous_full_enumeration_gc_v1` and
+`synonymous_conflict_search_gc_v1`. Omitted GC preserves legacy report/request
+bytes and algorithm identities. `report.gc_content` is absent when unrequested
+or input admission fails; otherwise it retains denominator, count bounds,
+relaxed synonymous extrema and input measurement. Output measurement is present
+only with validated output DNA, never a cancelled/unresolved placeholder zero.
+Apply rederives GC facts and checks full motif/GC constraints without searching.
+Integer report facts and GC policy are part of the exact approval basis; a
+rehashed valid proposal still does not authenticate minimum-edit/search claims.
 Approval binds the complete report with only its approval field cleared. Apply
 rechecks live source/table/protection and fully evaluates approved output, then
 creates one undoable, lineage-linked sequence and metadata receipt. Its single

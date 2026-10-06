@@ -66,7 +66,7 @@ Inner-agent example: "For this explicitly synthetic coding insert, preserve MEF,
 the start/stop and my protected bases, and preview synonymous removal of GAATTC
 on both strands. Show the exact edits and search status; do not apply yet."
 The agent uses shared capabilities/readiness and the preview, not invented DNA
-or hashes. GC/codon adaptation and broader specifications remain deferred.
+or hashes. Sliding-window GC, codon adaptation and broader specifications remain deferred.
 Execution receipts do not expose report contents to the model. In Agent
 Assistant, review the result and use **Use reviewed result in next prompt** only
 if you consent to sharing its DNA and paths. This stages a draft, not approval
@@ -90,6 +90,54 @@ Only a completed search proves minimum edits; an interrupted feasible search
 is still a proposal with incomplete optimization, not a proof or speedup claim.
 Changing strategy changes the approval digest: obtain and review a new preview.
 The earlier toy has the same exact output under both strategies.
+
+### CDS-Wide GC Walkthrough
+
+For an explicitly synthetic insert, add `gc_content` to constrain the complete
+declared CDS, including frozen start/stop. Bounds are inclusive basis points:
+10000 means 100%, not a count of bases. Flanks do not contribute. There is no
+organism default or separate strand policy; G+C is unchanged by reverse complement.
+GC is enforced together with every requested motif, never as a post-search filter.
+
+This hand-crafted 12-bp **MFK** example is not a natural gene. Save its JSON as
+`request.json` before following the same preview/apply commands above:
+
+```json
+{
+  "schema": "gentle.dna_sequence_design_request.v1",
+  "target": {"kind": "inline_sequence", "sequence": "ATGTTTAAATAA"},
+  "purpose": "synthetic_coding_insert",
+  "cds": {"start_0based": 0, "end_0based_exclusive": 12},
+  "protein_sequence": "MFK",
+  "genetic_code": 1,
+  "protected_intervals": [],
+  "avoid_motifs": [],
+  "gc_content": {"min_basis_points": 1666, "max_basis_points": 1667},
+  "search_strategy": "conflict_directed",
+  "max_evaluations": 4096,
+  "output_seq_id": "synthetic_gc"
+}
+```
+
+Here 16.66..16.67% becomes exactly **2 G/C bases out of 12**, using integer
+rounding, not float tolerance. Input has one; expected output `ATGTTCAAATAA`
+has two, still translates to MFK and changes only position 5 (zero-based).
+Inspect `gc_content.input`, `gc_content.output`, count bounds, edits and search
+status in `preview.json`. Only after approval apply its actual digest. GUI Shell
+uses the same commands; then `ui open sequence-window synthetic_gc` opens the
+derived DNA. Omit `search_strategy` to use enumeration with the same optimum.
+
+Empty motifs are admitted only with explicit GC bounds. Invalid bounds differ
+from infeasible integer count windows; a budget stop is still unresolved. Output
+GC is absent without output DNA, not zero. Changing bounds requires a new
+preview and approval. Satisfaction is not evidence of expression, folding or
+synthesis success, and application does not verify preview search claims.
+
+Inner-agent example: "This is a synthetic ATGTTTAAATAA coding insert for MFK.
+Preview synonymous redesign with CDS [0,12), code 1 and GC bounds 1666..1667
+basis points over that entire CDS. No forbidden motifs. Show integer GC counts,
+edits and status; do not apply." The agent must ask for any missing request
+fields, read the real preview and obtain separate exact-output approval.
 
 ## Source-Coherent Transcripts
 

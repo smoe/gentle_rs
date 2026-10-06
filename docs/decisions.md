@@ -22,6 +22,14 @@ pruning, proves feasibility/optimality or infeasibility; a budget stop does not.
 No local-score substitution or performance claim follows from fewer visited
 candidates. Application checks the selected strategy/algorithm/policy binding
 without rerunning search.
+Optional GC constraints cover the complete declared CDS, including frozen
+start/stop, never flanks or inferred organism defaults. Inclusive basis-point
+bounds become integer counts once; all search and apply predicates check both
+motifs and GC. Missing GC/output facts are absent, not zero. Disjoint synonymous
+count extrema prove impossibility only; overlap does not establish feasibility.
+GC presence is explicitly algorithm/policy-bound without changing legacy
+GC-absent serialization. Recomputed approval hashes cannot bypass output
+constraint or GC-fact verification; they still do not authenticate search claims.
 Approval binds exact input/output/protection/mapping/configuration/evaluations;
 apply revalidates without rerunning search and creates one undoable derivation.
 The digest is a content binding, not an authenticated engine signature or proof

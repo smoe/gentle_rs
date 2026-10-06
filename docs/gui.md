@@ -14,6 +14,12 @@ The same request optionally selects `search_strategy=conflict_directed`; omissio
 retains enumeration. GUI Shell and Agent Assistant share the engine policy and
 need a freshly reviewed approval after a strategy change. This adds no separate
 GUI solver, automatic recoding or experimentally validated design claim.
+Optional `gc_content={min_basis_points,max_basis_points}` constrains the complete
+declared CDS, including frozen start/stop, using inclusive integer GC counts.
+Bounds are explicit, not organism presets; flanks are excluded. Empty motifs are
+allowed only with explicit GC bounds. GUI Shell/Agent Assistant use the same
+preview, integer facts and renewed approval as CLI/MCP; no standalone GC editor.
+See the [synthetic GC walkthrough](cli.md#cds-wide-gc-walkthrough).
 
 Source-enriched locus SVGs and detailed TSS figures can show shared physical
 exons/CDS, separate structure-reference rows and colour-labelled Ensembl/RefSeq

@@ -52,7 +52,7 @@ fn search_strategy(value: DnaDesignSearchStrategy) -> core::SearchStrategy {
     }
 }
 
-fn nonclaims(strategy: DnaDesignSearchStrategy) -> Vec<String> {
+fn nonclaims(strategy: DnaDesignSearchStrategy, gc_requested: bool) -> Vec<String> {
     let mut statements = vec![
         "Synthetic coding-insert redesign only; no natural assay target is implicitly recoded.".into(),
         "Translation preservation does not establish expression, splicing, regulatory function, folding or experimental suitability.".into(),
@@ -63,7 +63,35 @@ fn nonclaims(strategy: DnaDesignSearchStrategy) -> Vec<String> {
     if strategy == DnaDesignSearchStrategy::ConflictDirected {
         statements[3] = "Bounded conflict-directed search is not full DNA Chisel compatibility; only completed search establishes minimum edits and no runtime-performance claim is made.".into();
     }
+    if gc_requested {
+        statements.push("Inclusive integer GC bounds apply to the complete declared CDS, including frozen start/stop, not flanks; they do not establish expression, folding or synthesis success.".into());
+    }
     statements
+}
+
+fn gc_assessment(
+    input: &core::Input,
+    output: Option<&str>,
+) -> Result<Option<DesignGcAssessment>, EngineError> {
+    core::assess_gc(input, output)
+        .map(|assessment| {
+            assessment.map(|gc| {
+                let measurement = |m: core::GcMeasurement| DesignGcMeasurement {
+                    gc_bases: m.gc_bases,
+                    satisfies_bounds: m.satisfies_bounds,
+                };
+                DesignGcAssessment {
+                    denominator_bases: gc.denominator_bases,
+                    minimum_gc_bases: gc.minimum_gc_bases,
+                    maximum_gc_bases: gc.maximum_gc_bases,
+                    reachable_minimum_gc_bases: gc.reachable_minimum_gc_bases,
+                    reachable_maximum_gc_bases: gc.reachable_maximum_gc_bases,
+                    input: measurement(gc.input),
+                    output: gc.output.map(measurement),
+                }
+            })
+        })
+        .map_err(EngineError::invalid_input)
 }
 
 impl GentleEngine {
@@ -201,6 +229,10 @@ impl GentleEngine {
                     })
                     .collect(),
                 max_evaluations: request.max_evaluations,
+                gc_content: request.gc_content.as_ref().map(|gc| core::GcBounds {
+                    min_basis_points: gc.min_basis_points,
+                    max_basis_points: gc.max_basis_points,
+                }),
             },
             mapping,
         ))
@@ -222,6 +254,7 @@ impl GentleEngine {
             self.dna_design_source(&request)?;
         let (input, mapping) = Self::dna_design_input(&request, sequence.clone())?;
         let strategy = request.search_strategy;
+        let gc_requested = request.gc_content.is_some();
         let result = core::solve_with_strategy(&input, search_strategy(strategy), cancel);
         let status = match result.status {
             core::Status::Invalid => DnaDesignStatus::Invalid,
@@ -230,6 +263,15 @@ impl GentleEngine {
             core::Status::SearchExhausted => DnaDesignStatus::SearchExhausted,
             core::Status::ProvenInfeasible => DnaDesignStatus::ProvenInfeasible,
             core::Status::Cancelled => DnaDesignStatus::Cancelled,
+        };
+        let gc_content = if gc_requested
+            && !matches!(
+                status,
+                DnaDesignStatus::Invalid | DnaDesignStatus::Unsupported
+            ) {
+            gc_assessment(&input, result.sequence.as_deref())?
+        } else {
+            None
         };
         let mut report = DnaSequenceDesignReport {
             schema: REPORT_SCHEMA.into(),
@@ -240,7 +282,9 @@ impl GentleEngine {
             omitted_source_feature_count,
             genetic_code_mapping_sha256: Self::dna_design_hash(&mapping)?,
             genetic_code_mapping: mapping,
-            algorithm: search_strategy(strategy).algorithm().into(),
+            algorithm: search_strategy(strategy)
+                .algorithm_with_gc(gc_requested)
+                .into(),
             status,
             reason: result.reason,
             output_sha256: result.sequence.as_deref().map(sha256_prefixed_str),
@@ -264,7 +308,8 @@ impl GentleEngine {
             optimization_complete: result.optimization_complete,
             minimum_edits_proven: result.minimum_edits_proven,
             approval_digest: None,
-            nonclaims: nonclaims(strategy),
+            nonclaims: nonclaims(strategy, gc_requested),
+            gc_content,
         };
         if status == DnaDesignStatus::Feasible {
             report.approval_digest = Some(Self::dna_design_approval(&report)?);
@@ -325,7 +370,11 @@ impl GentleEngine {
                 .iter()
                 .any(|e| e.before.len() != 1 || e.after.len() != 1)
             || proposal.initial_matches.len() > core::MAX_REPORTED_MATCHES
-            || proposal.nonclaims != nonclaims(proposal.request.search_strategy)
+            || proposal.nonclaims
+                != nonclaims(
+                    proposal.request.search_strategy,
+                    proposal.request.gc_content.is_some(),
+                )
             || proposal.reason.len() > 1024
             || proposal.algorithm.len() > 128
             || approval.len() > MAX_DIGEST_BYTES
@@ -335,7 +384,9 @@ impl GentleEngine {
             ));
         }
         if proposal.schema != REPORT_SCHEMA
-            || proposal.algorithm != search_strategy(proposal.request.search_strategy).algorithm()
+            || proposal.algorithm
+                != search_strategy(proposal.request.search_strategy)
+                    .algorithm_with_gc(proposal.request.gc_content.is_some())
             || proposal.status != DnaDesignStatus::Feasible
             || proposal.approval_digest.as_deref() != Some(approval)
             || Self::dna_design_approval(&proposal)? != approval
@@ -352,7 +403,11 @@ impl GentleEngine {
             || feature_count != proposal.omitted_source_feature_count
             || mapping != proposal.genetic_code_mapping
             || Self::dna_design_hash(&mapping)? != proposal.genetic_code_mapping_sha256
-            || proposal.nonclaims != nonclaims(proposal.request.search_strategy)
+            || proposal.nonclaims
+                != nonclaims(
+                    proposal.request.search_strategy,
+                    proposal.request.gc_content.is_some(),
+                )
         {
             return Err(EngineError::invalid_input(
                 "Sequence-design source, annotations, genetic-code mapping or policy changed; prepare and review a new preview",
@@ -370,6 +425,16 @@ impl GentleEngine {
         }
         let validated_edits =
             core::validate_output(&input, output).map_err(EngineError::invalid_input)?;
+        let expected_gc = if proposal.request.gc_content.is_some() {
+            gc_assessment(&input, Some(output))?
+        } else {
+            None
+        };
+        if proposal.gc_content != expected_gc {
+            return Err(EngineError::invalid_input(
+                "Approved GC facts disagree with full constraint validation",
+            ));
+        }
         if wire_edits(validated_edits) != proposal.edits {
             return Err(EngineError::invalid_input(
                 "Approved nucleotide edit script disagrees with full output validation",
@@ -390,7 +455,7 @@ impl GentleEngine {
             EngineError::invalid_input(format!("Could not materialize approved DNA: {error}"))
         })?;
         dna.set_circular(false);
-        dna.set_name(Some(receipt.created_seq_id.clone()));
+        dna.set_name(receipt.created_seq_id.clone());
         Self::prepare_sequence(&mut dna);
         if sha256_prefixed_str(&dna.get_forward_string()) != receipt.output_sha256 {
             return Err(EngineError::invalid_input(

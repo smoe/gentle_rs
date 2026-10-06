@@ -1,6 +1,6 @@
 # Bounded synthetic sequence design
 
-Updated 2026-10-05, implementation started from `fc4458c3`.
+Updated 2026-10-06, implementation started from `fc4458c3`.
 Rebased during implementation onto fetched `main` at
 `4a71d5bd15f6b0da60709ee79a431668756d110f`, then onto local `main` at
 `564ea09be48149649748d620f57973d5f87cfff7` after its dependency/Help update.
@@ -9,11 +9,18 @@ Owner authorized work from the previously Claude-reviewed proposal. This is
 experimental development outside the `.12` release gate, not release acceptance,
 full DNA Chisel compatibility, or a measured performance improvement.
 Owner-requested follow-up on 2026-10-05 adds the explicit conflict-search slice
-below, based on integrated local `main` `d221aa1a`. Glen's first-slice audit is
-still pending; this addition does not substitute local tests for his usefulness,
-performance or independent correctness verdict.
+below, based on integrated local `main` `d221aa1a`. Glen's later first-slice
+audit reported `needs_fix` at `85d23ddb`; independent repair/new-slice acceptance
+remains pending. Local tests do not substitute for his usefulness, performance
+or independent correctness verdict.
 The earlier Claude review covers the original bounded proposal; no additional
 Claude review of this conflict-search implementation is claimed.
+The owner approved the CDS-wide GC slice after Claude's read-only review of
+`dc8c5252`, received 2026-10-06. Implementation rebased early onto fetched
+`main` `2f3a60f0bbf9a9ef61a02fbae6978305f5ac7df3`, preserving its separation of
+output validation from submitted search claims and its single apply/undo boundary.
+The GC proposal, review and reconciliation are recorded below; no runtime,
+native-platform, Glen or release acceptance follows from this authorization.
 
 Review rationale is preserved in the [dated review history](dna_sequence_optimization_review_20261005.md)
 and [original consultation prompt](dna_sequence_optimization_claude_prompt.md).
@@ -28,9 +35,10 @@ the secondary objective; do not infer minimum edits from incomplete search.
 Natural PATZ1 assay templates, reverse translation and existing primer design
 are unchanged. A label never implies permission to recode a sequence.
 
-The reviewed proposal reduced four constraint families to motif removal.
-Translation/protection are mutation invariants, not optional objectives. GC,
-codon adaptation, repeats/hairpins, folding and a general specification/plugin
+The first reviewed proposal reduced four constraint families to motif removal.
+Translation/protection are mutation invariants, not optional objectives. The
+later owner-approved GC slice adds only the CDS-wide constraint below; windowed
+GC, codon adaptation, repeats/hairpins, folding and a general specification/plugin
 framework remain deferred. The independent component option is adopted as
 `crates/gentle-sequence-design`, version 0.1.0, private/unpublished, original MIT
 code, no dependencies. It supports Rust 1.85 / edition 2024. No Python runtime,
@@ -141,12 +149,72 @@ and completed proof despite an overflowed full search-space count; this is not
 a timing, large-insert suitability or general performance verdict. No GC,
 adaptation, folding, Python dependency or new GUI editor is part of this slice.
 
+### CDS-Wide GC Slice (2026-10-06)
+
+Original Codex proposal: optional explicit minimum/maximum GC on the declared
+CDS, jointly enforced with motifs by both existing strategies, exact approval,
+independent exhaustive examples and shared CLI/GUI Shell/inner-agent guidance.
+Claude's read-only critique correctly requires a shared feasibility predicate,
+GC conflict branches, fresh apply-time GC validation and explicit work accounting.
+Reconciliation: extend the existing decision record rather than creating another;
+21 bp with 4762..5238 basis points is an empty count window, not an endpoint
+acceptance test; check parity freshness without gratuitous regeneration.
+
+Request `gc_content={min_basis_points,max_basis_points}` is optional, inclusive
+0..10000, applies to exactly the complete supplied CDS, and includes frozen
+ATG/stop and protected bases. Flanks are excluded. G+C count is invariant under
+reverse complement; no strand knob, organism default, floating-point tolerance,
+arbitrary interval or sliding-window policy is inferred. One explicit GC
+constraint permits `avoid_motifs=[]`; without GC the old nonempty-motif rule stays.
+
+For fixed length L, prepare converts once to minimum `ceil(min*L/10000)` and
+maximum `floor(max*L/10000)`. Bad bounds are invalid; an empty integer interval
+is proven infeasible, not malformed. Sum admissible per-codon minimum/maximum
+GC contributions, retaining fixed contributions, to bound possible GC. Disjoint
+intervals prove GC impossibility before candidate evaluation, after the first
+cancellation poll. Intersection is only a relaxation and proves no feasibility
+when integer gaps or motif conflicts remain. Full-evaluation work admission adds
+the CDS GC pass; candidate/progress/cancellation limits stay bounded.
+
+One full validator produces motif and GC violations. Enumeration, conflict
+search, final output checks and `validate_output` use its satisfaction predicate.
+Conflict search keeps motif-first deterministic selection. For GC below/above
+bounds with no motif conflict, select all unassigned codons capable of changing
+their GC contribution in that direction, then branch on **all** their nonoriginal
+synonyms, including neutral/worsening assignments. No per-edit GC monotonicity
+is required. A feasible target consistent with assigned codons must net-change
+GC in the needed direction, so at least one differing unassigned codon is
+direction-capable and its target assignment is included. That preserves a path
+to every minimum-edit target; motif branching's argument and edit-cost pruning
+remain valid. Unrestricted literal eight-state and 36-state oracles check this
+restriction, including coupled motif/GC changes, mixed-direction synonyms and
+budget-limited proofs. Each depth-first frame holds only a conflict and branch
+cursor, not a copied whole-CDS branch list; stack storage grows with assigned
+codon depth rather than the square of that depth. This is a resource bound, not
+a runtime performance verdict.
+
+GC-enabled algorithm IDs are `synonymous_full_enumeration_gc_v1` and
+`synonymous_conflict_search_gc_v1`, with a GC-specific nonclaim. Absence retains
+old algorithm/policy and serialized report/request approval bytes. The optional
+report GC block carries integer denominator/bounds, relaxed extrema and input
+measurement. Output measurement derives through the pure core from actual
+validated output DNA; no output DNA means no output facts. Unrequested or
+unadmitted GC facts are absent, never zeros. Apply freshly checks all constraints
+and rederives all GC facts, rejecting inconsistencies even in client-rehashed
+reports. Its receipt verifies output constraints, **not** submitted search history
+or minimum-edit claims. No optimizer is rerun and no source gene is recoded.
+
+The [synthetic MFK walkthrough](cli.md#cds-wide-gc-walkthrough) uses the same
+typed JSON and preview/apply commands in CLI, GUI Shell and inner-agent guidance;
+it is not a new tutorial catalog or GUI setup path. No expression, folding,
+synthesis, large-insert performance or upstream DNA Chisel compatibility claim.
+
 | Outcome | Meaning |
 | --- | --- |
 | `invalid` / `unsupported` | Admission/resource rule failed; no applicable preview. |
 | `feasible` | Fully validated exact output; only complete enumeration/conflict search or unchanged feasible input proves minimum edits. A budget stop can retain a feasible candidate with optimization incomplete. |
 | `search_exhausted` | Budget ended without a feasible candidate; unresolved, not infeasible. |
-| `proven_infeasible` | An initial match lies wholly in frozen bases, or complete enumeration/conflict search found no admissible variant. |
+| `proven_infeasible` | An initial match lies wholly in frozen bases, GC count bounds are empty/unreachable, or complete enumeration/conflict search found no admissible variant. |
 | `cancelled` | External cancellation; diagnostics only, never output DNA/approval, even if a feasible candidate was already found. |
 
 Core cancellation polls before each candidate and before result publication.
@@ -298,6 +366,59 @@ Local builds/tests are deliberately unrun at the owner's request. Repeat the
 focused protocol/engine/shell tests and direct CLI/confirmed MCP replay at the
 committed repair SHA before calling these findings independently closed.
 
+### CDS-Wide GC Verification
+
+Verified the patched, uncommitted tree based on fetched `main`
+`2f3a60f0bbf9a9ef61a02fbae6978305f5ac7df3`, Darwin 27 arm64,
+Rust/Cargo 1.100.0-beta.1, default development/test features. These are local
+functional checks, not a frozen binary, native GUI or independent audit verdict.
+
+```sh
+cargo test -p gentle-sequence-design --locked --offline -j 1
+cargo test -p gentle-protocol --locked --offline -j 1 sequence_design
+cargo test --lib --locked --offline -j 1 sequence_design -- --test-threads=1
+cargo test --bin gentle_cli --locked --offline -j 1 sequence_design -- --test-threads=1
+cargo test --lib --locked --offline -j 1 glossary_cli_usage -- --test-threads=1
+cargo test --lib --locked --offline -j 1 cli_docs_mention_all_cli_glossary_paths -- --test-threads=1
+cargo run --bin gentle_examples_docs --locked --offline -j 1 -- parity-matrix-check
+python3 -m unittest scripts.test_tutorial_checkouts scripts.test_tutorial_walkthroughs scripts.test_publish_tutorial_gui_screenshots -q
+cargo check -q --locked --offline -j 1
+cargo fmt --all --check
+git diff --check
+python3 scripts/maintenance_chore.py session-close --plan docs/dna_sequence_optimization_plan.md
+```
+
+All 43 targeted Rust tests pass: 17 core, three protocol, 17 engine/shell/MCP,
+three CLI and three glossary/documentation checks, with none ignored. Python
+passes 25 tests with three expected platform skips, including the fast LF/CRLF
+checkout gate. The canonical parity checker passes without regeneration; the
+queued integration-target invocation was stopped before building to avoid
+unrelated application binaries. Locked Cargo check, formatting and whitespace
+checks pass. Retain the known non-blocking large `__eh_frame` linker warning.
+
+The first root build exposed `2f3a60f0`'s `set_name(Some(String))` E0277; use the
+setter's required `String` without changing materialization/provenance semantics.
+The first new root run then exposed two test mistakes, not solver failures:
+preview records its own journal entry, so apply needs a delta assertion; the
+coupled MEF parity fixture needs exact 25% GC rather than a range admitting a
+one-edit solution. The corrected core/root/CLI tests were rerun successfully.
+
+Task changes are confined to the core GC/search/tests/README, shared protocol,
+root sequence-design boundary/tests, shell/agent discoverability, CLI/MCP tests
+and the existing interface/decision/plan/roadmap/changelog docs (19 files).
+No dependencies, profiles, workflows, generated catalogs or scientific fixtures
+change. The unrelated pre-existing deletions of
+`docs/glen_sequence_design_handoff_20261005.md` and
+`docs/internal_12_candidate_preparation.md` remain untouched. Session-close:
+four OK, two warnings, no failures; warnings cover intentional uncommitted work
+and the manual plan-fidelity reminder, not independent acceptance.
+
+No full workspace, native Windows/Linux/GUI/Pi, Rust 1.85, JS/Lua/Python runtime,
+upstream DNA Chisel comparison or runtime/RSS measurement was run. CLI tests
+exercise parser/forwarding/engine paths in-process, not packaged executables.
+Glen must audit the exact authorized committed candidate separately; earlier
+motif-only evidence does not certify the GC slice or its search claims.
+
 ## Remaining stages
 
 1. Glen rechecks the approval/provenance repair at its exact integrated SHA,
@@ -311,10 +432,11 @@ committed repair SHA before calling these findings independently closed.
    retain coupled/new-conflict cases, budget stops and cancellation. Keep
    maintenance value, performance and biological suitability as separate claims;
    no `.12` delay or gate added.
-2. Use that evidence to decide whether further search changes, independent
-   publication or richer specifications merit their cost. GC constraints need
-   their own whole-sequence/window and threshold contract before implementation;
-   do not replace global constraints with assumed local checks.
-3. GC, codon harmonization/adaptation, distant repeat/hairpin interactions,
+2. Glen should now include the explicitly requested CDS-wide GC contract and
+   coupled constraints at one authorized revision, without treating prior
+   motif-only proofs as GC acceptance. Decide usefulness before further search,
+   publication or specification expansion; never substitute local checks for
+   global constraints.
+3. Sliding-window GC, codon harmonization/adaptation, distant repeat/hairpin interactions,
    RNA folding, other initiation/codes and DNA Chisel comparison remain explicit
    follow-ups with their own contracts, not unfinished obligations of this slice.

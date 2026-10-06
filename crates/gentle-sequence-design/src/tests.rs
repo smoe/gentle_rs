@@ -5,6 +5,362 @@
 
 use super::*;
 
+fn gc_bounds(min: u16, max: u16) -> Option<GcBounds> {
+    Some(GcBounds {
+        min_basis_points: min,
+        max_basis_points: max,
+    })
+}
+
+#[test]
+fn gc_count_bounds_are_integer_inclusive_and_empty_windows_are_infeasible() {
+    // Synthetic M + five arginines, 21 bp; literal variants change only Arg.
+    let mut request = input("ATGCGTCGTCGTCGTCGTTAA", "MRRRRR", &[]);
+    request.gc_content = gc_bounds(4761, 5239);
+    let assessment = assess_gc(&request, None).unwrap().unwrap();
+    assert_eq!(assessment.denominator_bases, 21);
+    assert_eq!(
+        (assessment.minimum_gc_bases, assessment.maximum_gc_bases),
+        (10, 11)
+    );
+    for (first, second, expected_count, accepted) in [
+        ("AGA", "CGT", 10, true),
+        ("CGT", "CGT", 11, true),
+        ("AGA", "AGA", 9, false),
+        ("CGC", "CGT", 12, false),
+    ] {
+        let dna = format!("ATG{first}{second}CGTCGTCGTTAA");
+        assert_eq!(
+            dna.bytes().filter(|b| b"GC".contains(b)).count(),
+            expected_count
+        );
+        assert_eq!(validate_output(&request, &dna).is_ok(), accepted);
+    }
+    request.gc_content = gc_bounds(4762, 5238);
+    let assessment = assess_gc(&request, None).unwrap().unwrap();
+    assert_eq!(
+        (assessment.minimum_gc_bases, assessment.maximum_gc_bases),
+        (11, 10)
+    );
+    for strategy in [
+        SearchStrategy::FullEnumeration,
+        SearchStrategy::ConflictDirected,
+    ] {
+        let result = solve_with_strategy(&request, strategy, |_| false);
+        assert_eq!(result.status, Status::ProvenInfeasible);
+        assert_eq!(result.evaluated_candidates, 0);
+        assert_eq!(
+            result.reason,
+            "gc_count_window_empty_for_declared_cds_length"
+        );
+        assert_eq!(
+            solve_with_strategy(&request, strategy, |_| true).status,
+            Status::Cancelled
+        );
+    }
+    for (min, max) in [(5001, 5000), (0, 10001)] {
+        request.gc_content = gc_bounds(min, max);
+        assert_eq!(solve(&request, |_| false).status, Status::Invalid);
+    }
+}
+
+#[test]
+fn gc_only_design_and_coupled_constraints_are_fully_validated() {
+    // Four literal standard-code MFK variants, not a natural gene.
+    for (source, motifs, bounds, expected, edit_count) in [
+        ("ATGTTTAAATAA", vec![], (1666, 1667), "ATGTTCAAATAA", 1),
+        // Raising GC by changing F first creates this motif; changing K works.
+        (
+            "ATGTTTAAATAA",
+            vec!["TTCAAA"],
+            (1666, 2500),
+            "ATGTTTAAGTAA",
+            1,
+        ),
+        // Removing AAG loses GC; the coupled F edit restores the requested count.
+        (
+            "ATGTTTAAGTAA",
+            vec!["AAGTAA"],
+            (1666, 1667),
+            "ATGTTCAAATAA",
+            2,
+        ),
+        // GC above maximum with no motif must branch downward, not falsely fail.
+        ("ATGTTCAAGTAA", vec![], (833, 834), "ATGTTTAAATAA", 2),
+    ] {
+        let mut request = input(source, "MFK", &motifs);
+        request.gc_content = gc_bounds(bounds.0, bounds.1);
+        for strategy in [
+            SearchStrategy::FullEnumeration,
+            SearchStrategy::ConflictDirected,
+        ] {
+            let result = solve_with_strategy(&request, strategy, |_| false);
+            assert_eq!(result.status, Status::Feasible, "{source} {strategy:?}");
+            assert_eq!(result.sequence.as_deref(), Some(expected));
+            assert_eq!(result.edits.len(), edit_count);
+            assert!(result.optimization_complete && result.minimum_edits_proven);
+            assert_eq!(validate_output(&request, expected).unwrap(), result.edits);
+            let facts = assess_gc(&request, result.sequence.as_deref())
+                .unwrap()
+                .unwrap();
+            assert!(facts.output.unwrap().satisfies_bounds);
+        }
+    }
+    let empty = input("ATGTTTAAATAA", "MFK", &[]);
+    assert_eq!(solve(&empty, |_| false).status, Status::Invalid);
+}
+
+#[test]
+fn gc_extrema_include_frozen_bases_and_exclude_flanks_without_proving_feasibility() {
+    let mut request = input("ATGTTTAAATAA", "MFK", &[]);
+    for bounds in [(0, 0), (10000, 10000)] {
+        request.gc_content = gc_bounds(bounds.0, bounds.1);
+        for strategy in [
+            SearchStrategy::FullEnumeration,
+            SearchStrategy::ConflictDirected,
+        ] {
+            let result = solve_with_strategy(&request, strategy, |_| false);
+            assert_eq!(result.status, Status::ProvenInfeasible);
+            assert_eq!(result.evaluated_candidates, 0);
+            assert!(result.reason.starts_with("gc_bounds_unreachable"));
+        }
+    }
+    request.gc_content = gc_bounds(1666, 1667);
+    request.protected = vec![Interval { start: 0, end: 12 }];
+    assert_eq!(solve(&request, |_| false).evaluated_candidates, 0);
+    assert_eq!(solve(&request, |_| false).status, Status::ProvenInfeasible);
+    request.protected.clear();
+    request.sequence = "GGGATGTTTAAATAACCC".into();
+    request.cds = Interval { start: 3, end: 15 };
+    let result = solve_with_strategy(&request, SearchStrategy::ConflictDirected, |_| false);
+    assert_eq!(result.sequence.as_deref(), Some("GGGATGTTCAAATAACCC"));
+    let facts = assess_gc(&request, result.sequence.as_deref())
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.denominator_bases, 12);
+    assert_eq!(facts.input.gc_bases, 1);
+    assert_eq!(facts.output.unwrap().gc_bases, 2);
+    assert_eq!(
+        (
+            facts.reachable_minimum_gc_bases,
+            facts.reachable_maximum_gc_bases
+        ),
+        (1, 3)
+    );
+    // GC reachability overlaps, but these literal motifs exclude every variant.
+    request.motifs = ["TTTAAA", "TTCAAA", "TTTAAG", "TTCAAG"]
+        .map(|pattern| Motif {
+            pattern: pattern.into(),
+            strand: Strand::Forward,
+        })
+        .to_vec();
+    let result = solve(&request, |_| false);
+    assert_eq!(result.status, Status::ProvenInfeasible);
+    assert!(result.evaluated_candidates > 0);
+    assert_eq!(
+        result.reason,
+        "complete_enumeration_found_no_feasible_variant"
+    );
+}
+
+#[test]
+fn gc_conflict_branching_agrees_with_unrestricted_literal_eight_state_oracle() {
+    // Independent unrestricted F/K/F space: no core synonym generation or GC conversion.
+    let variants = ["TTT", "TTC"]
+        .into_iter()
+        .flat_map(|f| {
+            ["AAA", "AAG"].into_iter().flat_map(move |k| {
+                ["TTT", "TTC"]
+                    .into_iter()
+                    .map(move |last| format!("CATG{f}{k}{last}TAAG"))
+            })
+        })
+        .collect::<Vec<_>>();
+    let original = &variants[0];
+    for min in [0, 666, 1333, 2000, 2667, 4000] {
+        for max in [0, 667, 1334, 2000, 2667, 10000] {
+            if min > max {
+                continue;
+            }
+            for patterns in [
+                vec![],
+                vec!["TTCAAA"],
+                vec!["AAGTAA"],
+                vec!["TTTAAA", "TTCAAA", "TTTAAG"],
+            ] {
+                for protected in [
+                    vec![],
+                    vec![Interval { start: 6, end: 7 }],
+                    vec![Interval { start: 12, end: 13 }],
+                ] {
+                    let mut request = input(original, "MFKF", &patterns);
+                    request.cds = Interval { start: 1, end: 16 };
+                    request.protected = protected;
+                    request.gc_content = gc_bounds(min, max);
+                    for motif in &mut request.motifs {
+                        motif.strand = Strand::Forward;
+                    }
+                    let valid = |dna: &str| {
+                        let count = dna[1..16].bytes().filter(|b| b"GC".contains(b)).count();
+                        count * 10000 >= usize::from(min) * 15
+                            && count * 10000 <= usize::from(max) * 15
+                            && patterns.iter().all(|p| !dna.contains(p))
+                            && request
+                                .protected
+                                .iter()
+                                .all(|p| dna[p.start..p.end] == original[p.start..p.end])
+                    };
+                    let expected = variants.iter().filter(|dna| valid(dna)).min_by_key(|dna| {
+                        (
+                            dna.bytes()
+                                .zip(original.bytes())
+                                .filter(|(a, b)| a != b)
+                                .count(),
+                            dna.as_str(),
+                        )
+                    });
+                    for strategy in [
+                        SearchStrategy::FullEnumeration,
+                        SearchStrategy::ConflictDirected,
+                    ] {
+                        request.max_evaluations = 4096;
+                        let result = solve_with_strategy(&request, strategy, |_| false);
+                        assert_eq!(
+                            result.sequence.as_ref(),
+                            expected,
+                            "{min} {max} {patterns:?} {strategy:?}"
+                        );
+                        assert_eq!(
+                            result.status,
+                            if expected.is_some() {
+                                Status::Feasible
+                            } else {
+                                Status::ProvenInfeasible
+                            }
+                        );
+                        if expected.is_some() {
+                            assert!(result.minimum_edits_proven);
+                        }
+                        request.max_evaluations = 1;
+                        let stopped = solve_with_strategy(&request, strategy, |_| false);
+                        if stopped.status == Status::Feasible {
+                            assert!(valid(stopped.sequence.as_deref().unwrap()));
+                        }
+                        if stopped.status == Status::ProvenInfeasible {
+                            assert!(expected.is_none());
+                        }
+                        if stopped.status == Status::SearchExhausted {
+                            assert!(!stopped.optimization_complete);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gc_conflicts_with_mixed_direction_synonyms_match_unrestricted_oracle() {
+    // Synthetic MLR: literal six-way L/R sets include raising, neutral and
+    // lowering assignments. The oracle uses neither core choices nor rounding.
+    let source = "ATGCTACGTTAA";
+    let variants = ["TTA", "TTG", "CTT", "CTC", "CTA", "CTG"]
+        .into_iter()
+        .flat_map(|l| {
+            ["CGT", "CGC", "CGA", "CGG", "AGA", "AGG"]
+                .into_iter()
+                .map(move |r| format!("ATG{l}{r}TAA"))
+        })
+        .collect::<Vec<_>>();
+    for (min, max) in [(833, 1667), (2500, 2500), (3333, 3334), (4166, 5000)] {
+        for patterns in [vec![], vec!["CTA", "CGT"], vec!["CTACGC", "CTGCGT"]] {
+            let mut request = input(source, "MLR", &patterns);
+            request.gc_content = gc_bounds(min, max);
+            for motif in &mut request.motifs {
+                motif.strand = Strand::Forward;
+            }
+            let valid = |dna: &str| {
+                let gc = dna.bytes().filter(|b| b"GC".contains(b)).count();
+                gc * 10000 >= usize::from(min) * 12
+                    && gc * 10000 <= usize::from(max) * 12
+                    && patterns.iter().all(|p| !dna.contains(p))
+            };
+            let expected = variants.iter().filter(|dna| valid(dna)).min_by_key(|dna| {
+                (
+                    dna.bytes()
+                        .zip(source.bytes())
+                        .filter(|(a, b)| a != b)
+                        .count(),
+                    dna.as_str(),
+                )
+            });
+            for strategy in [
+                SearchStrategy::FullEnumeration,
+                SearchStrategy::ConflictDirected,
+            ] {
+                let result = solve_with_strategy(&request, strategy, |_| false);
+                assert_eq!(
+                    result.sequence.as_ref(),
+                    expected,
+                    "{min} {max} {patterns:?} {strategy:?}"
+                );
+                assert!(result.optimization_complete);
+                assert_eq!(result.minimum_edits_proven, expected.is_some());
+                assert_eq!(
+                    result.status,
+                    if expected.is_some() {
+                        Status::Feasible
+                    } else {
+                        Status::ProvenInfeasible
+                    }
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn gc_budget_and_cancellation_never_publish_output_measurements_or_proofs() {
+    let mut request = input("ATGTTTAAATAA", "MFK", &[]);
+    request.gc_content = gc_bounds(1666, 1667);
+    request.max_evaluations = 1;
+    for strategy in [
+        SearchStrategy::FullEnumeration,
+        SearchStrategy::ConflictDirected,
+    ] {
+        let result = solve_with_strategy(&request, strategy, |_| false);
+        assert_eq!(result.status, Status::SearchExhausted);
+        let facts = assess_gc(&request, result.sequence.as_deref())
+            .unwrap()
+            .unwrap();
+        assert!(!facts.input.satisfies_bounds && facts.output.is_none());
+        request.max_evaluations = 4096;
+        // Node two is already GC-feasible; cancellation still removes everything.
+        let result = solve_with_strategy(&request, strategy, |evaluated| evaluated == 2);
+        assert_eq!(result.status, Status::Cancelled);
+        assert!(result.sequence.is_none() && result.edits.is_empty());
+        assert!(!result.minimum_edits_proven && !result.optimization_complete);
+        assert!(
+            assess_gc(&request, result.sequence.as_deref())
+                .unwrap()
+                .unwrap()
+                .output
+                .is_none()
+        );
+        request.max_evaluations = 1;
+    }
+    let mut request = input(
+        &format!("ATG{}TAA", "GCT".repeat(1000)),
+        &format!("M{}", "A".repeat(1000)),
+        &["GAATTC"],
+    );
+    request.max_evaluations = MAX_EVALUATIONS;
+    let without_gc = solve(&request, |_| false).effective_evaluation_budget;
+    request.gc_content = gc_bounds(0, 10000);
+    let with_gc = solve(&request, |_| false).effective_evaluation_budget;
+    assert!(with_gc < without_gc && with_gc > 0);
+}
+
 fn code() -> GeneticCode {
     let residues = b"FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG";
     let mut codons = BTreeMap::new();
@@ -38,6 +394,7 @@ fn input(sequence: &str, protein: &str, patterns: &[&str]) -> Input {
             })
             .collect(),
         max_evaluations: 4096,
+        gc_content: None,
     }
 }
 

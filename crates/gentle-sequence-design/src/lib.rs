@@ -1,4 +1,4 @@
-//! Pure, bounded synonymous motif removal, not a general DNA Chisel implementation.
+//! Pure, bounded synonymous motif/GC design, not a general DNA Chisel implementation.
 //!
 //! The caller supplies an explicit complete codon mapping and expected protein.
 //! DNA is uppercase, linear, with one forward CDS and frozen ATG/terminal stop.
@@ -6,8 +6,14 @@
 
 use std::collections::BTreeMap;
 
+mod gc;
+pub use gc::{GcAssessment, GcBounds, GcMeasurement, assess_gc};
+use gc::{GcViolation, PreparedGc};
+
 pub const ALGORITHM: &str = "synonymous_full_enumeration_v1";
 pub const CONFLICT_ALGORITHM: &str = "synonymous_conflict_search_v1";
+pub const GC_ALGORITHM: &str = "synonymous_full_enumeration_gc_v1";
+pub const GC_CONFLICT_ALGORITHM: &str = "synonymous_conflict_search_gc_v1";
 pub const MAX_SEQUENCE_BP: usize = 12_000;
 pub const MAX_MOTIFS: usize = 16;
 pub const MAX_MOTIF_BP: usize = 32;
@@ -29,6 +35,14 @@ impl SearchStrategy {
         match self {
             Self::FullEnumeration => ALGORITHM,
             Self::ConflictDirected => CONFLICT_ALGORITHM,
+        }
+    }
+
+    pub fn algorithm_with_gc(self, gc_requested: bool) -> &'static str {
+        match (self, gc_requested) {
+            (_, false) => self.algorithm(),
+            (Self::FullEnumeration, true) => GC_ALGORITHM,
+            (Self::ConflictDirected, true) => GC_CONFLICT_ALGORITHM,
         }
     }
 }
@@ -69,6 +83,7 @@ pub struct Input {
     pub code: GeneticCode,
     pub protected: Vec<Interval>,
     pub motifs: Vec<Motif>,
+    pub gc_content: Option<GcBounds>,
     pub max_evaluations: u64,
 }
 
@@ -136,6 +151,41 @@ struct Prepared<'a> {
     choices: Vec<(usize, Vec<[u8; 3]>)>,
     budget: u64,
     space: Option<u64>,
+    gc: Option<PreparedGc>,
+}
+
+struct Violations {
+    matches: Vec<Match>,
+    gc: Option<GcViolation>,
+}
+
+#[derive(Clone, Copy)]
+enum Conflict {
+    Motif(Interval),
+    Gc(GcViolation),
+}
+
+impl Violations {
+    fn satisfied(&self) -> bool {
+        self.matches.is_empty() && self.gc.is_none()
+    }
+
+    fn first_conflict(&self) -> Option<Conflict> {
+        self.matches
+            .first()
+            .map(|hit| Conflict::Motif(hit.interval))
+            .or_else(|| self.gc.map(Conflict::Gc))
+    }
+}
+
+fn cancelled(mut outcome: Outcome) -> Outcome {
+    outcome.status = Status::Cancelled;
+    outcome.reason = "externally_cancelled".into();
+    outcome.sequence = None;
+    outcome.edits.clear();
+    outcome.optimization_complete = false;
+    outcome.minimum_edits_proven = false;
+    outcome
 }
 
 fn mask(base: u8) -> Option<u8> {
@@ -207,6 +257,9 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
     {
         return Err(fail("one_complete_forward_cds_required"));
     }
+    if let Some(bounds) = input.gc_content {
+        bounds.validate().map_err(fail)?;
+    }
     if &input.sequence.as_bytes()[cds.start..cds.start + 3] != b"ATG" {
         return Err(Outcome::empty(
             Status::Unsupported,
@@ -238,12 +291,15 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
         }
         frozen[interval.start..interval.end].fill(true);
     }
-    if input.motifs.is_empty() || input.motifs.len() > MAX_MOTIFS {
+    if input.motifs.is_empty() && input.gc_content.is_none() || input.motifs.len() > MAX_MOTIFS {
         return Err(fail("one_to_16_motifs_required"));
     }
     let mut patterns = vec![];
     // Also bound full-DNA copying, frozen-base checks and two translations.
     let mut work = n as u64 * 4;
+    if input.gc_content.is_some() {
+        work += (cds.end - cds.start) as u64;
+    }
     for motif in &input.motifs {
         if motif.pattern.is_empty() || motif.pattern.len() > MAX_MOTIF_BP {
             return Err(fail("motif_length_requires_1_to_32_bases"));
@@ -301,6 +357,11 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
             choices.push((start, alternatives));
         }
     }
+    let gc = input
+        .gc_content
+        .map(|_| PreparedGc::new(input, &choices))
+        .transpose()
+        .map_err(|reason| fail(&reason))?;
     Ok(Prepared {
         input,
         frozen,
@@ -308,6 +369,7 @@ fn prepare(input: &Input) -> Result<Prepared<'_>, Outcome> {
         choices,
         budget,
         space,
+        gc,
     })
 }
 
@@ -354,7 +416,7 @@ impl Prepared<'_> {
         Ok(hits)
     }
 
-    fn validate(&self, sequence: &[u8]) -> Result<Vec<Match>, String> {
+    fn validate(&self, sequence: &[u8]) -> Result<Violations, String> {
         let original = self.input.sequence.as_bytes();
         if sequence.len() != original.len()
             || !sequence
@@ -376,15 +438,39 @@ impl Prepared<'_> {
         {
             return Err("translation_changed".into());
         }
-        self.matches(sequence)
+        Ok(Violations {
+            matches: self.matches(sequence)?,
+            gc: self
+                .gc
+                .as_ref()
+                .and_then(|gc| gc.violation(sequence, self.input.cds)),
+        })
+    }
+
+    fn initial_infeasibility(&self, matches: &[Match]) -> Option<&'static str> {
+        if matches.iter().any(|hit| {
+            self.frozen[hit.interval.start..hit.interval.end]
+                .iter()
+                .all(|b| *b)
+        }) {
+            Some("forbidden_match_entirely_in_frozen_bases")
+        } else {
+            self.gc.as_ref().and_then(PreparedGc::infeasibility)
+        }
     }
 }
 
 /// Fresh full-sequence validation, suitable for approval without rerunning search.
 pub fn validate_output(input: &Input, output: &str) -> Result<Vec<Edit>, String> {
     let prepared = prepare(input).map_err(|o| o.reason)?;
-    if !prepared.validate(output.as_bytes())?.is_empty() {
-        return Err("forbidden_motifs_remain".into());
+    let violations = prepared.validate(output.as_bytes())?;
+    if !violations.satisfied() {
+        return Err(if !violations.matches.is_empty() {
+            "forbidden_motifs_remain"
+        } else {
+            "gc_bounds_not_satisfied"
+        }
+        .into());
     }
     Ok(edits(input.sequence.as_bytes(), output.as_bytes()))
 }
@@ -429,17 +515,11 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
     outcome.effective_evaluation_budget = prepared.budget;
     outcome.search_space = prepared.space;
     if cancel(0) {
-        outcome.status = Status::Cancelled;
-        outcome.reason = "externally_cancelled".into();
-        return outcome;
+        return cancelled(outcome);
     }
-    if initial.iter().any(|hit| {
-        prepared.frozen[hit.interval.start..hit.interval.end]
-            .iter()
-            .all(|b| *b)
-    }) {
+    if let Some(reason) = prepared.initial_infeasibility(&initial) {
         outcome.status = Status::ProvenInfeasible;
-        outcome.reason = "forbidden_match_entirely_in_frozen_bases".into();
+        outcome.reason = reason.into();
         return outcome;
     }
     prepared.choices.sort_by_key(|(start, _)| {
@@ -455,9 +535,7 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
     let mut complete = false;
     loop {
         if cancel(outcome.evaluated_candidates) {
-            outcome.status = Status::Cancelled;
-            outcome.reason = "externally_cancelled".into();
-            return outcome;
+            return cancelled(outcome);
         }
         if outcome.evaluated_candidates == prepared.budget {
             break;
@@ -471,7 +549,7 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
             Ok(hits) => hits,
             Err(reason) => return Outcome::empty(Status::Invalid, reason),
         };
-        if hits.is_empty() {
+        if hits.satisfied() {
             let count = edits(original, &candidate).len();
             if best
                 .as_ref()
@@ -499,15 +577,13 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
         }
     }
     if cancel(outcome.evaluated_candidates) {
-        outcome.status = Status::Cancelled;
-        outcome.reason = "externally_cancelled".into();
-        return outcome;
+        return cancelled(outcome);
     }
     outcome.optimization_complete = complete;
     if let Some((_, sequence)) = best {
         // Do not publish the search's cached evaluation as the final validator.
         if let Err(reason) = prepared.validate(&sequence).and_then(|h| {
-            if h.is_empty() {
+            if h.satisfied() {
                 Ok(h)
             } else {
                 Err("final_motif_validation_failed".into())
@@ -517,10 +593,7 @@ pub fn solve(input: &Input, mut cancel: impl FnMut(u64) -> bool) -> Outcome {
         }
         outcome.edits = edits(original, &sequence);
         if cancel(outcome.evaluated_candidates) {
-            outcome.status = Status::Cancelled;
-            outcome.reason = "externally_cancelled".into();
-            outcome.edits.clear();
-            return outcome;
+            return cancelled(outcome);
         }
         outcome.sequence = Some(String::from_utf8(sequence).unwrap());
         outcome.status = Status::Feasible;

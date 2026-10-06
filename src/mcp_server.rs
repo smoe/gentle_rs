@@ -4967,15 +4967,22 @@ mod tests {
 
     #[test]
     fn sequence_design_mcp_confirmation_preview_and_exact_apply_parity() {
-        assert_sequence_design_mcp_parity(false);
+        assert_sequence_design_mcp_parity(false, false);
     }
 
     #[test]
     fn sequence_design_conflict_mcp_confirmation_preview_and_exact_apply_parity() {
-        assert_sequence_design_mcp_parity(true);
+        assert_sequence_design_mcp_parity(true, false);
     }
 
-    fn assert_sequence_design_mcp_parity(conflict_directed: bool) {
+    #[test]
+    fn sequence_design_gc_mcp_confirmation_preview_and_exact_apply_parity() {
+        for conflict in [false, true] {
+            assert_sequence_design_mcp_parity(conflict, true);
+        }
+    }
+
+    fn assert_sequence_design_mcp_parity(conflict_directed: bool, gc: bool) {
         // Hand-crafted 12-bp synthetic MEF insert, recreated from this literal.
         let temp = tempdir().unwrap();
         let state_path = temp.path().join("design project.json");
@@ -4991,6 +4998,10 @@ mod tests {
         });
         if conflict_directed {
             design_request["search_strategy"] = "conflict_directed".into();
+        }
+        if gc {
+            design_request["gc_content"] =
+                json!({"min_basis_points": 2500, "max_basis_points": 2500});
         }
         let mut request = json!({
             "jsonrpc":"2.0", "id":1, "method":"tools/call",
@@ -5018,10 +5029,11 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&preview_path).unwrap()).unwrap();
         assert_eq!(
             preview.algorithm,
-            if conflict_directed {
-                "synonymous_conflict_search_v1"
-            } else {
-                "synonymous_full_enumeration_v1"
+            match (conflict_directed, gc) {
+                (true, true) => "synonymous_conflict_search_gc_v1",
+                (false, true) => "synonymous_full_enumeration_gc_v1",
+                (true, false) => "synonymous_conflict_search_v1",
+                (false, false) => "synonymous_full_enumeration_v1",
             }
         );
         let mut direct = GentleEngine::new();
@@ -5053,7 +5065,7 @@ mod tests {
         let state = ProjectState::load_from_path(state_path.to_str().unwrap()).unwrap();
         assert_eq!(
             state.sequences["synthetic_without_ecori"].get_forward_string(),
-            "ATGGAATTTTAA"
+            if gc { "ATGGAGTTTTAA" } else { "ATGGAATTTTAA" }
         );
         for path in ["sequence-design plan", "sequence-design apply"] {
             assert!(tool_command_paths("op").contains(&path));

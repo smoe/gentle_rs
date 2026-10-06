@@ -28,6 +28,34 @@ pub struct AvoidDesignMotif {
     pub strand: DesignStrand,
 }
 
+/// Inclusive basis-point GC limits on the complete declared CDS, not flanks.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignGcBounds {
+    pub min_basis_points: u16,
+    pub max_basis_points: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignGcMeasurement {
+    pub gc_bases: usize,
+    pub satisfies_bounds: bool,
+}
+
+/// Integer-only facts. Reachable extrema are a relaxation, not a feasibility proof.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DesignGcAssessment {
+    pub denominator_bases: usize,
+    pub minimum_gc_bases: usize,
+    pub maximum_gc_bases: usize,
+    pub reachable_minimum_gc_bases: usize,
+    pub reachable_maximum_gc_bases: usize,
+    pub input: DesignGcMeasurement,
+    pub output: Option<DesignGcMeasurement>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DnaDesignTarget {
@@ -64,6 +92,8 @@ pub struct DnaSequenceDesignRequest {
     #[serde(default)]
     pub protected_intervals: Vec<DesignInterval>,
     pub avoid_motifs: Vec<AvoidDesignMotif>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gc_content: Option<DesignGcBounds>,
     pub max_evaluations: u64,
     #[serde(
         default,
@@ -136,6 +166,8 @@ pub struct DnaSequenceDesignReport {
     pub minimum_edits_proven: bool,
     pub approval_digest: Option<String>,
     pub nonclaims: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gc_content: Option<DesignGcAssessment>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,6 +230,19 @@ mod tests {
             DnaDesignSearchStrategy::FullEnumeration
         );
         assert_eq!(serde_json::to_value(&request).unwrap(), legacy);
+        assert_eq!(
+            serde_json::to_string(&request).unwrap(),
+            concat!(
+                "{\"schema\":\"gentle.dna_sequence_design_request.v1\",",
+                "\"target\":{\"kind\":\"inline_sequence\",\"sequence\":\"ATGGAATTCTAA\"},",
+                "\"purpose\":\"synthetic_coding_insert\",",
+                "\"cds\":{\"start_0based\":0,\"end_0based_exclusive\":12},",
+                "\"protein_sequence\":\"MEF\",\"genetic_code\":1,",
+                "\"protected_intervals\":[],",
+                "\"avoid_motifs\":[{\"pattern\":\"GAATTC\",\"strand\":\"both\"}],",
+                "\"max_evaluations\":4096,\"output_seq_id\":\"synthetic_without_ecori\"}"
+            )
+        );
         let mut explicit = legacy.clone();
         explicit["search_strategy"] = "full_enumeration".into();
         let request: DnaSequenceDesignRequest = serde_json::from_value(explicit.clone()).unwrap();
@@ -211,5 +256,28 @@ mod tests {
         assert_eq!(serde_json::to_value(request).unwrap(), explicit);
         explicit["search_strategy"] = "automatic".into();
         assert!(serde_json::from_value::<DnaSequenceDesignRequest>(explicit).is_err());
+    }
+
+    #[test]
+    fn sequence_design_gc_roundtrip_is_additive_and_rejects_unknown_gc_fields() {
+        // Synthetic MFK request, recreated literally; no natural gene is represented.
+        let wire = serde_json::json!({
+            "schema": REQUEST_SCHEMA,
+            "target": {"kind": "inline_sequence", "sequence": "ATGTTTAAATAA"},
+            "purpose": "synthetic_coding_insert",
+            "cds": {"start_0based": 0, "end_0based_exclusive": 12},
+            "protein_sequence": "MFK", "genetic_code": 1,
+            "protected_intervals": [], "avoid_motifs": [],
+            "gc_content": {"min_basis_points": 1666, "max_basis_points": 1667},
+            "max_evaluations": 4096, "output_seq_id": "synthetic_gc"
+        });
+        let request: DnaSequenceDesignRequest = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(serde_json::to_value(request).unwrap(), wire);
+        let mut unknown = wire.clone();
+        unknown["gc_content"]["window_bp"] = 6.into();
+        assert!(serde_json::from_value::<DnaSequenceDesignRequest>(unknown).is_err());
+        let mut fractional = wire;
+        fractional["gc_content"]["min_basis_points"] = serde_json::json!(16.66);
+        assert!(serde_json::from_value::<DnaSequenceDesignRequest>(fractional).is_err());
     }
 }

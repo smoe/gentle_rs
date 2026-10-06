@@ -22,10 +22,180 @@ fn request() -> DnaSequenceDesignRequest {
             pattern: "GAATTC".into(),
             strand: DesignStrand::Both,
         }],
+        gc_content: None,
         max_evaluations: 4096,
         search_strategy: DnaDesignSearchStrategy::FullEnumeration,
         output_seq_id: "synthetic_without_ecori".into(),
     }
+}
+
+fn gc_request() -> DnaSequenceDesignRequest {
+    let mut request = request();
+    request.target = DnaDesignTarget::InlineSequence {
+        sequence: "ATGTTTAAATAA".into(),
+    };
+    request.protein_sequence = "MFK".into();
+    request.avoid_motifs.clear();
+    request.gc_content = Some(DesignGcBounds {
+        min_basis_points: 1666,
+        max_basis_points: 1667,
+    });
+    request.output_seq_id = "synthetic_gc".into();
+    request
+}
+
+#[test]
+fn sequence_design_gc_facts_exact_apply_and_undo_share_the_validated_contract() {
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        let mut engine = GentleEngine::new();
+        let original = serde_json::to_value(engine.state()).unwrap();
+        let mut request = gc_request();
+        request.search_strategy = strategy;
+        let preview = plan(&mut engine, request);
+        assert_eq!(
+            preview.algorithm,
+            search_strategy(strategy).algorithm_with_gc(true)
+        );
+        assert_eq!(preview.output_sequence.as_deref(), Some("ATGTTCAAATAA"));
+        let facts = preview.gc_content.as_ref().unwrap();
+        assert_eq!(
+            (
+                facts.denominator_bases,
+                facts.minimum_gc_bases,
+                facts.maximum_gc_bases
+            ),
+            (12, 2, 2)
+        );
+        assert_eq!(facts.input.gc_bases, 1);
+        assert!(!facts.input.satisfies_bounds);
+        assert_eq!(facts.output.as_ref().unwrap().gc_bases, 2);
+        assert!(facts.output.as_ref().unwrap().satisfies_bounds);
+        let decoded: DnaSequenceDesignReport =
+            serde_json::from_str(&serde_json::to_string(&preview).unwrap()).unwrap();
+        assert_eq!(decoded, preview);
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+        let journal_len = engine.journal.len();
+        let undo_count = engine.undo_available();
+        let applied = apply(&mut engine, decoded).unwrap();
+        let receipt = applied.dna_sequence_design_receipt.unwrap();
+        assert!(receipt.output_constraints_verified && !receipt.search_claims_verified);
+        assert_single_design_derivation(&engine, "synthetic_gc", &applied.op_id);
+        assert_eq!(engine.journal.len(), journal_len + 1);
+        assert_eq!(engine.undo_available(), undo_count + 1);
+        assert_eq!(
+            engine.state.sequences["synthetic_gc"].get_forward_string(),
+            "ATGTTCAAATAA"
+        );
+        engine.undo_last_operation().unwrap();
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+        assert_eq!(engine.journal.len(), journal_len);
+        assert_eq!(engine.undo_available(), undo_count);
+    }
+}
+
+#[test]
+fn sequence_design_gc_rehashed_invalid_output_and_false_facts_are_rejected() {
+    let mut engine = GentleEngine::new();
+    let original = serde_json::to_value(engine.state()).unwrap();
+    let preview = plan(&mut engine, gc_request());
+    for kind in 0..5 {
+        let mut changed = preview.clone();
+        match kind {
+            0 => {
+                // Valid translation/frozen bases and no motifs, but GC is below minimum.
+                changed.output_sequence = Some("ATGTTTAAATAA".into());
+                changed.output_sha256 = Some(sha256_prefixed_str("ATGTTTAAATAA"));
+                changed.edits.clear();
+            }
+            1 => {
+                changed
+                    .gc_content
+                    .as_mut()
+                    .unwrap()
+                    .output
+                    .as_mut()
+                    .unwrap()
+                    .gc_bases = 3
+            }
+            2 => changed.gc_content.as_mut().unwrap().input.gc_bases = 2,
+            3 => changed.request.gc_content = None,
+            4 => changed.algorithm = core::ALGORITHM.into(),
+            _ => unreachable!(),
+        }
+        changed.approval_digest = Some(GentleEngine::dna_design_approval(&changed).unwrap());
+        assert!(apply(&mut engine, changed).is_err(), "tamper {kind}");
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), original);
+    }
+}
+
+#[test]
+fn sequence_design_gc_unknown_output_and_unverified_search_claims_remain_explicit() {
+    let mut engine = GentleEngine::new();
+    let mut request = gc_request();
+    request.max_evaluations = 1;
+    let stopped = plan(&mut engine, request.clone());
+    assert_eq!(stopped.status, DnaDesignStatus::SearchExhausted);
+    assert!(stopped.approval_digest.is_none());
+    assert!(stopped.gc_content.unwrap().output.is_none());
+    request.max_evaluations = 4096;
+    let cancelled = engine
+        .plan_dna_sequence_design(request.clone(), |n| n == 2)
+        .unwrap();
+    assert_eq!(cancelled.status, DnaDesignStatus::Cancelled);
+    assert!(cancelled.output_sequence.is_none() && cancelled.approval_digest.is_none());
+    assert!(!cancelled.minimum_edits_proven && !cancelled.optimization_complete);
+    assert!(cancelled.gc_content.unwrap().output.is_none());
+    for (min, max, expected) in [
+        (5000, 4999, DnaDesignStatus::Invalid),
+        (1667, 1667, DnaDesignStatus::ProvenInfeasible),
+    ] {
+        request.gc_content = Some(DesignGcBounds {
+            min_basis_points: min,
+            max_basis_points: max,
+        });
+        let preview = plan(&mut engine, request.clone());
+        assert_eq!(preview.status, expected);
+        assert!(preview.approval_digest.is_none());
+        if expected == DnaDesignStatus::Invalid {
+            assert!(preview.gc_content.is_none());
+        } else {
+            assert!(preview.gc_content.unwrap().output.is_none());
+        }
+    }
+    // A client can submit a different valid nonminimum output. Constraint validity
+    // is verified, but its rehashed completeness/minimum claim is not authenticated.
+    request.gc_content = Some(DesignGcBounds {
+        min_basis_points: 1666,
+        max_basis_points: 2500,
+    });
+    let mut submitted = plan(&mut engine, request);
+    submitted.output_sequence = Some("ATGTTCAAGTAA".into());
+    submitted.output_sha256 = Some(sha256_prefixed_str("ATGTTCAAGTAA"));
+    submitted.edits = vec![
+        DesignNucleotideEdit {
+            position_0based: 5,
+            before: "T".into(),
+            after: "C".into(),
+        },
+        DesignNucleotideEdit {
+            position_0based: 8,
+            before: "A".into(),
+            after: "G".into(),
+        },
+    ];
+    submitted.gc_content.as_mut().unwrap().output = Some(DesignGcMeasurement {
+        gc_bases: 3,
+        satisfies_bounds: true,
+    });
+    submitted.approval_digest = Some(GentleEngine::dna_design_approval(&submitted).unwrap());
+    let receipt = apply(&mut engine, submitted)
+        .unwrap()
+        .dna_sequence_design_receipt
+        .unwrap();
+    assert!(receipt.output_constraints_verified && !receipt.search_claims_verified);
 }
 
 #[test]
@@ -36,6 +206,8 @@ fn sequence_design_conflict_search_is_explicit_bound_and_separately_approved() {
     assert_eq!(legacy.algorithm, core::ALGORITHM);
     let legacy_json = serde_json::to_value(&legacy).unwrap();
     assert!(legacy_json["request"].get("search_strategy").is_none());
+    assert!(legacy_json["request"].get("gc_content").is_none());
+    assert!(legacy_json.get("gc_content").is_none());
     let old_wire: DnaSequenceDesignReport = serde_json::from_value(legacy_json).unwrap();
     assert_eq!(
         GentleEngine::dna_design_approval(&old_wire).unwrap(),
@@ -486,17 +658,30 @@ fn sequence_design_unresolved_cancelled_invalid_and_unsupported_have_no_approval
 
 #[test]
 fn sequence_design_shared_shell_discovery_and_json_file_parity() {
-    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::FullEnumeration);
+    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::FullEnumeration, false);
 }
 
 #[test]
 fn sequence_design_conflict_shared_shell_discovery_and_json_file_parity() {
-    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::ConflictDirected);
+    assert_sequence_design_shell_parity(DnaDesignSearchStrategy::ConflictDirected, false);
 }
 
-fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy) {
+#[test]
+fn sequence_design_gc_shared_shell_discovery_and_json_file_parity() {
+    for strategy in [
+        DnaDesignSearchStrategy::FullEnumeration,
+        DnaDesignSearchStrategy::ConflictDirected,
+    ] {
+        assert_sequence_design_shell_parity(strategy, true);
+    }
+}
+
+fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy, gc: bool) {
     use crate::engine_shell::{execute_shell_command, parse_shell_line, quote_shell_arg};
     let mut request = request();
+    if gc {
+        request = gc_request();
+    }
     request.search_strategy = strategy;
     let directory = tempfile::tempdir().unwrap();
     let request_path = directory.path().join("request with apostrophe's.json");
@@ -536,7 +721,11 @@ fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy) {
     );
     assert_single_design_derivation(
         &shell_engine,
-        "synthetic_without_ecori",
+        if gc {
+            "synthetic_gc"
+        } else {
+            "synthetic_without_ecori"
+        },
         applied.output["result"]["op_id"].as_str().unwrap(),
     );
     assert!(parse_shell_line("sequence-design apply @preview.json").is_err());
@@ -560,6 +749,8 @@ fn assert_sequence_design_shell_parity(strategy: DnaDesignSearchStrategy) {
             .contains("search_strategy=conflict_directed")
     );
     assert!(text.contains("conflict_directed"));
+    assert!(text.contains("gc_content"));
+    assert!(crate::agent_bridge::AGENT_BRIDGE_SYSTEM_PROMPT.contains("min_basis_points"));
 }
 
 #[test]

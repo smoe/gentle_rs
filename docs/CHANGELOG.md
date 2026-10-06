@@ -1,5 +1,43 @@
 # GENtle Changelog
 
+## 2026-10-06 - Add Reviewed CDS-Wide GC Constraints To Synthetic Design
+
+- Implement the owner-approved GC slice after Claude's read-only review of
+  `dc8c5252`, rebased early onto fetched `main` `2f3a60f0`. Optional inclusive
+  basis-point bounds cover the complete declared CDS, including frozen bases,
+  not flanks. Convert once to integer count bounds; separate malformed input,
+  empty/unreachable counts, unresolved search and cancellation. Keep absent
+  GC/output facts distinct from zero and preserve GC-absent serialized approvals.
+- Both existing solvers, final validation and fresh apply use one motif/GC
+  predicate. Conflict search branches over all synonyms of direction-capable
+  codons, without assuming monotonic GC improvement; cursor-based DFS frames
+  avoid quadratic copied branch lists. Bind GC policy, algorithm identity and
+  rederived count facts to the reviewed proposal. Preserve main's verified-output
+  versus unverified-search distinction and one outer apply/undo/provenance boundary.
+- Add independent literal four/eight/36-state synthetic checks, exact integer
+  endpoints, coupled constraints, cancellation and honestly rehashed invalid
+  outputs/facts. Extend shared shell, direct CLI, confirmed MCP and inner-agent
+  discoverability without a new route/editor. Document a synthetic MFK walkthrough
+  in `docs/cli.md`, the existing design plan and shared interface/decision docs.
+  No dependencies, profiles, workflows, natural-gene fixtures or generated
+  catalogs change; this remains outside `.12` and is not DNA Chisel compatibility,
+  biological suitability, performance or independent acceptance evidence.
+- Necessary build prerequisite: repair `2f3a60f0`'s `DNAsequence::set_name` call
+  from `Option<String>` to the required `String`, after the focused root build
+  reproduced E0277. Correct two new test expectations: count apply's journal delta
+  after the recorded preview, and use exact 25% GC for the coupled MEF parity
+  fixture. The two pre-existing unrelated documentation deletions are untouched.
+- Verification on patched `2f3a60f0`, Darwin 27 arm64, Rust/Cargo
+  1.100.0-beta.1: all 43 focused Rust tests pass (17 core, three protocol,
+  17 engine/shell/MCP, three CLI, three glossary/docs); 25 Python tests pass with
+  three expected platform skips, including LF/CRLF checks. Canonical parity
+  freshness, locked offline Cargo check, formatting and whitespace pass.
+  Retain the known large `__eh_frame` linker warning. Session-close: four OK,
+  two warnings, no failures, for intentional dirty work and manual scope review.
+  Full workspace, native GUI/Windows/Linux/Pi, MSRV, script runtimes, upstream
+  comparison and Glen's exact-candidate/usefulness/performance verdict are unrun.
+  No commit, push, tag, dispatch or release acceptance is implied.
+
 ## 2026-10-06 - Separate Sequence-Design Validation From Search Claims
 
 - Address Glen's 2026-10-05 `needs_fix` audit: source inspection confirms both
