@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-06 - Correct The Sequence-Design Persistence Test's JSON Comparison
+
+- Keep the real project-byte serialization and reload, but compare the original
+  and reloaded typed states through the same JSON conversion. The previous
+  assertion mixed parsed decimal JSON with directly widened `f32` display
+  settings, making unchanged values such as opacity `0.9` compare unequal.
+- Preserve the exact submitted-preview, approval, receipt, container, lineage
+  and target-origin assertions for both inline and loaded sequence targets.
+  Production code, provenance policy, dependency locks and fixtures are unchanged.
+  Local Rust builds/tests remain deferred to CI under the owner's restriction;
+  source inspection identifies the assertion defect but is not an executed pass.
+
 ## 2026-10-06 - Require Exact UniProt Relations For Splicing Reference Evidence
 
 - Starting from `afbef444`, implement the owner's exact-relevance clarification,

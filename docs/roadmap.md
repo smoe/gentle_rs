@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-06 - Enforce exact transcript/stable Ensembl gene-ID relations for loaded UniProt relevance in the shared Splicing Expert payload, with source-bound evidence and legacy `not_evaluated` defaults. Glen/CI must run the new protocol/engine/shell/SVG/GUI-cache regressions; local Rust execution and live FLNA/readability acceptance remain deferred. Retain the [sequence-design review's](dna_sequence_optimization_plan.md#gc-review-reconciliation-2026-10-06) pending exact-SHA tests and all independent `.12` gates; no release or performance verdict is implied.
+Last session: 2026-10-06 - Preserve the exact UniProt relation work at `1142fc9a` and correct the saved sequence-design state comparison without mixing parsed JSON decimals and directly widened `f32` settings. Glen/CI must run the Splicing Expert protocol/engine/shell/SVG/GUI-cache regressions alongside tagged-metadata, saved-container/origin, detached/stale, exact GC work-budget and both-strategy rehashed-tamper checks at one frozen merged SHA. Local Rust execution, live FLNA/readability acceptance, independent native/usefulness/search audits and all `.12` gates remain pending; preserve feasible preview approvals and the [GC review reconciliation](dna_sequence_optimization_plan.md#gc-review-reconciliation-2026-10-06). No release or performance verdict is implied.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

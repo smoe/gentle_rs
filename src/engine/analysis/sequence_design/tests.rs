@@ -478,7 +478,11 @@ fn sequence_design_persisted_metadata_and_single_container_keep_target_origin() 
         assert!(serde_json::from_value::<DnaSequenceDesignMaterializationRecord>(unknown).is_err());
 
         let restored = GentleEngine::from_state(serde_json::from_slice(&encoded).unwrap());
-        assert_eq!(serde_json::to_value(restored.state()).unwrap(), saved_json);
+        // Compare typed states alike: to_value widens f32 instead of parsing its JSON decimal.
+        assert_eq!(
+            serde_json::to_value(restored.state()).unwrap(),
+            serde_json::to_value(engine.state()).unwrap()
+        );
         assert_single_design_derivation(&restored, &receipt.created_seq_id, &applied.op_id);
         let node = &restored.state.lineage.nodes
             [&restored.state.lineage.seq_to_node[&receipt.created_seq_id]];
