@@ -1,5 +1,33 @@
 # GENtle Changelog
 
+## 2026-10-06 - Close Sequence-Design Apply Ownership And Metadata Gaps
+
+- Reconcile Claude's `2f3a60f0` review on local `main` `164b44ce`, preserving
+  the newer GC constraints, search algorithms, preview/approval bytes and
+  default-false legacy receipt policy. Persist the unchanged submitted report
+  inside a typed `unverified_portable_preview` wrapper, separate from output
+  verification. Reject unknown receipt/wrapper fields and verified wrapper
+  variants; historical unlabelled metadata remains unverified, without migration.
+- Complete all fallible materialization and metadata serialization before state
+  insertion. Remove the inner detached fork/commit; the outer apply owns
+  journaling, undo, lineage and its named `Synthetic sequence design` singleton
+  container. Host-level detached execution retains its stale-result gate.
+  Inline DNA has `ImportedSynthetic` provenance; loaded DNA has `Derived`
+  provenance with the original source edge, not an invented inline parent.
+- Add four deterministic tests for unknown receipt fields, persisted JSON/reload
+  counts and both origins, successful detached apply/undo/redo, and stale
+  concurrent-edit/reopened-project rejection without leaking output or history.
+  Extend existing exact-apply, forged two-edit and shell/GC provenance assertions
+  for the named container and tagged preview. Keep synthetic inputs inline and
+  documented; no dependencies, adapters, fixtures or private reports change.
+- Formatting and whitespace checks pass. Rust builds, tests and Cargo check are
+  deliberately unrun under the owner's no-local-build restriction; the earlier
+  GC slice's results are not acceptance of this patch. The focused Glen/CI
+  commands are in `docs/dna_sequence_optimization_plan.md`. Preserve unrelated
+  `outputs/` and the pre-existing deleted internal-candidate handoff. The owner
+  requested this scoped commit; no push, tag, dispatch, performance claim or
+  `.12` acceptance is implied.
+
 ## 2026-10-06 - Add Reviewed CDS-Wide GC Constraints To Synthetic Design
 
 - Implement the owner-approved GC slice after Claude's read-only review of

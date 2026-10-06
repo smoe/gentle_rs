@@ -35,13 +35,19 @@ apply revalidates without rerunning search and creates one undoable derivation.
 The digest is a content binding, not an authenticated engine signature or proof
 of search history. Apply verifies output constraints and exact edits only;
 completeness, minimum-edit claims, search counts and reasons remain unverified.
-Retain the exact approved bytes as `submitted_proposal`, separate from the
-engine receipt (`output_constraints_verified=true`, `search_claims_verified=false`).
-Missing legacy verification fields establish no claim; historical `proposal`
+Retain the exact approved report content under
+`submitted_proposal={verification:"unverified_portable_preview",report:...}`,
+separate from the engine receipt (`output_constraints_verified=true`,
+`search_claims_verified=false`). The mandatory typed tag has no verified variant;
+it does not change preview or approval bytes. Missing legacy verification fields
+establish no claim; historical `proposal` or unlabelled `submitted_proposal`
 metadata must not be interpreted as engine-verified search evidence. One apply
-owns one derived sequence, one singleton container and one lineage node, all
-with the outer operation ID; materialization must not invoke nested public
-sequence-creation hooks.
+owns one new sequence, one named singleton container and one lineage node, all
+with the outer operation ID. Inline input has `ImportedSynthetic` provenance;
+loaded-source input has `Derived` provenance and a parent edge. All fallible
+materialization work precedes state mutation, with no nested public creation
+operation or inner detached commit. Host detached execution still checks the
+live project instance, structure and journal before committing the outer apply.
 Stale source annotations are omitted rather than inherited. No expression,
 splicing, folding or suitability claim follows from translation preservation.
 See [the scoped contract](dna_sequence_optimization_plan.md). This is outside

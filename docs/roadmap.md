@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-06 - Continue the experimental [sequence-design slices](dna_sequence_optimization_plan.md#cds-wide-gc-slice-2026-10-06) with reviewed, explicit CDS-wide GC bounds, joint motif/GC validation and both shared search strategies. Preserve `2f3a60f0`'s separation of output verification from submitted search claims, atomic apply/undo and GC-absent legacy approvals. Independent synthetic oracles and client-rehashed GC tests guard the slice; Glen's exact-SHA/native/usefulness audit and `.12` candidate gates remain pending, not implied by this outside-release development.
+Last session: 2026-10-06 - Reconcile Claude's [sequence-design apply follow-up](dna_sequence_optimization_plan.md#claude-follow-up-apply-metadata-and-execution-ownership) on local `main` `164b44ce`, preserving the GC slice and approval bytes. Glen/CI must run the new tagged-metadata, saved-container/origin and detached commit/stale-rejection regressions at one frozen SHA; local Rust builds/tests/checks were deliberately not run. Independent native/usefulness/search audits and `.12` candidate gates remain pending, not implied by this outside-release repair.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be

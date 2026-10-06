@@ -311,6 +311,7 @@ fn assert_single_design_derivation(engine: &GentleEngine, seq_id: &str, op_id: &
     assert_eq!(containers.len(), 1, "one apply must create one container");
     let container = containers[0];
     assert!(matches!(&container.kind, ContainerKind::Singleton));
+    assert_eq!(container.name.as_deref(), Some("Synthetic sequence design"));
     assert_eq!(container.members, vec![seq_id.to_string()]);
     assert_eq!(container.created_by_op.as_deref(), Some(op_id));
     assert_eq!(
@@ -330,7 +331,6 @@ fn assert_single_design_derivation(engine: &GentleEngine, seq_id: &str, op_id: &
         .collect::<Vec<_>>();
     assert_eq!(nodes.len(), 1, "one apply must create one lineage node");
     let node = nodes[0];
-    assert!(matches!(&node.origin, SequenceOrigin::Derived));
     assert_eq!(node.created_by_op.as_deref(), Some(op_id));
     assert_eq!(
         engine.state.lineage.seq_to_node.get(seq_id),
@@ -372,8 +372,12 @@ fn sequence_design_engine_preview_exact_apply_and_undo() {
     assert_eq!(&*dna.features()[0].kind, "CDS");
     let record = &engine.state.metadata[&format!("dna_sequence_design:{}", receipt.created_seq_id)];
     assert_eq!(
-        record["submitted_proposal"],
+        record["submitted_proposal"]["report"],
         serde_json::to_value(&preview).unwrap()
+    );
+    assert_eq!(
+        record["submitted_proposal"]["verification"],
+        "unverified_portable_preview"
     );
     assert!(record.get("proposal").is_none());
     let applied_state = serde_json::to_value(engine.state()).unwrap();
@@ -395,6 +399,189 @@ fn sequence_design_engine_preview_exact_apply_and_undo() {
     assert_single_design_derivation(&engine, &receipt.created_seq_id, &applied.op_id);
     assert_eq!(engine.journal.len(), journal_len + 1);
     assert_eq!(engine.undo_available(), undo_count + 1);
+}
+
+#[test]
+fn sequence_design_persisted_metadata_and_single_container_keep_target_origin() {
+    for loaded_source in [false, true] {
+        let mut engine = GentleEngine::new();
+        let mut request = request();
+        if loaded_source {
+            engine
+                .apply(Operation::CreateSequenceFromText {
+                    sequence_text: "ATGGAATTCTAA".into(),
+                    output_id: Some("synthetic_source".into()),
+                    name: None,
+                    circular: false,
+                })
+                .unwrap();
+            request.target = DnaDesignTarget::LoadedSequence {
+                seq_id: "synthetic_source".into(),
+            };
+        }
+        let preview = plan(&mut engine, request);
+        let approval = preview.approval_digest.clone().unwrap();
+        let applied = apply(&mut engine, preview.clone()).unwrap();
+        let receipt = applied.dna_sequence_design_receipt.unwrap();
+        let encoded = serde_json::to_vec(engine.state()).unwrap();
+        let saved_json: serde_json::Value = serde_json::from_slice(&encoded).unwrap();
+        let containers = saved_json["container_state"]["containers"]
+            .as_object()
+            .unwrap();
+        assert_eq!(containers.len(), if loaded_source { 2 } else { 1 });
+        assert_eq!(
+            containers
+                .values()
+                .filter(|container| container["created_by_op"] == applied.op_id)
+                .count(),
+            1
+        );
+        let metadata = saved_json["metadata"]
+            [&format!("dna_sequence_design:{}", receipt.created_seq_id)]
+            .clone();
+        let record: DnaSequenceDesignMaterializationRecord =
+            serde_json::from_value(metadata.clone()).unwrap();
+        let DnaSequenceDesignSubmittedProposal::UnverifiedPortablePreview { report } =
+            record.submitted_proposal;
+        assert_eq!(report, preview);
+        assert_eq!(
+            GentleEngine::dna_design_approval(&report).unwrap(),
+            approval
+        );
+        assert_eq!(record.receipt, receipt);
+        assert!(record.receipt.output_constraints_verified);
+        assert!(!record.receipt.search_claims_verified);
+
+        let mut unlabelled = metadata.clone();
+        unlabelled["submitted_proposal"] = serde_json::to_value(&preview).unwrap();
+        assert!(
+            serde_json::from_value::<DnaSequenceDesignMaterializationRecord>(unlabelled).is_err()
+        );
+        let mut falsely_verified = metadata.clone();
+        falsely_verified["submitted_proposal"]["verification"] = "engine_verified".into();
+        assert!(
+            serde_json::from_value::<DnaSequenceDesignMaterializationRecord>(falsely_verified)
+                .is_err()
+        );
+        let mut unknown = metadata;
+        unknown["submitted_proposal"]["search_verified"] = true.into();
+        assert!(serde_json::from_value::<DnaSequenceDesignMaterializationRecord>(unknown).is_err());
+
+        let restored = GentleEngine::from_state(serde_json::from_slice(&encoded).unwrap());
+        assert_eq!(serde_json::to_value(restored.state()).unwrap(), saved_json);
+        assert_single_design_derivation(&restored, &receipt.created_seq_id, &applied.op_id);
+        let node = &restored.state.lineage.nodes
+            [&restored.state.lineage.seq_to_node[&receipt.created_seq_id]];
+        if loaded_source {
+            assert!(matches!(node.origin, SequenceOrigin::Derived));
+            assert_eq!(restored.state.lineage.edges.len(), 1);
+            assert_eq!(
+                restored.state.sequences["synthetic_source"].get_forward_string(),
+                "ATGGAATTCTAA"
+            );
+        } else {
+            assert!(matches!(node.origin, SequenceOrigin::ImportedSynthetic));
+            assert!(restored.state.lineage.edges.is_empty());
+        }
+    }
+}
+
+#[test]
+fn sequence_design_detached_apply_commits_one_operation_and_undo() {
+    let mut live = GentleEngine::new();
+    let original = serde_json::to_value(live.state()).unwrap();
+    let preview = live.plan_dna_sequence_design(request(), |_| false).unwrap();
+    let mut detached = live.fork_detached_execution();
+    let applied = apply(detached.engine_mut(), preview).unwrap();
+    let receipt = applied.dna_sequence_design_receipt.unwrap();
+    assert_eq!(serde_json::to_value(live.state()).unwrap(), original);
+    assert_eq!(live.undo_available(), 0);
+    live.commit_detached_execution(&mut detached).unwrap();
+    assert_single_design_derivation(&live, &receipt.created_seq_id, &applied.op_id);
+    assert_eq!(live.state.container_state.containers.len(), 1);
+    assert_eq!(live.state.lineage.nodes.len(), 1);
+    assert_eq!(live.journal.len(), 1);
+    assert_eq!(live.undo_available(), 1);
+    let committed = serde_json::to_value(live.state()).unwrap();
+    live.undo_last_operation().unwrap();
+    assert_eq!(serde_json::to_value(live.state()).unwrap(), original);
+    assert!(live.journal.is_empty());
+    live.redo_last_operation().unwrap();
+    assert_eq!(serde_json::to_value(live.state()).unwrap(), committed);
+    assert_single_design_derivation(&live, &receipt.created_seq_id, &applied.op_id);
+    assert_eq!(live.journal.len(), 1);
+    assert_eq!(live.undo_available(), 1);
+}
+
+#[test]
+fn sequence_design_stale_detached_apply_never_leaks_into_live_project() {
+    for replace_project in [false, true] {
+        let mut live = GentleEngine::new();
+        let preview = live.plan_dna_sequence_design(request(), |_| false).unwrap();
+        let mut detached = live.fork_detached_execution();
+        let applied = apply(detached.engine_mut(), preview).unwrap();
+        let receipt = applied.dna_sequence_design_receipt.unwrap();
+        assert_single_design_derivation(detached.engine(), &receipt.created_seq_id, &applied.op_id);
+        assert!(receipt.output_constraints_verified && !receipt.search_claims_verified);
+        if replace_project {
+            let instance = live.instance_id();
+            live = GentleEngine::from_state(live.state().clone());
+            assert_ne!(live.instance_id(), instance);
+            assert_eq!(live.structural_revision(), 0);
+            assert_eq!(live.journal.len(), 0);
+        } else {
+            live.apply(Operation::CreateSequenceFromText {
+                sequence_text: "ACGT".into(),
+                output_id: Some("concurrent_synthetic_input".into()),
+                name: None,
+                circular: false,
+            })
+            .unwrap();
+        }
+        let before = serde_json::to_value(&live).unwrap();
+        let revisions_and_history = (
+            live.execution_revision(),
+            live.mutation_revision(),
+            live.structural_revision(),
+            live.undo_available(),
+            live.redo_available(),
+        );
+        let error = live.commit_detached_execution(&mut detached).unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("stale"));
+        assert_eq!(serde_json::to_value(&live).unwrap(), before);
+        assert_eq!(
+            (
+                live.execution_revision(),
+                live.mutation_revision(),
+                live.structural_revision(),
+                live.undo_available(),
+                live.redo_available(),
+            ),
+            revisions_and_history
+        );
+        assert!(!live.state.sequences.contains_key(&receipt.created_seq_id));
+        assert!(
+            !live
+                .state
+                .metadata
+                .contains_key(&format!("dna_sequence_design:{}", receipt.created_seq_id))
+        );
+        assert!(
+            !live
+                .state
+                .lineage
+                .seq_to_node
+                .contains_key(&receipt.created_seq_id)
+        );
+        assert!(
+            live.state
+                .container_state
+                .containers
+                .values()
+                .all(|container| !container.members.contains(&receipt.created_seq_id))
+        );
+    }
 }
 
 #[test]
@@ -489,8 +676,12 @@ fn sequence_design_rehashed_nonminimum_output_does_not_verify_search_claims() {
         let record =
             &engine.state.metadata[&format!("dna_sequence_design:{}", receipt.created_seq_id)];
         assert_eq!(
-            record["submitted_proposal"],
+            record["submitted_proposal"]["report"],
             serde_json::to_value(&submitted).unwrap()
+        );
+        assert_eq!(
+            record["submitted_proposal"]["verification"],
+            "unverified_portable_preview"
         );
         assert_eq!(record["receipt"], serde_json::to_value(&receipt).unwrap());
         assert!(record.get("proposal").is_none());

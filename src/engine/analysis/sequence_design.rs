@@ -336,7 +336,7 @@ impl GentleEngine {
         })
     }
 
-    /// Materialize validated bytes without nested public-operation hooks.
+    /// Materialize validated bytes without nested operations or detached commits.
     /// The outer apply owns lineage, container creation, journaling and undo.
     pub(super) fn materialize_approved_dna_design(
         &mut self,
@@ -482,17 +482,26 @@ impl GentleEngine {
                 ("note".into(), Some(receipt.nonclaims.join(" "))),
             ],
         }];
-        let mut detached = self.fork_detached_execution();
-        let engine = detached.engine_mut();
-        engine
-            .state_mut()
+        let record = serde_json::to_value(DnaSequenceDesignMaterializationRecord {
+            submitted_proposal: DnaSequenceDesignSubmittedProposal::UnverifiedPortablePreview {
+                report: proposal,
+            },
+            receipt: receipt.clone(),
+        })
+        .map_err(|error| EngineError {
+            code: ErrorCode::Internal,
+            message: format!("Could not serialize sequence-design materialization: {error}"),
+            cause_chain: vec![],
+        })?;
+        // All fallible work precedes mutation; the outer apply owns its checkpoint
+        // and any host-level detached commit, without another fork inside it.
+        self.state
             .sequences
             .insert(receipt.created_seq_id.clone(), dna);
-        engine.state.metadata.insert(
+        self.state.metadata.insert(
             format!("dna_sequence_design:{}", receipt.created_seq_id),
-            serde_json::json!({"submitted_proposal": proposal, "receipt": receipt}),
+            record,
         );
-        self.commit_detached_execution(&mut detached)?;
         Ok(receipt)
     }
 }

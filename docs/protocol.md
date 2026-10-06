@@ -54,7 +54,12 @@ Approval binds the complete report with only its approval field cleared. Apply
 rechecks live source/table/protection and fully evaluates approved output, then
 creates one undoable, lineage-linked sequence and metadata receipt. Its single
 singleton container and lineage node use the outer apply operation ID; no
-nested creation operation is recorded. Existing output IDs are refused;
+nested creation operation or inner detached commit is used. The container is
+named `Synthetic sequence design`. Inline input creates an `ImportedSynthetic`
+node without a parent; loaded input creates a `Derived` node with the bound
+source edge. All fallible validation/materialization/metadata serialization
+precedes state insertion; host-level detached execution still rejects stale
+project instances, structure or journals. Existing output IDs are refused;
 stale biological features are not copied. Only the
 explicit synthetic CDS/translation/code and non-claims are newly annotated.
 
@@ -63,12 +68,19 @@ not re-prove a preview's completeness/minimum, evaluation counts or reason.
 New receipts emit `output_constraints_verified=true` and
 `search_claims_verified=false`, plus an explicit non-claim. Both fields default
 to false when absent in legacy receipts: absence is not verification or proof
-that DNA constraints failed. The persisted `dna_sequence_design:OUTPUT_ID`
-record holds `submitted_proposal` (the unchanged caller-supplied approved
-preview, including unverified claims) and `receipt` (apply-time checks).
-Historical records using `proposal` are unverified search evidence too; they
-are not rewritten or promoted to verified reports. Request/preview schemas and
-approval bytes are unchanged. Neither portable reports nor receipts are signed.
+that DNA constraints failed. Receipts reject unknown fields, including invented
+verification claims, while retaining those additive v1 defaults.
+The persisted `dna_sequence_design:OUTPUT_ID` is a typed
+`DnaSequenceDesignMaterializationRecord`: its `submitted_proposal.verification`
+must be `unverified_portable_preview`, and `submitted_proposal.report` retains
+the unchanged caller-supplied approved preview, including unverified claims.
+Its sibling `receipt` contains only the apply-time checks. The wrapper rejects
+unknown fields and has no verified variant. Historical `proposal` or unlabelled
+`submitted_proposal` records remain inspectable raw metadata, not valid new
+typed materialization records or verified search evidence. They are not
+rewritten or given a dual-read authority path. Request/preview schemas and
+approval bytes are unchanged; the wrapper is outside the approval basis.
+Neither portable reports nor receipts are signed.
 
 Supported scope, resource limits, scientific non-claims and unresolved versus
 infeasible semantics are defined in the [design contract](dna_sequence_optimization_plan.md).

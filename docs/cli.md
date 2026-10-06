@@ -22,9 +22,14 @@ The approval digest binds reviewed bytes, not proof that GENtle produced their
 search claims. Apply freshly verifies DNA constraints and exact edits, but does
 not verify completeness or minimum edits, even for an unchanged preview.
 Its receipt says `output_constraints_verified=true` and
-`search_claims_verified=false`. The retained `submitted_proposal` is explicitly
+`search_claims_verified=false`. Stored metadata places the approved report under
+`submitted_proposal.report` with the mandatory tag
+`submitted_proposal.verification="unverified_portable_preview"`. This is
 unverified search evidence, not a new engine-certified optimization report.
-Legacy records without these fields establish no verification claim. A valid
+Legacy receipts without verification fields and old unlabelled metadata
+establish no verification claim. The single output container is named
+`Synthetic sequence design`; inline input has synthetic-import provenance,
+while loaded input retains a derived-source edge. A valid
 two-edit output may be approved/applied even if a one-edit alternative exists;
 application must not turn a submitted minimum claim into proof of optimality.
 

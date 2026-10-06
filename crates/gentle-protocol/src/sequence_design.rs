@@ -171,6 +171,7 @@ pub struct DnaSequenceDesignReport {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DnaSequenceDesignReceipt {
     pub schema: String,
     pub approval_digest: String,
@@ -185,6 +186,22 @@ pub struct DnaSequenceDesignReceipt {
     #[serde(default)]
     pub search_claims_verified: bool,
     pub nonclaims: Vec<String>,
+}
+
+/// Submitted preview content, never authenticated or re-proven by apply.
+/// The tag is mandatory and deliberately has no verified variant.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "verification", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DnaSequenceDesignSubmittedProposal {
+    UnverifiedPortablePreview { report: DnaSequenceDesignReport },
+}
+
+/// Persisted `dna_sequence_design:OUTPUT_ID` metadata, separate from approval bytes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DnaSequenceDesignMaterializationRecord {
+    pub submitted_proposal: DnaSequenceDesignSubmittedProposal,
+    pub receipt: DnaSequenceDesignReceipt,
 }
 
 #[cfg(test)]
@@ -209,6 +226,25 @@ mod tests {
             serde_json::from_value(serde_json::to_value(&receipt).unwrap()).unwrap();
         assert_eq!(roundtrip, receipt);
         assert!(!roundtrip.search_claims_verified);
+    }
+
+    #[test]
+    fn sequence_design_receipt_rejects_unknown_verification_fields() {
+        // Synthetic receipt, recreated literally; not a scientific result.
+        let receipt = serde_json::json!({
+            "schema": RECEIPT_SCHEMA,
+            "approval_digest": "sha256:synthetic-example",
+            "created_seq_id": "synthetic_without_ecori",
+            "output_sha256": "sha256:synthetic-output",
+            "output_constraints_verified": true,
+            "search_claims_verified": false,
+            "nonclaims": []
+        });
+        let decoded: DnaSequenceDesignReceipt = serde_json::from_value(receipt.clone()).unwrap();
+        assert_eq!(serde_json::to_value(decoded).unwrap(), receipt);
+        let mut unknown = receipt;
+        unknown["minimum_edits_verified"] = true.into();
+        assert!(serde_json::from_value::<DnaSequenceDesignReceipt>(unknown).is_err());
     }
 
     #[test]

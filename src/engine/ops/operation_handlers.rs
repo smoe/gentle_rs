@@ -51617,19 +51617,20 @@ impl GentleEngine {
                     proposal,
                     approval_digest,
                 } => {
-                    if let gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
-                        seq_id,
-                    } = &proposal.request.target
-                    {
-                        parent_seq_ids.push(seq_id.clone());
-                    }
+                    let origin = match &proposal.request.target {
+                        gentle_protocol::sequence_design::DnaDesignTarget::LoadedSequence {
+                            seq_id,
+                        } => {
+                            parent_seq_ids.push(seq_id.clone());
+                            SequenceOrigin::Derived
+                        }
+                        gentle_protocol::sequence_design::DnaDesignTarget::InlineSequence {
+                            ..
+                        } => SequenceOrigin::ImportedSynthetic,
+                    };
                     let receipt =
                         self.materialize_approved_dna_design(*proposal, &approval_digest)?;
-                    self.add_lineage_node(
-                        &receipt.created_seq_id,
-                        SequenceOrigin::Derived,
-                        Some(&result.op_id),
-                    );
+                    self.add_lineage_node(&receipt.created_seq_id, origin, Some(&result.op_id));
                     result.created_seq_ids.push(receipt.created_seq_id.clone());
                     result.messages.push("Created exactly approved synthetic DNA; output constraints verified, search completeness/minimum edits unverified; source annotations omitted and experimental suitability not assessed".into());
                     result.dna_sequence_design_receipt = Some(receipt);

@@ -234,20 +234,26 @@ Only `feasible` reports carry `approval_digest`.
 `ApplyDnaSequenceDesign` / `sequence-design apply --approve DIGEST` is a separate
 explicit mutation. It rechecks digest, source bytes, source annotations/topology,
 current mapping and policies, and freshly validates approved output/edits.
-It never reruns optimization. The exact unused output ID is created in detached
-execution, checked before one undoable commit, with source lineage and retained
-`gentle.dna_sequence_design_receipt.v1`. Original DNA remains unchanged.
-One outer apply owns the journal/undo entry, derived lineage node and singleton
-container; their operation IDs agree, without nested public creation hooks.
+It never reruns optimization. All fallible validation, materialization and
+metadata serialization finish before state insertion. One outer apply owns the
+journal/undo entry, lineage node and singleton container named
+`Synthetic sequence design`; their operation IDs agree, without nested public
+creation hooks or an inner detached commit. Inline input has `ImportedSynthetic`
+provenance, while loaded-source input has `Derived` provenance and a parent edge.
+Host detached execution still checks live project/structure/journal identity
+before publishing. The retained `gentle.dna_sequence_design_receipt.v1` does not
+change the original DNA.
 
 The approval digest identifies reviewed content, not authenticated search
 provenance. A caller can change a valid output and recompute that digest, so
 apply must not certify the preview's completeness/minimum, counts or reason.
 The engine receipt records `output_constraints_verified=true` and
 `search_claims_verified=false`. The exact approved preview is retained only as
-`submitted_proposal`, separate from apply-time checks; no false proof is copied
-into an engine-verified report. Missing legacy receipt fields and historical
-`proposal` metadata establish no search-verification claim. This does not reject
+`submitted_proposal.report`, with the mandatory typed
+`verification="unverified_portable_preview"` tag, separate from apply-time
+checks; no false proof is copied into an engine-verified report. Missing legacy
+receipt fields and historical `proposal` or unlabelled `submitted_proposal`
+metadata establish no search-verification claim. This does not reject
 valid non-minimum DNA or rerun either solver. Preview/approval bytes remain
 unchanged; serialized receipts themselves are not authenticated signatures.
 
@@ -440,3 +446,35 @@ motif-only evidence does not certify the GC slice or its search claims.
 3. Sliding-window GC, codon harmonization/adaptation, distant repeat/hairpin interactions,
    RNA folding, other initiation/codes and DNA Chisel comparison remain explicit
    follow-ups with their own contracts, not unfinished obligations of this slice.
+
+## Claude Follow-Up: Apply Metadata And Execution Ownership
+
+The follow-up to `2f3a60f0` starts from local `main` `164b44ce`, preserving the
+new CDS-wide GC constraints. Persist a typed, explicitly unverified preview
+wrapper; reject unknown receipt/wrapper fields without changing preview digests
+or the legacy default-false receipt policy. Remove the inner materialization
+fork: validation and metadata serialization finish before mutation, and the
+outer operation/host retain journaling, undo and stale-result checks. Name the
+single container and distinguish inline synthetic imports from loaded-source
+derivations. No migration of historical metadata, solver or adapter change.
+
+Added deterministic regressions cover persisted JSON/reload counts and origins,
+wrapper refusal of unlabelled/verified/unknown-field variants, unchanged approval
+content, successful detached commit/undo/redo, stale structural and reopened-
+project rejection without leaked output/metadata/provenance, and unknown receipt
+fields. The forged two-edit and current GC tests remain in the same focused set.
+
+No local Rust builds/tests/checks are run under the owner's restriction. The
+previous GC slice's recorded passes do not validate this patch. Glen/CI should
+run the following on one frozen committed revision and report its SHA/platform;
+these are acceptance instructions, not local pass claims:
+
+```sh
+cargo test -p gentle-protocol --locked --offline -j 1 sequence_design
+cargo test --lib --no-default-features --locked --offline -j 1 sequence_design -- --test-threads=1
+cargo test --bin gentle_cli --no-default-features --locked --offline -j 1 sequence_design -- --test-threads=1
+cargo check -q --locked --offline -j 1
+```
+
+Live GUI, native-platform packaging, independent search/usefulness/performance
+and `.12` acceptance remain separate. No private reports are regenerated.
