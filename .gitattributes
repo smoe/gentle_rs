@@ -23,6 +23,10 @@ docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/pa
 docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_sybr_juc_panel.report.json text eol=lf
 
 # Public GUI evidence records exact hashes for these LF-authored text artifacts.
+docs/screenshots/tutorial_gui_acceptance/**/*.svg text eol=lf
+docs/screenshots/tutorial_gui_acceptance/**/*.snapshot.json text eol=lf
+docs/screenshots/promoter_similarity_gui/**/*.svg text eol=lf
+docs/screenshots/promoter_similarity_gui/**/*.snapshot.json text eol=lf
 docs/screenshots/gene_assay_study_gui/*.snapshot.json text eol=lf
 docs/screenshots/gene_assay_study_gui/*.context.svg text eol=lf
 docs/screenshots/tss_regulatory_view_gui/*.snapshot.json text eol=lf

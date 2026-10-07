@@ -16,6 +16,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import xml.etree.ElementTree as ET
+import zlib
 
 from scripts import check_tutorial_checkouts as checker
 
@@ -441,7 +442,7 @@ class TutorialCheckoutTests(unittest.TestCase):
                     "-m", "retained TP73 TSS and Simple PCR evidence")
 
         scopes = (b"docs/screenshots/tp73_dnp73_factor_curves/",
-                  b"docs/screenshots/tutorial_gui_acceptance/simple_pcr_selection_gui/",
+                  b"docs/screenshots/tutorial_gui_acceptance/",
                   b"test_files/tp73.ncbi.gb")
         unprotected = b"\n".join(
             line for line in attributes.split(b"\n")
@@ -505,8 +506,10 @@ class TutorialCheckoutTests(unittest.TestCase):
 
     def test_replay_uses_existing_binary_and_forces_offline(self):
         with patch.dict(os.environ, {"GENTLE_TEST_ONLINE": "1"}), \
+                patch.object(checker, "check_tutorial_visuals") as visuals, \
                 patch.object(checker.subprocess, "run") as run:
             checker.check_checkout(Path("existing-binary"), self.root, "crlf", 12)
+        visuals.assert_called_once_with(self.root)
         self.assertEqual([call.args[0] for call in run.call_args_list],
                          [["existing-binary", "parity-matrix-check"],
                           ["existing-binary", "tutorial-catalog-check"],
@@ -573,6 +576,7 @@ class TutorialCheckoutTests(unittest.TestCase):
                       subprocess.TimeoutExpired("validator", 12)):
             for failed_call in (0, 1, 2, 3):
                 with self.subTest(error=type(error).__name__, failed_call=failed_call), \
+                        patch.object(checker, "check_tutorial_visuals"), \
                         patch.object(checker.subprocess, "run",
                                      side_effect=[None] * failed_call + [error]) as run:
                     with self.assertRaisesRegex(RuntimeError, "crlf checkout failed"):
@@ -593,6 +597,328 @@ class TutorialCheckoutTests(unittest.TestCase):
                 patch.object(checker, "check_checkout", side_effect=[None, RuntimeError("crlf failed")]):
             with self.assertRaisesRegex(RuntimeError, "crlf failed"):
                 checker.main(arguments)
+
+
+class TutorialVisualContractTests(unittest.TestCase):
+    """Literal synthetic docs/images, created only in temporary directories.
+
+    Recreation is the setup below: two unrelated generated chapters, one manual
+    page and an image-free reference. No biological identifiers or GUI captures.
+    Real repository assets are used only by the named archive/checkout checks.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="gentle-visual-test-")
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name) / "source"
+        self.root.mkdir()
+        self.svg = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><text x="1" y="5">Synthetic</text></svg>\n'
+        self.write("docs/figures/synthetic.svg", self.svg)
+        self.write("docs/screenshots/legacy.png", self.png())
+        self.sources = []
+        for identifier in ("unrelated_alpha", "unrelated_beta"):
+            self.sources.append({"schema": "gentle.tutorial_source.v4", "id": identifier,
+                                 "graphics": [{"kind": "generated", "path": "docs/figures/synthetic.svg",
+                                               "caption": "Synthetic figure", "illustrates_step": 2}],
+                                 "catalog": {"path": f"docs/tutorial/generated/chapters/{identifier}.md",
+                                             "type": "executable_chapter"},
+                                 "generated_chapter": {"gui_steps": ["First", "Second"]}})
+            self.generated_page(identifier)
+        self.sources.append({"schema": "gentle.tutorial_source.v4", "id": "manual",
+                             "catalog": {"path": "docs/tutorial/manual.md", "type": "gui_walkthrough"},
+                             "graphics": [{"kind": "screenshot", "path": "docs/screenshots/legacy.png",
+                                           "caption": "Historical capture, not current acceptance",
+                                           "illustrates_step": 1, "capture_date": "2026-01-02"}]})
+        self.write("docs/tutorial/manual.md", b'# Manual\n\n![Historical capture](../screenshots/legacy.png)\n')
+        self.sources.append({"schema": "gentle.tutorial_source.v4", "id": "reference",
+                             "catalog": {"path": "docs/tutorial/reference.md", "type": "operational_reference"}})
+        self.write("docs/tutorial/reference.md", b'# Reference\nNo decorative images needed.\n')
+        self.sync()
+
+    @staticmethod
+    def png(width=1, height=1):
+        def chunk(kind, data):
+            return len(data).to_bytes(4, "big") + kind + data + zlib.crc32(kind + data).to_bytes(4, "big")
+        header = width.to_bytes(4, "big") + height.to_bytes(4, "big") + bytes([8, 6, 0, 0, 0])
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+                + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00\xff")) + chunk(b"IEND", b""))
+
+    def write(self, relative, payload):
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        return path
+
+    def sync(self):
+        entries, chapters = [], []
+        for source in self.sources:
+            self.write(f"docs/tutorial/sources/{source['id']}.json", json.dumps(source).encode() + b"\n")
+            entries.append({"id": source["id"], **source["catalog"], "graphics": source.get("graphics", [])})
+            if "generated_chapter" in source:
+                chapters.append({"id": source["id"], **source["generated_chapter"], "graphics": source.get("graphics", [])})
+        self.write("docs/tutorial/catalog.json", json.dumps({"schema": "gentle.tutorial_catalog.v2", "entries": entries}).encode() + b"\n")
+        self.write("docs/tutorial/manifest.json", json.dumps({"schema": "gentle.tutorial_manifest.v2", "chapters": chapters}).encode() + b"\n")
+
+    def generated_page(self, identifier, image_step=2, duplicate=False):
+        image = '![Synthetic figure](../../../figures/synthetic.svg)\n'
+        text = (f'---\nchapter_id: "{identifier}"\n---\n\n## Walkthrough: GUI, CLI and Inner Agent\n'
+                + '### Step 1: First\n' + (image if image_step == 1 else '')
+                + '### Step 2: Second\n' + (image if image_step == 2 or duplicate else '')
+                + '## Appendix\n')
+        self.write(f"docs/tutorial/generated/chapters/{identifier}.md", text.encode())
+
+    def screenshot(self):
+        raw = self.write("docs/screenshots/synthetic/capture.raw.png", self.png())
+        snapshot = self.write("docs/screenshots/synthetic/capture.snapshot.json", b'{"synthetic": true}\n')
+        record = {"schema": "gentle.tutorial_gui_screenshot_evidence.v1", "source_revision": "12" * 20,
+                  "gentle_binary_sha256": "ab" * 32, "tutorial_manifest_sha256": "cd" * 32,
+                  "acceptance_contract_sha256": "ef" * 32, "step_sha256": "34" * 32,
+                  "chapter_id": "manual", "step_id": "capture", "prose_step": 1,
+                  "capture": {"captured_at_unix_ms": 1767312000000,
+                              "raw": {"path": "/original-private-run/capture.raw.png",
+                                      "sha256": hashlib.sha256(raw.read_bytes()).hexdigest()}},
+                  "derived_views": [],
+                  "semantic_snapshot": {"retained_path": "/original-private-run/capture.snapshot.json",
+                                        "retained_file_sha256": hashlib.sha256(snapshot.read_bytes()).hexdigest()}}
+        self.write("docs/screenshots/synthetic/capture.screenshot.json", json.dumps(record).encode() + b"\n")
+        self.sources[2]["graphics"][0]["path"] = "docs/screenshots/synthetic/capture.raw.png"
+        self.write("docs/tutorial/manual.md", b'![Historical capture](../screenshots/synthetic/capture.raw.png)\n')
+        self.sync()
+        return record
+
+    def test_synthetic_coverage_is_generic_and_reference_needs_no_image(self):
+        report = checker.check_tutorial_visuals(self.root)
+        self.assertEqual(report["declared_visual_count"], 3)
+        rows = {row["id"]: row for row in report["tutorials"]}
+        for identifier in ("unrelated_alpha", "unrelated_beta"):
+            self.assertEqual(rows[identifier]["visuals"][0]["step"], 2)
+        self.assertEqual(rows["reference"]["visuals"], [])
+        self.assertEqual(rows["manual"]["visuals"][0]["status"], "legacy_date_only_not_acceptance")
+
+    def test_real_catalog_and_nondefault_generated_chapters_are_checked(self):
+        report = checker.check_tutorial_visuals(checker.ROOT)
+        rows = {row["id"]: row for row in report["tutorials"]}
+        self.assertTrue(rows["tp53_isoform_architecture_online"]["visuals"])
+        self.assertTrue(rows["patz1_gene_locus_evidence_offline"]["visuals"])
+        self.assertIn("not current-candidate", report["non_claim"])
+
+    def test_missing_asset_and_unsafe_paths_fail(self):
+        for target in ("docs/figures/missing.svg", "../outside.svg", "/tmp/outside.svg",
+                       "C:\\outside.png", "docs/figures/../../outside.svg", "test_files/image.png"):
+            with self.subTest(target=target), self.assertRaisesRegex(RuntimeError, "tutorial visual"):
+                checker.visual_path(self.root, target)
+
+    def test_symlink_asset_escape_is_refused(self):
+        outside = Path(self.tmp.name) / "outside.svg"
+        outside.write_bytes(self.svg)
+        link = self.root / "docs/figures/linked.svg"
+        try:
+            link.symlink_to(outside)
+        except OSError:
+            self.skipTest("Host cannot create a symlink")
+        with self.assertRaisesRegex(RuntimeError, "unsafe_path"):
+            checker.visual_path(self.root, "docs/figures/linked.svg")
+
+    def test_png_signature_dimensions_and_header_integrity(self):
+        for payload in (b"not a PNG", self.png()[:24], self.png(width=0),
+                        self.png()[:20] + b"\0\0\0\2" + self.png()[24:]):
+            path = self.write("docs/screenshots/broken.png", payload)
+            with self.subTest(payload=payload[:24]), self.assertRaisesRegex(RuntimeError, "invalid_png"):
+                checker.inspect_visual_asset(self.root, path)
+
+    def test_svg_structure_dimensions_entities_and_budget(self):
+        invalid = (b"<svg>", b'<svg xmlns="http://www.w3.org/2000/svg"/>',
+                   b'<svg viewBox="0 0 NaN 10"/>', b'<svg viewBox="0 0 -1 10"/>',
+                   b'<svg width="100%" height="100%"/>', b'<other viewBox="0 0 20 10"/>',
+                   b'<!DOCTYPE svg [<!ENTITY x "test">]><svg viewBox="0 0 20 10"/>')
+        for payload in invalid:
+            path = self.write("docs/figures/broken.svg", payload)
+            with self.subTest(payload=payload), self.assertRaisesRegex(RuntimeError, "tutorial visual"):
+                checker.inspect_visual_asset(self.root, path)
+        path = self.write("docs/figures/explicit.svg", b'<svg width="20px" height="10pt"/>')
+        self.assertEqual(checker.inspect_visual_asset(self.root, path)["format"], "svg")
+        with patch.object(checker, "MAX_SVG_BYTES", 1), self.assertRaisesRegex(RuntimeError, "svg_size_budget"):
+            checker.inspect_visual_asset(self.root, path)
+
+    def test_remote_svg_image_is_refused_without_network(self):
+        path = self.write("docs/figures/remote.svg", b'<svg viewBox="0 0 20 10"><image href="https://example.invalid/a.png"/></svg>')
+        with self.assertRaisesRegex(RuntimeError, "unsafe_path"):
+            checker.inspect_visual_asset(self.root, path)
+
+    def test_missing_and_malformed_metadata_has_specific_errors(self):
+        original = dict(self.sources[0]["graphics"][0])
+        for field, value, code in (("caption", "", "missing_caption"), ("path", None, "unsafe_path"),
+                                   ("illustrates_step", 0, "invalid_step"), ("illustrates_step", True, "invalid_step"),
+                                   ("kind", "unknown", "invalid_kind")):
+            self.sources[0]["graphics"][0] = {**original, field: value}
+            self.sync()
+            with self.subTest(field=field, value=value), self.assertRaisesRegex(RuntimeError, code):
+                checker.check_tutorial_visuals(self.root)
+
+    def test_generated_placement_is_step_bound_and_unique(self):
+        self.generated_page("unrelated_beta", image_step=1)
+        with self.assertRaisesRegex(RuntimeError, "wrong_step_placement"):
+            checker.check_tutorial_visuals(self.root)
+        self.generated_page("unrelated_beta", image_step=1, duplicate=True)
+        with self.assertRaisesRegex(RuntimeError, "duplicate_step_placement"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_wrong_metadata_container_type_is_actionable(self):
+        self.sources[0]["graphics"] = None
+        self.sync()
+        with self.assertRaisesRegex(RuntimeError, "invalid_metadata"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_manifest_cannot_drop_graphics_metadata(self):
+        path = self.root / "docs/tutorial/manifest.json"
+        manifest = json.loads(path.read_bytes())
+        manifest["chapters"][1]["graphics"] = []
+        path.write_bytes(json.dumps(manifest).encode())
+        with self.assertRaisesRegex(RuntimeError, "metadata_projection_mismatch"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_figure_cannot_be_called_a_gui_screenshot(self):
+        self.sources[0]["graphics"][0].update(kind="screenshot", capture_date="2026-01-02")
+        self.sync()
+        with self.assertRaisesRegex(RuntimeError, "figure_as_screenshot"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_generated_figure_cannot_borrow_capture_metadata(self):
+        self.sources[0]["graphics"][0]["capture_date"] = "2026-01-02"
+        self.sync()
+        with self.assertRaisesRegex(RuntimeError, "screenshot_as_figure"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_capture_date_is_required_and_valid(self):
+        for date in (None, "", "2026-02-30"):
+            self.sources[2]["graphics"][0]["capture_date"] = date
+            self.sync()
+            with self.subTest(date=date), self.assertRaisesRegex(RuntimeError, "missing_capture_date"):
+                checker.check_tutorial_visuals(self.root)
+
+    def test_retained_capture_identity_and_hashes_are_not_current_acceptance(self):
+        record = self.screenshot()
+        report = checker.check_tutorial_visuals(self.root)
+        visual = next(row for row in report["tutorials"] if row["id"] == "manual")["visuals"][0]
+        self.assertEqual(visual["status"], "historical_provenance_bound")
+        self.assertEqual(visual["revision"], record["source_revision"])
+        self.write("docs/screenshots/synthetic/capture.raw.png", self.png(height=2))
+        with self.assertRaisesRegex(RuntimeError, "capture_hash_mismatch"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_required_capture_provenance_and_snapshot_cannot_disappear(self):
+        record = self.screenshot()
+        sidecar = "docs/screenshots/synthetic/capture.screenshot.json"
+        for field in ("source_revision", "gentle_binary_sha256", "step_sha256", "prose_step"):
+            changed = dict(record)
+            changed.pop(field)
+            self.write(sidecar, json.dumps(changed).encode())
+            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, "missing_capture"):
+                checker.check_tutorial_visuals(self.root)
+        self.write(sidecar, json.dumps(record).encode())
+        (self.root / "docs/screenshots/synthetic/capture.snapshot.json").unlink()
+        with self.assertRaisesRegex(RuntimeError, "missing_capture_snapshot"):
+            checker.check_tutorial_visuals(self.root)
+        (self.root / sidecar).unlink()
+        with self.assertRaisesRegex(RuntimeError, "missing_capture_provenance"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_malformed_capture_field_types_are_actionable(self):
+        record = self.screenshot()
+        sidecar = "docs/screenshots/synthetic/capture.screenshot.json"
+        for field, value in (("source_revision", None), ("chapter_id", 1), ("capture", None),
+                             ("derived_views", None), ("derived_views", [None]),
+                             ("semantic_snapshot", None)):
+            self.write(sidecar, json.dumps({**record, field: value}).encode())
+            with self.subTest(field=field), self.assertRaisesRegex(RuntimeError, "missing_capture"):
+                checker.check_tutorial_visuals(self.root)
+        capture = {**record["capture"], "captured_at_unix_ms": 10 ** 100}
+        self.write(sidecar, json.dumps({**record, "capture": capture}).encode())
+        with self.assertRaisesRegex(RuntimeError, "missing_capture_date"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_manual_archive_cannot_bind_an_unrelated_same_named_asset(self):
+        path = self.root / "docs/screenshots/legacy.png"
+        record = {"schema": "synthetic.manual_archive.v1",
+                  "producer": {"revision": "12" * 20, "gentle_gui_sha256": "ab" * 32},
+                  "raw_png": "docs/screenshots/unrelated/legacy.png",
+                  "raw_png_sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        self.write("docs/screenshots/evidence.json", json.dumps(record).encode())
+        with self.assertRaisesRegex(RuntimeError, "capture_hash_mismatch"):
+            checker.check_tutorial_visuals(self.root)
+        record["raw_png"] = "legacy.png"
+        self.write("docs/screenshots/evidence.json", json.dumps(record).encode())
+        report = checker.check_tutorial_visuals(self.root)
+        visual = next(row for row in report["tutorials"] if row["id"] == "manual")["visuals"][0]
+        self.assertEqual(visual["status"], "historical_manual_bound")
+
+    def test_capture_snapshot_symlink_cannot_escape_asset_roots(self):
+        self.screenshot()
+        snapshot = self.root / "docs/screenshots/synthetic/capture.snapshot.json"
+        outside = Path(self.tmp.name) / "outside.snapshot.json"
+        outside.write_bytes(snapshot.read_bytes())
+        snapshot.unlink()
+        try:
+            snapshot.symlink_to(outside)
+        except OSError:
+            self.skipTest("Host cannot create a symlink")
+        with self.assertRaisesRegex(RuntimeError, "unsafe_path"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_manual_markdown_links_and_hash_bound_crops_survive_both_checkouts(self):
+        # Real current assets, source declarations and captions supplement the
+        # unrelated synthetic families; no screenshot is manufactured here.
+        for identifier, source_name in (("gibson_arrangements_gui", "03-07_gibson_arrangements_gui"),
+                                        ("load_and_digest_pgex", "03-01_load_and_digest_pgex")):
+            source = json.loads((checker.ROOT / f"docs/tutorial/sources/{source_name}.json").read_bytes())
+            self.sources.append(source)
+            guide = source["catalog"]["path"]
+            self.write(guide, (checker.ROOT / guide).read_bytes())
+            for graphic in source["graphics"]:
+                relative = Path(graphic["path"])
+                self.write(relative, (checker.ROOT / relative).read_bytes())
+                if relative.parent.as_posix().startswith("docs/screenshots/"):
+                    for asset in (checker.ROOT / relative.parent).glob("*"):
+                        if asset.is_file():
+                            self.write(relative.parent / asset.name, asset.read_bytes())
+        self.sync()
+        self.write(".gitattributes", (checker.ROOT / ".gitattributes").read_bytes())
+        checker.git(self.root, "init", "--quiet")
+        checker.git(self.root, "config", "core.autocrlf", "false")
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "user.name=Synthetic test", "-c", "user.email=fixture@example.invalid",
+                    "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "Synthetic visual checkout plus retained assets")
+        expected = checker.check_tutorial_visuals(self.root)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / mode[0]
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual(checker.check_tutorial_visuals(target), expected)
+                if mode[0] == "crlf":
+                    self.assertIn(b"\r\n", (target / "docs/tutorial/manual.md").read_bytes())
+        attributes = (self.root / ".gitattributes").read_bytes()
+        broken_policy = b"\n".join(line for line in attributes.split(b"\n")
+                                    if not line.startswith(b"docs/screenshots/tutorial_gui_acceptance/"))
+        broken = Path(self.tmp.name) / "missing-hash-policy"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], broken_policy)
+        with self.assertRaisesRegex(RuntimeError, "capture_hash_mismatch"):
+            checker.check_tutorial_visuals(broken)
+
+    def test_fenced_visual_examples_are_not_resolved_as_assets(self):
+        self.write("docs/tutorial/reference.md", b'# Reference\n```markdown\n![Example](../not-a-real-asset.png)\n```\n')
+        checker.check_tutorial_visuals(self.root)
+
+    def test_invalid_source_json_is_actionable(self):
+        path = self.write("docs/tutorial/sources/manual.json", b"{")
+        with self.assertRaisesRegex(RuntimeError, "invalid_json.*manual.json"):
+            checker.check_tutorial_visuals(self.root)
+
+    def test_visual_failure_precedes_binary_invocation(self):
+        with patch.object(checker, "check_tutorial_visuals", side_effect=RuntimeError("visual refused")), \
+                patch.object(checker.subprocess, "run") as run:
+            with self.assertRaisesRegex(RuntimeError, "visual refused"):
+                checker.check_checkout(Path("unused"), self.root, "lf", 10)
+            run.assert_not_called()
 
 
 class RetainedTutorialReceiptTests(unittest.TestCase):

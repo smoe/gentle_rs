@@ -37,6 +37,37 @@
   acceptance. The phase-trim export repair is required for this projection's
   saved-product round-trip, not a separate optimization or feature.
 
+## 2026-10-07 - Check Tutorial Visual Contracts Without Desktop Or Build Dependencies
+
+- On isolated public-main base `04debbe0`, extend the existing tutorial checkout
+  gate, not the Rust generator or a parallel visual registry. Derive coverage
+  from canonical tutorial source/catalog/manifest and inspect generated pages
+  by `chapter_id`, including chapters whose catalog points to a manual guide.
+  Validate approved local paths, PNG headers, bounded SVG XML/dimensions,
+  source metadata and exact step placement. Reference pages need no image quota.
+- Preserve screenshot/figure distinctions and recorded historical revisions.
+  Retained raw images, selected crops and semantic snapshots remain hash-bound;
+  legacy date-only images stay explicitly non-authoritative. Refuse malformed
+  bindings, remote image links, escaped paths and an unrelated same-named manual
+  capture. Add a no-binary `--visuals-only` inventory and synthetic fail-first
+  tests, plus real-asset LF/CRLF checks and scoped screenshot SVG/snapshot rules.
+- This is the independently executable validation part of Glen's tutorial
+  handoff. Its `d70bf25d` commit/branch could not be fetched from either configured
+  repository; no claim is made that its 19 placements were forward-ported.
+  Supply the patch or published ref before that separate semantic comparison.
+  No new captures, scientific outputs, unrelated historical branches, Rust
+  dependencies or release gates are introduced.
+- Validation on macOS arm64: tutorial checkout/walkthrough/specialist tests
+  pass with the existing `04debbe0` CLI/MCP binaries, and 45 GUI-acceptance/
+  screenshot-provenance tests pass. The base-revision documentation binary
+  confirms 61 catalog entries, 29 runtime chapters and unchanged generated
+  outputs; retain the two existing stale human-review warnings. Structural
+  inspection covers 72 declarations/77 assets, with a separate Pillow decode
+  of 61 PNGs. Formatting and whitespace checks pass. Rust compilation remains
+  deferred under the owner's no-local-build policy. Two chapters were rendered
+  to offline HTML and their referenced images inspected; browser page inspection
+  was blocked by local-file URL policy, not bypassed. No native GUI acceptance.
+
 ## 2026-10-06 - Teach Joint Synonymous Motif And GC Design In Tutorial 06.07
 
 - From `cee1aef4`, add a human-readable, offline synthetic MFK walkthrough with

@@ -488,6 +488,43 @@ so matrix or catalog drift fails before the longer tutorial replay and full
 Rust suite. This complements the no-build Python
 checkout gate; neither replaces native-platform acceptance.
 
+Tutorial visuals are also checked before any binary replay. The same checks
+can run independently, offline and without compiling Rust:
+
+```bash
+python3 scripts/check_tutorial_checkouts.py --visuals-only
+python3 -m unittest scripts.test_tutorial_checkouts.TutorialVisualContractTests
+```
+
+The inventory is derived from canonical sources, discovery entries and runtime
+chapters. It distinguishes typed GUI acceptance, manual GUI walkthroughs,
+generated workflow companions and reference material; the latter need not
+contain images. Approved asset roots are `docs/screenshots`, `docs/figures`,
+`docs/tutorial/generated/artifacts` and `docs/tutorial/reproducibility`.
+Paths cannot escape those roots, including through symlinks. PNG checks validate
+the signature, IHDR checksum and positive dimensions, not a complete raster
+decode. SVG checks parse XML, reject entity declarations and remote image links,
+require finite positive dimensions, and limit each SVG to 16 MiB. Local raster
+references inside SVG wrappers are checked too.
+
+Declared graphics must retain their existing `kind`, caption and positive
+step binding across source/catalog/manifest. Generated walkthroughs embed each
+declaration exactly once at that step. Screenshots require a valid capture date;
+published sidecars additionally require exact producer/step hashes, matching
+raw/selected-image bytes and the retained semantic snapshot. Unpublished optional
+crops need not be copied into a raw-only archive. Manual archives bind the
+actual path, not a coincidentally identical basename. Legacy date-only images
+are reported as `legacy_date_only_not_acceptance`, not silently upgraded to
+revision-bound evidence. These tests neither acquire screenshots nor interpret
+their scientific content. Native Windows/macOS and fresh Linux GUI acceptance
+remain separate.
+
+The fast Python suite includes missing/malformed metadata, wrong/duplicate step
+placement, image-category mistakes, tampering, unsafe paths and unrelated
+generated families. Real manual/generated pages and archive bytes are replayed
+under LF and CRLF with scoped screenshot SVG/snapshot LF rules; removing the
+rules must reproduce a hash failure rather than normalize it away.
+
 Version changes require replay compatibility, not replacement of historical
 provenance. The three synthetic transcript-panel baselines (with legacy PATZ1
 filenames) keep their original generator identities and raw hashes. The fast
