@@ -1,5 +1,42 @@
 # GENtle Changelog
 
+## 2026-10-07 - Preserve Transcript CDS Identity Through Exon Skipping
+
+- From `04debbe0`, fix the DeltaNp73beta investigation's shared-engine boundary:
+  RefSeq transcript `NM_001126241.3` now binds its unlabeled CDS through the
+  explicit variant-3 note, same gene, strand and exon geometry. Exact transcript
+  IDs win; incompatible identities and ambiguous coding alternatives are not
+  merged. Keep explicitly bound disjoint CDS fragments, and propagate ambiguity
+  errors through transcript capture as well as derivation/planning.
+- Replace exon-skip planning's locus-wide CDS union with the selected coding
+  model; absent coding context is unknown rather than UTR-only. Materialization
+  binds the original CDS before deletion, preserves frame/table context, warns
+  about lost coding ends, and never replaces a known removed CDS with a new ORF.
+  Saved genomic/cDNA products retain that projection; generated CDS phase is
+  applied once, and partial products reference the source protein accession
+  without claiming it as their own identity.
+- Add a public-fixture shared-shell regression for full CDS 1,353 bp, terminal
+  coding contribution 16 bp, retained coding fragment 1,337 bp and spliced cDNA
+  1,571 bp. Add synthetic ambiguity/identity controls, explicit fragment ordering,
+  both-strand codon-start projection and persistence, and the contrast between
+  removed annotated CDS and genuinely unannotated ORF inference. Document the
+  fixture's pinned bytes and public retrieval interval without regenerating it.
+- Rust builds/tests/checks remain deliberately deferred to Glen/CI under the
+  owner's no-local-build restriction; the existing executable and earlier
+  arithmetic are not validation of this patch. Claude was not invoked, per
+  owner instruction. No dependency, schema, tutorial/catalog, release gate,
+  private output or unrelated submodule change is included.
+- Deferred one-SHA commands: `cargo test --locked --lib test_tp73_dnp73beta`,
+  `cargo test --locked --lib test_transcript_cds_resolution`,
+  `cargo test --locked --lib exon_skip`, existing transcript/protein derivation
+  and transcript-capture regressions, then `cargo check -q --locked`. Rebuild
+  older stored plans before trusting their coding hints.
+- Formatting and whitespace checks pass. Session-close reports four OK, two
+  warnings (intentional/unrelated dirty files and manual scope confirmation),
+  no failures. No native Windows check was run; source review is not platform
+  acceptance. The phase-trim export repair is required for this projection's
+  saved-product round-trip, not a separate optimization or feature.
+
 ## 2026-10-06 - Teach Joint Synonymous Motif And GC Design In Tutorial 06.07
 
 - From `cee1aef4`, add a human-readable, offline synthetic MFK walkthrough with

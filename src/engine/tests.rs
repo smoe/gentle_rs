@@ -29239,6 +29239,604 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
 }
 
 #[test]
+fn test_tp73_dnp73beta_terminal_exon_skip_preserves_annotated_cds_through_shell() {
+    let mut engine = GentleEngine::default();
+    engine
+        .apply(Operation::LoadFile {
+            path: Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("test_files/tp73.ncbi.gb")
+                .to_string_lossy()
+                .into_owned(),
+            as_id: Some("tp73".to_string()),
+        })
+        .expect("load committed public TP73 locus");
+    let source = &engine.state().sequences["tp73"];
+    let feature_id = source
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string() == "mRNA"
+                && feature
+                    .qualifier_values("transcript_id")
+                    .any(|id| id == "NM_001126241.3")
+        })
+        .expect("DeltaNp73beta RefSeq transcript");
+    let mut exon_ranges = vec![];
+    collect_location_ranges_usize(&source.features()[feature_id].location, &mut exon_ranges);
+    let matching = GentleEngine::collect_matching_cds_features_for_derivation(
+        source.features(),
+        &source.features()[feature_id],
+        &exon_ranges,
+    )
+    .expect("unique variant-linked CDS");
+    assert_eq!(matching.len(), 1);
+    assert_eq!(
+        matching[0].qualifier_values("protein_id").next(),
+        Some("NP_001119713.1")
+    );
+    assert!(
+        matching[0]
+            .qualifier_values("transcript_id")
+            .next()
+            .is_none()
+    );
+    let (full_cdna, _, _, _, _, full) = GentleEngine::derive_transcript_sequence_from_feature(
+        source.get_forward_string().to_ascii_uppercase().as_bytes(),
+        &source.features()[feature_id],
+        source.features(),
+        feature_id,
+        "tp73",
+    )
+    .expect("derive annotated beta cDNA");
+    let full = full.expect("annotated beta translation");
+    assert_eq!(
+        full.derivation_mode,
+        TranscriptProteinDerivationMode::AnnotatedCds
+    );
+    assert_eq!(full.cds_ranges_1based, vec![(235, 1587)]);
+    assert_eq!(full.cds_length_bp, 1353);
+    assert_eq!(full.protein_length_aa, 450);
+    assert!(full.terminal_stop_trimmed);
+    assert_eq!(full_cdna.len(), 5026);
+    assert!(
+        !full
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("inferred"))
+    );
+
+    let plan_command = crate::engine_shell::parse_shell_line(&format!(
+        "transcripts exon-skip-plan tp73 --feature-id {feature_id} --skip 80232..83686 --plan-id beta_without_last"
+    )).expect("parse shared plan command");
+    let plan = execute_shell_command(&mut engine, &plan_command).expect("plan beta terminal skip");
+    let terminal = plan.output["plan"]["candidate_exons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|exon| exon["candidate_id"] == "exon_11")
+        .unwrap();
+    assert_eq!(terminal["length_bp"], 3455);
+    assert_eq!(terminal["coding_skip_bp"], 16); // Not the alpha isoform's 333 bp.
+    assert_eq!(terminal["coding_skip_mod3"], 1);
+
+    let command = crate::engine_shell::parse_shell_line(
+        "transcripts exon-skip-materialize beta_without_last --return cdna-fasta --return amino-acid-sequence"
+    ).expect("parse shared materialization command");
+    let materialized = execute_shell_command(&mut engine, &command).expect("materialize beta skip");
+    let report = &materialized.output["report"];
+    let cdna_id = report["cdna_seq_id"].as_str().unwrap();
+    let cdna = &engine.state().sequences[cdna_id];
+    assert_eq!(cdna.len(), 1571);
+    let cds = cdna
+        .features()
+        .iter()
+        .find(|feature| feature.kind.to_string() == "CDS")
+        .unwrap();
+    assert_eq!(cds.location.find_bounds().unwrap(), (234, 1571));
+    assert_eq!(
+        cds.qualifier_values("protein_derivation_mode").next(),
+        Some("annotated_cds")
+    );
+    assert_eq!(
+        cds.qualifier_values("translation").next(),
+        Some(&full.protein_sequence[..445])
+    );
+    assert_eq!(
+        cds.qualifier_values("source_protein_id").next(),
+        Some("NP_001119713.1")
+    );
+    assert!(cds.qualifier_values("protein_id").next().is_none());
+    assert!(
+        report["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| {
+                warning
+                    .as_str()
+                    .unwrap()
+                    .contains("CDS length 1337 bp is not divisible by 3")
+            })
+    );
+    assert!(
+        report["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| { warning.as_str().unwrap().contains("annotated 3' CDS end") })
+    );
+    assert!(
+        !report["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|warning| { warning.as_str().unwrap().contains("inferred a forward ORF") })
+    );
+    let saved: DNAsequence = serde_json::from_value(serde_json::to_value(cdna).unwrap()).unwrap();
+    let (_, _, _, _, _, rederived) = GentleEngine::derive_transcript_sequence_from_feature(
+        saved.get_forward_string().as_bytes(),
+        &saved.features()[0],
+        saved.features(),
+        0,
+        cdna_id,
+    )
+    .expect("rederive saved coding fragment");
+    let rederived = rederived.unwrap();
+    assert_eq!(rederived.cds_length_bp, 1337);
+    assert_eq!(rederived.cds_ranges_1based, vec![(235, 1571)]);
+    assert_eq!(rederived.protein_sequence, full.protein_sequence[..445]);
+    let genomic_id = report["genomic_seq_id"].as_str().unwrap();
+    let genomic = &engine.state().sequences[genomic_id];
+    let projected_id = genomic
+        .features()
+        .iter()
+        .position(|feature| {
+            feature.kind.to_string() == "mRNA"
+                && feature
+                    .qualifier_values("synthetic_origin")
+                    .any(|origin| origin == "exon_skip_isoform_genomic_annotation")
+        })
+        .unwrap();
+    let (_, _, _, _, _, projected) = GentleEngine::derive_transcript_sequence_from_feature(
+        genomic.get_forward_string().as_bytes(),
+        &genomic.features()[projected_id],
+        genomic.features(),
+        projected_id,
+        genomic_id,
+    )
+    .expect("projected genomic annotation remains reusable");
+    assert_eq!(projected.unwrap().cds_length_bp, 1337);
+}
+
+#[test]
+fn test_transcript_cds_resolution_rejects_ambiguity_and_incompatible_variant_links() {
+    // Hand-crafted two-exon coding model; no external biological claim.
+    let mut dna = transcript_translation_test_sequence(
+        vec![],
+        vec![
+            ("gene".into(), Some("toyA".to_string())),
+            ("transcript_id".into(), Some("TX_TOY".to_string())),
+            (
+                "product".into(),
+                Some("toy transcript variant 3".to_string()),
+            ),
+        ],
+        vec![
+            ("gene".into(), Some("toyA".to_string())),
+            (
+                "note".into(),
+                Some("encoded by transcript variant 3; synthetic".to_string()),
+            ),
+            ("protein_id".into(), Some("PROTEIN_TOY".to_string())),
+        ],
+    );
+    let transcript = dna.features()[1].clone();
+    let cds = dna.features()[2].clone();
+    let exons = vec![(0, 6), (10, 16)];
+    for case in [
+        "other_variant",
+        "other_gene",
+        "opposite_strand",
+        "intron_span",
+        "conflicting_id",
+    ] {
+        let mut incompatible = cds.clone();
+        match case {
+            "other_variant" => {
+                incompatible.qualifiers = vec![
+                    ("gene".into(), Some("toyA".to_string())),
+                    ("note".into(), Some("transcript variant 4".to_string())),
+                ]
+            }
+            "other_gene" => incompatible.qualifiers[0].1 = Some("otherGene".to_string()),
+            "opposite_strand" => {
+                incompatible.location =
+                    gb_io::seq::Location::Complement(Box::new(cds.location.clone()))
+            }
+            "intron_span" => incompatible.location = gb_io::seq::Location::simple_range(0, 16),
+            "conflicting_id" => incompatible
+                .qualifiers
+                .push(("transcript_id".into(), Some("OTHER_TX".to_string()))),
+            _ => unreachable!(),
+        }
+        assert!(
+            GentleEngine::collect_matching_cds_features_for_derivation(
+                &[incompatible],
+                &transcript,
+                &exons,
+            )
+            .unwrap()
+            .is_empty(),
+            "must reject {case}"
+        );
+    }
+    let mut mislabeled_geometry = cds.clone();
+    mislabeled_geometry
+        .qualifiers
+        .push(("transcript_id".into(), Some("TX_TOY".to_string())));
+    mislabeled_geometry.location = gb_io::seq::Location::simple_range(0, 16);
+    assert!(
+        GentleEngine::resolve_transcript_source_cds_ranges_0based(
+            &transcript,
+            &[mislabeled_geometry],
+            &exons,
+        )
+        .is_err(),
+        "an explicit transcript binding cannot silently become ORF inference"
+    );
+    let mut alternate = cds.clone();
+    alternate.location = gb_io::seq::Location::Join(vec![
+        gb_io::seq::Location::simple_range(3, 6),
+        gb_io::seq::Location::simple_range(10, 16),
+    ]);
+    alternate.qualifiers[2].1 = Some("ALTERNATE".to_string());
+    for features in [
+        vec![cds.clone(), alternate.clone()],
+        vec![alternate, cds.clone()],
+    ] {
+        let error = GentleEngine::resolve_transcript_source_cds_ranges_0based(
+            &transcript,
+            &features,
+            &exons,
+        )
+        .expect_err("distinct coding models must not be merged");
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert!(error.message.contains("Ambiguous CDS association"));
+    }
+    let mut exact = cds.clone();
+    exact
+        .qualifiers
+        .push(("transcript_id".into(), Some("TX_TOY".to_string())));
+    dna.features_mut().push(exact);
+    let matches = GentleEngine::collect_matching_cds_features_for_derivation(
+        dna.features(),
+        &transcript,
+        &exons,
+    )
+    .unwrap();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(
+        matches[0].qualifier_values("transcript_id").next(),
+        Some("TX_TOY")
+    );
+
+    let mut state = ProjectState::default();
+    let mut ambiguous = dna.clone();
+    ambiguous.features_mut()[2]
+        .qualifiers
+        .push(("transcript_id".into(), Some("TX_TOY".to_string())));
+    ambiguous.features_mut()[2].location = gb_io::seq::Location::simple_range(0, 6);
+    state.sequences.insert("s".to_string(), ambiguous);
+    let error = GentleEngine::from_state(state)
+        .apply(Operation::PlanExonSkippedIsoform {
+            seq_id: "s".to_string(),
+            transcript_feature_id: 1,
+            criteria: vec![],
+            plan_id: None,
+        })
+        .expect_err("public planner must reject overlapping CDS models too");
+    assert_eq!(error.code, ErrorCode::InvalidInput);
+}
+
+#[test]
+fn test_transcript_cds_resolution_keeps_explicit_fragment_identity_and_coding_order() {
+    // Hand-crafted split CDS, as in a transcript-bound GFF model.
+    let exons = [(0, 6), (10, 16)];
+    for reverse in [false, true] {
+        let join = gb_io::seq::Location::Join(
+            exons
+                .iter()
+                .map(|(start, end)| gb_io::seq::Location::simple_range(*start as i64, *end as i64))
+                .collect(),
+        );
+        let transcript = gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: if reverse {
+                gb_io::seq::Location::Complement(Box::new(join))
+            } else {
+                join
+            },
+            qualifiers: vec![
+                ("transcript_id".into(), Some("TX_FRAGMENTS".to_string())),
+                ("gene_id".into(), Some("123".to_string())),
+                ("gene".into(), Some("toy".to_string())),
+            ],
+        };
+        let mut features = exons
+            .iter()
+            .map(|(start, end)| {
+                let location = gb_io::seq::Location::simple_range(*start as i64, *end as i64);
+                gb_io::seq::Feature {
+                    kind: "CDS".into(),
+                    location: if reverse {
+                        gb_io::seq::Location::Complement(Box::new(location))
+                    } else {
+                        location
+                    },
+                    qualifiers: vec![
+                        ("transcript_id".into(), Some("TX_FRAGMENTS".to_string())),
+                        ("protein_id".into(), Some("SAME_PROTEIN".to_string())),
+                        ("gene".into(), Some("toy".to_string())),
+                        ("transl_table".into(), Some("4".to_string())),
+                    ],
+                }
+            })
+            .collect::<Vec<_>>();
+        let resolved = GentleEngine::resolve_transcript_source_cds_ranges_0based(
+            &transcript,
+            &features,
+            &exons,
+        )
+        .unwrap();
+        assert_eq!(resolved, exons);
+        let matches = GentleEngine::collect_matching_cds_features_for_derivation(
+            &features,
+            &transcript,
+            &exons,
+        )
+        .unwrap();
+        assert_eq!(
+            matches[0].location.find_bounds().unwrap(),
+            if reverse { (10, 16) } else { (0, 6) }
+        );
+        features[1].qualifiers[3].1 = Some("11".to_string());
+        assert!(
+            GentleEngine::resolve_transcript_source_cds_ranges_0based(
+                &transcript,
+                &features,
+                &exons,
+            )
+            .is_err(),
+            "conflicting fragment translation tables are ambiguous"
+        );
+    }
+}
+
+#[test]
+fn test_exon_skip_five_prime_cds_projection_preserves_phase_on_both_strands() {
+    // Synthetic ATGGAATTTTAA CDS split 4/5/3 bp; remove its first exon.
+    for reverse in [false, true] {
+        for (codon_start, projected_codon_start, protein) in
+            [(1, 3, "F"), (2, 1, "NF"), (3, 2, "IL")]
+        {
+            let sequence = "ATGGNNNAATTTNNNTAA";
+            let bases = if reverse {
+                String::from_utf8(bio::alphabets::dna::revcomp(sequence.as_bytes())).unwrap()
+            } else {
+                sequence.to_string()
+            };
+            let mut dna = DNAsequence::from_sequence(&bases).unwrap();
+            let ranges = [(0, 4), (7, 12), (15, 18)];
+            let location = gb_io::seq::Location::Join(
+                ranges
+                    .into_iter()
+                    .map(|(start, end)| {
+                        let (start, end) = if reverse {
+                            (18 - end, 18 - start)
+                        } else {
+                            (start, end)
+                        };
+                        gb_io::seq::Location::simple_range(start, end)
+                    })
+                    .collect(),
+            );
+            let location = if reverse {
+                gb_io::seq::Location::Complement(Box::new(location))
+            } else {
+                location
+            };
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "mRNA".into(),
+                location: location.clone(),
+                qualifiers: vec![("transcript_id".into(), Some("TX_PARTIAL".to_string()))],
+            });
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location,
+                qualifiers: vec![
+                    ("transcript_id".into(), Some("TX_PARTIAL".to_string())),
+                    ("codon_start".into(), Some(codon_start.to_string())),
+                    ("transl_table".into(), Some("4".to_string())),
+                ],
+            });
+            let mut state = ProjectState::default();
+            state.sequences.insert("s".to_string(), dna);
+            let mut engine = GentleEngine::from_state(state);
+            engine
+                .apply(Operation::PlanExonSkippedIsoform {
+                    seq_id: "s".to_string(),
+                    transcript_feature_id: 0,
+                    criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                        candidate_ids: vec!["exon_1".to_string()],
+                    }],
+                    plan_id: Some("skip_start".to_string()),
+                })
+                .unwrap();
+            let report = engine
+                .apply(Operation::MaterializeExonSkippedIsoform {
+                    plan_id: "skip_start".to_string(),
+                    selected_candidate_ids: vec![],
+                    output_prefix: None,
+                    return_kinds: vec![ExonSkipReturnKind::AminoAcidSequence],
+                })
+                .unwrap()
+                .exon_skip_materialization
+                .unwrap();
+            assert_eq!(report.return_payloads[0].text, protein);
+            assert!(
+                report
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("annotated 5' CDS start"))
+            );
+            let cdna_id = report.cdna_seq_id.unwrap();
+            let cdna = &engine.state().sequences[&cdna_id];
+            assert_eq!(cdna.get_forward_string(), "AATTTTAA");
+            let cds = cdna
+                .features()
+                .iter()
+                .find(|feature| feature.kind.to_string() == "CDS")
+                .unwrap();
+            assert_eq!(cds.qualifier_values("codon_start").next(), Some("1"));
+            assert_eq!(
+                cds.qualifier_values("source_codon_start").next(),
+                Some(projected_codon_start.to_string().as_str())
+            );
+            assert_eq!(cds.qualifier_values("transl_table").next(), Some("4"));
+            assert_eq!(
+                cds.qualifier_values("translation_table_source").next(),
+                Some("explicit_cds_qualifier")
+            );
+            let (_, _, _, _, _, rederived) = GentleEngine::derive_transcript_sequence_from_feature(
+                cdna.get_forward_string().as_bytes(),
+                &cdna.features()[0],
+                cdna.features(),
+                0,
+                &cdna_id,
+            )
+            .unwrap();
+            assert_eq!(
+                rederived.unwrap().protein_sequence,
+                protein,
+                "phase must not be trimmed twice"
+            );
+            let genomic_id = report.genomic_seq_id.unwrap();
+            let genomic = &engine.state().sequences[&genomic_id];
+            let feature_id = genomic
+                .features()
+                .iter()
+                .position(|feature| {
+                    feature.kind.to_string() == "mRNA"
+                        && feature
+                            .qualifier_values("synthetic_origin")
+                            .any(|origin| origin == "exon_skip_isoform_genomic_annotation")
+                })
+                .unwrap();
+            let (_, _, _, _, _, rederived) = GentleEngine::derive_transcript_sequence_from_feature(
+                genomic.get_forward_string().as_bytes(),
+                &genomic.features()[feature_id],
+                genomic.features(),
+                feature_id,
+                &genomic_id,
+            )
+            .unwrap();
+            let rederived = rederived.unwrap();
+            assert_eq!(rederived.translation_table, 4);
+            assert_eq!(rederived.protein_sequence, protein);
+        }
+    }
+}
+
+#[test]
+fn test_exon_skip_removed_cds_does_not_replace_it_with_an_unrelated_orf() {
+    // Two synthetic exons: a complete MK CDS followed by a UTR containing MP ORF.
+    for annotated in [true, false] {
+        let mut dna = DNAsequence::from_sequence("ATGAAATAANNNATGCCCTAA").unwrap();
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "mRNA".into(),
+            location: gb_io::seq::Location::Join(vec![
+                gb_io::seq::Location::simple_range(0, 9),
+                gb_io::seq::Location::simple_range(12, 21),
+            ]),
+            qualifiers: vec![("transcript_id".into(), Some("TX_REMOVED".to_string()))],
+        });
+        if annotated {
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "CDS".into(),
+                location: gb_io::seq::Location::simple_range(0, 9),
+                qualifiers: vec![("transcript_id".into(), Some("TX_REMOVED".to_string()))],
+            });
+        }
+        let mut state = ProjectState::default();
+        state.sequences.insert("s".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let plan = engine
+            .apply(Operation::PlanExonSkippedIsoform {
+                seq_id: "s".to_string(),
+                transcript_feature_id: 0,
+                criteria: vec![ExonSkipSelectionCriterion::ManualExonIds {
+                    candidate_ids: vec!["exon_1".to_string()],
+                }],
+                plan_id: Some("remove_cds".to_string()),
+            })
+            .unwrap()
+            .exon_skip_selection_plan
+            .unwrap();
+        assert_eq!(
+            plan.candidate_exons[1].coding_context,
+            if annotated { "utr_only" } else { "unknown" }
+        );
+        if !annotated {
+            assert!(!plan.candidate_exons[1].frame_neutral_coding_skip);
+        }
+        let report = engine
+            .apply(Operation::MaterializeExonSkippedIsoform {
+                plan_id: "remove_cds".to_string(),
+                selected_candidate_ids: vec![],
+                output_prefix: None,
+                return_kinds: vec![ExonSkipReturnKind::AminoAcidSequence],
+            })
+            .unwrap()
+            .exon_skip_materialization
+            .unwrap();
+        assert_eq!(report.return_payloads[0].available, !annotated);
+        if annotated {
+            assert!(
+                report
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("removed all annotated CDS bases"))
+            );
+            let cdna_id = report.cdna_seq_id.unwrap();
+            let cdna = &engine.state().sequences[&cdna_id];
+            let saved: DNAsequence =
+                serde_json::from_value(serde_json::to_value(cdna).unwrap()).unwrap();
+            assert_eq!(
+                saved.features()[0]
+                    .qualifier_values("cds_ranges_1based")
+                    .next(),
+                Some("")
+            );
+            assert!(
+                GentleEngine::infer_transcript_protein_derivation_without_annotation(
+                    &saved.get_forward_string(),
+                    &saved.features()[0],
+                    0,
+                    &cdna_id,
+                    saved.features(),
+                    "TX_REMOVED",
+                    "partial",
+                )
+                .unwrap()
+                .is_none()
+            );
+        } else {
+            assert_eq!(report.return_payloads[0].text, "MP");
+        }
+    }
+}
+
+#[test]
 fn test_exon_skip_plan_manual_selection_and_materialization_creates_cdna_and_genomic_annotation() {
     let mut state = ProjectState::default();
     state

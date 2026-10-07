@@ -1080,6 +1080,18 @@ Dotplot/flexibility capability status:
     - `--return` lets automation callers request a compact handoff payload in
       the materialization report, such as the adjusted GenBank entry or just
       the amino-acid sequence
+    - coding hints are specific to the selected transcript, not all CDS records
+      in the locus. Ambiguous associations are rejected; absent CDS context is
+      `unknown`, not evidence for a UTR-only exon or a frame-neutral coding skip.
+      Materialization projects the original CDS and warns when a coding end is
+      lost; it does not replace an annotated fragment with a newly found ORF.
+      Rebuild older stored plans before relying on their coding hints.
+    - for the committed TP73 `NM_001126241.3` (DeltaNp73beta) annotation, skipping
+      the terminal exon `80232..83686` removes 16 coding bases from the 1,353-bp
+      CDS. The result is 1,337 coding bp within 1,571-bp spliced cDNA (including
+      234 bp of retained 5' UTR), not a complete beta isoform: the native stop is
+      lost and two trailing coding bases form an incomplete codon. These are
+      local coordinates in `test_files/tp73.ncbi.gb`, not chromosome positions.
   - `transcripts residue-genomic-coordinates SEQ_ID RESIDUE_START [RESIDUE_END]`
     maps transcript-native protein residue(s) back to 1-based genomic codon
     nucleotide positions; `--transcript ID` narrows the query to a transcript

@@ -2596,6 +2596,26 @@ Interaction and export semantics:
   - render splicing view SVG from the same payload
     (`render-feature-expert-svg ... splicing ...`).
 
+Transcript coding identity is separate from shared exon/locus overlap. CDS
+derivation and exon-skip planning use the selected transcript's explicit coding
+ranges or a unique compatible annotation association, never the union of locus
+CDS features. An exact transcript ID takes precedence; unlabeled RefSeq CDS
+records may bind through the same gene and explicit transcript-variant token,
+with strand and complete exon containment checked. A same-gene, exon-contained
+CDS without a variant link is admitted only when unique. Conflicting identities,
+overlapping coding alternatives or translation tables are not silently merged.
+Explicitly transcript-bound, disjoint CDS fragments remain one coding model.
+
+Exon-skip materialization resolves that coding model before deletion and
+projects it onto retained exons in transcript order. Lost annotated coding ends
+are partial-fragment warnings, not permission to choose a new ORF or borrow
+another isoform's CDS. Retain phase/translation-table context and an explicit
+empty coding-range marker when all coding bases are lost; unannotated transcripts
+remain eligible for disclosed ORF inference. Generated phase-trimmed CDS ranges
+use `codon_start=1`, with the input offset recorded as `source_codon_start`, so
+re-derivation never trims the same phase twice. Synthetic partial translations
+must not inherit the source protein accession as their own identity.
+
 ### Source-coherent locus transcript presentation
 
 The optional `gentle.transcript_structure_presentation.v1` layer is separate

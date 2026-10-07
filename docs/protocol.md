@@ -8625,6 +8625,18 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     - optional `/codon_start` or `phase`
     - optional `/transl_table`
     - source/transcript/CDS `organism` and `organelle` context
+  - source CDS association checks strand and exon containment. Exact
+    `transcript_id` matches take precedence; CDS records without that qualifier
+    may bind by same-gene transcript-variant annotation, or by a unique
+    same-gene coding model when no variant token is supplied. An explicit other
+    transcript ID is never overridden by a variant note. Distinct compatible
+    alternatives return `InvalidInput`, not their union or an inferred ORF.
+    Disjoint CDS fragments explicitly bound to the same transcript/protein are
+    supported; conflicting translation tables are rejected.
+  - explicit `cds_ranges_1based` must be exon-contained. An empty value records
+    a known removed coding span and suppresses replacement ORF inference.
+    Generated CDS locations already exclude the leading phase offset and use
+    `codon_start=1`; `source_codon_start` records the offset used to derive them.
   - translation-table resolution is deterministic:
     - explicit `/transl_table` on CDS, transcript, or source wins
     - plastid/chloroplast-like organelles default to NCBI table `11`
@@ -8692,6 +8704,9 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - Candidate exons expose stable IDs (`exon_1`, `exon_2`, ...), genomic
     coordinates, support/constitutive status, selection sources, matched
     feature IDs, and CDS/frame warnings.
+  - Coding-only hints use the selected transcript CDS resolver. Unresolved
+    context is `coding_context="unknown"`, with unavailable phases and no
+    frame-neutral coding claim; zero overlap alone does not establish UTR-only.
   - Criteria support manual candidate IDs, explicit intervals, current map
     selection intervals, feature-overlap queries, and reserved reasoning-source
     candidate IDs.
@@ -8707,6 +8722,17 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     product carrying the exon-skipped transcript model.
   - Generated feature qualifiers record the plan ID, source sequence/feature,
     skipped exon candidate IDs, and synthetic origin.
+  - Resolves CDS identity against the original exon chain before deletion, then
+    intersects its coding ranges with retained exons. A removed 5' coding end
+    retains the original frame at the new boundary; internal deletions are not
+    independently rephased. Removed 5'/3' ends and trailing partial codons are
+    disclosed through report warnings and `exon_skip_cds_warning` qualifiers.
+    Removing all annotated CDS bases suppresses protein/ORF replacement even
+    if the remaining UTR contains a plausible ATG-start ORF.
+  - Saved cDNA and genomic annotations retain the projected coding ranges and
+    effective translation context. Partial products carry `source_protein_id`
+    instead of claiming the original `protein_id`; generated CDS offsets must
+    not be applied twice when a saved product is re-derived.
   - When `return_kinds[]` is supplied, `return_payloads[]` carries the
     requested machine-facing handoff text. This is the preferred ClawBio/OpenClaw
     route for saying whether the caller wants the adjusted GenBank entry, the
@@ -8729,6 +8755,8 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - if CDS annotation is absent, falls back deterministically to:
     - an inferred ATG-start ORF on the derived transcript
     - otherwise the longest stop-free reading-frame segment
+  - an explicit empty projected CDS is not annotation absence; it suppresses
+    this fallback. Ambiguous CDS association is a structured input error.
   - emits one full-span local `Protein` feature on the derived peptide with:
     - transcript/source provenance
     - derivation mode (`annotated_cds`, `inferred_orf`, `heuristic_longest_frame`)

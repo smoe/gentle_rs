@@ -3914,9 +3914,10 @@ impl GentleEngine {
         ranges_0based: &[(usize, usize)],
         exon_ranges_0based: &[(usize, usize)],
     ) -> bool {
+        let covered_exons = Self::merge_adjacent_ranges_0based(exon_ranges_0based);
         !ranges_0based.is_empty()
             && ranges_0based.iter().all(|(start, end)| {
-                exon_ranges_0based
+                covered_exons
                     .iter()
                     .any(|(exon_start, exon_end)| *start >= *exon_start && *end <= *exon_end)
             })
@@ -3967,37 +3968,90 @@ impl GentleEngine {
         source_features: &'a [gb_io::seq::Feature],
         source_feature: &gb_io::seq::Feature,
         exon_ranges_0based: &[(usize, usize)],
-    ) -> Vec<&'a gb_io::seq::Feature> {
+    ) -> Result<Vec<&'a gb_io::seq::Feature>, EngineError> {
         let transcript_id = Self::qualifier_text_for_derivation(source_feature, "transcript_id");
         let transcript_gene = Self::first_nonempty_qualifier_for_derivation(
             source_feature,
             &["gene_id", "gene", "locus_tag"],
         );
         let transcript_reverse = feature_is_reverse(source_feature);
-        let mut matches = source_features
+        let explicit_cds = source_feature
+            .qualifier_values("cds_ranges_1based")
+            .next()
+            .map(|_| Self::feature_qualifier_ranges_0based(source_feature, "cds_ranges_1based"));
+        let compatible = source_features
             .iter()
             .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
             .filter(|feature| feature_is_reverse(feature) == transcript_reverse)
             .filter(|feature| {
                 let feature_ranges = Self::feature_ranges_0based_for_derivation(feature);
                 Self::ranges_fit_within_exons(&feature_ranges, exon_ranges_0based)
+                    && explicit_cds
+                        .as_ref()
+                        .is_none_or(|ranges| Self::ranges_fit_within_exons(&feature_ranges, ranges))
             })
             .filter(|feature| {
-                if let Some(transcript_id) = transcript_id.as_deref() {
-                    return feature
-                        .qualifier_values("transcript_id")
-                        .any(|value| value.trim().eq_ignore_ascii_case(transcript_id));
-                }
-                if let Some(transcript_gene) = transcript_gene.as_deref() {
-                    return ["gene_id", "gene", "locus_tag"].iter().any(|key| {
-                        feature
-                            .qualifier_values(key)
-                            .any(|value| value.trim().eq_ignore_ascii_case(transcript_gene))
-                    });
-                }
-                false
+                ["gene_id", "gene", "locus_tag"].iter().all(|key| {
+                    let source_gene = Self::qualifier_text_for_derivation(source_feature, key);
+                    let cds_gene = Self::qualifier_text_for_derivation(feature, key);
+                    !matches!((source_gene.as_deref(), cds_gene.as_deref()),
+                        (Some(left), Some(right)) if !left.eq_ignore_ascii_case(right))
+                })
             })
             .collect::<Vec<_>>();
+        let mut matches = compatible
+            .iter()
+            .copied()
+            .filter(|feature| {
+                transcript_id.as_deref().is_some_and(|transcript_id| {
+                    feature
+                        .qualifier_values("transcript_id")
+                        .any(|value| value.trim().eq_ignore_ascii_case(transcript_id))
+                })
+            })
+            .collect::<Vec<_>>();
+        let exact_transcript_match = !matches.is_empty();
+        if !exact_transcript_match
+            && transcript_id.as_deref().is_some_and(|transcript_id| {
+                source_features.iter().any(|feature| {
+                    feature.kind.to_string().eq_ignore_ascii_case("CDS")
+                        && feature
+                            .qualifier_values("transcript_id")
+                            .any(|id| id.trim().eq_ignore_ascii_case(transcript_id))
+                })
+            })
+            && explicit_cds.is_none()
+        {
+            return Err(EngineError::invalid_input(format!(
+                "Annotated CDS for transcript '{}' conflicts with its gene, strand or exon chain; refusing replacement CDS/ORF inference.",
+                transcript_id.as_deref().unwrap_or_default()
+            )));
+        }
+        if !exact_transcript_match {
+            let transcript_variant =
+                Self::transcript_variant_token_for_derivation_feature(source_feature);
+            // RefSeq genomic CDS records may name the variant only in /note.
+            // Without that link, require a unique same-gene, exon-contained CDS.
+            matches = compatible
+                .into_iter()
+                .filter(|feature| {
+                    Self::qualifier_text_for_derivation(feature, "transcript_id").is_none()
+                        && ["gene_id", "gene", "locus_tag"].iter().any(|key| {
+                            Self::qualifier_text_for_derivation(source_feature, key).is_some_and(
+                                |gene| {
+                                    feature
+                                        .qualifier_values(key)
+                                        .any(|value| value.trim().eq_ignore_ascii_case(&gene))
+                                },
+                            )
+                        })
+                        && transcript_variant.as_deref().is_none_or(|variant| {
+                            Self::transcript_variant_token_for_derivation_feature(feature)
+                                .is_some_and(|token| token.eq_ignore_ascii_case(variant))
+                        })
+                })
+                .collect();
+        }
         matches.sort_by(|left, right| {
             let mut left_ranges = Self::feature_ranges_0based_for_derivation(left);
             let mut right_ranges = Self::feature_ranges_0based_for_derivation(right);
@@ -4005,7 +4059,60 @@ impl GentleEngine {
             right_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
             left_ranges.cmp(&right_ranges)
         });
-        matches
+        matches.dedup_by(|left, right| {
+            Self::feature_ranges_0based_for_derivation(left)
+                == Self::feature_ranges_0based_for_derivation(right)
+                && [
+                    "protein_id",
+                    "codon_start",
+                    "phase",
+                    "transl_table",
+                    "organism",
+                    "organelle",
+                ]
+                .iter()
+                .all(|key| {
+                    Self::qualifier_text_for_derivation(left, key)
+                        == Self::qualifier_text_for_derivation(right, key)
+                })
+        });
+        let distinct_protein_ids = matches
+            .iter()
+            .filter_map(|feature| Self::qualifier_text_for_derivation(feature, "protein_id"))
+            .collect::<HashSet<_>>();
+        let distinct_translation_tables = matches
+            .iter()
+            .filter_map(|feature| Self::qualifier_text_for_derivation(feature, "transl_table"))
+            .collect::<HashSet<_>>();
+        let overlapping_models = matches.iter().enumerate().any(|(index, left)| {
+            let left_ranges = Self::feature_ranges_0based_for_derivation(left);
+            matches[index + 1..].iter().any(|right| {
+                let right_ranges = Self::feature_ranges_0based_for_derivation(right);
+                left_ranges.iter().any(|(start, end)| {
+                    right_ranges
+                        .iter()
+                        .any(|(other_start, other_end)| start < other_end && other_start < end)
+                })
+            })
+        });
+        if matches.len() > 1
+            && (!exact_transcript_match
+                || overlapping_models
+                || distinct_protein_ids.len() > 1
+                || distinct_translation_tables.len() > 1)
+        {
+            return Err(EngineError::invalid_input(format!(
+                "Ambiguous CDS association for transcript '{}': multiple coding models fit its exon chain; refusing to merge isoform CDS ranges.",
+                transcript_id
+                    .as_deref()
+                    .or(transcript_gene.as_deref())
+                    .unwrap_or("unidentified")
+            )));
+        }
+        if transcript_reverse {
+            matches.reverse();
+        }
+        Ok(matches)
     }
 
     fn transcript_variant_token_from_text(text: &str) -> Option<String> {
@@ -4032,48 +4139,6 @@ impl GentleEngine {
             }
         }
         None
-    }
-
-    fn collect_cds_features_by_transcript_variant_annotation<'a>(
-        source_features: &'a [gb_io::seq::Feature],
-        source_feature: &gb_io::seq::Feature,
-    ) -> Vec<&'a gb_io::seq::Feature> {
-        let Some(transcript_variant) =
-            Self::transcript_variant_token_for_derivation_feature(source_feature)
-        else {
-            return vec![];
-        };
-        let transcript_gene = Self::first_nonempty_qualifier_for_derivation(
-            source_feature,
-            &["gene_id", "gene", "locus_tag"],
-        );
-        let transcript_reverse = feature_is_reverse(source_feature);
-        let mut matches = source_features
-            .iter()
-            .filter(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
-            .filter(|feature| feature_is_reverse(feature) == transcript_reverse)
-            .filter(|feature| {
-                if let Some(transcript_gene) = transcript_gene.as_deref()
-                    && let Some(cds_gene) = Self::first_nonempty_qualifier_for_derivation(
-                        feature,
-                        &["gene_id", "gene", "locus_tag"],
-                    )
-                    && !cds_gene.eq_ignore_ascii_case(transcript_gene)
-                {
-                    return false;
-                }
-                Self::transcript_variant_token_for_derivation_feature(feature)
-                    .is_some_and(|token| token.eq_ignore_ascii_case(&transcript_variant))
-            })
-            .collect::<Vec<_>>();
-        matches.sort_by(|left, right| {
-            let mut left_ranges = Self::feature_ranges_0based_for_derivation(left);
-            let mut right_ranges = Self::feature_ranges_0based_for_derivation(right);
-            left_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-            right_ranges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
-            left_ranges.cmp(&right_ranges)
-        });
-        matches
     }
 
     pub(crate) fn map_source_ranges_to_transcript_local_ranges_0based(
@@ -4160,24 +4225,34 @@ impl GentleEngine {
         source_feature: &gb_io::seq::Feature,
         source_features: &[gb_io::seq::Feature],
         exon_ranges_0based: &[(usize, usize)],
-    ) -> Vec<(usize, usize)> {
+    ) -> Result<Vec<(usize, usize)>, EngineError> {
         let transcript_cds_ranges_0based =
             Self::feature_qualifier_ranges_0based(source_feature, "cds_ranges_1based");
+        if source_feature
+            .qualifier_values("cds_ranges_1based")
+            .next()
+            .is_some()
+        {
+            if !transcript_cds_ranges_0based.is_empty()
+                && !Self::ranges_fit_within_exons(&transcript_cds_ranges_0based, exon_ranges_0based)
+            {
+                return Err(EngineError::invalid_input(
+                    "Explicit transcript CDS ranges must fit within its exon chain",
+                ));
+            }
+            return Ok(transcript_cds_ranges_0based);
+        }
         let matching_cds_features = Self::collect_matching_cds_features_for_derivation(
             source_features,
             source_feature,
             exon_ranges_0based,
-        );
-        if !transcript_cds_ranges_0based.is_empty() {
-            transcript_cds_ranges_0based
-        } else {
-            Self::merge_adjacent_ranges_0based(
-                &matching_cds_features
-                    .iter()
-                    .flat_map(|feature| Self::feature_ranges_0based_for_derivation(feature))
-                    .collect::<Vec<_>>(),
-            )
-        }
+        )?;
+        Ok(Self::merge_adjacent_ranges_0based(
+            &matching_cds_features
+                .iter()
+                .flat_map(|feature| Self::feature_ranges_0based_for_derivation(feature))
+                .collect::<Vec<_>>(),
+        ))
     }
 
     fn infer_organelle_for_derivation(
@@ -4404,6 +4479,31 @@ impl GentleEngine {
         (protein, terminal_stop_trimmed, warnings)
     }
 
+    fn transcript_codon_start_for_derivation(
+        source_feature: &gb_io::seq::Feature,
+        cds_feature: Option<&gb_io::seq::Feature>,
+    ) -> usize {
+        Self::qualifier_usize_for_derivation(source_feature, "codon_start")
+            .or_else(|| {
+                cds_feature.and_then(|feature| {
+                    Self::qualifier_usize_for_derivation(feature, "codon_start")
+                })
+            })
+            .or_else(|| {
+                Self::qualifier_usize_for_derivation(source_feature, "phase")
+                    .filter(|phase| *phase <= 2)
+                    .map(|phase| phase + 1)
+            })
+            .or_else(|| {
+                cds_feature.and_then(|feature| {
+                    Self::qualifier_usize_for_derivation(feature, "phase")
+                        .filter(|phase| *phase <= 2)
+                        .map(|phase| phase + 1)
+                })
+            })
+            .unwrap_or(1)
+    }
+
     fn build_transcript_protein_derivation(
         derived_sequence: &str,
         source_feature: &gb_io::seq::Feature,
@@ -4420,13 +4520,13 @@ impl GentleEngine {
             source_features,
             source_feature,
             exon_ranges_0based,
-        );
+        )?;
         let representative_cds_feature = matching_cds_features.first().copied();
         let source_cds_ranges_0based = Self::resolve_transcript_source_cds_ranges_0based(
             source_feature,
             source_features,
             exon_ranges_0based,
-        );
+        )?;
         if source_cds_ranges_0based.is_empty() {
             return Ok(None);
         }
@@ -4455,28 +4555,16 @@ impl GentleEngine {
                 organism.as_deref(),
                 organelle.as_deref(),
             );
+        warnings.extend(
+            source_feature
+                .qualifier_values("exon_skip_cds_warning")
+                .map(str::to_string),
+        );
         if let Some(speed_profile_resolution) = speed_profile_resolution.as_ref() {
             warnings.extend(speed_profile_resolution.warnings.iter().cloned());
         }
-        let codon_start = Self::qualifier_usize_for_derivation(source_feature, "codon_start")
-            .or_else(|| {
-                representative_cds_feature.and_then(|feature| {
-                    Self::qualifier_usize_for_derivation(feature, "codon_start")
-                })
-            })
-            .or_else(|| {
-                Self::qualifier_usize_for_derivation(source_feature, "phase")
-                    .filter(|phase| *phase <= 2)
-                    .map(|phase| phase + 1)
-            })
-            .or_else(|| {
-                representative_cds_feature.and_then(|feature| {
-                    Self::qualifier_usize_for_derivation(feature, "phase")
-                        .filter(|phase| *phase <= 2)
-                        .map(|phase| phase + 1)
-                })
-            })
-            .unwrap_or(1);
+        let codon_start =
+            Self::transcript_codon_start_for_derivation(source_feature, representative_cds_feature);
 
         let local_cds_ranges_0based = Self::map_source_ranges_to_transcript_local_ranges_0based(
             &source_cds_ranges_0based,
@@ -4578,6 +4666,13 @@ impl GentleEngine {
         transcript_id: &str,
         transcript_label: &str,
     ) -> Result<Option<TranscriptProteinDerivation>, EngineError> {
+        if source_feature
+            .qualifier_values("cds_ranges_1based")
+            .next()
+            .is_some()
+        {
+            return Ok(None);
+        }
         if derived_sequence.len() < 3 {
             return Ok(None);
         }
@@ -5897,21 +5992,12 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
         let transcript_count = transcript_ranges.len().max(1);
-        let mut cds_ranges: Vec<(usize, usize)> = vec![];
-        for feature in &source_features {
-            if feature.kind.to_string().eq_ignore_ascii_case("CDS") {
-                collect_location_ranges_usize(&feature.location, &mut cds_ranges);
-            }
-        }
-        cds_ranges.sort_unstable_by(|left, right| left.0.cmp(&right.0).then(left.1.cmp(&right.1)));
-        cds_ranges.dedup();
-        let transcript_cds_ranges =
-            Self::feature_qualifier_ranges_0based(&source_feature, "cds_ranges_1based");
-        let phase_cds_ranges = if transcript_cds_ranges.is_empty() {
-            cds_ranges.clone()
-        } else {
-            transcript_cds_ranges
-        };
+        let phase_cds_ranges = Self::resolve_transcript_source_cds_ranges_0based(
+            &source_feature,
+            &source_features,
+            &exon_ranges,
+        )?;
+        let coding_context_available = !phase_cds_ranges.is_empty();
         let mut ordered_phase_cues =
             exon_cds_phase_cues(&exon_ranges, &phase_cds_ranges, is_reverse);
         let mut ordered_ranges = exon_ranges.clone();
@@ -5959,8 +6045,12 @@ impl GentleEngine {
                     frame_neutral_length: frame_cue.frame_neutral_length,
                     coding_skip_bp: coding_cue.coding_skip_bp,
                     coding_skip_mod3: coding_cue.coding_skip_mod3,
-                    frame_neutral_coding_skip: coding_cue.frame_neutral_coding_skip,
-                    coding_context: coding_cue.coding_context.to_string(),
+                    frame_neutral_coding_skip: coding_context_available && coding_cue.frame_neutral_coding_skip,
+                    coding_context: if coding_context_available {
+                        coding_cue.coding_context.to_string()
+                    } else {
+                        "unknown".to_string()
+                    },
                     support_transcript_count,
                     support_transcript_total: transcript_count,
                     support_fraction: support_transcript_count as f64 / transcript_count as f64,
@@ -5979,7 +6069,11 @@ impl GentleEngine {
                     right_cds_phase: phase_cue.right_cds_phase,
                     cds_phase_entry_kind: phase_entry_kind(entry_phase).to_string(),
                     cds_phase_warning,
-                    coding_frame_note: frame_cue.coding_frame_note(coding_cue),
+                    coding_frame_note: if coding_context_available {
+                        frame_cue.coding_frame_note(coding_cue)
+                    } else {
+                        Some("Transcript CDS association is unavailable; coding-frame effects cannot be assessed.".to_string())
+                    },
                     selected: false,
                     selection_sources: vec![],
                     matched_feature_ids: vec![],
@@ -5988,6 +6082,9 @@ impl GentleEngine {
             })
             .collect::<Vec<_>>();
         let mut warnings: Vec<String> = vec![];
+        if !coding_context_available {
+            warnings.push("No transcript-specific CDS annotation resolved; exon coding context is unknown, not UTR-only.".to_string());
+        }
         for criterion in &criteria {
             match criterion {
                 ExonSkipSelectionCriterion::ManualExonIds { candidate_ids } => {
@@ -6520,6 +6617,150 @@ impl GentleEngine {
         Ok(payloads)
     }
 
+    fn project_exon_skip_cds_annotation(
+        source_feature: &gb_io::seq::Feature,
+        source_features: &[gb_io::seq::Feature],
+        original_exons: &[(usize, usize)],
+        retained_exons: &[(usize, usize)],
+        retained_feature: &mut gb_io::seq::Feature,
+    ) -> Result<(Vec<gb_io::seq::Feature>, bool), EngineError> {
+        let original_cds = Self::resolve_transcript_source_cds_ranges_0based(
+            source_feature,
+            source_features,
+            original_exons,
+        )?;
+        let annotation_present = !original_cds.is_empty()
+            || source_feature
+                .qualifier_values("cds_ranges_1based")
+                .next()
+                .is_some();
+        if !annotation_present {
+            return Ok((source_features.to_vec(), false));
+        }
+        let matching_cds = Self::collect_matching_cds_features_for_derivation(
+            source_features,
+            source_feature,
+            original_exons,
+        )?;
+        let representative_cds = matching_cds.first().copied();
+        let original_codon_start =
+            Self::transcript_codon_start_for_derivation(source_feature, representative_cds);
+        let is_reverse = feature_is_reverse(source_feature);
+        let mut retained_cds = vec![];
+        for (start, end) in &original_cds {
+            for (exon_start, exon_end) in retained_exons {
+                let overlap = ((*start).max(*exon_start), (*end).min(*exon_end));
+                if overlap.1 > overlap.0 {
+                    retained_cds.push(overlap);
+                }
+            }
+        }
+        let retained_cds = Self::merge_adjacent_ranges_0based(&retained_cds);
+        let mut projection_warnings = vec![];
+        let mut projected_codon_start = 1;
+        if retained_cds.is_empty() {
+            projection_warnings.push(
+                "Exon skipping removed all annotated CDS bases; no replacement ORF was inferred."
+                    .to_string(),
+            );
+        } else {
+            let first_retained = if is_reverse {
+                retained_cds.last().unwrap().1
+            } else {
+                retained_cds[0].0
+            };
+            let leading_removed = original_cds
+                .iter()
+                .map(|(start, end)| {
+                    if is_reverse {
+                        end.saturating_sub((*start).max(first_retained))
+                    } else {
+                        (*end).min(first_retained).saturating_sub(*start)
+                    }
+                })
+                .sum::<usize>();
+            let original_trim = original_codon_start.saturating_sub(1);
+            // Maintain the original frame at the retained 5' boundary, including
+            // a split codon. Internal deletions are not independently rephased.
+            let projected_trim = if leading_removed < original_trim {
+                original_trim - leading_removed
+            } else {
+                (3 - (leading_removed - original_trim) % 3) % 3
+            };
+            projected_codon_start = projected_trim + 1;
+            if leading_removed > 0 {
+                projection_warnings.push(format!(
+                    "Exon skipping removed the annotated 5' CDS start; translation is a partial coding fragment with codon_start {projected_codon_start}. No alternative ORF was inferred."
+                ));
+            }
+            let original_last = if is_reverse {
+                original_cds[0].0
+            } else {
+                original_cds.last().unwrap().1
+            };
+            let retained_last = if is_reverse {
+                retained_cds[0].0
+            } else {
+                retained_cds.last().unwrap().1
+            };
+            if original_last != retained_last {
+                projection_warnings.push("Exon skipping removed the annotated 3' CDS end, including any native terminal stop; translation is a partial coding fragment, not a complete isoform.".to_string());
+            }
+        }
+        retained_feature.qualifiers.retain(|(key, _)| {
+            !matches!(key.as_ref(), "cds_ranges_1based" | "codon_start" | "phase")
+        });
+        let ranges_1based = retained_cds
+            .iter()
+            .map(|(start, end)| (start + 1, *end))
+            .collect::<Vec<_>>();
+        retained_feature.qualifiers.push((
+            "cds_ranges_1based".into(),
+            Some(Self::serialize_ranges_1based(&ranges_1based).unwrap_or_default()),
+        ));
+        retained_feature.qualifiers.push((
+            "codon_start".into(),
+            Some(projected_codon_start.to_string()),
+        ));
+        for warning in projection_warnings {
+            retained_feature
+                .qualifiers
+                .push(("exon_skip_cds_warning".into(), Some(warning)));
+        }
+
+        // Resolve before deletion, then expose only that projected coding model.
+        // The shortened exon chain must not select a different locus CDS.
+        let mut projected_features = source_features
+            .iter()
+            .filter(|feature| !feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+            .cloned()
+            .collect::<Vec<_>>();
+        if let Some(cds) = representative_cds
+            && !retained_cds.is_empty()
+        {
+            let mut projected = cds.clone();
+            projected.location = Self::location_from_exon_ranges(&retained_cds, is_reverse);
+            let original_protein_id = Self::qualifier_text_for_derivation(&projected, "protein_id");
+            projected.qualifiers.retain(|(key, _)| {
+                !matches!(
+                    key.as_ref(),
+                    "codon_start" | "phase" | "translation" | "protein_id"
+                )
+            });
+            projected.qualifiers.push((
+                "codon_start".into(),
+                Some(projected_codon_start.to_string()),
+            ));
+            if let Some(protein_id) = original_protein_id {
+                projected
+                    .qualifiers
+                    .push(("source_protein_id".into(), Some(protein_id)));
+            }
+            projected_features.push(projected);
+        }
+        Ok((projected_features, true))
+    }
+
     fn materialize_exon_skip_plan(
         &mut self,
         plan_id: &str,
@@ -6677,6 +6918,14 @@ impl GentleEngine {
             "skipped_exon_candidate_ids".into(),
             Some(skipped_candidate_ids.join(",")),
         ));
+        let (projected_source_features, original_cds_annotation_present) =
+            Self::project_exon_skip_cds_annotation(
+                &source_feature,
+                &source_features,
+                &current_ranges,
+                &retained_ranges,
+                &mut retained_feature,
+            )?;
         let (
             mut cdna_dna,
             _transcript_id,
@@ -6687,25 +6936,26 @@ impl GentleEngine {
         ) = Self::derive_transcript_sequence_from_feature(
             &source_sequence_upper,
             &retained_feature,
-            &source_features,
+            &projected_source_features,
             plan.transcript_feature_id,
             &plan.seq_id,
         )?;
-        let protein_derivation_inferred_without_annotation = if protein_derivation.is_none() {
-            let cdna_sequence_upper = cdna_dna.get_forward_string().to_ascii_uppercase();
-            protein_derivation = Self::infer_transcript_protein_derivation_without_annotation(
-                &cdna_sequence_upper,
-                &retained_feature,
-                plan.transcript_feature_id,
-                &plan.seq_id,
-                &source_features,
-                &plan.transcript_id,
-                &transcript_label,
-            )?;
-            protein_derivation.is_some()
-        } else {
-            false
-        };
+        let protein_derivation_inferred_without_annotation =
+            if protein_derivation.is_none() && !original_cds_annotation_present {
+                let cdna_sequence_upper = cdna_dna.get_forward_string().to_ascii_uppercase();
+                protein_derivation = Self::infer_transcript_protein_derivation_without_annotation(
+                    &cdna_sequence_upper,
+                    &retained_feature,
+                    plan.transcript_feature_id,
+                    &plan.seq_id,
+                    &source_features,
+                    &plan.transcript_id,
+                    &transcript_label,
+                )?;
+                protein_derivation.is_some()
+            } else {
+                false
+            };
         cdna_dna.set_name(format!("{transcript_label} exon-skip cDNA"));
         for feature in cdna_dna.features_mut() {
             Self::add_exon_skip_qualifiers(
@@ -6762,9 +7012,40 @@ impl GentleEngine {
             ),
             ("strand".into(), Some(plan.strand.clone())),
         ];
-        for key in ["gene", "gene_id", "locus_tag", "note"] {
-            if let Some(value) = Self::qualifier_text_for_derivation(&source_feature, key) {
-                transcript_qualifiers.push((key.into(), Some(value)));
+        for key in [
+            "gene",
+            "gene_id",
+            "locus_tag",
+            "note",
+            "cds_ranges_1based",
+            "codon_start",
+            "exon_skip_cds_warning",
+        ] {
+            for value in retained_feature.qualifier_values(key) {
+                transcript_qualifiers.push((key.into(), Some(value.to_string())));
+            }
+        }
+        if original_cds_annotation_present {
+            if let Some(derivation) = protein_derivation.as_ref() {
+                transcript_qualifiers.push((
+                    "transl_table".into(),
+                    Some(derivation.translation_table.to_string()),
+                ));
+                for (key, value) in [
+                    ("organism", &derivation.organism),
+                    ("organelle", &derivation.organelle),
+                ] {
+                    if let Some(value) = value {
+                        transcript_qualifiers.push((key.into(), Some(value.clone())));
+                    }
+                }
+            }
+            if let Some(cds) = projected_source_features
+                .iter()
+                .find(|feature| feature.kind.to_string().eq_ignore_ascii_case("CDS"))
+                && let Some(value) = Self::qualifier_text_for_derivation(cds, "source_protein_id")
+            {
+                transcript_qualifiers.push(("source_protein_id".into(), Some(value)));
             }
         }
         genomic_dna.features_mut().push(gb_io::seq::Feature {
@@ -6847,8 +7128,13 @@ impl GentleEngine {
                 warnings.push(format!("Derived cDNA '{}': {}", cdna_seq_id, warning));
             }
         } else {
+            warnings.extend(
+                retained_feature
+                    .qualifier_values("exon_skip_cds_warning")
+                    .map(str::to_string),
+            );
             warnings.push(format!(
-                "Derived cDNA '{}' has no CDS annotation; protein translation was not derived.",
+                "Derived cDNA '{}' has no retained CDS annotation; protein translation was not derived.",
                 cdna_seq_id
             ));
         }
@@ -7035,7 +7321,7 @@ impl GentleEngine {
             source_features,
             source_feature,
             &exon_ranges,
-        )
+        )?
         .into_iter()
         .next();
 
@@ -7067,10 +7353,26 @@ impl GentleEngine {
             ),
             ("strand".into(), Some(strand_text.clone())),
         ];
-        for key in ["gene", "gene_id", "locus_tag", "note"] {
-            if let Some(value) = Self::qualifier_text_for_derivation(source_feature, key) {
-                transcript_qualifiers.push((key.into(), Some(value)));
+        for key in [
+            "gene",
+            "gene_id",
+            "locus_tag",
+            "note",
+            "exon_skip_cds_warning",
+        ] {
+            for value in source_feature.qualifier_values(key) {
+                transcript_qualifiers.push((key.into(), Some(value.to_string())));
             }
+        }
+        if protein_derivation
+            .as_ref()
+            .is_none_or(|derivation| derivation.cds_ranges_1based.is_empty())
+            && source_feature
+                .qualifier_values("cds_ranges_1based")
+                .next()
+                .is_some()
+        {
+            transcript_qualifiers.push(("cds_ranges_1based".into(), Some(String::new())));
         }
         if let Some(derivation) = protein_derivation.as_ref() {
             if let Some(cds_encoded) = Self::serialize_ranges_1based(&derivation.cds_ranges_1based)
@@ -7207,8 +7509,9 @@ impl GentleEngine {
                     "synthetic_origin".into(),
                     Some("mrna_transcript_derived".to_string()),
                 ),
+                ("codon_start".into(), Some("1".to_string())),
                 (
-                    "codon_start".into(),
+                    "source_codon_start".into(),
                     Some(derivation.codon_start.to_string()),
                 ),
                 (
@@ -7280,6 +7583,7 @@ impl GentleEngine {
                 "locus_tag",
                 "product",
                 "protein_id",
+                "source_protein_id",
                 "note",
             ] {
                 if let Some(value) = representative_cds_feature
@@ -48204,17 +48508,9 @@ impl GentleEngine {
                                 &source_features,
                                 source_feature,
                                 &Self::feature_ranges_0based_for_derivation(source_feature),
-                            )
+                            )?
                             .into_iter()
-                            .next()
-                            .or_else(|| {
-                                Self::collect_cds_features_by_transcript_variant_annotation(
-                                    &source_features,
-                                    source_feature,
-                                )
-                                .into_iter()
-                                .next()
-                            });
+                            .next();
                         let derivation = match annotated_derivation {
                             Some(derivation) => Some(derivation),
                             None => Self::infer_transcript_protein_derivation_without_annotation(

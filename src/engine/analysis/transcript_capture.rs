@@ -287,7 +287,7 @@ impl GentleEngine {
                         feature,
                         dna.features(),
                         &template.exon_chain,
-                    );
+                    )?;
                     let mut exons = template.exon_chain.clone();
                     exons.sort_unstable();
                     let mut cursor = 0;
