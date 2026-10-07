@@ -1,5 +1,33 @@
 # GENtle Changelog
 
+## 2026-10-08 - Reconcile Glen's Historical TP73 CUT&RUN Comparison Branch
+
+- Record `b8b73158` as merged in ancestry-only commit `4a8e81d` on
+  `a02ef777`, leaving the tree unchanged. The 21 non-changelog outputs of
+  `54c8924a` equal the already-integrated `c21298fb`; main's different
+  changelog wording deliberately qualifies the uncorrected observations.
+  `b8b73158` is patch-equivalent to `dcc1a2b9`. Preserve all later input,
+  assembly, lane-validation, counting, layout and shared-geometry corrections
+  rather than restoring obsolete report bytes or completeness claims.
+- Prepare [the read-only Claude prompt](tp73_cutrun_promoter_comparison_claude_prompt.md)
+  against the exact merged tree; Claude was not invoked. Local macOS arm64 /
+  Python 3.14.7 passes 29 Python-only selection/comparison, SVG layout and
+  retained-bundle integrity checks. Seven BigWig tests could not import
+  `pyBigWig`; the source-binding/geometry groups (14 checks, including real-CLI
+  execution) are deferred.
+  No local Cargo execution, raw-data replay or native platform acceptance.
+- Reproduce a scoped checkout risk: the retained candidate JSON lacks an
+  LF policy, and Git's CRLF filter changes its receipt-bound SHA-256 from
+  `dd467f4d...` to `f7a9be2c...`. The prompt requests LF/CRLF regression coverage,
+  not hash normalization or scientific regeneration. Keep the documented
+  stronger CUT&RUN receipt refresh with Glen and the original source inputs.
+- No source, fixture, report, dependency, catalog, tag or release gate changes.
+  The handoff only adds this prompt and updates session orientation; unrelated
+  `paper` and `output/` remain untouched. No push or Claude consultation.
+- Whitespace and session-close checks pass: four OK, two warnings, no failures.
+  Warnings identify the intentional documentation/unrelated dirty files and
+  the manual scope-fidelity reminder; the roadmap remains 400 lines.
+
 ## 2026-10-07 - Make Dense Splicing Views Readable Without Reordering Biology
 
 - Apply Claude's reviewed FLNA plan on `b1c47ed6`, with fetched public base

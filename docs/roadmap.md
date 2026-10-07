@@ -1,6 +1,6 @@
 # GENtle Roadmap
 
-Last session: 2026-10-07 - Apply Claude's FLNA readability review as shared, display-only UniProt grouping and row geometry, deduplicated boundary text and collision-checked SVG labels. Engine payload/derivation order and fingerprints remain unchanged; other isoform/RNA views deliberately stay in payload order. Glen's live FLNA/2400-px and native GUI acceptance remains pending. Preserve the TP73 CDS oracle/ambiguity/both-strand persistence gate, [tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) replay/capture, sequence-design audits and [GC reconciliation](dna_sequence_optimization_plan.md#gc-review-reconciliation-2026-10-06); no release or scientific acceptance is claimed.
+Last session: 2026-10-08 - Pending [Claude audit of TP73/CUT&RUN comparison](tp73_cutrun_promoter_comparison_claude_prompt.md): check the retained bundle's reproduced LF/CRLF hash risk and keep stronger source-bound CUT&RUN receipt refresh with Glen. The ancestry merge changes no implementation or evidence. Preserve live FLNA/2400-px and native GUI acceptance, TP73 CDS oracle/ambiguity/both-strand persistence, [tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) replay/capture, sequence-design audits and [GC reconciliation](dna_sequence_optimization_plan.md#gc-review-reconciliation-2026-10-06); no release or scientific acceptance is claimed.
 `.10` remains published at `84f34a9e` without recorded exact-candidate acceptance; its historical ledger stays pending.
 
 Purpose: fast session orientation. This file answers "what next?" and should be
