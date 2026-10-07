@@ -1,5 +1,31 @@
 # GENtle Decisions
 
+## Splicing UniProt Presentation Order
+
+Status: active for the Splicing Expert canvas, transcript/exon matrix and SVG.
+
+`SplicingExpertView::uniprot_presentation_layout()` is the sole display-order
+policy. It joins lanes to saved matrix rows by exact feature ID, never ordinal.
+Referenced, other evaluated and unevaluated groups sort by target first,
+normalized transcript ID, feature ID and original lane index. The normalization
+is for sorting only; existing engine-owned exact-xref classification is unchanged.
+Headers appear only if a displayed lane was evaluated. Badges count sources
+with actual matched transcript xrefs, in accession order, with review status,
+overflow and ambiguity indicators; full evidence stays in JSON/hovers.
+
+Missing or duplicate joins are unevaluated, with diagnostics; unused matrix
+records remain in original order at the end. Missing cells are unknown, not
+absent exons. One shared half-open row-coordinate table drives GUI painting and
+hit-testing; headers cannot select adjacent transcripts. Boundary summaries
+deduplicate oriented presentation text only, retaining every source marker.
+
+Grouping never reorders/mutates engine payloads or changes their fingerprints,
+sequence derivation, biological coordinates or evidence. Other isoform-evidence
+and RNA-read views deliberately retain their existing payload order. SVG labels
+use deterministic collision suppression at readable sizes, with all suppressed
+facts retained in shared summaries, hovers and structured records. No renderer
+performs a UniProt fetch or claims transcript validity/global absence.
+
 ## Synthetic Sequence-Design Boundaries
 
 Status: active for the experimental synonymous motif-removal prototype.

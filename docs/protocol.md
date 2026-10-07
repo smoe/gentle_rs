@@ -12649,6 +12649,16 @@ Cryptic-splicing inspection (implemented):
     rendering performs no fetch. GUI matrix-label hovers and SVG lane/matrix
     `<title>` text project the same typed record; SVG labels also carry
     `data-uniprot-reference-status`.
+  - `SplicingExpertView::uniprot_presentation_layout()` is a pure, nonserialized
+    presentation policy shared by GUI and SVG. It groups referenced, other
+    evaluated and unevaluated lanes, target first inside each group, then
+    normalized transcript ID and feature ID. Exact feature-ID joins determine
+    matrix order; missing/duplicate joins remain unevaluated with diagnostics,
+    and orphan matrix records are appended in their original order. Missing
+    cells are unknown, not false exon absence. Half-open row bands keep group
+    headers inert during hit-testing. No operation payload order, fingerprint,
+    derivation order, schema or command route changes. Boundary summaries retain
+    every underlying marker, grouping only identical oriented boundary/pair text.
   - shared splicing expert payloads also carry conservative intron-signal
     heuristics per intron:
     - donor/acceptor positions and intron length

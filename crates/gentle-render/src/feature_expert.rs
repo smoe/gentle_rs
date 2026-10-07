@@ -255,7 +255,10 @@ fn splicing_legend_lines(
 ) -> Vec<String> {
     let mut raw = vec![
         "The top panel places transcript exon/intron models on one coordinate-true sequence axis; exon widths follow genomic length, while introns are shown as connecting lines.".to_string(),
-        "Orange/blue exon boxes distinguish alternative versus constitutive support; numbers on exons and arc labels are supporting transcript counts.".to_string(),
+        "Orange/blue exon boxes distinguish alternative versus constitutive support. Support is reported once in matrix hovers/counts; arc numbers are collision-filtered transcript counts.".to_string(),
+        "Full boundary words are deduplicated by oriented boundary/pair below; every lane tick remains. Rose dots and summary * preserve non-canonical boundaries/pairs.".to_string(),
+        "Labels that would collide are omitted, not shrunk. E# labels on the target lane and matrix headers are sparse when narrow; all coordinates/support remain in hovers and structured JSON.".to_string(),
+        "UniProt groups use exact transcript xrefs in relevant loaded entries only, never validation or global absence. No relevant loaded evidence means not evaluated; headers are then omitted.".to_string(),
         "Red donor ticks and teal acceptor ticks mark splice-boundary motif calls; CDS flank colors encode phase 0=blue, 1=amber, 2=rose where CDS ranges are available.".to_string(),
         "Transcript-vs-exon cells show whether a transcript contains an exon; color intensity reports exon support frequency across the displayed transcript set.".to_string(),
         "The exon-to-exon matrix reports transition counts between neighboring exon intervals; row/column E# colors show exon length modulo 3 as a frame-continuity cue.".to_string(),
@@ -282,6 +285,7 @@ fn splicing_legend_lines(
             view.junctions.len()
         ));
     }
+    raw.extend(view.uniprot_presentation_layout().diagnostics);
     raw.into_iter()
         .flat_map(|line| wrap_text(&line, 128))
         .collect()
@@ -1811,26 +1815,109 @@ fn render_restriction(view: &RestrictionSiteExpertView) -> String {
     doc.to_string()
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SplicingLabelBox {
+    left: f32,
+    right: f32,
+    top: f32,
+    bottom: f32,
+}
+
+impl SplicingLabelBox {
+    fn overlaps(self, other: Self, gap: f32) -> bool {
+        self.left < other.right + gap
+            && self.right + gap > other.left
+            && self.top < other.bottom + gap
+            && self.bottom + gap > other.top
+    }
+}
+
+/// Conservative monospace bounds, shared by acceptance and structural tests.
+fn splicing_label_box(
+    text: &str,
+    font_size: f32,
+    x: f32,
+    y: f32,
+    anchor: &str,
+) -> SplicingLabelBox {
+    let width = text.chars().count() as f32 * font_size * 0.6;
+    let left = match anchor {
+        "end" => x - width,
+        "middle" => x - width * 0.5,
+        _ => x,
+    };
+    SplicingLabelBox {
+        left,
+        right: left + width,
+        top: y - font_size,
+        bottom: y,
+    }
+}
+
+#[derive(Default)]
+struct SplicingLabelLayout {
+    accepted: Vec<SplicingLabelBox>,
+    exclusions: Vec<SplicingLabelBox>,
+}
+
+impl SplicingLabelLayout {
+    fn accept(&mut self, text: &str, size: f32, x: f32, y: f32, anchor: &str) -> bool {
+        let bounds = splicing_label_box(text, size, x, y, anchor);
+        if bounds.left < 8.0
+            || bounds.right > W - 8.0
+            || self
+                .accepted
+                .iter()
+                .chain(&self.exclusions)
+                .any(|other| bounds.overlaps(*other, 2.0))
+        {
+            return false;
+        }
+        self.accepted.push(bounds);
+        true
+    }
+}
+
+fn splicing_fit_label(text: &str, size: f32, width: f32) -> String {
+    let limit = (width / (size * 0.6)).floor().max(3.0) as usize;
+    if text.chars().count() <= limit {
+        text.to_string()
+    } else {
+        format!("{}...", text.chars().take(limit - 3).collect::<String>())
+    }
+}
+
+fn splicing_cell_label_fits(text: &str, size: f32, cell_width: f32) -> bool {
+    text.chars().count() as f32 * size * 0.6 <= cell_width
+}
+
 fn render_splicing(view: &SplicingExpertView) -> String {
-    let lane_count = view.transcripts.len().max(1);
+    use gentle_protocol::splicing_presentation::{
+        SplicingMatrixDisplayRow, boundary_summaries, group_heading,
+    };
+    let presentation = view.uniprot_presentation_layout();
+    let canvas = presentation.canvas(44.0, 26.0);
+    let matrix_display_rows = presentation.matrix_display_rows();
+    let boundary_rows = boundary_summaries(view);
+    let mut labels = SplicingLabelLayout::default();
     let unique_exon_total = view.unique_exons.len();
     let exon_count = unique_exon_total.max(1);
     let transcript_total = view.transcript_count.max(1);
     let exon_transitions = compute_splicing_exon_transition_matrix(view);
     let lane_height = 36.0_f32;
-    let lane_gap = 22.0_f32;
-    let chart_top = 126.0_f32;
-    let chart_height =
-        lane_count as f32 * lane_height + (lane_count.saturating_sub(1) as f32) * lane_gap;
+    let chart_top = 180.0_f32;
+    let chart_height = canvas.height.max(lane_height);
     let matrix_top = chart_top + chart_height + 78.0;
     let matrix_row_h = 17.0_f32;
     let matrix_support_row_h = 16.0_f32;
     let matrix_mod_row_h = 15.0_f32;
-    let matrix_h =
-        lane_count as f32 * matrix_row_h + matrix_support_row_h + matrix_mod_row_h + 38.0;
+    let matrix_h = matrix_display_rows.len() as f32 * matrix_row_h
+        + matrix_support_row_h
+        + matrix_mod_row_h
+        + 38.0;
     let transition_top = matrix_top + matrix_h + 24.0;
     let transition_h = if unique_exon_total >= 2 {
-        45.0 + unique_exon_total as f32 * 14.0
+        69.0 + unique_exon_total as f32 * 14.0
     } else {
         0.0
     };
@@ -1854,7 +1941,13 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             base
         }
     };
-    let event_top = junction_table_top + junction_h + 34.0;
+    let boundary_top = junction_table_top + junction_h + 34.0;
+    let boundary_height = if boundary_rows.is_empty() {
+        0.0
+    } else {
+        36.0 + boundary_rows.len() as f32 * 14.0
+    };
+    let event_top = boundary_top + boundary_height + 24.0;
     let mut event_line_count = 1usize;
     for event in &view.events {
         event_line_count += 1 + event.details.iter().take(2).count();
@@ -1890,6 +1983,34 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             )
         })
         .collect();
+    labels.exclusions.push(splicing_label_box(
+        &format!("{region_start} bp"),
+        11.0,
+        left,
+        chart_top - 21.0,
+        "start",
+    ));
+    labels.exclusions.push(splicing_label_box(
+        &format!("{region_end} bp"),
+        11.0,
+        right,
+        chart_top - 21.0,
+        "end",
+    ));
+    for lane in &presentation.lanes {
+        let y = chart_top
+            + canvas
+                .centre_for_lane(lane.lane_index)
+                .expect("display lane");
+        for exon in &view.transcripts[lane.lane_index].exons {
+            labels.exclusions.push(SplicingLabelBox {
+                left: x_for(exon.start_1based),
+                right: x_for(exon.end_1based).max(x_for(exon.start_1based) + 1.0),
+                top: y - 9.5,
+                bottom: y + 9.5,
+            });
+        }
+    }
 
     let mut doc = Document::new()
         .set("viewBox", (0, 0, W, dyn_h))
@@ -1987,11 +2108,26 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                 .set("d", path)
                 .set("fill", "none")
                 .set("stroke", "#64748b")
-                .set("stroke-width", stroke_w),
+                .set("stroke-width", stroke_w)
+                .add(Title::new(format!(
+                    "Junction {} -> {}; support {}; transcript feature IDs {:?}",
+                    junction.donor_1based,
+                    junction.acceptor_1based,
+                    junction.support_transcript_count,
+                    junction.transcript_feature_ids
+                ))),
         );
         let show_support_label =
             view.junctions.len() <= 48 || junction.support_transcript_count > 1;
-        if show_support_label {
+        if show_support_label
+            && labels.accept(
+                &junction.support_transcript_count.to_string(),
+                8.0,
+                mid_x,
+                apex_y - 4.0,
+                "middle",
+            )
+        {
             doc = doc.add(
                 Text::new(format!("{}", junction.support_transcript_count))
                     .set("x", mid_x)
@@ -2004,11 +2140,36 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         }
     }
 
+    for row in &canvas.rows {
+        if let Some(status) = row.group {
+            doc = doc.add(
+                Text::new(group_heading(status))
+                    .set("x", 88)
+                    .set("y", chart_top + row.top + 17.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 11)
+                    .set("fill", "#334155")
+                    .set("data-track", "splicing-group-header"),
+            );
+        }
+    }
     let unassessed_reference = SplicingUniprotReferenceEvidence::default();
-    for (lane_idx, lane) in view.transcripts.iter().enumerate() {
-        let y = chart_top + lane_idx as f32 * (lane_height + lane_gap) + lane_height * 0.5;
-        let uniprot_reference = view
-            .uniprot_reference_for_transcript(lane.transcript_feature_id)
+    let mixed_strands = view
+        .transcripts
+        .iter()
+        .map(|lane| lane.strand.as_str())
+        .collect::<BTreeSet<_>>()
+        .len()
+        > 1;
+    for display_lane in &presentation.lanes {
+        let lane = &view.transcripts[display_lane.lane_index];
+        let y = chart_top
+            + canvas
+                .centre_for_lane(display_lane.lane_index)
+                .expect("display lane");
+        let uniprot_reference = display_lane
+            .matrix_row_index
+            .map(|index| &view.matrix_rows[index].uniprot_reference)
             .unwrap_or(&unassessed_reference);
         if lane.has_target_feature {
             doc = doc.add(
@@ -2022,17 +2183,21 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             );
         }
         doc = doc.add(
-            Text::new(format!(
-                "{} ({})",
-                lane.transcript_id,
-                if lane.strand.trim().is_empty() {
-                    "?"
-                } else {
-                    lane.strand.as_str()
-                }
+            Text::new(splicing_fit_label(
+                &format!(
+                    "{}{}",
+                    lane.transcript_id,
+                    if mixed_strands {
+                        format!(" ({})", lane.strand)
+                    } else {
+                        String::new()
+                    }
+                ),
+                11.0,
+                left - 98.0,
             ))
             .set("x", left - 10.0)
-            .set("y", y + 4.0)
+            .set("y", y - 1.0)
             .set("text-anchor", "end")
             .set("font-family", "monospace")
             .set("font-size", 11)
@@ -2040,7 +2205,11 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                 "data-uniprot-reference-status",
                 uniprot_reference.status.as_str(),
             )
-            .add(Title::new(uniprot_reference.summary_lines().join("\n")))
+            .add(Title::new(format!(
+                "{}\n{}",
+                lane.transcript_id,
+                uniprot_reference.summary_lines().join("\n")
+            )))
             .set(
                 "fill",
                 if lane.has_target_feature {
@@ -2050,6 +2219,19 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                 },
             ),
         );
+        if let Some(badge) = &display_lane.badge {
+            doc = doc.add(
+                Text::new(splicing_fit_label(badge, 8.0, left - 18.0))
+                    .set("x", left - 10.0)
+                    .set("y", y + 14.0)
+                    .set("text-anchor", "end")
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", "#0f766e")
+                    .set("data-track", "uniprot-badge")
+                    .add(Title::new(uniprot_reference.summary_lines().join("\n"))),
+            );
+        }
 
         for intron in &lane.introns {
             let x1 = x_for(intron.start_1based);
@@ -2086,26 +2268,44 @@ fn render_splicing(view: &SplicingExpertView) -> String {
             } else {
                 0.78
             };
-            doc = doc
-                .add(
-                    Rectangle::new()
-                        .set("x", x1)
-                        .set("y", y - 9.5)
-                        .set("width", (x2 - x1).max(1.0))
-                        .set("height", 19.0)
-                        .set("fill", fill)
-                        .set("fill-opacity", opacity)
-                        .set("stroke", "#1f2937")
-                        .set("stroke-width", 0.6),
-                )
-                .add(
-                    Text::new(format!("{support}"))
-                        .set("x", x1 + 2.0)
-                        .set("y", y - 11.0)
+            doc = doc.add(
+                Rectangle::new()
+                    .set("x", x1)
+                    .set("y", y - 9.5)
+                    .set("width", (x2 - x1).max(1.0))
+                    .set("height", 19.0)
+                    .set("fill", fill)
+                    .set("fill-opacity", opacity)
+                    .set("stroke", "#1f2937")
+                    .set("stroke-width", 0.6)
+                    .set("data-track", "splicing-exon-box")
+                    .add(Title::new(format!(
+                        "Exon {}..{}; support {support}/{}",
+                        exon.start_1based, exon.end_1based, view.transcript_count
+                    ))),
+            );
+            let exon_id = view
+                .unique_exons
+                .iter()
+                .position(|unique| {
+                    unique.start_1based == exon.start_1based && unique.end_1based == exon.end_1based
+                })
+                .map(|index| format!("E{}", index + 1));
+            if lane.has_target_feature
+                && let Some(exon_id) = exon_id
+                && (x2 - x1) >= exon_id.len() as f32 * 4.8 + 6.0
+                && labels.accept(&exon_id, 8.0, (x1 + x2) * 0.5, y - 12.0, "middle")
+            {
+                doc = doc.add(
+                    Text::new(exon_id)
+                        .set("x", (x1 + x2) * 0.5)
+                        .set("y", y - 12.0)
+                        .set("text-anchor", "middle")
                         .set("font-family", "monospace")
                         .set("font-size", 8)
                         .set("fill", "#334155"),
                 );
+            }
             let phase_info = lane
                 .exon_cds_phases
                 .get(exon_idx)
@@ -2152,41 +2352,54 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         let Some(lane_idx) = lane_idx else {
             continue;
         };
-        let y = chart_top + lane_idx as f32 * (lane_height + lane_gap) + lane_height * 0.5;
+        let y = chart_top + canvas.centre_for_lane(lane_idx).expect("boundary lane");
         let x = x_for(marker.position_1based);
         let (tick_top, tick_bottom, color, dy) = if marker.side.eq_ignore_ascii_case("donor") {
             (y - 18.0, y - 8.0, "#be123c", -20.0)
         } else {
             (y + 8.0, y + 18.0, "#0f766e", 28.0)
         };
-        doc = doc
-            .add(
-                Line::new()
-                    .set("x1", x)
-                    .set("y1", tick_top)
-                    .set("x2", x)
-                    .set("y2", tick_bottom)
-                    .set("stroke", color)
-                    .set("stroke-width", 1.4),
-            )
-            .add(
-                Text::new(format!(
-                    "{}:{}{}",
+        doc = doc.add(
+            Line::new()
+                .set("data-track", "splice-boundary-tick")
+                .set("x1", x)
+                .set("y1", tick_top)
+                .set("x2", x)
+                .set("y2", tick_bottom)
+                .set("stroke", color)
+                .set("stroke-width", if marker.canonical { 1.4 } else { 2.5 })
+                .add(Title::new(format!(
+                    "{}:{}{} at {}; partner {}; {}",
                     marker.side,
                     marker.motif_2bp,
-                    if marker.canonical { "" } else { "*" }
-                ))
-                .set("x", x + 2.0)
-                .set("y", y + dy)
-                .set("font-family", "monospace")
-                .set("font-size", 8)
-                .set("fill", color),
+                    if marker.canonical && marker.canonical_pair {
+                        ""
+                    } else {
+                        "*"
+                    },
+                    marker.position_1based,
+                    marker.partner_position_1based,
+                    marker.annotation
+                ))),
+        );
+        if !marker.canonical || !marker.canonical_pair {
+            doc = doc.add(
+                Circle::new()
+                    .set("cx", x)
+                    .set("cy", y + dy)
+                    .set("r", 2.5)
+                    .set("fill", "#be123c")
+                    .set("data-track", "exceptional-boundary")
+                    .add(Title::new(
+                        "* non-canonical boundary/pair; full motif in shared summary",
+                    )),
             );
+        }
     }
 
     let matrix_label_x = 88.0_f32;
     let matrix_left = 250.0_f32;
-    let matrix_cell_w = ((right - matrix_left - 6.0) / exon_count as f32).clamp(7.0, 16.0);
+    let matrix_cell_w = ((right - matrix_left - 6.0) / exon_count as f32).clamp(1.0, 16.0);
     let matrix_cell_h = 12.0_f32;
     let matrix_support_y = matrix_top + 12.0;
     let matrix_mod_y = matrix_support_y + matrix_support_row_h;
@@ -2194,15 +2407,15 @@ fn render_splicing(view: &SplicingExpertView) -> String {
     doc = doc.add(
         Text::new("Transcript vs exon matrix")
             .set("x", matrix_label_x)
-            .set("y", matrix_top - 14.0)
+            .set("y", matrix_top - 30.0)
             .set("font-family", "monospace")
             .set("font-size", 12)
             .set("fill", "#111827"),
     );
     doc = doc.add(
         Text::new("cell color intensity encodes exon support frequency")
-            .set("x", matrix_left)
-            .set("y", matrix_top - 14.0)
+            .set("x", matrix_label_x)
+            .set("y", matrix_top - 16.0)
             .set("font-family", "monospace")
             .set("font-size", 9)
             .set("fill", "#475569"),
@@ -2210,26 +2423,47 @@ fn render_splicing(view: &SplicingExpertView) -> String {
     for (col_idx, exon) in view.unique_exons.iter().enumerate() {
         let mod3 = splicing_exon_mod3(exon);
         let x = matrix_left + col_idx as f32 * matrix_cell_w;
-        doc = doc
-            .add(
-                Rectangle::new()
-                    .set("x", x)
-                    .set("y", matrix_top - 10.5)
-                    .set("width", (matrix_cell_w - 1.0).max(4.0))
-                    .set("height", 9.5)
-                    .set("fill", splicing_exon_mod3_fill_hex(mod3))
-                    .set("stroke", "#cbd5e1")
-                    .set("stroke-width", 0.4),
-            )
-            .add(
-                Text::new(format!("E{}", col_idx + 1))
+        doc = doc.add(
+            Rectangle::new()
+                .set("data-track", "splicing-matrix-header-background")
+                .set("x", x)
+                .set("y", matrix_top - 10.5)
+                .set("width", (matrix_cell_w - 1.0).max(4.0))
+                .set("height", 9.5)
+                .set("fill", splicing_exon_mod3_fill_hex(mod3))
+                .set("stroke", "#cbd5e1")
+                .set("stroke-width", 0.4)
+                .add(Title::new(format!(
+                    "E{} {}..{}; length modulo 3: {mod3}",
+                    col_idx + 1,
+                    exon.start_1based,
+                    exon.end_1based
+                ))),
+        );
+    }
+    // Paint all backgrounds first: a narrow neighboring cell must not cover a label.
+    for (col_idx, exon) in view.unique_exons.iter().enumerate() {
+        let mod3 = splicing_exon_mod3(exon);
+        let x = matrix_left + col_idx as f32 * matrix_cell_w;
+        let header = format!("E{}", col_idx + 1);
+        if labels.accept(
+            &header,
+            8.0,
+            x + (matrix_cell_w - 1.0) * 0.5,
+            matrix_top - 2.2,
+            "middle",
+        ) {
+            doc = doc.add(
+                Text::new(header)
+                    .set("data-track", "splicing-matrix-header-label")
                     .set("x", x + (matrix_cell_w - 1.0) * 0.5)
                     .set("y", matrix_top - 2.2)
                     .set("text-anchor", "middle")
                     .set("font-family", "monospace")
-                    .set("font-size", 7)
+                    .set("font-size", 8)
                     .set("fill", splicing_exon_mod3_text_hex(mod3)),
             );
+        }
     }
     doc = doc.add(
         Text::new("support")
@@ -2251,61 +2485,121 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         let x = matrix_left + col_idx as f32 * matrix_cell_w + 0.5;
         let support_ratio =
             support_ratio_percent(exon.support_transcript_count, transcript_total) as f32 / 100.0;
-        let label = if exon.constitutive {
-            format!(
-                "{} const",
-                format_support_fraction(exon.support_transcript_count, transcript_total)
-            )
+        let label = exon.support_transcript_count.to_string();
+        let centre = x + (matrix_cell_w - 1.0) * 0.5;
+        doc = doc.add(
+            Rectangle::new()
+                .set("x", x)
+                .set("y", matrix_support_y - 10.0)
+                .set("width", (matrix_cell_w - 1.0).max(0.5))
+                .set("height", 12.0)
+                .set("fill", "#eff6ff")
+                .add(Title::new(format!(
+                    "E{} {}..{}; support {}/{}{}",
+                    col_idx + 1,
+                    exon.start_1based,
+                    exon.end_1based,
+                    exon.support_transcript_count,
+                    transcript_total,
+                    if exon.constitutive {
+                        "; constitutive"
+                    } else {
+                        ""
+                    }
+                ))),
+        );
+        if splicing_cell_label_fits(&label, 8.0, matrix_cell_w - 1.0)
+            && labels.accept(&label, 8.0, centre, matrix_support_y, "middle")
+        {
+            doc = doc.add(
+                Text::new(label)
+                    .set("data-track", "splicing-cell-label")
+                    .set("data-cell-width", matrix_cell_w - 1.0)
+                    .set("x", centre)
+                    .set("text-anchor", "middle")
+                    .set("y", matrix_support_y)
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set(
+                        "fill",
+                        rgb_hex(mix_rgb([100, 116, 139], [30, 64, 175], support_ratio)),
+                    ),
+            );
+        }
+        let mod3 = splicing_exon_mod3(exon);
+        if splicing_cell_label_fits(&mod3.to_string(), 8.0, matrix_cell_w - 1.0)
+            && labels.accept(&mod3.to_string(), 8.0, centre, matrix_mod_y, "middle")
+        {
+            doc = doc.add(
+                Text::new(format!("{mod3}"))
+                    .set("data-track", "splicing-cell-label")
+                    .set("data-cell-width", matrix_cell_w - 1.0)
+                    .set("x", x + (matrix_cell_w - 1.0) * 0.5)
+                    .set("y", matrix_mod_y)
+                    .set("text-anchor", "middle")
+                    .set("font-family", "monospace")
+                    .set("font-size", 8)
+                    .set("fill", splicing_exon_mod3_text_hex(mod3)),
+            );
+        }
+    }
+    for (row_idx, display_row) in matrix_display_rows.iter().enumerate() {
+        let y = matrix_rows_top + row_idx as f32 * matrix_row_h;
+        let (lane_index, matrix_row_index) = match display_row {
+            SplicingMatrixDisplayRow::Header(heading) => {
+                doc = doc.add(
+                    Text::new(heading)
+                        .set("x", matrix_label_x)
+                        .set("y", y + 10.0)
+                        .set("font-family", "monospace")
+                        .set("font-size", 9)
+                        .set("fill", "#334155")
+                        .set("data-track", "splicing-matrix-group-header"),
+                );
+                continue;
+            }
+            SplicingMatrixDisplayRow::Transcript {
+                lane_index,
+                matrix_row_index,
+            } => (*lane_index, *matrix_row_index),
+        };
+        let row = matrix_row_index.map(|index| &view.matrix_rows[index]);
+        let transcript_id = lane_index
+            .map(|index| view.transcripts[index].transcript_id.as_str())
+            .or_else(|| row.map(|row| row.transcript_id.as_str()))
+            .unwrap_or("Unknown transcript");
+        let reference = if lane_index.is_some() {
+            row.map(|row| &row.uniprot_reference)
+                .unwrap_or(&unassessed_reference)
         } else {
-            format_support_fraction(exon.support_transcript_count, transcript_total)
+            &unassessed_reference
         };
         doc = doc.add(
-            Text::new(label)
-                .set("x", x)
-                .set("y", matrix_support_y)
-                .set("font-family", "monospace")
-                .set("font-size", 7)
-                .set(
-                    "fill",
-                    rgb_hex(mix_rgb([100, 116, 139], [30, 64, 175], support_ratio)),
-                ),
+            Text::new(splicing_fit_label(
+                transcript_id,
+                10.0,
+                matrix_left - matrix_label_x - 10.0,
+            ))
+            .set("x", matrix_label_x)
+            .set("y", y + 10.0)
+            .set("font-family", "monospace")
+            .set("font-size", 10)
+            .set("data-uniprot-reference-status", reference.status.as_str())
+            .add(Title::new(format!(
+                "{transcript_id}\n{}",
+                reference.summary_lines().join("\n")
+            )))
+            .set("fill", "#1f2937"),
         );
-        let mod3 = splicing_exon_mod3(exon);
-        doc = doc.add(
-            Text::new(format!("{mod3}"))
-                .set("x", x + (matrix_cell_w - 1.0) * 0.5)
-                .set("y", matrix_mod_y)
-                .set("text-anchor", "middle")
-                .set("font-family", "monospace")
-                .set("font-size", 8)
-                .set("fill", splicing_exon_mod3_text_hex(mod3)),
-        );
-    }
-    for (row_idx, row) in view.matrix_rows.iter().enumerate() {
-        let y = matrix_rows_top + row_idx as f32 * matrix_row_h;
-        doc = doc.add(
-            Text::new(row.transcript_id.clone())
-                .set("x", matrix_label_x)
-                .set("y", y + 10.0)
-                .set("font-family", "monospace")
-                .set("font-size", 10)
-                .set(
-                    "data-uniprot-reference-status",
-                    row.uniprot_reference.status.as_str(),
-                )
-                .add(Title::new(row.uniprot_reference.summary_lines().join("\n")))
-                .set("fill", "#1f2937"),
-        );
-        for (col_idx, present) in row.exon_presence.iter().copied().enumerate() {
+        for (col_idx, exon) in view.unique_exons.iter().enumerate() {
+            let present = row.and_then(|row| row.exon_presence.get(col_idx)).copied();
             let x = matrix_left + col_idx as f32 * matrix_cell_w;
-            let support_count = view
-                .unique_exons
-                .get(col_idx)
-                .map(|exon| exon.support_transcript_count)
-                .unwrap_or(0);
-            let support_ratio =
-                support_ratio_percent(support_count, transcript_total) as f32 / 100.0;
-            let fill = splicing_matrix_cell_fill_hex(present, support_ratio);
+            let ratio = support_ratio_percent(exon.support_transcript_count, transcript_total)
+                as f32
+                / 100.0;
+            let fill = present
+                .map(|present| splicing_matrix_cell_fill_hex(present, ratio))
+                .unwrap_or_else(|| "#fef3c7".to_string());
             doc = doc.add(
                 Rectangle::new()
                     .set("x", x)
@@ -2314,20 +2608,45 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                     .set("height", matrix_cell_h)
                     .set("fill", fill)
                     .set("stroke", "#cbd5e1")
-                    .set("stroke-width", 0.5),
+                    .set("stroke-width", 0.5)
+                    .add(Title::new(format!(
+                        "E{} {}..{}; {}; support {}/{}",
+                        col_idx + 1,
+                        exon.start_1based,
+                        exon.end_1based,
+                        present
+                            .map(|value| if value { "present" } else { "absent" })
+                            .unwrap_or("not evaluated"),
+                        exon.support_transcript_count,
+                        transcript_total
+                    ))),
             );
-            doc = doc.add(
-                Text::new(if present { "X" } else { "·" })
-                    .set("x", x + (matrix_cell_w - 1.0) * 0.5)
-                    .set("y", y + matrix_cell_h - 2.0)
-                    .set("text-anchor", "middle")
-                    .set("font-family", "monospace")
-                    .set("font-size", 8)
-                    .set(
-                        "fill",
-                        splicing_matrix_cell_text_hex(present, support_ratio),
-                    ),
-            );
+            let marker = match present {
+                Some(true) => "X",
+                Some(false) => ".",
+                None => "?",
+            };
+            let centre = x + (matrix_cell_w - 1.0) * 0.5;
+            if splicing_cell_label_fits(marker, 8.0, matrix_cell_w - 1.0)
+                && labels.accept(marker, 8.0, centre, y + matrix_cell_h - 2.0, "middle")
+            {
+                doc = doc.add(
+                    Text::new(marker)
+                        .set("data-track", "splicing-cell-label")
+                        .set("data-cell-width", matrix_cell_w - 1.0)
+                        .set("x", centre)
+                        .set("y", y + matrix_cell_h - 2.0)
+                        .set("text-anchor", "middle")
+                        .set("font-family", "monospace")
+                        .set("font-size", 8)
+                        .set(
+                            "fill",
+                            present
+                                .map(|value| splicing_matrix_cell_text_hex(value, ratio))
+                                .unwrap_or("#334155"),
+                        ),
+                );
+            }
         }
     }
 
@@ -2336,10 +2655,10 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         let transition_axis_w = 58.0_f32;
         let transition_matrix_left = 250.0_f32 + transition_axis_w;
         let transition_cell_w =
-            ((right - transition_matrix_left - 6.0) / exon_count as f32).clamp(7.0, 16.0);
+            ((right - transition_matrix_left - 6.0) / exon_count as f32).clamp(1.0, 16.0);
         let transition_cell_h = 11.0_f32;
-        let transition_header_y = transition_top + 13.0;
-        let transition_rows_top = transition_top + 22.0;
+        let transition_header_y = transition_top + 36.0;
+        let transition_rows_top = transition_top + 46.0;
         doc = doc
             .add(
                 Text::new("Exon -> exon transition matrix")
@@ -2353,8 +2672,8 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                 Text::new(
                     "frequency color: transition support; E# color: exon genomic length %3 (heuristic frame cue)",
                 )
-                .set("x", transition_matrix_left - transition_axis_w)
-                .set("y", transition_top + 12.5)
+                .set("x", transition_label_x)
+                .set("y", transition_top + 14.0)
                 .set("font-family", "monospace")
                 .set("font-size", 8)
                 .set("fill", "#475569"),
@@ -2362,26 +2681,46 @@ fn render_splicing(view: &SplicingExpertView) -> String {
         for (to_idx, exon) in view.unique_exons.iter().enumerate() {
             let mod3 = splicing_exon_mod3(exon);
             let x = transition_matrix_left + to_idx as f32 * transition_cell_w;
-            doc = doc
-                .add(
-                    Rectangle::new()
-                        .set("x", x)
-                        .set("y", transition_header_y - 8.5)
-                        .set("width", (transition_cell_w - 1.0).max(4.0))
-                        .set("height", 9.5)
-                        .set("fill", splicing_exon_mod3_fill_hex(mod3))
-                        .set("stroke", "#cbd5e1")
-                        .set("stroke-width", 0.4),
-                )
-                .add(
-                    Text::new(format!("E{}", to_idx + 1))
+            doc = doc.add(
+                Rectangle::new()
+                    .set("data-track", "splicing-transition-header-background")
+                    .set("x", x)
+                    .set("y", transition_header_y - 8.5)
+                    .set("width", (transition_cell_w - 1.0).max(4.0))
+                    .set("height", 9.5)
+                    .set("fill", splicing_exon_mod3_fill_hex(mod3))
+                    .set("stroke", "#cbd5e1")
+                    .set("stroke-width", 0.4)
+                    .add(Title::new(format!(
+                        "E{} {}..{}; length modulo 3: {mod3}",
+                        to_idx + 1,
+                        exon.start_1based,
+                        exon.end_1based
+                    ))),
+            );
+        }
+        for (to_idx, exon) in view.unique_exons.iter().enumerate() {
+            let mod3 = splicing_exon_mod3(exon);
+            let x = transition_matrix_left + to_idx as f32 * transition_cell_w;
+            let header = format!("E{}", to_idx + 1);
+            if labels.accept(
+                &header,
+                8.0,
+                x + (transition_cell_w - 1.0) * 0.5,
+                transition_header_y - 1.0,
+                "middle",
+            ) {
+                doc = doc.add(
+                    Text::new(header)
+                        .set("data-track", "splicing-transition-header-label")
                         .set("x", x + (transition_cell_w - 1.0) * 0.5)
                         .set("y", transition_header_y - 1.0)
                         .set("text-anchor", "middle")
                         .set("font-family", "monospace")
-                        .set("font-size", 7)
+                        .set("font-size", 8)
                         .set("fill", splicing_exon_mod3_text_hex(mod3)),
                 );
+            }
         }
         for (from_idx, exon) in view.unique_exons.iter().enumerate() {
             let y = transition_rows_top + from_idx as f32 * 14.0;
@@ -2416,31 +2755,104 @@ fn render_splicing(view: &SplicingExpertView) -> String {
                     support_ratio_percent(support_count, transcript_total) as f32 / 100.0;
                 let fill = splicing_transition_cell_fill_hex(support_ratio);
                 let x = transition_matrix_left + to_idx as f32 * transition_cell_w;
-                doc = doc
-                    .add(
-                        Rectangle::new()
-                            .set("x", x)
-                            .set("y", y)
-                            .set("width", transition_cell_w - 1.0)
-                            .set("height", transition_cell_h)
-                            .set("fill", fill)
-                            .set("stroke", "#cbd5e1")
-                            .set("stroke-width", 0.5),
+                doc = doc.add(
+                    Rectangle::new()
+                        .set("x", x)
+                        .set("y", y)
+                        .set("width", transition_cell_w - 1.0)
+                        .set("height", transition_cell_h)
+                        .set("fill", fill)
+                        .set("stroke", "#cbd5e1")
+                        .set("stroke-width", 0.5)
+                        .add(Title::new(format!(
+                            "E{} -> E{}; support {support_count}/{transcript_total}",
+                            from_idx + 1,
+                            to_idx + 1
+                        ))),
+                );
+                let marker = if support_count > 0 {
+                    support_count.to_string()
+                } else {
+                    "·".to_string()
+                };
+                if splicing_cell_label_fits(&marker, 8.0, transition_cell_w - 1.0)
+                    && labels.accept(
+                        &marker,
+                        8.0,
+                        x + (transition_cell_w - 1.0) * 0.5,
+                        y + transition_cell_h - 2.0,
+                        "middle",
                     )
-                    .add(
-                        Text::new(if support_count > 0 {
-                            support_count.to_string()
-                        } else {
-                            "·".to_string()
-                        })
-                        .set("x", x + (transition_cell_w - 1.0) * 0.5)
-                        .set("y", y + transition_cell_h - 2.0)
-                        .set("text-anchor", "middle")
-                        .set("font-family", "monospace")
-                        .set("font-size", 8)
-                        .set("fill", splicing_transition_cell_text_hex(support_ratio)),
+                {
+                    doc = doc.add(
+                        Text::new(marker)
+                            .set("data-track", "splicing-cell-label")
+                            .set("data-cell-width", transition_cell_w - 1.0)
+                            .set("x", x + (transition_cell_w - 1.0) * 0.5)
+                            .set("y", y + transition_cell_h - 2.0)
+                            .set("text-anchor", "middle")
+                            .set("font-family", "monospace")
+                            .set("font-size", 8)
+                            .set("fill", splicing_transition_cell_text_hex(support_ratio)),
                     );
+                }
             }
+        }
+    }
+
+    if !boundary_rows.is_empty() {
+        doc = doc.add(
+            Text::new("Shared splice-boundary summary (* = non-canonical boundary or pair)")
+                .set("x", 88)
+                .set("y", boundary_top)
+                .set("font-family", "monospace")
+                .set("font-size", 11)
+                .set("fill", "#334155"),
+        );
+        doc = doc.add(Text::new("position / partner | strand | motif / pair | transcript support; all lane ticks retained")
+            .set("x", 88).set("y", boundary_top + 14.0).set("font-family", "monospace")
+            .set("font-size", 9).set("fill", "#475569"));
+        for (index, summary) in boundary_rows.iter().enumerate() {
+            let marker = &view.boundaries[summary.marker_index];
+            let star = if !marker.canonical || !marker.canonical_pair {
+                "*"
+            } else {
+                ""
+            };
+            let text = format!(
+                "{} / {} | {} | {}:{}{} | {} | {} transcripts",
+                marker.position_1based,
+                marker.partner_position_1based,
+                summary.strand,
+                marker.side,
+                marker.motif_2bp,
+                star,
+                marker.paired_motif_signature,
+                summary.transcript_feature_ids.len()
+            );
+            let details = summary
+                .marker_indices
+                .iter()
+                .map(|&index| format!("{:?}", view.boundaries[index]))
+                .collect::<Vec<_>>()
+                .join("\n");
+            doc = doc.add(
+                Text::new(splicing_fit_label(&text, 9.0, right - 88.0))
+                    .set("x", 88)
+                    .set("y", boundary_top + 30.0 + index as f32 * 14.0)
+                    .set("font-family", "monospace")
+                    .set("font-size", 9)
+                    .set(
+                        "fill",
+                        if star.is_empty() {
+                            "#334155"
+                        } else {
+                            "#be123c"
+                        },
+                    )
+                    .set("data-track", "splice-boundary-summary")
+                    .add(Title::new(details)),
+            );
         }
     }
 
@@ -7764,6 +8176,277 @@ mod tests {
     }
 
     #[test]
+    fn splicing_dense_export_bounds_repeated_labels_and_preserves_payload() {
+        // Hand-crafted dense geometry, not FLNA annotation or a UniProt record.
+        let mut view = splicing_test_view_with_long_footer();
+        let seed = view.transcripts[0].clone();
+        view.transcripts = (0..36)
+            .map(|index| {
+                let mut lane = seed.clone();
+                lane.transcript_feature_id = index;
+                lane.transcript_id = format!("ENST_SYNTHETIC_{index:03}.2");
+                lane.has_target_feature = index == 7;
+                lane
+            })
+            .collect();
+        view.transcript_count = 36;
+        let marker = view.boundaries[0].clone();
+        view.boundaries = (0..36)
+            .map(|index| {
+                let mut marker = marker.clone();
+                marker.transcript_feature_id = index;
+                marker
+            })
+            .collect();
+        let before = serde_json::to_value(&view).unwrap();
+        let svg = render_splicing(&view);
+        assert_eq!(
+            svg.matches("data-track=\"splice-boundary-summary\"")
+                .count(),
+            1
+        );
+        assert_eq!(
+            svg.matches("data-track=\"splice-boundary-tick\"").count(),
+            36
+        );
+        assert_eq!(svg.matches("data-track=\"exon-support-label\"").count(), 0);
+        assert_eq!(serde_json::to_value(&view).unwrap(), before);
+    }
+
+    // Synthetic dense geometry only: no FLNA sequence or evidence is impersonated.
+    fn splicing_dense_geometry_fixture() -> SplicingExpertView {
+        let mut view = splicing_test_view_with_long_footer();
+        view.group_label = "Synthetic dense geometry".to_string();
+        view.seq_id = "dense_synthetic".to_string();
+        let mut seed = view.transcripts[0].clone();
+        let matrix = view.matrix_rows[0].clone();
+        let exon = view.unique_exons[0].clone();
+        view.region_start_1based = 1;
+        view.region_end_1based = 10_000;
+        view.unique_exons = (0..80)
+            .map(|index| {
+                let mut exon = exon.clone();
+                exon.start_1based = 50 + index * 100;
+                exon.end_1based = exon.start_1based + 20;
+                exon.support_transcript_count = 36;
+                exon
+            })
+            .collect();
+        seed.exons = view
+            .unique_exons
+            .iter()
+            .map(|exon| gentle_protocol::SplicingRange {
+                start_1based: exon.start_1based,
+                end_1based: exon.end_1based,
+            })
+            .collect();
+        seed.exon_cds_phases.clear();
+        seed.introns.clear();
+        view.transcripts = (0..36)
+            .map(|index| {
+                let mut lane = seed.clone();
+                lane.transcript_feature_id = index;
+                lane.transcript_id = format!("ENST_SYNTHETIC_{index:03}.2");
+                lane.has_target_feature = index == 7;
+                lane
+            })
+            .collect();
+        view.matrix_rows = view
+            .transcripts
+            .iter()
+            .map(|lane| {
+                let mut row = matrix.clone();
+                row.transcript_feature_id = lane.transcript_feature_id;
+                row.transcript_id = lane.transcript_id.clone();
+                row.exon_presence = vec![true; 80];
+                row.uniprot_reference.status =
+                    gentle_protocol::SplicingUniprotReferenceStatus::NotReferenced;
+                row
+            })
+            .collect();
+        view.matrix_rows[7].uniprot_reference = SplicingUniprotReferenceEvidence {
+            status: gentle_protocol::SplicingUniprotReferenceStatus::Referenced,
+            sources: vec![gentle_protocol::SplicingUniprotReferenceSource {
+                accession: "SYNTHETIC_P1".to_string(),
+                reviewed: Some(true),
+                matched_transcript_xrefs: vec![gentle_protocol::UniprotEnsemblLinkedXref {
+                    transcript_id: Some(view.transcripts[7].transcript_id.clone()),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let marker = view.boundaries[0].clone();
+        view.boundaries = view
+            .transcripts
+            .iter()
+            .map(|lane| {
+                let mut marker = marker.clone();
+                marker.transcript_feature_id = lane.transcript_feature_id;
+                marker.transcript_id = lane.transcript_id.clone();
+                marker.position_1based = 70;
+                marker.partner_position_1based = 150;
+                marker.canonical = false;
+                marker.canonical_pair = false;
+                marker.motif_2bp = "TT".to_string();
+                marker
+            })
+            .collect();
+        view.transcript_count = 36;
+        view.unique_exon_count = 80;
+        view
+    }
+
+    fn splicing_svg_attribute(tag: &str, name: &str) -> Option<String> {
+        let tag = format!(" {tag}");
+        let start = tag.find(&format!(" {name}=\""))? + name.len() + 3;
+        Some(tag[start..].split('"').next()?.to_string())
+    }
+
+    #[test]
+    fn splicing_dense_svg_measures_text_geometry_and_exon_exclusions() {
+        let view = splicing_dense_geometry_fixture();
+        let svg = render_splicing(&view);
+        assert_splicing_svg_label_geometry(&svg);
+        assert_eq!(
+            svg.matches("data-track=\"splice-boundary-summary\"")
+                .count(),
+            1
+        );
+        assert_eq!(
+            svg.matches("data-track=\"exceptional-boundary\"").count(),
+            36
+        );
+        assert!(svg.contains("donor:TT*"));
+        assert!(svg.contains("support 36/36"));
+        assert!(svg.contains("\nUniProt SYNTHETIC_P1 [reviewed]\n"));
+        for matrix in ["matrix", "transition"] {
+            let background = format!("data-track=\"splicing-{matrix}-header-background\"");
+            let label = format!("data-track=\"splicing-{matrix}-header-label\"");
+            assert_eq!(svg.matches(&background).count(), view.unique_exons.len());
+            assert!(
+                svg.rfind(&background).unwrap() < svg.find(&label).unwrap(),
+                "later {matrix} cell backgrounds must not obscure accepted text"
+            );
+        }
+        if let Some(dir) = std::env::var_os("GENTLE_SPLICING_VISUAL_DIR") {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                std::path::Path::new(&dir).join("splicing_dense_synthetic.svg"),
+                svg,
+            )
+            .unwrap();
+        }
+    }
+
+    fn assert_splicing_svg_label_geometry(svg: &str) {
+        let mut text_boxes = Vec::new();
+        for element in svg.split("<text ").skip(1) {
+            let (tag, rest) = element.split_once('>').unwrap();
+            let text = rest
+                .split('<')
+                .next()
+                .unwrap()
+                .trim()
+                .replace("&gt;", ">")
+                .replace("&lt;", "<")
+                .replace("&amp;", "&");
+            let size = splicing_svg_attribute(tag, "font-size")
+                .unwrap()
+                .parse::<f32>()
+                .unwrap();
+            assert!(size >= 8.0, "unreadable new label: {text}");
+            if let Some(cell_width) = splicing_svg_attribute(tag, "data-cell-width") {
+                assert!(
+                    splicing_cell_label_fits(&text, size, cell_width.parse().unwrap()),
+                    "cell label would be covered by the next background: {text}"
+                );
+            }
+            let x = splicing_svg_attribute(tag, "x").unwrap().parse().unwrap();
+            let y = splicing_svg_attribute(tag, "y").unwrap().parse().unwrap();
+            let anchor =
+                splicing_svg_attribute(tag, "text-anchor").unwrap_or_else(|| "start".to_string());
+            let bounds = splicing_label_box(&text, size, x, y, &anchor);
+            assert!(
+                bounds.left >= 0.0 && bounds.right <= W,
+                "outside canvas: {text} {bounds:?}"
+            );
+            for (other_text, other_bounds) in &text_boxes {
+                assert!(
+                    !bounds.overlaps(*other_bounds, 1.0),
+                    "overlap: {text:?} {bounds:?} / {other_text:?} {other_bounds:?}"
+                );
+            }
+            text_boxes.push((text, bounds));
+        }
+        for element in svg.split("<rect ").skip(1) {
+            let tag = element.split('>').next().unwrap();
+            if splicing_svg_attribute(tag, "data-track").as_deref() != Some("splicing-exon-box") {
+                continue;
+            }
+            let number = |name| {
+                splicing_svg_attribute(tag, name)
+                    .unwrap()
+                    .parse::<f32>()
+                    .unwrap()
+            };
+            let bounds = SplicingLabelBox {
+                left: number("x"),
+                right: number("x") + number("width"),
+                top: number("y"),
+                bottom: number("y") + number("height"),
+            };
+            for (text, label) in &text_boxes {
+                assert!(!label.overlaps(bounds, 1.0), "text crosses exon: {text}");
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "manual local inspection JSON required; no fetches or ordinary CI dependency"]
+    fn splicing_manual_saved_view_visual_smoke() {
+        let path = std::env::var_os("GENTLE_SPLICING_VIEW_JSON")
+            .expect("saved inspect-feature-expert JSON");
+        let input: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let view: SplicingExpertView = serde_json::from_value(input["data"].clone()).unwrap();
+        let before = serde_json::to_value(&view).unwrap();
+        let svg = render_splicing(&view);
+        assert_splicing_svg_label_geometry(&svg);
+        assert_eq!(serde_json::to_value(&view).unwrap(), before);
+        let path =
+            std::env::var_os("GENTLE_SPLICING_VISUAL_DIR").expect("existing output directory");
+        std::fs::write(std::path::Path::new(&path).join("splicing_after.svg"), svg).unwrap();
+        eprintln!(
+            "Manual saved-view smoke: {} transcripts, {} exons, {} boundary markers -> {} summary rows",
+            view.transcripts.len(),
+            view.unique_exons.len(),
+            view.boundaries.len(),
+            gentle_protocol::splicing_presentation::boundary_summaries(&view).len()
+        );
+    }
+
+    #[test]
+    fn splicing_label_acceptance_rejects_collisions_and_exon_boxes() {
+        let badge = "UniProt A123456789 [unreviewed] +1 ?";
+        assert_eq!(splicing_fit_label(badge, 8.0, 240.0 - 18.0), badge);
+        assert!(splicing_cell_label_fits("2", 8.0, 7.0));
+        assert!(!splicing_cell_label_fits("22", 8.0, 7.0));
+        let mut labels = SplicingLabelLayout::default();
+        labels.exclusions.push(SplicingLabelBox {
+            left: 100.0,
+            right: 130.0,
+            top: 100.0,
+            bottom: 120.0,
+        });
+        assert!(!labels.accept("E10", 8.0, 115.0, 112.0, "middle"));
+        assert!(labels.accept("E10", 8.0, 115.0, 96.0, "middle"));
+        assert!(!labels.accept("E11", 8.0, 116.0, 96.0, "middle"));
+        assert!(labels.accept("E11", 8.0, 145.0, 96.0, "middle"));
+    }
+
+    #[test]
     fn splicing_renderer_expands_footer_for_legend_provenance_and_instructions() {
         let svg = render_feature_expert_svg(&FeatureExpertView::Splicing(
             splicing_test_view_with_long_footer(),
@@ -7828,10 +8511,12 @@ mod tests {
         assert!(svg.contains("SYNTHETIC_ACCESSION"));
         assert!(svg.contains("reviewed"));
         assert!(svg.contains("not a global absence claim"));
+        assert!(extract_svg_root_height(&svg) > extract_svg_root_height(&legacy_svg));
         assert_eq!(
-            extract_svg_root_height(&svg),
-            extract_svg_root_height(&legacy_svg)
+            svg.matches("data-track=\"splicing-group-header\"").count(),
+            2
         );
+        assert_eq!(svg.matches("data-track=\"uniprot-badge\"").count(), 1);
         assert_eq!(
             view.transcripts[0].transcript_feature_id,
             view.matrix_rows[0].transcript_feature_id

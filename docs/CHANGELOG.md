@@ -1,5 +1,39 @@
 # GENtle Changelog
 
+## 2026-10-07 - Make Dense Splicing Views Readable Without Reordering Biology
+
+- Apply Claude's reviewed FLNA plan on `b1c47ed6`, with fetched public base
+  `04debbe0`. Reuse the landed exact UniProt evidence; add one pure protocol
+  display layout, not a second matcher or serialized contract. Join by feature
+  ID, group locally referenced/other evaluated/unevaluated transcripts, keep
+  target first per group, and retain ambiguous/missing joins and orphan rows.
+  Payload order, derivation order, fingerprint and all biological data stay
+  unchanged; other isoform/RNA views deliberately retain payload order.
+- Share half-open row bands between GUI painting, hover, selection and context
+  menus. Retain egui's menu anchor across frames so intron actions do not lose
+  their target after opening; the new interaction regression exposed this
+  defect. Headers are inert. Show one exact-xref accession/review badge per lane,
+  retaining full source provenance in hovers/JSON. Keep every boundary tick and
+  exceptional marker; deduplicate only oriented motif-summary text. Replace
+  repetitive exon/support words with collision-checked target IDs, shared
+  matrices and hovers. SVG text stays at least 8 px; tests measure emitted
+  text boxes and exon exclusions rather than merely counting fewer labels.
+  Matrix backgrounds precede headers, and cell numbers must fit their own
+  cells, preventing later backgrounds from silently covering accepted text.
+- Record the scoped files, commands, public FLNA input/output hashes and
+  remaining independent acceptance in
+  [Glen's handoff](glen_flna_splicing_readability_handoff_20261007.md). The manual
+  renderer smoke covers 36 transcripts, 103 unique exons and 1,858 retained
+  boundary markers summarized in 146 rows; the 2400-px PNG was visually checked.
+  Inputs came from an explicitly identified older CLI, not a fresh current-main
+  executable. No downloaded fixture is committed; no native GUI, Windows,
+  whole-workspace or release acceptance is claimed.
+- Local macOS verification: eight protocol, five renderer and 107 serial root
+  splicing tests pass, plus the separately invoked saved-FLNA renderer smoke.
+  Locked offline Cargo check, formatting and whitespace checks pass. An
+  intermediate parallel ATtRACT test failure passes serially but remains a
+  separate synchronization investigation, not a fix claimed by this change.
+
 ## 2026-10-07 - Preserve Transcript CDS Identity Through Exon Skipping
 
 - From `04debbe0`, fix the DeltaNp73beta investigation's shared-engine boundary:

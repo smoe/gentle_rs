@@ -1089,7 +1089,18 @@ Feature tree grouping:
   Gene-only relevance does not make a transcript `referenced`; `not_referenced`
   is scoped to the relevant loaded entries, not a global absence claim. The
   shared JSON and exported SVG hover titles retain the same source hashes and
-  identifiers. Transcript geometry and ordering are unchanged.
+  identifiers. Biological geometry and engine payload order are unchanged.
+  The canvas and transcript/exon matrix share a display-only grouping: exact
+  UniProt-referenced isoforms, other evaluated transcripts, then not evaluated.
+  Target first within each group, then normalized transcript ID and feature ID.
+  Headers are omitted when all lanes are unevaluated. One compact accession/
+  review-status badge per matched lane carries `+N` for further entries and `?`
+  for ambiguity; full evidence remains in hovers. Header clicks select nothing.
+  Missing/duplicate lane-to-matrix joins are explicitly unevaluated; orphan
+  matrix records remain listed, and missing exon cells show `n/a`, not absence.
+  Every boundary tick remains visible, with rose exceptional markers. Full
+  motif words appear once per oriented boundary/pair in the shared summary;
+  expand **Per-transcript boundary details** for all original annotations.
 - For debugging Splicing Expert launch stalls, launching GENtle with
   `GENTLE_TRACE_SPLICING_EXPERT=1` emits coarse open/render stage tracing to
   the terminal and mirrors it into the sequence-window status line.

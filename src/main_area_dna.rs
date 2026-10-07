@@ -3645,6 +3645,7 @@ impl MainAreaDna {
         a_start < b_end_exclusive && a_end_exclusive > b_start
     }
 
+    #[cfg(test)]
     fn splicing_lane_index_at_y(
         y: f32,
         lanes_top: f32,
@@ -18523,8 +18524,9 @@ impl MainAreaDna {
         interactive: bool,
         id_namespace: &str,
     ) -> Option<usize> {
-        let transcript_count = view.transcripts.len();
-        let lane_count = transcript_count.max(1);
+        let presentation = self.splicing_expert_presentation_for_view(view);
+        let layout = &presentation.layout;
+        let canvas = layout.canvas(style.lane_height_px.max(36.0), 24.0);
         let transcript_total = view.transcript_count.max(1);
         let exon_support_by_range = view
             .unique_exons
@@ -18546,7 +18548,7 @@ impl MainAreaDna {
         let lanes_offset_from_axis = 30.0_f32;
         let plot_height = axis_top_padding
             + lanes_offset_from_axis
-            + lane_count as f32 * style.lane_height_px
+            + canvas.height.max(style.lane_height_px)
             + 36.0;
         let desired_width = ui.available_width().max(style.min_plot_width_px);
         let mut clicked_feature_id: Option<usize> = None;
@@ -18613,6 +18615,7 @@ impl MainAreaDna {
                     egui::Color32::from_gray(70),
                 );
 
+                let mut arc_labels = Vec::<egui::Rect>::new();
                 for junction in &view.junctions {
                     let x1 = to_x(junction.donor_1based);
                     let x2 = to_x(junction.acceptor_1based);
@@ -18638,9 +18641,14 @@ impl MainAreaDna {
                     ));
                     let show_support_label =
                         view.junctions.len() <= 48 || junction.support_transcript_count > 1;
-                    if show_support_label {
-                        let mid_x = (x1 + x2) * 0.5;
-                        let apex_y = axis_y - height;
+                    let mid_x = (x1 + x2) * 0.5;
+                    let apex_y = axis_y - height;
+                    let width = junction.support_transcript_count.to_string().len() as f32 * 4.8;
+                    let label_box = egui::Rect::from_min_max(
+                        egui::pos2(mid_x - width * 0.5, apex_y - 10.0),
+                        egui::pos2(mid_x + width * 0.5, apex_y - 2.0));
+                    if show_support_label && !arc_labels.iter().any(|rect| rect.expand(2.0).intersects(label_box)) {
+                        arc_labels.push(label_box);
                         painter.text(
                             egui::pos2(mid_x, apex_y - 2.0),
                             egui::Align2::CENTER_BOTTOM,
@@ -18663,8 +18671,7 @@ impl MainAreaDna {
                     let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
                         continue;
                     };
-                    let y =
-                        lanes_top + *idx as f32 * style.lane_height_px + style.lane_height_px * 0.5;
+                    let y = lanes_top + canvas.centre_for_lane(*idx).expect("display lane");
                     let x = to_x(marker.position_1based);
                     let dy = if marker.side.eq_ignore_ascii_case("donor") {
                         9.0
@@ -18677,28 +18684,27 @@ impl MainAreaDna {
                         egui::Stroke::new(1.3_f32, color),
                     );
                     painter.circle_filled(egui::pos2(x, y + dy), 2.2, color);
-                    if view.boundaries.len() <= 16
-                        || marker.motif_class.as_str() != "gt_ag_major_canonical"
-                    {
-                        painter.text(
-                            egui::pos2(x + 3.0, y + dy),
-                            if marker.side.eq_ignore_ascii_case("donor") {
-                                egui::Align2::LEFT_TOP
-                            } else {
-                                egui::Align2::LEFT_BOTTOM
-                            },
-                            marker.motif_2bp.as_str(),
-                            egui::FontId::monospace(7.0),
-                            color,
-                        );
+                    if !marker.canonical || !marker.canonical_pair {
+                        painter.circle_filled(egui::pos2(x, y + dy), 3.0, egui::Color32::from_rgb(190, 18, 60));
                     }
                 }
 
-                for (idx, transcript) in view.transcripts.iter().enumerate() {
-                    let y =
-                        lanes_top + idx as f32 * style.lane_height_px + style.lane_height_px * 0.5;
-                    painter.text(
-                        egui::pos2(label_x, y),
+                for row in &canvas.rows {
+                    if let Some(status) = row.group {
+                        painter.text(egui::pos2(label_x, lanes_top + row.top + 12.0),
+                            egui::Align2::LEFT_CENTER,
+                            gentle_protocol::splicing_presentation::group_heading(status),
+                            egui::FontId::monospace(10.0), egui::Color32::from_gray(60));
+                    }
+                }
+
+                let label_painter = painter.with_clip_rect(egui::Rect::from_min_max(
+                    egui::pos2(label_x, lanes_top), egui::pos2(plot_left - 8.0, rect.bottom())));
+                for display_lane in &layout.lanes {
+                    let transcript = &view.transcripts[display_lane.lane_index];
+                    let y = lanes_top + canvas.centre_for_lane(display_lane.lane_index).expect("display lane");
+                    label_painter.text(
+                        egui::pos2(label_x, y - 6.0),
                         egui::Align2::LEFT_CENTER,
                         format!(
                             "n-{} {}",
@@ -18707,6 +18713,11 @@ impl MainAreaDna {
                         egui::FontId::monospace(10.0),
                         egui::Color32::BLACK,
                     );
+
+                    if let Some(badge) = &display_lane.badge {
+                        label_painter.text(egui::pos2(label_x, y + 9.0), egui::Align2::LEFT_CENTER,
+                            badge, egui::FontId::monospace(8.0), egui::Color32::from_rgb(15, 118, 110));
+                    }
 
                     for intron in &transcript.introns {
                         let x1 = to_x(intron.start_1based);
@@ -18852,9 +18863,7 @@ impl MainAreaDna {
 
                 let intron_at_pos = |pointer_pos: egui::Pos2| {
                     for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
-                        let y = lanes_top
-                            + lane_idx as f32 * style.lane_height_px
-                            + style.lane_height_px * 0.5;
+                        let y = lanes_top + canvas.centre_for_lane(lane_idx).expect("display lane");
                         for intron in &transcript.introns {
                             let x1 = to_x(intron.start_1based);
                             let x2 = to_x(intron.end_1based);
@@ -18893,9 +18902,7 @@ impl MainAreaDna {
                         let Some(idx) = lane_index.get(&marker.transcript_feature_id) else {
                             continue;
                         };
-                        let y = lanes_top
-                            + *idx as f32 * style.lane_height_px
-                            + style.lane_height_px * 0.5;
+                        let y = lanes_top + canvas.centre_for_lane(*idx).expect("display lane");
                         let dy = if marker.side.eq_ignore_ascii_case("donor") {
                             9.0
                         } else {
@@ -19004,9 +19011,7 @@ impl MainAreaDna {
                     if !has_boundary_hover {
                         let mut hovered_exon = None;
                         for (lane_idx, transcript) in view.transcripts.iter().enumerate() {
-                            let y = lanes_top
-                                + lane_idx as f32 * style.lane_height_px
-                                + style.lane_height_px * 0.5;
+                            let y = lanes_top + canvas.centre_for_lane(lane_idx).expect("display lane");
                             for (exon_idx, exon) in transcript.exons.iter().enumerate() {
                                 let x1 = to_x(exon.start_1based);
                                 let x2 = to_x(exon.end_1based);
@@ -19105,28 +19110,29 @@ impl MainAreaDna {
                     }
                 }
 
-                if interactive {
-                    if let Some(pointer_pos) = response.hover_pos() {
+                if let Some(pointer_pos) = response.hover_pos() {
                         if !has_boundary_hover && !has_exon_hover
-                            && let Some(lane_idx) = Self::splicing_lane_index_at_y(
-                                pointer_pos.y,
-                                lanes_top,
-                                style.lane_height_px,
-                                transcript_count,
-                            ) {
+                            && let Some(lane_idx) = canvas.lane_at_y(pointer_pos.y - lanes_top) {
                                 let transcript = &view.transcripts[lane_idx];
                                 response.clone().on_hover_ui_at_pointer(|ui| {
                                     ui.monospace(format!(
                                         "n-{} {}",
                                         transcript.transcript_feature_id, transcript.transcript_id
                                     ));
-                                    ui.label(
-                                    "Click to focus this transcript feature in the sequence view",
-                                );
+                                    let reference = layout.lanes.iter().find(|lane| lane.lane_index == lane_idx)
+                                        .and_then(|lane| lane.matrix_row_index).map(|index| &view.matrix_rows[index].uniprot_reference);
+                                    ui.label(reference.map(|reference| reference.summary_lines().join("\n"))
+                                        .unwrap_or_else(|| "UniProt status not evaluated: no unambiguous matrix join".to_string()));
+                                    if interactive {
+                                        ui.label("Click to focus this transcript feature in the sequence view");
+                                    }
                                 });
                             }
-                        ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                        if interactive && canvas.lane_at_y(pointer_pos.y - lanes_top).is_some() {
+                            ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                        }
                     }
+                if interactive {
                     if response.clicked()
                         && let Some(pointer_pos) = response.interact_pointer_pos() {
                             if let Some((key, _, _)) = intron_at_pos(pointer_pos) {
@@ -19143,18 +19149,17 @@ impl MainAreaDna {
                                     self.splicing_expert_selected_intron_keys.insert(key.clone());
                                 }
                                 self.splicing_expert_selected_intron_signal_key = Some(key);
-                            } else if let Some(lane_idx) = Self::splicing_lane_index_at_y(
-                                pointer_pos.y,
-                                lanes_top,
-                                style.lane_height_px,
-                                transcript_count,
-                            ) {
+                            } else if let Some(lane_idx) = canvas.lane_at_y(pointer_pos.y - lanes_top) {
                                 clicked_feature_id =
                                     Some(view.transcripts[lane_idx].transcript_feature_id);
                             }
                         }
-                    let context_intron = response.interact_pointer_pos().and_then(intron_at_pos);
-                    response.context_menu(|ui| {
+                    let menu = egui::Popup::context_menu(&response);
+                    // The response loses its click position on later menu frames.
+                    let context_intron = response.interact_pointer_pos()
+                        .or_else(|| menu.get_anchor_rect().map(|rect| rect.min))
+                        .and_then(intron_at_pos);
+                    menu.show(|ui| {
                         if let Some((key, transcript_id, length_bp)) = context_intron.clone() {
                             ui.monospace(format!(
                                 "n-{} {}",

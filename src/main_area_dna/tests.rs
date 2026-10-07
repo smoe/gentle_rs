@@ -15559,6 +15559,141 @@ fn splicing_expert_presentation_test_view() -> SplicingExpertView {
 }
 
 #[test]
+fn splicing_grouped_canvas_keeps_header_clicks_inert_and_selects_reordered_introns() {
+    // Synthetic annotation from the existing presentation fixture, not PATZ1/FLNA.
+    let mut view = splicing_expert_presentation_test_view();
+    view.matrix_rows[0].uniprot_reference.status =
+        gentle_protocol::SplicingUniprotReferenceStatus::NotReferenced;
+    view.matrix_rows[1].uniprot_reference.status =
+        gentle_protocol::SplicingUniprotReferenceStatus::Referenced;
+    view.transcripts[1].introns = view.transcripts[0].introns.clone();
+    let before = serde_json::to_value(&view).unwrap();
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(20)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let ctx = egui::Context::default();
+    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(980.0, 480.0));
+    let mut time = 0.0;
+    let mut pass = |area: &mut MainAreaDna, events: Vec<egui::Event>| {
+        time += 1.0 / 60.0;
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen),
+            time: Some(time),
+            events,
+            ..Default::default()
+        });
+        let mut origin = egui::Pos2::ZERO;
+        let mut width = 0.0;
+        let mut clicked = None;
+        crate::egui_compat::show_central_panel_for_test_context(
+            &ctx,
+            egui::CentralPanel::default(),
+            |ui| {
+                origin = ui.cursor().min;
+                width = ui.available_width().max(920.0);
+                clicked = area.render_splicing_lane_canvas_ui(
+                    ui,
+                    &view,
+                    super::SplicingLaneCanvasStyle::expert(),
+                    true,
+                    "grouped-regression",
+                );
+            },
+        );
+        (origin, width, clicked, collect_pass_texts(&ctx))
+    };
+    let (origin, width, _, _) = pass(&mut area, Vec::new());
+    let canvas = view.uniprot_presentation_layout().canvas(36.0, 24.0);
+    let top = origin.y + 74.0; // Same measured axis padding/offset for this two-support fixture.
+    let click = |area: &mut MainAreaDna,
+                 pos: egui::Pos2,
+                 pass: &mut dyn FnMut(
+        &mut MainAreaDna,
+        Vec<egui::Event>,
+    ) -> (egui::Pos2, f32, Option<usize>, Vec<String>)| {
+        let event = |pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+        };
+        pass(area, vec![egui::Event::PointerMoved(pos), event(true)]);
+        pass(area, vec![egui::Event::PointerMoved(pos), event(false)]).2
+    };
+    assert_eq!(
+        click(
+            &mut area,
+            egui::pos2(origin.x + 10.0, top + 12.0),
+            &mut pass
+        ),
+        None
+    );
+    let y = top + canvas.centre_for_lane(1).unwrap();
+    assert_eq!(
+        click(&mut area, egui::pos2(origin.x + 10.0, y), &mut pass),
+        Some(12)
+    );
+    let intron_x = origin.x + 220.0 + (15.0 - 1.0) / 39.0 * (width - 240.0);
+    let intron_pos = egui::pos2(intron_x, y);
+    assert_eq!(click(&mut area, intron_pos, &mut pass), None);
+    assert_eq!(
+        area.splicing_expert_selected_intron_signal_key
+            .as_ref()
+            .unwrap()
+            .transcript_feature_id,
+        12
+    );
+    assert_eq!(area.splicing_expert_selected_intron_keys.len(), 1);
+    for _ in 0..10 {
+        pass(&mut area, Vec::new());
+    }
+    pass(
+        &mut area,
+        vec![egui::Event::PointerMoved(intron_pos + egui::vec2(1.0, 0.0))],
+    );
+    let mut hover_texts = Vec::new();
+    for _ in 0..60 {
+        hover_texts = pass(&mut area, Vec::new()).3;
+    }
+    assert!(hover_texts.iter().any(|text| text == "n-12 tx2"));
+    assert!(
+        hover_texts
+            .iter()
+            .any(|text| text == "intron 11..20  len=10 bp"),
+        "reordered intron hover: {hover_texts:?}"
+    );
+    pass(&mut area, vec![egui::Event::PointerGone]);
+    pass(&mut area, vec![egui::Event::PointerMoved(intron_pos)]);
+    for pressed in [true, false] {
+        pass(
+            &mut area,
+            vec![egui::Event::PointerButton {
+                pos: intron_pos,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: egui::Modifiers::default(),
+            }],
+        );
+    }
+    let menu_texts = pass(&mut area, Vec::new()).3;
+    assert!(menu_texts.iter().any(|text| text == "n-12 tx2"));
+    assert!(
+        menu_texts
+            .iter()
+            .any(|text| text == "Intron 11..20  len=10 bp"),
+        "reordered intron context menu: {menu_texts:?}"
+    );
+    assert!(
+        menu_texts
+            .iter()
+            .any(|text| text == "Select only this intron")
+    );
+    assert_eq!(serde_json::to_value(&view).unwrap(), before);
+    let presentation = area.splicing_expert_presentation_for_view(&view);
+    assert!(presentation.transcript_rows[0].is_header);
+    assert_eq!(presentation.transcript_rows[1].label, "n-12 tx2");
+}
+
+#[test]
 fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replacement() {
     let dna = DNAsequence::from_sequence("ACGT").expect("sequence");
     let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
@@ -15583,7 +15718,10 @@ fn splicing_expert_presentation_reuses_immutable_view_and_invalidates_on_replace
     let third = area.splicing_expert_presentation_for_view(&view);
     assert!(!Arc::ptr_eq(&first, &third));
     assert_eq!(area.splicing_expert_presentation_cache_misses, 2);
-    assert_eq!(third.transcript_rows[0].label, "n-11 tx1_revised");
+    assert_eq!(
+        third.transcript_rows[0].label, first.transcript_rows[0].label,
+        "display identity comes from the lane, not a divergent saved matrix label"
+    );
 
     area.invalidate_splicing_expert_presentation_cache();
     let fourth = area.splicing_expert_presentation_for_view(&view);
@@ -15630,7 +15768,7 @@ fn splicing_expert_window_validates_fingerprint_once_before_cached_rendering() {
     let revised_presentation = area.splicing_expert_presentation_for_view(revised.as_ref());
     assert_eq!(
         revised_presentation.transcript_rows[0].label,
-        "n-11 content_revised_before_ingress"
+        format!("n-11 {}", view.transcripts[0].transcript_id)
     );
 }
 
@@ -15668,29 +15806,28 @@ fn splicing_uniprot_reference_presentation_revalidates_changed_evidence() {
     );
     let second = area.splicing_expert_presentation_for_view(&revised);
     assert!(!Arc::ptr_eq(&first, &second));
+    assert!(second.transcript_rows[0].is_header);
+    let second_row = second
+        .transcript_rows
+        .iter()
+        .find(|row| !row.is_header)
+        .unwrap();
     assert_eq!(
-        second.transcript_rows[0].uniprot_tooltip,
+        second_row.uniprot_tooltip,
         view.matrix_rows[0]
             .uniprot_reference
             .summary_lines()
             .join("\n")
     );
+    assert!(second_row.uniprot_tooltip.contains("unreviewed"));
     assert!(
-        second.transcript_rows[0]
-            .uniprot_tooltip
-            .contains("unreviewed")
-    );
-    assert!(
-        second.transcript_rows[0]
+        second_row
             .uniprot_tooltip
             .contains("not a global absence claim")
     );
+    assert_eq!(second_row.label, first.transcript_rows[0].label);
     assert_eq!(
-        second.transcript_rows[0].label,
-        first.transcript_rows[0].label
-    );
-    assert_eq!(
-        second.transcript_rows[0].exon_presence,
+        second_row.exon_presence,
         first.transcript_rows[0].exon_presence
     );
 }

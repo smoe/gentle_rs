@@ -97,6 +97,8 @@ impl SplicingExpertPresentationKey {
         Self::digest_usize(&mut context, view.transcripts.len());
         for transcript in &view.transcripts {
             Self::digest_usize(&mut context, transcript.transcript_feature_id);
+            Self::digest_str(&mut context, &transcript.transcript_id);
+            Self::digest_bool(&mut context, transcript.has_target_feature);
             Self::digest_str(&mut context, &transcript.strand);
             Self::digest_usize(&mut context, transcript.exons.len());
             for exon in &transcript.exons {
@@ -109,6 +111,10 @@ impl SplicingExpertPresentationKey {
         for row in &view.matrix_rows {
             Self::digest_usize(&mut context, row.transcript_feature_id);
             Self::digest_str(&mut context, &row.transcript_id);
+            Self::digest_str(
+                &mut context,
+                &row.uniprot_reference.summary_lines().join("\n"),
+            );
             Self::digest_usize(&mut context, row.exon_presence.len());
             for present in &row.exon_presence {
                 Self::digest_bool(&mut context, *present);
@@ -163,6 +169,7 @@ pub(super) struct SplicingExpertTranscriptPresentationRow {
     pub(super) label: String,
     pub(super) exon_presence: Vec<bool>,
     pub(super) uniprot_tooltip: String,
+    pub(super) is_header: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -193,6 +200,7 @@ pub(super) struct SplicingExpertJunctionPresentationRow {
 
 #[derive(Clone, Debug)]
 pub(super) struct SplicingExpertPresentation {
+    pub(super) layout: gentle_protocol::splicing_presentation::SplicingPresentationLayout,
     pub(super) exons: Vec<SplicingExpertExonPresentation>,
     pub(super) transcript_rows: Vec<SplicingExpertTranscriptPresentationRow>,
     pub(super) transition_rows: Vec<SplicingExpertTransitionPresentationRow>,
@@ -6185,13 +6193,51 @@ impl MainAreaDna {
             })
             .collect::<Vec<_>>();
 
-        let transcript_rows = view
-            .matrix_rows
-            .iter()
-            .map(|row| SplicingExpertTranscriptPresentationRow {
-                label: format!("n-{} {}", row.transcript_feature_id, row.transcript_id),
-                exon_presence: row.exon_presence.clone(),
-                uniprot_tooltip: row.uniprot_reference.summary_lines().join("\n"),
+        let layout = view.uniprot_presentation_layout();
+        let transcript_rows = layout
+            .matrix_display_rows()
+            .into_iter()
+            .map(|display_row| {
+                use gentle_protocol::splicing_presentation::SplicingMatrixDisplayRow;
+                match display_row {
+                    SplicingMatrixDisplayRow::Header(label) => {
+                        SplicingExpertTranscriptPresentationRow {
+                            label,
+                            exon_presence: Vec::new(),
+                            uniprot_tooltip: String::new(),
+                            is_header: true,
+                        }
+                    }
+                    SplicingMatrixDisplayRow::Transcript {
+                        lane_index,
+                        matrix_row_index,
+                    } => {
+                        let row = matrix_row_index.map(|index| &view.matrix_rows[index]);
+                        let lane = lane_index.map(|index| &view.transcripts[index]);
+                        let (id, transcript_id) = lane
+                            .map(|lane| (lane.transcript_feature_id, lane.transcript_id.as_str()))
+                            .or_else(|| {
+                                row.map(|row| {
+                                    (row.transcript_feature_id, row.transcript_id.as_str())
+                                })
+                            })
+                            .expect("display row retains a record");
+                        SplicingExpertTranscriptPresentationRow {
+                            label: format!("n-{id} {transcript_id}"),
+                            exon_presence: row
+                                .map(|row| row.exon_presence.clone())
+                                .unwrap_or_default(),
+                            uniprot_tooltip: row
+                                .filter(|_| lane.is_some())
+                                .map(|row| row.uniprot_reference.summary_lines().join("\n"))
+                                .unwrap_or_else(|| {
+                                    "UniProt status not evaluated: no unambiguous lane/matrix join"
+                                        .to_string()
+                                }),
+                            is_header: false,
+                        }
+                    }
+                }
             })
             .collect::<Vec<_>>();
 
@@ -6262,6 +6308,7 @@ impl MainAreaDna {
             .collect::<Vec<_>>();
 
         SplicingExpertPresentation {
+            layout,
             exons,
             transcript_rows,
             transition_rows,
@@ -6336,6 +6383,9 @@ impl MainAreaDna {
             .size(self.feature_details_font_size()),
         );
         ui.add_space(2.0);
+        for diagnostic in &presentation.layout.diagnostics {
+            ui.small(diagnostic);
+        }
         let _ =
             self.render_splicing_lane_canvas_ui(
                 ui,
@@ -6405,6 +6455,19 @@ impl MainAreaDna {
                     );
                 }
             });
+            for summary in gentle_protocol::splicing_presentation::boundary_summaries(view) {
+                let marker = &view.boundaries[summary.marker_index];
+                let exceptional = !marker.canonical || !marker.canonical_pair;
+                ui.label(egui::RichText::new(format!("{} / {} ({}) | {}:{}{} | {} | {} transcripts",
+                    marker.position_1based, marker.partner_position_1based, summary.strand,
+                    marker.side, marker.motif_2bp, if exceptional { "*" } else { "" },
+                    marker.paired_motif_signature, summary.transcript_feature_ids.len()))
+                    .monospace().size(9.0).color(if exceptional { egui::Color32::from_rgb(190, 18, 60) } else { egui::Color32::from_gray(60) }))
+                    .on_hover_text(summary.marker_indices.iter().map(|&index| format!("n-{} {}: {}",
+                        view.boundaries[index].transcript_feature_id, view.boundaries[index].transcript_id,
+                        view.boundaries[index].annotation)).collect::<Vec<_>>().join("\n"));
+            }
+            ui.collapsing("Per-transcript boundary details (all source records)", |ui| {
             egui::Grid::new("splicing_boundary_motif_grid")
                 .striped(true)
                 .show(ui, |ui| {
@@ -6465,6 +6528,7 @@ impl MainAreaDna {
                         ui.end_row();
                     }
                 });
+            });
         }
         if !view.intron_signals.is_empty() {
             let signal_rows = Self::splicing_intron_signal_rows(view);
@@ -6869,11 +6933,10 @@ impl MainAreaDna {
                                 } else {
                                     let row = &presentation.transcript_rows[row_index - 2];
                                     table_row.col(|ui| {
-                                        ui.label(
-                                            egui::RichText::new(row.label.as_str())
-                                                .monospace()
-                                                .size(9.0),
-                                        ).on_hover_text(row.uniprot_tooltip.as_str());
+                                        let label = egui::RichText::new(row.label.as_str())
+                                            .monospace().size(9.0);
+                                        ui.label(if row.is_header { label.strong() } else { label })
+                                            .on_hover_text(row.uniprot_tooltip.as_str());
                                     });
                                     for (column_index, exon) in
                                         presentation.exons.iter().enumerate()
@@ -6881,9 +6944,13 @@ impl MainAreaDna {
                                         let present = row
                                             .exon_presence
                                             .get(column_index)
-                                            .copied()
-                                            .unwrap_or(false);
+                                            .copied();
                                         table_row.col(|ui| {
+                                            if row.is_header { return; }
+                                            let Some(present) = present else {
+                                                ui.label("n/a").on_hover_text("Saved matrix cell not evaluated; not an absent exon");
+                                                return;
+                                            };
                                             let (bg, fg) = Self::splicing_matrix_cell_colors(
                                                 present,
                                                 exon.support_ratio,

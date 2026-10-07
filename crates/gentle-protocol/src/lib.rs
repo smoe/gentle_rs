@@ -29,6 +29,8 @@ pub mod regulatory_partners;
 pub mod reporter;
 /// Synthetic CDS motif-removal previews and separately approved exact outputs.
 pub mod sequence_design;
+/// Display-only splicing groups and row geometry; never changes engine payload order.
+pub mod splicing_presentation;
 pub mod tata_boxes;
 /// Source-neutral exon/structure identities retaining independent annotation provenance.
 pub mod transcript_presentation;
@@ -3227,6 +3229,11 @@ pub struct SplicingExpertView {
 }
 
 impl SplicingExpertView {
+    /// Pure display projection; serialized rows, derivations and fingerprints stay unchanged.
+    pub fn uniprot_presentation_layout(&self) -> splicing_presentation::SplicingPresentationLayout {
+        splicing_presentation::SplicingPresentationLayout::new(self)
+    }
+
     /// A missing legacy row/evidence never establishes evaluated absence.
     pub fn uniprot_reference_for_transcript(
         &self,

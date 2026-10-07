@@ -1429,6 +1429,15 @@ Feature-expert SVG parity status:
     `uniprot import-swissprot PATH [--entry-id ID]` or an explicitly requested
     `uniprot fetch` before inspecting; rendering itself does not access the network.
   - explicit junction transition support labels/table
+  - display-only UniProt groups shared with the GUI (target first per group),
+    with one accession/review badge per exact-xref lane and full source hovers.
+    Missing/duplicate joins remain unevaluated; saved orphan matrix rows stay
+    listed. Engine JSON order, fingerprints and command routes are unchanged.
+  - lane boundary ticks and exceptional markers are retained; full motif words
+    appear once per oriented boundary/pair in a shared summary. Repeated exon
+    support labels are replaced by matrix counts/hovers. Narrow E# headers and
+    arc numbers are deterministically suppressed on collision, never shrunk
+    below 8 px; the target exon IDs appear only where they fit.
   - frequency-encoded transcript-vs-exon matrix cell coloring
   - predicted exon-to-exon transition matrix with frequency-encoded cell
     coloring
