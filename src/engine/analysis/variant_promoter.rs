@@ -3419,7 +3419,10 @@ impl GentleEngine {
         })
     }
 
-    fn parse_single_base_alternate_allele(raw_alt: &str) -> Result<String, EngineError> {
+    fn parse_single_base_alternate_allele(
+        raw_alt: &str,
+        requested_alternate: Option<&str>,
+    ) -> Result<String, EngineError> {
         let trimmed = raw_alt.trim();
         if trimmed.is_empty() {
             return Err(EngineError {
@@ -3434,12 +3437,42 @@ impl GentleEngine {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .collect::<Vec<_>>();
+        if let Some(requested) = requested_alternate
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let requested = requested.to_ascii_uppercase();
+            if requested.len() != 1 {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "MaterializeVariantAllele currently supports only SNVs; requested alternate allele '{}' is not one base",
+                        requested
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            if !alts
+                .iter()
+                .any(|candidate| candidate.eq_ignore_ascii_case(&requested))
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Requested alternate allele '{}' is not present in vcf_alt '{}'",
+                        requested, raw_alt
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            return Ok(requested);
+        }
         if alts.len() != 1 {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
-                    "MaterializeVariantAllele currently supports only single alternate alleles; observed '{}'",
-                    raw_alt
+                    "MaterializeVariantAllele found multiple alternate alleles '{}'; choose one explicitly",
+                    alts.join(",")
                 ),
 
                 cause_chain: vec![],
@@ -3465,6 +3498,7 @@ impl GentleEngine {
         input: &str,
         variant_label_or_id: Option<&str>,
         allele: VariantAlleleChoice,
+        requested_alternate: Option<&str>,
         output_id: Option<&str>,
     ) -> Result<(String, DNAsequence), EngineError> {
         let dna = self.state.sequences.get(input).ok_or_else(|| EngineError {
@@ -3501,18 +3535,6 @@ impl GentleEngine {
                     "Selected variant feature does not carry a single-base reference allele (vcf_ref)"
                         .to_string(),
                 cause_chain: vec![],})?;
-        let alternate_raw =
-            Self::feature_qualifier_text(variant_feature, "vcf_alt").ok_or_else(|| {
-                EngineError {
-                    code: ErrorCode::InvalidInput,
-                    message:
-                        "Selected variant feature does not carry an alternate allele (vcf_alt)"
-                            .to_string(),
-
-                    cause_chain: vec![],
-                }
-            })?;
-        let alternate = Self::parse_single_base_alternate_allele(&alternate_raw)?;
         let current_base = dna
             .forward_bytes()
             .get(variant_start_0based)
@@ -3539,7 +3561,17 @@ impl GentleEngine {
         }
         let materialized_base = match allele {
             VariantAlleleChoice::Reference => reference.clone(),
-            VariantAlleleChoice::Alternate => alternate.clone(),
+            VariantAlleleChoice::Alternate => {
+                let alternate_raw = Self::feature_qualifier_text(variant_feature, "vcf_alt")
+                    .ok_or_else(|| EngineError {
+                        code: ErrorCode::InvalidInput,
+                        message:
+                            "Selected variant feature does not carry an alternate allele (vcf_alt)"
+                                .to_string(),
+                        cause_chain: vec![],
+                    })?;
+                Self::parse_single_base_alternate_allele(&alternate_raw, requested_alternate)?
+            }
         };
         let mut seq = dna.clone_seq_record();
         if let Some(base) = materialized_base.as_bytes().first() {

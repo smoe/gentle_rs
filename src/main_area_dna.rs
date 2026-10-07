@@ -2026,6 +2026,7 @@ struct VariantFollowupUiState {
     fragment_output_id: String,
     reference_output_id: String,
     alternate_output_id: String,
+    alternate_allele: String,
     reporter_backbone_seq_id: String,
     reporter_backbone_path: String,
     reporter_output_prefix: String,
@@ -2105,6 +2106,7 @@ impl Default for VariantFollowupUiState {
             fragment_output_id: String::new(),
             reference_output_id: String::new(),
             alternate_output_id: String::new(),
+            alternate_allele: String::new(),
             reporter_backbone_seq_id: "gentle_mammalian_luciferase_backbone_v1".to_string(),
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),

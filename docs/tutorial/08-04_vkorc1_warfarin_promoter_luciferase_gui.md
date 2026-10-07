@@ -65,7 +65,7 @@ Primary backbone used here:
 
 - `gentle_mammalian_luciferase_backbone_v1`
 - file:
-  [data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb](/Users/u005069/.codex/worktrees/47dd/gentle_rs/data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
+  [`data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb`](../../data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
 
 Why this is the right baseline for human-cell work:
 
@@ -114,11 +114,11 @@ Why retain `~200 bp` past the TSS:
 
 1. GENtle desktop application running.
 2. Genome catalog available at
-   [assets/genomes.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/assets/genomes.json).
+   [`assets/genomes.json`](../../assets/genomes.json).
 3. The active instance can prepare or already has `Human GRCh38 Ensembl 116`.
 4. dbSNP resolution is reachable for `FetchDbSnpRegion`.
 5. The local tutorial backbone file exists:
-   [data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb](/Users/u005069/.codex/worktrees/47dd/gentle_rs/data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
+   [`data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb`](../../data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
 
 ## Step 1: Prepare the Reference and Fetch the SNP Locus
 
@@ -244,8 +244,9 @@ GUI:
 1. stay in `Promoter design`
 2. confirm the default fragment id:
    - `vkorc1_rs9923231_promoter_fragment`
-3. click `Make reference/alternate inserts`
-4. expect:
+3. set `Alternate base` to `T`
+4. click `Make reference/alternate inserts`
+5. expect:
    - reference -> `vkorc1_rs9923231_promoter_reference`
    - alternate -> `vkorc1_rs9923231_promoter_alternate`
 
@@ -262,8 +263,16 @@ cargo run --quiet --bin gentle_cli -- \
   variant materialize-allele vkorc1_rs9923231_promoter_fragment \
   --variant rs9923231 \
   --allele alternate \
+  --alternate-base T \
   --output-id vkorc1_rs9923231_promoter_alternate
 ```
+
+NCBI currently exposes genomic-forward `C` as the GRCh38 reference and
+`A,G,T` as alternate candidates for this refSNP. This tutorial selects `T`,
+the genomic-forward representation of the common `VKORC1 -1639G>A`
+pharmacogenomic allele on the reverse-strand gene. GENtle therefore refuses an
+ambiguous bare `alternate` request and requires the explicit base when more
+than one candidate is present.
 
 This is a key reproducibility point:
 
@@ -279,7 +288,7 @@ GUI:
 2. confirm the pinned local backbone fields:
    - sequence id `gentle_mammalian_luciferase_backbone_v1`
    - path
-     [data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb](/Users/u005069/.codex/worktrees/47dd/gentle_rs/data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
+     [`data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb`](../../data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
 3. the GUI expert loads this backbone automatically on first preview if it is
    not already present in the current project state
 
@@ -332,12 +341,14 @@ cargo run --quiet --bin gentle_cli -- \
 
 The repository now also ships a workflow macro template:
 
-- [assets/cloning_patterns_catalog/reporter/promoter_luciferase/allele_paired_promoter_luciferase_reporter.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/assets/cloning_patterns_catalog/reporter/promoter_luciferase/allele_paired_promoter_luciferase_reporter.json)
+- [`assets/cloning_patterns_catalog/reporter/promoter_luciferase/allele_paired_promoter_luciferase_reporter.json`](../../assets/cloning_patterns_catalog/reporter/promoter_luciferase/allele_paired_promoter_luciferase_reporter.json)
 
 Before running the macro, generate the read-only reporter construct handoff.
 This consumes the saved promoter-fragment candidate report, keeps the reporter
 recommendation offline, names the exact macro template, and reports which
-fragment/backbone inputs are ready, derivable, or still need to be loaded:
+fragment/backbone inputs are ready, derivable, or still need to be loaded. If
+the source refSNP is multiallelic, review the generated materialization command
+and add the same explicit `alternate_allele` choice used above:
 
 ```bash
 cargo run --quiet --bin gentle_cli -- \
@@ -362,6 +373,21 @@ cargo run --quiet --bin gentle_cli -- \
 cargo run --quiet --bin gentle_cli -- \
   shell "macros template-run allele_paired_promoter_luciferase_reporter --bind reference_fragment_seq_id=vkorc1_rs9923231_promoter_reference --bind alternate_fragment_seq_id=vkorc1_rs9923231_promoter_alternate --bind reporter_backbone_seq_id=gentle_mammalian_luciferase_backbone_v1 --bind overlap_bp=20 --bind output_prefix=vkorc1_rs9923231_reporter_pair --transactional"
 ```
+
+## Agent Assistant Parity
+
+The inner Agent Assistant should inspect live project state before proposing
+mutations. A useful prompt after Step 1 is:
+
+> For `vkorc1_rs9923231_context`, verify the `rs9923231` marker alleles, derive
+> the VKORC1 promoter reporter fragment, and propose matched reference and
+> genomic-forward T constructs. Show every mutating command and wait for my
+> approval.
+
+The review must expose `vcf_ref=C`, `vcf_alt=A,G,T`, explain why this tutorial
+chooses `T`, and propose the same shared-shell operations used above. In
+particular, the alternate command must contain `--alternate-base T`; an agent
+must not silently choose one allele from a multiallelic marker.
 
 ## Step 7: Export Reviewable Artifacts
 
@@ -399,22 +425,23 @@ cargo run --quiet --bin gentle_cli -- \
 Key output files:
 
 - promoter-context SVG:
-  [vkorc1_rs9923231_promoter_context.svg](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg)
+  [`vkorc1_rs9923231_promoter_context.svg`](./reproducibility/vkorc1_rs9923231_promoter_reporter/vkorc1_rs9923231_promoter_context.svg)
 - reference construct SVG path:
   `vkorc1_rs9923231_reporter_reference.svg`
 - alternate construct SVG path:
   `vkorc1_rs9923231_reporter_alternate.svg`
 
-The GUI expert now writes this bundle directly. The offline workflow remains
-useful as the parity/replay path for the same story.
+The GUI expert now writes this bundle directly. The workflow is the parity and
+replay path for the same story; its dbSNP lookup and first genome preparation
+are online, while the pinned backbone and later build steps are local.
 
 ## Reproducibility Bundle
 
 The handoff bundle for this tutorial lives in:
 
-- [report.md](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/report.md)
-- [result.json](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/result.json)
-- [commands.sh](/Users/u005069/.codex/worktrees/47dd/gentle_rs/docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/commands.sh)
+- [`report.md`](./reproducibility/vkorc1_rs9923231_promoter_reporter/report.md)
+- [`result.json`](./reproducibility/vkorc1_rs9923231_promoter_reporter/result.json)
+- [`commands.sh`](./reproducibility/vkorc1_rs9923231_promoter_reporter/commands.sh)
 
 ## Bench-Facing Next Actions
 

@@ -23606,8 +23606,38 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
               "spdi": {
                 "seq_id": "NC_000001.11",
                 "position": 29,
-                "deleted_sequence": "A",
+                "deleted_sequence": "C",
+                "inserted_sequence": "C"
+              }
+            }
+          },
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "NC_000001.11",
+                "position": 29,
+                "deleted_sequence": "C",
+                "inserted_sequence": "A"
+              }
+            }
+          },
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "NC_000001.11",
+                "position": 29,
+                "deleted_sequence": "C",
                 "inserted_sequence": "G"
+              }
+            }
+          },
+          {
+            "allele": {
+              "spdi": {
+                "seq_id": "NC_000001.11",
+                "position": 29,
+                "deleted_sequence": "C",
+                "inserted_sequence": "T"
               }
             }
           }
@@ -23708,6 +23738,25 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
     assert_eq!(
         marker.qualifier_values("gentle_generated").next(),
         Some("dbsnp_variant_marker")
+    );
+    assert_eq!(marker.qualifier_values("vcf_ref").next(), Some("C"));
+    assert_eq!(marker.qualifier_values("vcf_alt").next(), Some("A,G,T"));
+    assert_eq!(marker.qualifier_values("gene").next(), Some("tagA"));
+    assert_eq!(marker.qualifier_values("dbsnp_gene").next(), Some("tagA"));
+
+    let materialized = engine
+        .apply(Operation::MaterializeVariantAllele {
+            input: "rs123_local".to_string(),
+            variant_label_or_id: Some("rs123".to_string()),
+            allele: VariantAlleleChoice::Alternate,
+            alternate_allele: Some("T".to_string()),
+            output_id: Some("rs123_alt".to_string()),
+        })
+        .expect("materialize alternate allele from fetched dbSNP marker");
+    assert_eq!(materialized.created_seq_ids, vec!["rs123_alt".to_string()]);
+    assert_eq!(
+        engine.state().sequences["rs123_alt"].forward_bytes()[20],
+        b'T'
     );
 
     let provenance = engine
@@ -59318,7 +59367,7 @@ fn promoter_reporter_fragment_policy_defaults_from_legacy_operation_json() {
 }
 
 #[test]
-fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt() {
+fn materialize_variant_allele_sequence_supports_snv_and_explicit_multiallelic_alt() {
     let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "variation".into(),
@@ -59341,6 +59390,7 @@ fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt
             "variant_demo",
             Some("rsDemo"),
             VariantAlleleChoice::Reference,
+            None,
             Some("variant_demo_ref"),
         )
         .expect("reference allele");
@@ -59351,6 +59401,7 @@ fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt
             "variant_demo",
             Some("rsDemo"),
             VariantAlleleChoice::Alternate,
+            None,
             Some("variant_demo_alt"),
         )
         .expect("alternate allele");
@@ -59373,15 +59424,38 @@ fn materialize_variant_allele_sequence_supports_snv_and_rejects_multiallelic_alt
         .sequences
         .insert("variant_multi".to_string(), multi);
     let multi_engine = GentleEngine::from_state(multi_state);
+    let (_multi_ref_id, multi_reference) = multi_engine
+        .materialize_variant_allele_sequence(
+            "variant_multi",
+            Some("rsDemo"),
+            VariantAlleleChoice::Reference,
+            None,
+            Some("variant_multi_ref"),
+        )
+        .expect("reference allele does not require an alternate selection");
+    assert_eq!(multi_reference.get_forward_string(), "ACCGT");
+
     let err = multi_engine
         .materialize_variant_allele_sequence(
             "variant_multi",
             Some("rsDemo"),
             VariantAlleleChoice::Alternate,
             None,
+            None,
         )
         .expect_err("multi-allelic alternate should fail");
-    assert!(err.message.contains("single alternate alleles"));
+    assert!(err.message.contains("choose one explicitly"));
+
+    let (_selected_id, selected) = multi_engine
+        .materialize_variant_allele_sequence(
+            "variant_multi",
+            Some("rsDemo"),
+            VariantAlleleChoice::Alternate,
+            Some("G"),
+            Some("variant_multi_g"),
+        )
+        .expect("explicit multiallelic alternate");
+    assert_eq!(selected.get_forward_string(), "ACGGT");
 }
 
 #[test]

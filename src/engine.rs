@@ -5917,6 +5917,8 @@ pub enum Operation {
         #[serde(default)]
         allele: VariantAlleleChoice,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        alternate_allele: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         output_id: Option<SeqId>,
     },
     ExportRnaReadReport {

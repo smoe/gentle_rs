@@ -11386,7 +11386,7 @@ fn parse_variant_annotate_promoters_tss_cluster_tolerance() {
 #[test]
 fn parse_variant_materialize_allele_command() {
     let cmd = parse_shell_line(
-        "variant materialize-allele seq_a --allele alternate --variant rs9923231 --output-id seq_alt",
+        "variant materialize-allele seq_a --allele alternate --alternate-base T --variant rs9923231 --output-id seq_alt",
     )
     .expect("parse variant materialize-allele");
     match cmd {
@@ -11394,11 +11394,13 @@ fn parse_variant_materialize_allele_command() {
             seq_id,
             variant_label_or_id,
             allele,
+            alternate_allele,
             output_id,
         } => {
             assert_eq!(seq_id, "seq_a");
             assert_eq!(variant_label_or_id.as_deref(), Some("rs9923231"));
             assert_eq!(allele, VariantAlleleChoice::Alternate);
+            assert_eq!(alternate_allele.as_deref(), Some("T"));
             assert_eq!(output_id.as_deref(), Some("seq_alt"));
         }
         other => panic!("unexpected command: {other:?}"),
@@ -21721,6 +21723,7 @@ fn execute_variant_materialize_allele_shell_command_creates_sequence() {
             seq_id: "demo".to_string(),
             variant_label_or_id: Some("rsDemo".to_string()),
             allele: VariantAlleleChoice::Alternate,
+            alternate_allele: None,
             output_id: Some("demo_alt".to_string()),
         },
     )
