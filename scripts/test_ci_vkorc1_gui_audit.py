@@ -21,6 +21,9 @@ class FailureRetentionTests(unittest.TestCase):
         self.assertTrue(all(isinstance(value, str) and value.strip() for value in use_cases))
         self.assertIn("synthetic", " ".join(use_cases))
         self.assertIn("genomic-forward T", " ".join(use_cases))
+        guide = (root / "docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md").read_text()
+        self.assertIn("help variant materialize-allele", guide)
+        self.assertIn("does not authorize execution", guide)
 
     def test_failed_generation_records_exit_and_exposes_retained_diagnostic(self):
         with tempfile.TemporaryDirectory() as temporary:

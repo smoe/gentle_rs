@@ -444,6 +444,14 @@ chooses `T`, and propose the same shared-shell operations used above. In
 particular, the alternate command must contain `--alternate-base T`; an agent
 must not silently choose one allele from a multiallelic marker.
 
+If the agent asks for command syntax, give it help from the running GENtle
+instance rather than asking it to guess. In the GENtle Shell, use
+`help variant materialize-allele`; provide that output along with the reviewed
+input/output IDs and genomic-forward `T`. Keep the initial clarification and
+the help-grounded response in the acceptance record. Both commands must still
+be reviewed and run through GENtle; supplying help does not authorize execution
+or establish that the public locus, reporter constructs or assay are accepted.
+
 ## Step 7: Export Reviewable Artifacts
 
 GUI:

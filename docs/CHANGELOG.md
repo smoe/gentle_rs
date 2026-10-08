@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-08 - Verify A Help-Grounded Synthetic Live-Agent Pilot
+
+- The CI-built macOS dev CLI at `f99c44a1` ran three real Codex requests with
+  the host's authorized login. The model asks for A/G/T clarification, then
+  command syntax; after GENtle help, both proposed C/T commands parse and stay
+  unexecuted until review. Bare-alternate refusal leaves saved bytes unchanged;
+  reviewed commands preserve the source and create exactly one C/T difference.
+- Document the help/review boundary and retain exact response/project hashes
+  in the six-item checklist. This 20-base synthetic pilot does not close the
+  public-locus, final-candidate package or human scientific acceptance gates.
+
 ## 2026-10-08 - Align The Public Audit With GENtle's RefSNP Endpoint
 
 - The complete reference prepared successfully at `8d81f417`; the audit
