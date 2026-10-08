@@ -6277,8 +6277,13 @@ Tutorial projects:
   - `Make reference/alternate inserts` validates both choices before creating
     either sequence. An empty multiallelic choice or invalid alternate leaves
     project sequences and output-name fields unchanged, allowing a corrected
-    retry without orphan reference copies. This is pair preflight, not a new
-    transactional operation or a wet-lab validation claim.
+    retry without orphan reference copies. After preflight, both shared
+    operations run under one engine write lock and the existing rollback
+    transaction. A later execution refusal restores the prior project,
+    journal and undo/redo history before any success-driven view change;
+    output names update only after both inserts succeed. Successful creation
+    retains two ordinary undo entries. This is GUI composition of existing
+    operations, not a new biological operation or a wet-lab validation claim.
   - the same window now also exposes positive-only TF score tracks across the
     chosen promoter span, with TERT-friendly `SP1`, Yamanaka-plus-`NANOG`, and
     `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before

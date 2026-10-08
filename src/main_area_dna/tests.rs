@@ -11442,6 +11442,8 @@ fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_o
     area.variant_followup_ui.variant_label_or_id = "rsSynthetic".to_string();
     let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
     let journal_before = engine.read().unwrap().journal_len();
+    let view_before = serde_json::to_value(&*area.dna.read().unwrap()).unwrap();
+    let seq_id_before = area.seq_id.clone();
 
     for alternate in ["", "N", "C", "TT"] {
         area.variant_followup_ui.alternate_allele = alternate.to_string();
@@ -11453,6 +11455,11 @@ fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_o
             before
         );
         assert_eq!(engine.read().unwrap().journal_len(), journal_before);
+        assert_eq!(
+            serde_json::to_value(&*area.dna.read().unwrap()).unwrap(),
+            view_before
+        );
+        assert_eq!(area.seq_id, seq_id_before);
         assert_eq!(
             area.variant_followup_ui.reference_output_id,
             "pair_reference"
@@ -11490,6 +11497,93 @@ fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_o
         ["pair_reference", "pair_alternate"]
     );
     assert!(area.op_error_popup.is_none());
+}
+
+#[test]
+fn variant_followup_allele_pair_rolls_back_late_refusal_and_preserves_history() {
+    // Hand-crafted multi-allelic SNV; direct execution exercises a late operation refusal.
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsSynthetic".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,T".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("fragment".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+    for output_id in ["kept_branch", "redo_branch"] {
+        engine
+            .apply(Operation::Branch {
+                input: "fragment".to_string(),
+                output_id: Some(output_id.to_string()),
+            })
+            .expect("seed history");
+    }
+    engine.undo_last_operation().expect("seed a redo entry");
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let history_before = serde_json::to_value(engine.history_summary()).unwrap();
+    assert_eq!(engine.undo_available(), 1);
+    assert_eq!(engine.redo_available(), 1);
+
+    for alternate in [None, Some("C"), Some("N"), Some("TT")] {
+        let execution_before = engine.execution_revision();
+        let mutation_before = engine.mutation_revision();
+        let structural_before = engine.structural_revision();
+        MainAreaDna::apply_variant_followup_allele_pair(
+            &mut engine,
+            "fragment",
+            Some("rsSynthetic"),
+            alternate,
+            Some("pair_reference"),
+            Some("pair_alternate"),
+        )
+        .expect_err("alternate refusal must roll back the successful reference operation");
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        assert_eq!(
+            serde_json::to_value(engine.history_summary()).unwrap(),
+            history_before
+        );
+        assert!(engine.execution_revision() > execution_before);
+        assert!(engine.mutation_revision() > mutation_before);
+        assert!(engine.structural_revision() > structural_before);
+    }
+    engine
+        .redo_last_operation()
+        .expect("older redo survives pair rollback");
+    assert!(engine.state().sequences.contains_key("redo_branch"));
+    engine
+        .undo_last_operation()
+        .expect("restore retry baseline");
+    let (reference, alternate) = MainAreaDna::apply_variant_followup_allele_pair(
+        &mut engine,
+        "fragment",
+        Some("rsSynthetic"),
+        Some("T"),
+        Some("pair_reference"),
+        Some("pair_alternate"),
+    )
+    .expect("corrected retry succeeds without suffixed orphan names");
+    assert_eq!(reference.created_seq_ids, ["pair_reference"]);
+    assert_eq!(alternate.created_seq_ids, ["pair_alternate"]);
+    assert_eq!(engine.state().sequences.len(), 4);
+    assert_eq!(
+        engine.state().sequences["fragment"].get_forward_string(),
+        "ACCGT"
+    );
+    assert_eq!(
+        engine.state().sequences["pair_reference"].get_forward_string(),
+        "ACCGT"
+    );
+    assert_eq!(
+        engine.state().sequences["pair_alternate"].get_forward_string(),
+        "ACTGT"
+    );
+    assert_eq!(engine.undo_available(), 3);
+    assert_eq!(engine.redo_available(), 0);
 }
 
 #[test]

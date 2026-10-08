@@ -2802,6 +2802,34 @@ impl MainAreaDna {
         }
     }
 
+    /// Apply a preflighted pair atomically before publishing GUI success feedback.
+    pub(super) fn apply_variant_followup_allele_pair(
+        engine: &mut GentleEngine,
+        input: &str,
+        variant_label_or_id: Option<&str>,
+        alternate_allele: Option<&str>,
+        reference_output_id: Option<&str>,
+        alternate_output_id: Option<&str>,
+    ) -> Result<(OpResult, OpResult), EngineError> {
+        engine.with_rollback_on_error(|engine| {
+            let reference = engine.apply(Operation::MaterializeVariantAllele {
+                input: input.to_string(),
+                variant_label_or_id: variant_label_or_id.map(str::to_string),
+                allele: VariantAlleleChoice::Reference,
+                alternate_allele: None,
+                output_id: reference_output_id.map(str::to_string),
+            })?;
+            let alternate = engine.apply(Operation::MaterializeVariantAllele {
+                input: input.to_string(),
+                variant_label_or_id: variant_label_or_id.map(str::to_string),
+                allele: VariantAlleleChoice::Alternate,
+                alternate_allele: alternate_allele.map(str::to_string),
+                output_id: alternate_output_id.map(str::to_string),
+            })?;
+            Ok((reference, alternate))
+        })
+    }
+
     pub(super) fn materialize_variant_followup_alleles(&mut self) {
         let input = self
             .variant_followup_ui
@@ -2862,37 +2890,40 @@ impl MainAreaDna {
             self.op_error_popup = Some(self.op_status.clone());
             return;
         }
-        let reference_result =
-            self.apply_operation_with_feedback_and_result(Operation::MaterializeVariantAllele {
-                input: input.clone(),
-                variant_label_or_id: variant_label_or_id.clone(),
-                allele: VariantAlleleChoice::Reference,
-                alternate_allele: None,
-                output_id: reference_output_id,
-            });
-        let Some(reference_seq_id) = reference_result
-            .as_ref()
-            .and_then(|row| row.created_seq_ids.first())
-            .cloned()
-        else {
+        let Some(engine) = self.engine.clone() else {
+            self.op_status = "Engine is not available".to_string();
             return;
         };
+        let started = Instant::now();
+        let result = {
+            let Ok(mut guard) = engine.write() else {
+                self.op_status = "Engine lock is poisoned".to_string();
+                return;
+            };
+            Self::apply_variant_followup_allele_pair(
+                &mut guard,
+                &input,
+                variant_label_or_id.as_deref(),
+                alternate_allele.as_deref(),
+                reference_output_id.as_deref(),
+                alternate_output_id.as_deref(),
+            )
+        };
+        let (reference_result, alternate_result) = match result {
+            Ok(results) => results,
+            Err(error) => {
+                self.handle_operation_error(error, started);
+                return;
+            }
+        };
+        let Some(reference_seq_id) = reference_result.created_seq_ids.first().cloned() else {
+            return;
+        };
+        let Some(alternate_seq_id) = alternate_result.created_seq_ids.first().cloned() else {
+            return;
+        };
+        self.handle_operation_success(alternate_result, started);
         self.variant_followup_ui.reference_output_id = reference_seq_id.clone();
-        let alternate_result =
-            self.apply_operation_with_feedback_and_result(Operation::MaterializeVariantAllele {
-                input,
-                variant_label_or_id,
-                allele: VariantAlleleChoice::Alternate,
-                alternate_allele,
-                output_id: alternate_output_id,
-            });
-        let Some(alternate_seq_id) = alternate_result
-            .as_ref()
-            .and_then(|row| row.created_seq_ids.first())
-            .cloned()
-        else {
-            return;
-        };
         self.variant_followup_ui.alternate_output_id = alternate_seq_id.clone();
         self.last_created_seq_ids = vec![reference_seq_id.clone(), alternate_seq_id.clone()];
         self.export_pool_inputs_text = self.last_created_seq_ids.join(", ");

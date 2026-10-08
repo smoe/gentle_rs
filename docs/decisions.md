@@ -20,14 +20,21 @@ New dbSNP markers retain separate reference and assembly-family checks. An
 assembly fallback or unspecified family remains unavailable even when the
 extracted base matches; this is inspection evidence, not a liftover or authority
 to materialize alleles. Unavailable/mismatching checks block materialization.
-Only unambiguous single-base placements receive `vcf_ref`/`vcf_alt`; non-SNV
-alleles stay raw SPDI with their original coordinates and empty strings, not
-invented VCF anchors. Legacy markers without these checks still require the
+Only unambiguous single-base placements receive `vcf_ref`/`vcf_alt`; every
+retained SPDI allele must have canonical single-base deleted/inserted strings,
+including alleles excluded from the normalized same-reference alternate list.
+Non-SNV alleles stay raw SPDI with their original coordinates and empty strings,
+not invented VCF anchors. Legacy markers without these checks still require the
 existing fresh reference/base validation and establish no assembly-check claim.
 The GUI validates both inserts through the shared engine helper before applying
-either. Read-only handoffs emit an explicit alternate only when the loaded
-source passes that same validator with one alternate; otherwise the command
-requires review. No candidate report silently supplies an allele or assay proof.
+either. The two applications share one write lock and the existing rollback
+guard; a later refusal restores project/journal/undo/redo state before GUI
+success feedback or output-name changes. Successful pairs retain the two
+canonical operation/history entries; rollback keeps revision invalidation and
+does not reuse consumed operation identities. Read-only handoffs emit an
+explicit alternate only when the loaded source passes that same validator
+with one alternate; otherwise the command requires review. No candidate report
+silently supplies an allele or assay proof.
 
 ## Splicing UniProt Presentation Order
 
