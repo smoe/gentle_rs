@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-08 - Independently Verify The Retained Original Audit
+
+- After approved access was restored, verify the unchanged `30f23aa4` archive's
+  319,263,072-byte length, pinned archive/manifest digests, `zstd -t` and all
+  721 safe regular-file members. Inspect bounded original project, raw image
+  and Criterion records without executing historical binaries or altering them.
+- Preserve a new integrity receipt and its scoped LF/CRLF checkout regression.
+  This closes archive preservation, not source/profile authenticity, historical
+  test re-execution, latency, package acceptance or human scientific approval.
+  Runtime/package candidate `6d8b4db7` stays frozen independently of this ledger.
+
 ## 2026-10-08 - Preserve Reporter Handoff JSON In The Shared Shell
 
 - The rebased `b13f2b65` Linux and Windows full suites reject the reporter

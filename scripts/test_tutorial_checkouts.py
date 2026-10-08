@@ -203,6 +203,30 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual((target / relative).read_bytes(), payload)
                 self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), expected)
 
+    def test_original_audit_verification_receipt_survives_both_checkout_modes(self):
+        relative = Path("docs/audits/glen_followups_20261008/original_archive_30f23aa4/verification.json")
+        expected = "1a41c227b6e91587e6d310114d6672d875008f51170bf75428da303b3b50dbb5"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "original audit archive verification receipt")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "original-audit-receipt-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"original-audit-receipt-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+
     def test_sequence_design_tutorial_semantics_survive_both_checkout_modes(self):
         from scripts.test_sequence_design_tutorial import fenced_request
 
