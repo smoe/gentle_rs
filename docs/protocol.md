@@ -4543,6 +4543,9 @@ Sequencing-trace evidence notes:
   - reports typed macro-port readiness plus reporter-backbone resolution, and
     emits explicit follow-up commands for manual extraction, allele
     materialization, backbone loading, macro import, validation, and macro run
+  - generated `op` commands quote their serialized JSON as one shared-shell
+    argument; identifiers and load paths retain spaces, quotes and backslashes
+    through the parser and executor. Planning itself remains read-only
   - the candidate report contains fragment geometry, not allele fields. If
     the source variant is loaded and the shared materialization validator
     accepts one alternate, its command carries that explicit genomic-forward

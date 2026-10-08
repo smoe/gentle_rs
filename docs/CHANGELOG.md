@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-08 - Preserve Reporter Handoff JSON In The Shared Shell
+
+- The rebased `b13f2b65` Linux and Windows full suites reject the reporter
+  handoff at JSON decoding (`key must be a string`). Quote all four generated
+  operation payloads with the existing shared shell helper; do not change
+  parsing grammar, allele validation or the review-first execution policy.
+- Add a synthetic parser/executor regression for extraction, reference,
+  alternate and temporary FASTA loading with spaces, apostrophes, quotes and
+  backslashes. Keep this family in focused native CI before package dispatch.
+  Local Rust execution remains prohibited; new-SHA remote acceptance is pending.
+
 ## 2026-10-08 - Reconcile The Audit Branch With Main
 
 - Finish the owner's rebase onto `84cc8e16`, preserving all 29 audit commits,

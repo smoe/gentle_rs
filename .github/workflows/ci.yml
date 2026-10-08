@@ -131,7 +131,8 @@ jobs:
           cargo build --locked --no-default-features --features desktop-gui,gui-test-support \
             --bin gentle --bin gentle_cli --bin gentle_examples_docs \
             2> "$RUNNER_TEMP/vkorc1-gui-audit/build.log"
-          for filter in promoter_pair_ variant_followup_allele_pair_ vkorc1_pair_gui_starter_and_oracle \
+          for filter in promoter_pair_ variant_followup_allele_pair_ reporter_construct_handoff_ \
+            vkorc1_pair_gui_starter_and_oracle \
             tutorial_gui_acceptance_feature_targets tutorial_gui_semantics::tests; do
             cargo test --locked --no-default-features --features desktop-gui,gui-test-support \
               --lib "$filter" -- --test-threads=1 \
