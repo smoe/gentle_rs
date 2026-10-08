@@ -95,3 +95,7 @@ follow-up merely to improve those observations.
   generation checkout, and retains source-bound projections and raw captures.
   The `d1bf3fd3` scroll job is green; its downloaded receipt still needs
   independent hash and 24-observation inspection before checklist acceptance.
+- The `d1bf3fd3` Linux/Windows lib-test builds both reject the new sibling-module
+  tests' access to the private pair handler (`E0624`), not a runtime allele or
+  tutorial-discovery failure. Match the adjacent handlers' parent-only visibility
+  before dispatching the focused native replay; do not broaden the public API.
