@@ -26,11 +26,11 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
 | 1. Audit preservation | Published inventory verified; archive contents pending | Unchanged report preserved; approved small metadata hashes and 721 safe, unique manifest paths verified, including the 11 owner-supplied inventory entries. Archive/binaries were not downloaded over the train connection. Verify their actual bytes, original screenshots, projects and Criterion outputs before claiming independent archive acceptance. |
-| 2. Tutorial 08.04 GUI/agent contracts | Native contract passed at `b067ae3b`; rebased candidate pending | Focused Rust tests, locked GUI-support check, generation and ordinary Linux/X11 input replay pass at the pre-rebase SHA. Keep that verdict separate from main's new pure preflight combined with rollback. Rerun both regression families and inspect the rebased candidate's raw captures, persisted oracle and listed hashes before completion. |
+| 2. Tutorial 08.04 GUI/agent contracts | Native contract passes at `b13f2b65`; shared handoff repair pending | Focused Rust tests, locked GUI-support check, generation and ordinary Linux/X11 input replay pass after the rebase, including both pair regression families. The full Linux/Windows suites expose invalid unquoted reporter-handoff JSON. Repair the caller, rerun that regression family and inspect new-SHA raw captures, persisted oracle and hashes before completion. |
 | 3. Live-agent acceptance | Public pilot reverified at `62f7180b`; rebased candidate pending | Retained genuine macOS dev CLI responses and reviewed C/T outputs agree with fresh Linux public CI full sequence records at `62f7180b`. Repeat at the final rebased SHA; do not download its large CLI artifact on the train. Neither echo transport nor an older pilot certifies the new candidate. Never copy or inspect credentials. |
-| 4. Honest visual evidence | Public base projection verified; rebased native inspection pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`, then hashes/sequence facts reverified at `62f7180b`. The earlier SVG was rendered without recolouring native canvases. Native replay passes at pre-rebase `b067ae3b`, but its raw captures remain uninspected. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
+| 4. Honest visual evidence | Public base projection verified; rebased native inspection pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`, then hashes/sequence facts reverified at `62f7180b`. The earlier SVG was rendered without recolouring native canvases. Native replay passes at rebased `b13f2b65`, but its raw captures remain uninspected. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
-| 6. .12 package acceptance | Rebased candidate gates pending | Rebase supersedes the frozen `b067ae3b` build-only runs. After fresh focused/native gates, freeze the new pushed SHA and dispatch with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at the same source/lock SHA. Do not transfer packages on the train or inherit older build verdicts. Native GUI and scientific approval remain separate. |
+| 6. .12 package acceptance | Shared handoff failure blocks package dispatch | Rebase supersedes the frozen `b067ae3b` build-only runs. Do not package the known-red `b13f2b65`; repair the shared handoff, rerun fresh gates and freeze the new pushed SHA before dispatch with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at the same source/lock SHA. Do not transfer packages on the train or inherit older build verdicts. Native GUI and scientific approval remain separate. |
 
 ## Retained Baseline
 
@@ -408,3 +408,23 @@ follow-up merely to improve those observations.
   new GUI, live-agent or package acceptance; a rewritten commit does not inherit
   its original execution verdict. Push only the codex branch with an exact
   remote-SHA lease; leave main, `paper`, `output/` and historical evidence alone.
+- Candidate `b13f2b652c7b966ba83a52b34605ddecdf3f1252` runs
+  [Linux/native/public CI 37816644255](https://github.com/smoe/gentle_rs/actions/runs/37816644255)
+  and [macOS/Windows CI 37816649864](https://github.com/smoe/gentle_rs/actions/runs/37816649864).
+  The focused GUI/native/public, scroll, headless, macOS CLI-build and policy
+  jobs pass; raw native/public evidence is not independently inspected.
+  Full Linux and Windows suites fail at
+  `reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review`,
+  with `key must be a string` at `reporter_ops.rs:2156`: raw JSON in generated
+  `op` commands loses its quotes in the unchanged shared tokenizer.
+  Linux reports 4,112 passes/one failure; the companion Windows job reports
+  4,052 passes/one failure. Retain these verdicts at their exact SHA rather than
+  dispatching known-red packages. Quote all four handoff operation payloads
+  with `quote_shell_arg`, add a synthetic actual-parser/executor regression
+  with quoted identifiers and a temporary FASTA path, and include the handoff
+  family in focused native CI. No local Rust execution or parser relaxation.
+- On `b13f2b65` plus the scoped handoff repair, all 104 focused Python checkout,
+  GUI-runner, audit-helper and release-policy tests pass on macOS. Scoped
+  `rustfmt --check`, YAML parsing and `git diff --check` pass. The new Rust
+  parser/executor regression is authored, not executed locally; acceptance
+  requires the newly committed source on Actions.

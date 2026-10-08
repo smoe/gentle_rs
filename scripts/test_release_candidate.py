@@ -578,6 +578,7 @@ class WorkflowWiringTests(unittest.TestCase):
         following = text.split("\n  vkorc1-gui-audit:\n", 1)[1]
         job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
         self.assertIn("for filter in promoter_pair_ variant_followup_allele_pair_", job)
+        self.assertIn("reporter_construct_handoff_", job)
         self.assertIn(
             "cargo test --locked --no-default-features --features desktop-gui,gui-test-support", job)
         self.assertNotIn("continue-on-error:", job)
