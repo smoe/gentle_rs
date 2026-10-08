@@ -1,5 +1,29 @@
 # GENtle Engine Protocol (Draft v1)
 
+## Primer Specificity Reference Binding
+
+Intended targets add optional `source_reference` and `reference_binding` records.
+The former retains the original genome, assembly/release and extraction hashes;
+the latter identifies the exact admitted sequence/annotation database. Missing
+legacy binding or incompatible assembly/release becomes `unknown`/
+`not_assessed`, not an absent product. Explicit mappings are labelled
+caller-provided and do not establish liftover or orthology.
+
+`gentle.primer_specificity_reference_selection.v1` is companion evidence in the
+primer report store, not a new panel field. Each active panel/target-space
+selection binds its design digest, assay IDs, full pairs plus annealing/tail
+interpretation, policy, database identity, report hashes and validated acceptance.
+The design digest reuses the existing panel binding with redundant communication
+summaries cleared; approval/checkpoint digests are unchanged. Complete validated
+finalization can deliberately replace one dimension, retaining prior selections
+and reports. Incomplete finalization cannot replace active evidence.
+
+Legacy reports remain readable, but neither timestamps nor old summary labels
+can supply a readiness pass. Re-finalize retained validated artifacts to establish
+a receipt. Explicit experimental-handoff construction rechecks current database
+and annotation fingerprints; historical display does not probe resources. Raw
+TSV parsing and receipt hashes use the same retained bytes.
+
 ## Synthetic Sequence Design
 
 `PlanDnaSequenceDesign { request, path? }` is a read-only bounded synonymous

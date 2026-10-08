@@ -178,6 +178,8 @@ fn build_fixture(total_hsp_count: usize, catalog_path: &str) -> SpecificityFixtu
         ],
         blast_db_prefix: "benchmark://not-prepared".to_string(),
         intended_target: PrimerSpecificityIntendedTarget {
+            source_reference: None,
+            reference_binding: None,
             model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
             subject_id: Some("bench_tx_000000".to_string()),
             forward_binding_ranges: vec![PrimerSpecificitySubjectRange {

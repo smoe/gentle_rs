@@ -682,6 +682,27 @@ label. Replacing database content at the same prefix invalidates a pending
 handoff. Whole-prepare activity state does not override successful
 component-level `blastdbcmd` validation.
 
+Intended-target geometry carries its original reference/assembly/release. A
+matching chromosome label cannot transfer coordinates to another assembly or
+release. Explicit mappings bind the searched database, are labelled
+caller-provided, and are not an automatic liftover or orthology claim. Missing
+or incompatible binding stays `unknown`/`not_assessed`.
+
+Existing panel readiness selects one exact reference independently for genomic
+carryover and transcriptome specificity through companion selection receipts,
+not report timestamps or communication-summary labels. Receipts bind the panel
+design, full pair and annealing/tail interpretation, policy, sequence and
+annotation fingerprints, and validated acceptance/report bytes. Redundant
+communication summaries are excluded from selection design identity; existing
+approval/handoff digest rules are unchanged. Explicit complete finalization can
+replace a selection; superseded evidence is retained and incomplete finalization
+cannot activate it. Legacy evidence without a receipt is inspectable, not
+passing. Explicit new handoff construction revalidates current references;
+displaying historical reports never probes tools or databases.
+
+Import parses and hashes the same retained output bytes. File hashes bind
+content, not the authenticity of an external runner's execution claim.
+
 ## DEC-030: Collection Lifting Is Subject-Specific And Engine-Owned
 
 Status: active

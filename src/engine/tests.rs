@@ -15754,6 +15754,8 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
             r#"{{
   "ToyGenome": {{
     "description": "synthetic aggregate panel specificity fixture",
+    "reference_name": "synthetic-assembly",
+    "reference_release": "synthetic-release-1",
     "sequence_local": {},
     "annotations_local": {},
     "cache_dir": {}
@@ -15816,6 +15818,19 @@ fn transcript_assay_panel_specificity_finalization_is_atomic_and_distinguishes_o
                 {
                     "seq_id": "panel_src",
                     "genome_id": "ToyGenome",
+                    "operation": "synthetic_fixture",
+                    "catalog_path": catalog.to_string_lossy(),
+                    "gene_query": null,
+                    "occurrence": null,
+                    "gene_id": null,
+                    "gene_name": null,
+                    "strand": "+",
+                    "sequence_source_type": "local",
+                    "annotation_source_type": "local",
+                    "sequence_source": fasta.to_string_lossy(),
+                    "annotation_source": annotation.to_string_lossy(),
+                    "sequence_sha1": null,
+                    "annotation_sha1": null,
                     "chromosome": "chr1",
                     "start_1based": 1,
                     "end_1based": panel_source_len,

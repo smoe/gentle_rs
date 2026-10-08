@@ -1329,6 +1329,8 @@ pub(crate) use region_homology::validate_genomic_region_homology_report;
 pub(crate) use tss_workspace::tests::{
     approved as synthetic_tss_approval, engine as synthetic_tss_engine,
 };
+#[path = "engine/analysis/primer_specificity_references.rs"]
+mod primer_specificity_references;
 #[path = "engine/analysis/regulatory_partners.rs"]
 mod regulatory_partners;
 #[path = "engine/analysis/repeat_cohort.rs"]
@@ -2871,6 +2873,9 @@ struct PrimerDesignStore {
     terminal_exon_rt_primer_pools: HashMap<String, TerminalExonRtPrimerPoolReport>,
     transcript_capture_pools: HashMap<String, TranscriptCapturePoolReport>,
     primer_specificity_reports: HashMap<String, PrimerSpecificityReport>,
+    primer_specificity_reference_selections: BTreeMap<String, PrimerSpecificityReferenceSelection>,
+    active_primer_specificity_reference_selections: BTreeMap<String, String>,
+    primer_specificity_panel_sources: BTreeMap<String, PrimerSpecificityPanelSource>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
     transcript_assay_fallback_executions: HashMap<String, TranscriptAssayFallbackExecutionReport>,
     external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
@@ -12804,6 +12809,10 @@ impl GentleEngine {
             && store.terminal_exon_rt_primer_pools.is_empty()
             && store.transcript_capture_pools.is_empty()
             && store.primer_specificity_reports.is_empty()
+            && store.primer_specificity_reference_selections.is_empty()
+            && store
+                .active_primer_specificity_reference_selections
+                .is_empty()
             && store.transcript_assay_panels.is_empty()
             && store.transcript_assay_fallback_executions.is_empty()
             && store.external_primer_pair_imports.is_empty()
@@ -12816,6 +12825,29 @@ impl GentleEngine {
             return Ok(());
         }
         store.schema = PRIMER_DESIGN_REPORTS_SCHEMA.to_string();
+        for panel in store.transcript_assay_panels.values() {
+            let panel_design_digest = Self::primer_specificity_selection_panel_digest(panel)?;
+            if store
+                .primer_specificity_panel_sources
+                .get(&panel.report_id)
+                .is_some_and(|source| source.panel_design_digest == panel_design_digest)
+            {
+                continue;
+            }
+            if let Some(source_reference) = panel
+                .source_genome_anchor
+                .as_ref()
+                .and_then(|anchor| self.primer_specificity_source_reference_from_anchor(anchor))
+            {
+                store.primer_specificity_panel_sources.insert(
+                    panel.report_id.clone(),
+                    PrimerSpecificityPanelSource {
+                        panel_design_digest,
+                        source_reference,
+                    },
+                );
+            }
+        }
         store.updated_at_unix_ms = Self::now_unix_ms();
         let value = serde_json::to_value(store).map_err(|e| EngineError {
             code: ErrorCode::Internal,
