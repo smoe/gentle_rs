@@ -2181,7 +2181,7 @@ impl MainAreaDna {
                     .entries
                     .iter()
                     .any(|entry| selected_feature_ids.contains(&entry.id));
-                egui::CollapsingHeader::new(
+                let _kind_group = egui::CollapsingHeader::new(
                     egui::RichText::new(Self::format_feature_tree_count_label(
                         group.kind.as_str(),
                         group.visible_count,
@@ -2648,6 +2648,21 @@ impl MainAreaDna {
                         &mut render_entry,
                     );
                 });
+                #[cfg(feature = "gui-test-support")]
+                {
+                    let scope = crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                        &group.kind,
+                    ]);
+                    crate::gui_test_support::register_response(
+                        &_kind_group.header_response,
+                        crate::tutorial_gui_semantics::DNA_FEATURE_TREE_GROUP,
+                        crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                        Some(&scope),
+                        crate::gui_test_support::GuiTestWidgetKind::Row,
+                        _kind_group.body_response.is_some(),
+                    );
+                }
             }
         }
         if let Some((feature_id, kind)) = copy_feature_payload {

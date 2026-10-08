@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-08 - Bind Promoter Tutorial Controls To Exact Subjects
+
+- Add read-only GUI test rectangles for Promoter design, its explicit alternate
+  base, paired materialization, scrolling and status. The closed tutorial
+  vocabulary rejects lists or executable text in the allele field.
+- Bind feature-tree navigation to the prepared feature's exact content and
+  kind-group identity, not just a sequence label or first matching row. Missing
+  and ambiguous bindings fail closed. Python harness regressions pass 25/25;
+  Rust compilation and native input acceptance remain CI/external-only.
+
 ## 2026-10-08 - Keep Promoter Allele-Pair Refusal Atomic
 
 - The 08.04 GUI pair action previously created its reference insert before an

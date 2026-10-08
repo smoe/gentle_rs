@@ -11,6 +11,33 @@ from scripts import tutorial_gui_acceptance as acceptance
 
 
 class TutorialGuiAcceptanceTests(unittest.TestCase):
+    def test_feature_target_uses_prepared_content_scope_not_sequence_scope(self) -> None:
+        runner = object.__new__(acceptance.TutorialAcceptanceRun)
+        runner.sequence_scopes = {"source": "subject-sequence"}
+        prepared = {"feature_bindings": [{"source_sequence_id": "source",
+                     "feature_index": "0", "subject_scope": "subject-feature",
+                     "group_subject_scope": "subject-group"}]}
+        runner.feature_scopes = runner.feature_scope_map(prepared)
+        runner.feature_group_scopes = runner.feature_scope_map(prepared, group=True)
+        step = {"id": "select-snv", "subject": {"sequence": "source", "feature_index": "0"}}
+        self.assertEqual(runner.scope_for_step(step), "subject-feature")
+        self.assertEqual(runner.scope_for_step({**step, "target": "dna.feature_tree.group"}), "subject-group")
+        for subject in [{"sequence": "source", "feature_index": "1"},
+                        {"feature_index": "0"}, {"sequence": "source", "feature_index": "00"}]:
+            with self.assertRaises(acceptance.AcceptanceFailure):
+                runner.scope_for_step({**step, "subject": subject})
+
+    def test_invalid_or_duplicate_prepared_feature_bindings_fail_closed(self) -> None:
+        valid = {"source_sequence_id": "source", "feature_index": "0", "subject_scope": "scope"}
+        for field, value in [("source_sequence_id", ""), ("feature_index", 0),
+                             ("feature_index", "-1"), ("feature_index", "00"),
+                             ("feature_index", "\u0660"), ("subject_scope", None)]:
+            with self.subTest(field=field, value=value), self.assertRaises(acceptance.AcceptanceFailure):
+                acceptance.TutorialAcceptanceRun.feature_scope_map(
+                    {"feature_bindings": [{**valid, field: value}]})
+        with self.assertRaises(acceptance.AcceptanceFailure):
+            acceptance.TutorialAcceptanceRun.feature_scope_map({"feature_bindings": [valid, valid]})
+
     def test_window_set_is_exact_subject_bound_and_detects_duplicates(self) -> None:
         import copy
         self.assertEqual(acceptance.sequence_subject_scope("tss_locus"),

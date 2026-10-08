@@ -618,6 +618,7 @@ fn run_tutorial_gui_project_mode(
         .cloned()
         .collect::<BTreeSet<_>>();
     let mut sequence_bindings = Vec::with_capacity(source_sequence_ids.len());
+    let mut feature_bindings = Vec::new();
     for source_sequence_id in source_sequence_ids {
         let resolved_sequence_id = project_reference
             .seq_id_map
@@ -637,6 +638,51 @@ fn run_tutorial_gui_project_mode(
             "resolved_sequence_id": resolved_sequence_id,
             "subject_scope": subject_scope,
         }));
+        let feature_indices = acceptance
+            .steps
+            .iter()
+            .filter(|step| step.subject.get("sequence") == Some(&source_sequence_id))
+            .filter_map(|step| step.subject.get("feature_index"))
+            .collect::<BTreeSet<_>>();
+        for raw_index in feature_indices {
+            let index = raw_index.parse::<usize>().map_err(|_| {
+                format!("Invalid feature_index '{raw_index}' for '{source_sequence_id}'")
+            })?;
+            if raw_index != &index.to_string() {
+                return Err(format!("Noncanonical feature_index '{raw_index}'"));
+            }
+            let dna = &state.sequences[&resolved_sequence_id];
+            let feature = dna.features().get(index).ok_or_else(|| {
+                format!("Feature {index} is absent from '{resolved_sequence_id}'")
+            })?;
+            let identity = serde_json::to_string(feature).map_err(|error| error.to_string())?;
+            if dna
+                .features()
+                .iter()
+                .filter(|candidate| *candidate == feature)
+                .count()
+                != 1
+            {
+                return Err(format!(
+                    "Feature {index} in '{resolved_sequence_id}' has ambiguous content identity"
+                ));
+            }
+            let scope = gentle::tutorial_gui_semantics::pseudonymous_subject_scope(&[
+                &resolved_sequence_id,
+                &identity,
+            ]);
+            let group_scope = gentle::tutorial_gui_semantics::pseudonymous_subject_scope(&[
+                &resolved_sequence_id,
+                feature.kind.as_ref(),
+            ]);
+            feature_bindings.push(json!({
+                "source_sequence_id": source_sequence_id,
+                "resolved_sequence_id": resolved_sequence_id,
+                "feature_index": raw_index,
+                "subject_scope": scope,
+                "group_subject_scope": group_scope,
+            }));
+        }
     }
     state
         .save_to_path(&project_output.to_string_lossy())
@@ -654,6 +700,7 @@ fn run_tutorial_gui_project_mode(
         "project_sha256": file_sha256(project_output)?,
         "run_dir": run_dir.to_string_lossy(),
         "sequence_bindings": sequence_bindings,
+        "feature_bindings": feature_bindings,
     });
     let pretty = serde_json::to_string_pretty(&summary)
         .map_err(|error| format!("Could not serialize GUI project preparation: {error}"))?;
