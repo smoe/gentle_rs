@@ -1,14 +1,28 @@
 """Hand-crafted inline tests for the public audit helper's narrow assertions."""
 
 import unittest
+from pathlib import Path
 
-from scripts.prepare_public_vkorc1_audit import pair_content, report_content, PREFIX
+from scripts.prepare_public_vkorc1_audit import (
+    assert_reviewed_fragment, pair_content, report_content, retained_refsnp_url, PREFIX,
+)
 
 
 class PublicAuditAssertionsTests(unittest.TestCase):
     def project(self, reference="aaCaa", alternate="aaTaa", fragment="aacaa"):
         return {"sequences": {PREFIX + role: {"seq": {"seq": list(value.encode())}}
                               for role, value in (("fragment", fragment), ("reference", reference), ("alternate", alternate))}}
+
+    def test_retained_file_override_preserves_raw_spaces_quotes_and_backslashes(self):
+        path = Path('/tmp/public response/ref"snp\\record.json')
+        self.assertEqual(retained_refsnp_url(path), 'file:///tmp/public response/ref"snp\\record.json')
+
+    def test_engine_recommendation_must_match_reviewed_tutorial_geometry(self):
+        report = {"recommended_candidate_id": "chosen", "candidates": [
+            {"candidate_id": "chosen", "recommended": True, "start_0based": 10, "end_0based_exclusive": 20}]}
+        assert_reviewed_fragment(report, {"ExtractRegion": {"from": 10, "to": 20}})
+        with self.assertRaises(AssertionError):
+            assert_reviewed_fragment(report, {"ExtractRegion": {"from": 10, "to": 21}})
 
     def test_only_known_execution_identity_is_excluded_from_report_comparison(self):
         report = {"generated_at_unix_ms": 1, "op_id": "op-1", "run_id": "run",
