@@ -27,8 +27,8 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | --- | --- | --- |
 | 1. Audit preservation | Complete: original bytes independently verified | [New integrity receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md) pins the unchanged `30f23aa4` archive, manifest and report. Exact 319,263,072-byte archive digest, `zstd -t`, all 721 regular-file hashes and safe exact membership pass on macOS. Original project, raw images and both Criterion trees inspected; no historical binaries executed or performance/scientific verdict inferred. |
 | 2. Tutorial 08.04 GUI/agent contracts | Complete: bounded native contract at `6d8b4db7` | [New native receipt](audits/glen_followups_20261008/candidate_6d8b4db7/README.md) independently verified: all 115 artifact hashes, 18 focused Rust tests, locked GUI-support/generation checks and eight ordinary Linux/X11 dev-profile input steps. Explicit T and vertically reachable pair action inspected; all three full `Seq` records match the independent oracle. This is an offline synthetic 20-base guard, not public-locus GUI or scientific acceptance. |
-| 3. Live-agent acceptance | Fresh live pilot at `6d8b4db7`; public CI comparison pending | The independently hash/version-verified CI macOS dev CLI uses the existing authorized login. The real model asks for A/G/T clarification, then proposes exactly two unexecuted parser-valid `ask` commands after explicit T and actual help. Manual execution preserves both source records and yields 1,089-bp inserts differing only at 588, C/T. Starter comes from the retained `62f7180b` public bundle; compare all four full `Seq` records against fresh `6d8b4db7` public CI before completion. No credentials inspected or copied. |
-| 4. Honest visual evidence | Fresh native inspection accepted; public projection pending | At `6d8b4db7`, all 115 native hashes and four raw semantic captures inspected without edits: honest light chrome/dark canvases, visible T and pair action. These use the synthetic guard, not human VKORC1. Retain older public projections separately; inspect the fresh public 1,089-bp base projection and hashes before closing item 4. Same-hash whole-map images do not prove the base change. Historical WIP previews remain untouched. |
+| 3. Live-agent acceptance | Complete: fresh public starter and real agent at `6d8b4db7` | [Executed receipt](audits/glen_followups_20261008/candidate_6d8b4db7/README.md#genuine-live-agent) `aa5a3d8e...`, verified macOS/arm64 dev CLI and existing authorized login. Genuine clarification followed by exactly two unexecuted `ask` suggestions; requests and bare-alternate refusal preserve raw project bytes. Reviewed manual execution preserves both sources and all four full `Seq` records equal both fresh CI routes, including ordered dbSNP provenance. The older-starter pilot fails full-record parity and remains historical, not accepted. No credentials inspected/copied or particular model ID claimed. |
+| 4. Honest visual evidence | Complete: raw native inspection and labelled public projection at `6d8b4db7` | [Source-bound evidence](audits/glen_followups_20261008/candidate_6d8b4db7/README.md#public-reference-and-base-projection): 115 native and 44 public hashes verified. Four unedited synthetic native captures retain light chrome/dark canvases; visible T and pair action. Fresh public SVG/JSON independently bound to the 1,089-bp exports; visually inspected 33-base window highlights sole 588 C/T, with display-only uppercase and explicit projection/non-claims. Not human-locus GUI, reporter-map or scientific proof. Historical WIP previews stay untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases at `6d8b4db7` | [New same-candidate receipt](audits/glen_followups_20261008/candidate_6d8b4db7/README.md), Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 25 artifact hashes, including the downloaded executable, and all 24 bidirectional fixture/size/content checks independently verified. The [older `d1bf3fd3` receipt](audits/glen_followups_20261008/README.md) stays unchanged. No timed regression, native input-to-paint latency or package acceptance claim. |
 | 6. .12 package acceptance | Frozen `6d8b4db7` builds and full platform gates running | After focused handoff/native tests pass, dispatch [native packages 37833274999](https://github.com/smoe/gentle_rs/actions/runs/37833274999) and [build/load-only container 37833283228](https://github.com/smoe/gentle_rs/actions/runs/37833283228) with `publish=false`. Both candidate receipts independently agree on source/workflow `6d8b4db7`, unchanged lockfile, `package-opt1` and `validate_only`; digest `b7afbf01b953a65a19230b7a89a72f5d06ef868c55569d08c8a63a817c04c50a`. Require all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates. No older verdict inheritance or publication; native GUI/scientific approval remain separate. |
 
@@ -483,3 +483,41 @@ follow-up merely to improve those observations.
   all 25 Python checkout tests pass on macOS. Both new receipts exactly match
   their downloaded raw bytes; their missing-LF-attribute negative controls and
   LF/CRLF replays pass. `git diff --check` is clean; no local Rust execution.
+- On committed evidence HEAD `6fcbffc769f55165978800448961acf9e88c8526`,
+  all 149 focused Python checkout, GUI-runner, audit-helper, public-reference,
+  release-candidate, native-package and container tests pass on macOS.
+  Retained log SHA-256 is
+  `dab18e48959a8e6d22a197c5554ece452da50054086ef710393b0b4cf55eb624`.
+  The owner switched the shared checkout to separately advanced main
+  `e04f6044`; continue the codex branch in the isolated managed worktree
+  `/Users/u005069/.codex/worktrees/glen-followup-evidence/gentle_rs` without
+  modifying main, its `paper`/`output/` changes or the frozen runtime SHA.
+- At frozen `6d8b4db7`, public CI passes complete reference preparation,
+  direct/shared reports and exact insert records. Independently verify all 44
+  downloaded artifacts and retain unchanged receipt `d65c02e6...`, JSON and SVG.
+  Render and inspect the unedited 920-by-430 SVG preview: three 33-base rows,
+  source/binary hashes, sole 588 C/T, display-only uppercase and explicit
+  exported-base projection/non-claims. The synthetic raw GUI captures and
+  human-locus base projection remain distinct evidence classes.
+- Comparing the older-starter live pilot against fresh public CI finds missing
+  dbSNP assembly/reference qualifiers in all four full records. Preserve that
+  failed comparison and its original files, rather than sorting annotations,
+  removing provenance or comparing DNA alone. Repeat genuine requests from the
+  fresh starter `7eade3a6...` with the independently verified 6d macOS CLI.
+  Clarification response `b890be0a...` and explicit-T response `1d6c9122...`
+  leave raw project bytes unchanged; no automatic execution. Bare alternate
+  returns exit 1 with unchanged bytes. Two reviewed manual commands exit zero;
+  all four full ordered `Seq` records exactly equal both fresh CI routes and
+  both originals are preserved. Retain executed receipt `aa5a3d8e...` separately
+  from the unchanged build receipt's `live_agent_accepted:false`. Items 3 and 4
+  are complete within these bounded contracts, not package or scientific
+  approval. Final project SHA-256 is
+  `75d9158a14ef10bf84d75e585a47b2eecb7ef8d5fb85d436bb6752125ed27534`.
+- On `6fcbffc7` plus this evidence-only diff, all 25 Python checkout tests
+  pass with seven individually exercised missing-LF-attribute controls and
+  both LF/CRLF replays. The first test attempt exposed a temporary-directory
+  name collision between the new JSON and SVG; using the full filename instead
+  of its stem repairs the harness without weakening any digest check.
+  Log SHA-256 is
+  `336aec55899f6ac63391c4ea008b6730b20736a826dccce142d4db2ef07bfc22`.
+  `git diff --check` passes; no local Rust build/check/test is run.

@@ -232,6 +232,11 @@ class TutorialCheckoutTests(unittest.TestCase):
         expected = {
             base / "native_gui.json": "c0b0c89aaa8a2989e0c2d86de9f8327fe5e9190a4ce6634cb7866d91460efc2e",
             base / "scroll_cpu_smoke.json": "420e2c280ccb8294ecab5046672c85ffe6461104275f050fc43fdf65acaf6bc6",
+            base / "agent_cli_build.json": "ff026cb592f64f8a81a472e144ad5bdd539bc09b2c0f905058fe0489a661acd1",
+            base / "public.json": "d65c02e64fb429ea41662a9d5dd5336a994304780a27a0390645ec2eecedb30d",
+            base / "base_comparison.json": "679e52fd00d98552c28d3dd3413c6b38e0f0fa0e93302d7fe1be754a425f434d",
+            base / "base_comparison.svg": "1eee85466468d971cf88d0aad2b29841819e613755f60a81509cde42455b7bc6",
+            base / "live_agent.json": "aa5a3d8e68a349c55f5764152d5e0613150c0f1a63d05ae11ca15d22d9a1ed25",
         }
         attributes = (checker.ROOT / ".gitattributes").read_bytes()
         (self.root / ".gitattributes").write_bytes(attributes)
@@ -243,11 +248,11 @@ class TutorialCheckoutTests(unittest.TestCase):
             destination.write_bytes(payload)
         checker.git(self.root, "add", "--all")
         checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
-                    "-m", "exact-candidate native and scroll receipts")
+                    "-m", "exact-candidate native, scroll, public and live evidence")
         for relative in payloads:
             unprotected = b"\n".join(line for line in attributes.split(b"\n")
                                       if not line.startswith(str(relative).encode() + b" "))
-            broken = Path(self.tmp.name) / f"candidate-receipt-{relative.stem}-unprotected"
+            broken = Path(self.tmp.name) / f"candidate-receipt-{relative.name}-unprotected"
             checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
             self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
                                 expected[relative])

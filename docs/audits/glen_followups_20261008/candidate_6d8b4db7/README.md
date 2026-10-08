@@ -58,6 +58,74 @@ in the expected direction, keeps span/length in bounds and preserves sequence
 content. This is the maintained wheel-event plus next-egui-frame CPU path,
 not timed benchmarking, GPU/compositor presentation or native input latency.
 
+## Public Reference And Base Projection
+
+`public.json` is the unchanged receipt from the same run's artifact
+`vkorc1-public-audit-6d8b4db772a5ed08f5fd7926ec4f1635a14a236a`, ID `11575573466`.
+Its SHA-256 is `d65c02e64fb429ea41662a9d5dd5336a994304780a27a0390645ec2eecedb30d`.
+All 44 artifact hashes independently match. CI prepared the complete catalogued
+GRCh38/Ensembl 116 reference, retained the HTTP-200 NCBI response and replayed
+that exact file through GENtle. The multi-gigabyte reference inputs are
+CI-recorded hashes, not independently downloaded reference files on this host.
+
+Direct CLI and shared-shell routes agree on the context/candidate reports and
+all three full insert `Seq` records; only report time/op/run identities are
+excluded. Both unspecified-alternate refusals leave the saved state unchanged.
+The selected transcript is negative-strand `ENST00000498155`, with reported
+signed TSS distance -388 bp. The 1,089-bp pair differs only at zero-based 588,
+genomic-forward C/T; nonvariant bytes and original case are preserved.
+
+- Public starter: `7eade3a615382b061496a5173ac00ea47d772e128715f9f7c4d1253e2f7b0936`.
+- Retained NCBI response: `080131663dad501faf0101fc1fd50b842b64d000d17c17a4222c654f4c16052a`.
+- `base_comparison.json`: `679e52fd00d98552c28d3dd3413c6b38e0f0fa0e93302d7fe1be754a425f434d`.
+- [Base-window SVG](base_comparison.svg): `1eee85466468d971cf88d0aad2b29841819e613755f60a81509cde42455b7bc6`.
+
+The JSON/SVG are unchanged artifact files `base-comparison.json` and
+`base-comparison.svg`, retained under underscore filenames here. Render the
+SVG with `rsvg-convert base_comparison.svg -o preview.png`; its unedited local
+920-by-430 preview was visually inspected. The view shows all three 33-base
+rows [572,605), highlighted C/T at 588, full source/binary hashes and explicit
+non-claims. Uppercase is display-only. This is a labelled projection of exported
+bases, not a native screenshot or reporter map; whole-map captures alone do not
+prove a base substitution.
+
+## Genuine Live Agent
+
+`agent_cli_build.json` retains the unchanged macOS/arm64 dev CLI-build receipt
+from artifact ID `11573668041` of the same run. Its digest is
+`ff026cb592f64f8a81a472e144ad5bdd539bc09b2c0f905058fe0489a661acd1`.
+The downloaded binary `e6129b249aa061837829df7b7f1f591f9a47e57b2fb91d5c2c18c314b736e120`,
+build log and actual `--version` independently match that receipt.
+Its `live_agent_accepted:false` is deliberately not rewritten: building a CLI
+does not accept a model invocation.
+
+The separate executed `live_agent.json` receipt has SHA-256
+`aa5a3d8e68a349c55f5764152d5e0613150c0f1a63d05ae11ca15d22d9a1ed25`.
+Run `agents ask codex_local_stdio --catalog assets/agent_systems.json
+--timeout-secs 180 --max-retries 0 --prompt PROMPT` twice using its exact
+recorded prompts, the fresh public starter and the existing authorized login.
+The real `external_json_stdio` response requests A/G/T clarification first;
+after explicit T and actual CLI help, it returns exactly two unexecuted `ask`
+suggestions. Raw project bytes are unchanged after each request and after the
+exit-1 unspecified-alternate negative control. No credentials are inspected or
+copied, and no particular model ID is attested by the response.
+
+Manually reviewed execution of the two recorded shared-shell commands exits
+zero. Both original full `Seq` records are preserved; all four full records,
+including ordered feature/qualifier arrays and new dbSNP assembly/reference
+evidence, equal both fresh CI routes. This is not a DNA-only comparison or an
+assertion inferred from a screenshot. The final local project digest is
+`75d9158a14ef10bf84d75e585a47b2eecb7ef8d5fb85d436bb6752125ed27534`.
+
+Raw requests, replies, help, refusal and results remain in
+`/private/tmp/gentle-agent-public-fresh-6d8b4db7`; their hashes and the verifier
+hash are in the receipt. A new model run must satisfy the same semantic checks,
+not reproduce stochastic response bytes/timestamps. The earlier pilot in
+`/private/tmp/gentle-agent-public-6d8b4db7` used the older `62f7180b` starter and
+fails fresh full-record parity because it lacks the later dbSNP qualifiers.
+It remains historical, non-accepted evidence; it was not altered or rescued by
+weakening the comparison.
+
 ## Retrieval And Reproduction
 
 Download each named artifact from the linked exact run into a new evidence
@@ -68,8 +136,9 @@ Local bundles remain `/private/tmp/gentle-vkorc1-gui-6d8b4db7` and
 receipt record exact build, generation, isolated replay and smoke commands;
 Rust execution occurs on Actions, not locally in this Codex session.
 
-The fast checkout test preserves both receipts under LF/CRLF and rejects missing
-LF attributes. These records close the bounded native-contract and deterministic
-scroll cases only. Public-data/live-agent comparison, full platform gates and
-`package-opt1` native/container acceptance are separate. No functional, clinical,
-wet-lab, performance or human scientific approval is asserted.
+The fast checkout test preserves all seven hash-bound receipts/projections under
+LF/CRLF and rejects each missing LF attribute, including the SVG. These records
+close the bounded native contract, public/live-agent comparison, honest visual
+projection and deterministic scroll cases. Full platform gates and
+`package-opt1` native/container acceptance remain separate. No functional,
+clinical, wet-lab, timed performance or human scientific approval is asserted.
