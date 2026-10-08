@@ -205,6 +205,10 @@ pub(super) struct SplicingExpertPresentation {
     pub(super) transcript_rows: Vec<SplicingExpertTranscriptPresentationRow>,
     pub(super) transition_rows: Vec<SplicingExpertTransitionPresentationRow>,
     pub(super) junction_rows: Vec<SplicingExpertJunctionPresentationRow>,
+    pub(super) boundary_rows:
+        Vec<gentle_protocol::splicing_presentation::SplicingBoundaryPresentationRow>,
+    pub(super) boundary_motif_rows: Vec<SplicingBoundaryMotifRow>,
+    pub(super) boundary_motif_class_counts: std::collections::BTreeMap<String, usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -6307,12 +6311,25 @@ impl MainAreaDna {
             })
             .collect::<Vec<_>>();
 
+        let boundary_rows =
+            gentle_protocol::splicing_presentation::boundary_presentation_rows(view);
+        let boundary_motif_rows = Self::splicing_boundary_motif_rows(view);
+        let mut boundary_motif_class_counts = std::collections::BTreeMap::new();
+        for row in &boundary_motif_rows {
+            *boundary_motif_class_counts
+                .entry(row.motif_class.clone())
+                .or_default() += 1;
+        }
+
         SplicingExpertPresentation {
             layout,
             exons,
             transcript_rows,
             transition_rows,
             junction_rows,
+            boundary_rows,
+            boundary_motif_rows,
+            boundary_motif_class_counts,
         }
     }
 
@@ -6386,6 +6403,9 @@ impl MainAreaDna {
         for diagnostic in &presentation.layout.diagnostics {
             ui.small(diagnostic);
         }
+        if presentation.layout.lanes.iter().any(|lane| lane.badge.is_some()) {
+            ui.small(gentle_protocol::splicing_presentation::REFERENCE_BADGE_LEGEND);
+        }
         let _ =
             self.render_splicing_lane_canvas_ui(
                 ui,
@@ -6423,11 +6443,7 @@ impl MainAreaDna {
         });
         self.render_splicing_array_probe_geometry_section(ui, view, id_namespace);
         if !view.boundaries.is_empty() {
-            let motif_rows = Self::splicing_boundary_motif_rows(view);
-            let mut motif_class_counts = std::collections::BTreeMap::<String, usize>::new();
-            for row in &motif_rows {
-                *motif_class_counts.entry(row.motif_class.clone()).or_default() += 1;
-            }
+            let motif_rows = &presentation.boundary_motif_rows;
             ui.separator();
             ui.label(
                 egui::RichText::new("Splice-site motifs")
@@ -6442,7 +6458,7 @@ impl MainAreaDna {
                     .size(9.0)
                     .color(egui::Color32::from_rgb(71, 85, 105)),
                 );
-                for (class, count) in motif_class_counts {
+                for (class, count) in &presentation.boundary_motif_class_counts {
                     let color = Self::splicing_boundary_motif_class_color(class.as_str());
                     ui.label(
                         egui::RichText::new(format!(
@@ -6455,17 +6471,10 @@ impl MainAreaDna {
                     );
                 }
             });
-            for summary in gentle_protocol::splicing_presentation::boundary_summaries(view) {
-                let marker = &view.boundaries[summary.marker_index];
-                let exceptional = !marker.canonical || !marker.canonical_pair;
-                ui.label(egui::RichText::new(format!("{} / {} ({}) | {}:{}{} | {} | {} transcripts",
-                    marker.position_1based, marker.partner_position_1based, summary.strand,
-                    marker.side, marker.motif_2bp, if exceptional { "*" } else { "" },
-                    marker.paired_motif_signature, summary.transcript_feature_ids.len()))
-                    .monospace().size(9.0).color(if exceptional { egui::Color32::from_rgb(190, 18, 60) } else { egui::Color32::from_gray(60) }))
-                    .on_hover_text(summary.marker_indices.iter().map(|&index| format!("n-{} {}: {}",
-                        view.boundaries[index].transcript_feature_id, view.boundaries[index].transcript_id,
-                        view.boundaries[index].annotation)).collect::<Vec<_>>().join("\n"));
+            for row in &presentation.boundary_rows {
+                ui.label(egui::RichText::new(row.label.as_str())
+                    .monospace().size(9.0).color(if row.exceptional { egui::Color32::from_rgb(190, 18, 60) } else { egui::Color32::from_gray(60) }))
+                    .on_hover_text(row.hover_text.as_str());
             }
             ui.collapsing("Per-transcript boundary details (all source records)", |ui| {
             egui::Grid::new("splicing_boundary_motif_grid")
@@ -6478,7 +6487,7 @@ impl MainAreaDna {
                     ui.label(egui::RichText::new("class").monospace().strong());
                     ui.label(egui::RichText::new("note").strong());
                     ui.end_row();
-                    for row in &motif_rows {
+                    for row in motif_rows {
                         let class_color =
                             Self::splicing_boundary_motif_class_color(row.motif_class.as_str());
                         ui.label(

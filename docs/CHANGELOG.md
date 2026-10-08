@@ -1,5 +1,34 @@
 # GENtle Changelog
 
+## 2026-10-08 - Address Splicing Presentation Review Follow-Ups
+
+- From `a02ef777`, cache boundary summary labels/hovers, per-transcript motif
+  rows and class counts in the existing validated content-keyed presentation.
+  GUI and SVG share readable source-note text and one boundary/pair exception
+  predicate; no Rust debug fields leak into summary hovers. Biological payloads,
+  fingerprints, evidence classification and derivation order remain unchanged.
+- Preserve compact legacy GUI lanes unless evaluated groups/badges need room.
+  Explain badge `+N` and `?` consistently as extra exact-xref sources and loaded-
+  evidence diagnostics, not automatic transcript ambiguity. Keep dense SVG
+  matrix cells positive, bounded and nonoverlapping, including header borders;
+  disclose sub-2-pixel compression without dropping source cells. Remove the
+  obsolete test-only lane lookup; active shared row-table interaction tests stay.
+- Add inline synthetic regressions for content-bound cache reuse/replacement,
+  legacy spacing, actual GUI arc-label suppression, emitted dense-matrix
+  geometry, canonical dinucleotides in noncanonical pairs, readable escaped
+  hovers, arc collisions, long IDs, mixed strands and boundary-summary overflow.
+  These are authored coverage, not executed acceptance. Rust tests/builds and
+  Cargo check remain deferred to Glen/CI under the owner's no-local-build rule;
+  live FLNA/native-font/native-platform and performance acceptance remain open.
+- Deferred checks: `cargo test --locked -p gentle-protocol splicing`,
+  `cargo test --locked -p gentle-render splicing`, root GUI splicing regressions
+  (`cargo test --locked --lib splicing_ -- --test-threads=1`), then
+  `cargo check -q --locked`. No private reports, downloaded fixtures, dependency
+  updates, schema changes, generated artifacts or release claims are included.
+- Formatting and whitespace checks pass. Session-close reports four OK, two
+  warnings (intentional edits/unrelated untouched `outputs/`, and manual scope
+  confirmation), no failures. The diff is limited to the supplied review.
+
 ## 2026-10-08 - Reconcile Glen's Historical TP73 CUT&RUN Comparison Branch
 
 - Record `b8b73158` as merged in ancestry-only commit `4a8e81d` on

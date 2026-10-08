@@ -24,7 +24,8 @@ use super::{
     RnaReadConcatemerSubsetMode, RnaReadInterpretOpsUiState, RnaReadTask, RnaReadTaskMessage,
     RnaReadTaskOutcome, SPLICING_ATTRACT_EAGER_BOUNDARY_THRESHOLD,
     SequencingConfirmationOverviewSelection, SequencingConfirmationReviewFocusKind,
-    SplicingIntronSignalKey, SplicingIntronSignalRow, ViewSvgExportProfile,
+    SplicingIntronSignalKey, SplicingIntronSignalRow, SplicingLaneCanvasStyle,
+    ViewSvgExportProfile,
     auxiliary_workspaces::LocusEvidenceResourceReadiness,
     feature_location_editor_ui::{FeatureEditorMode, FeatureRecordQualifierUiRow},
 };
@@ -15419,34 +15420,6 @@ fn auto_fit_reference_span_for_view_if_requested_skips_without_request() {
 }
 
 #[test]
-fn splicing_lane_index_at_y_returns_expected_lane() {
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 20.0, 4),
-        Some(1)
-    );
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(159.9, 80.0, 20.0, 4),
-        Some(3)
-    );
-}
-
-#[test]
-fn splicing_lane_index_at_y_rejects_out_of_range_positions() {
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(79.0, 80.0, 20.0, 4),
-        None
-    );
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(160.0, 80.0, 20.0, 4),
-        None
-    );
-    assert_eq!(
-        MainAreaDna::splicing_lane_index_at_y(100.0, 80.0, 0.0, 4),
-        None
-    );
-}
-
-#[test]
 fn large_splicing_matrix_defaults_to_collapsed_section() {
     assert!(!MainAreaDna::splicing_matrix_should_default_collapsed(
         20, 200
@@ -15564,6 +15537,143 @@ fn splicing_expert_presentation_test_view() -> SplicingExpertView {
         ],
         events: vec![],
     }
+}
+
+#[test]
+fn splicing_canvas_keeps_compact_legacy_rows_and_expands_evaluated_groups() {
+    let mut view = splicing_expert_presentation_test_view();
+    let legacy = view.uniprot_presentation_layout();
+    for style in [
+        SplicingLaneCanvasStyle::expert(),
+        SplicingLaneCanvasStyle::primary_map(),
+    ] {
+        let height = style.lane_height_for_layout(&legacy);
+        assert_eq!(height, style.lane_height_px);
+        let canvas = legacy.canvas(height, 24.0);
+        assert_eq!(canvas.height, view.transcripts.len() as f32 * height);
+        assert_eq!(canvas.lane_at_y(height * 0.5), Some(0));
+        assert_eq!(canvas.lane_at_y(height * 1.5), Some(1));
+    }
+    view.matrix_rows[0].uniprot_reference.status =
+        gentle_protocol::SplicingUniprotReferenceStatus::Referenced;
+    let grouped = view.uniprot_presentation_layout();
+    let height = SplicingLaneCanvasStyle::expert().lane_height_for_layout(&grouped);
+    assert_eq!(height, 36.0);
+    let canvas = grouped.canvas(height, 24.0);
+    assert_eq!(canvas.height, 120.0);
+    assert_eq!(canvas.lane_at_y(12.0), None);
+    assert_eq!(canvas.lane_at_y(42.0), Some(0));
+}
+
+#[test]
+fn splicing_junction_arc_labels_are_collision_filtered_in_the_real_canvas() {
+    // Coincident synthetic arcs retain all geometry but must not repaint overlapping numbers.
+    let mut view = splicing_expert_presentation_test_view();
+    view.junctions = vec![
+        SplicingJunctionArc {
+            donor_1based: 10,
+            acceptor_1based: 21,
+            support_transcript_count: 3,
+            transcript_feature_ids: vec![11, 12],
+        };
+        6
+    ];
+    let before = serde_json::to_value(&view).unwrap();
+    let dna = DNAsequence::from_sequence(&"ACGT".repeat(20)).unwrap();
+    let mut area = MainAreaDna::new(dna, Some("seq1".to_string()), None);
+    let ctx = egui::Context::default();
+    ctx.begin_pass(egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(980.0, 480.0),
+        )),
+        ..Default::default()
+    });
+    crate::egui_compat::show_central_panel_for_test_context(
+        &ctx,
+        egui::CentralPanel::default(),
+        |ui| {
+            area.render_splicing_lane_canvas_ui(
+                ui,
+                &view,
+                SplicingLaneCanvasStyle::expert(),
+                false,
+                "arc-label-regression",
+            );
+        },
+    );
+    let texts = collect_pass_texts(&ctx);
+    assert_eq!(
+        texts.iter().filter(|text| text.as_str() == "3").count(),
+        1,
+        "{texts:?}"
+    );
+    assert_eq!(serde_json::to_value(&view).unwrap(), before);
+}
+
+#[test]
+fn splicing_boundary_summary_text_is_cached_and_rebound_after_ingress() {
+    // Hand-crafted markers, with no real locus or fetched evidence.
+    let mut view = splicing_expert_presentation_test_view();
+    view.boundaries = vec![SplicingBoundaryMarker {
+        transcript_feature_id: 11,
+        transcript_id: "tx1".to_string(),
+        side: "donor".to_string(),
+        position_1based: 10,
+        motif_2bp: "GT".to_string(),
+        canonical: true,
+        canonical_pair: false,
+        partner_position_1based: 21,
+        paired_motif_signature: "GT-TT".to_string(),
+        motif_class: "other_noncanonical".to_string(),
+        annotation: "synthetic source note".to_string(),
+    }];
+    let before = serde_json::to_value(&view).unwrap();
+    let mut area = MainAreaDna::new(
+        DNAsequence::from_sequence("ACGT").unwrap(),
+        Some("seq1".into()),
+        None,
+    );
+    area.open_splicing_expert_window_for_view(&view);
+    let stored = area.splicing_expert_window_view.clone().unwrap();
+    let first = area.splicing_expert_presentation_for_view(&stored);
+    let second = area.splicing_expert_presentation_for_view(&stored);
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(
+        first.boundary_rows,
+        gentle_protocol::splicing_presentation::boundary_presentation_rows(&view)
+    );
+    assert_eq!(
+        first.boundary_rows[0].hover_text,
+        "n-11 tx1: synthetic source note"
+    );
+    assert!(first.boundary_rows[0].exceptional);
+    assert_eq!(first.boundary_rows.as_ptr(), second.boundary_rows.as_ptr());
+    assert_eq!(
+        first.boundary_rows[0].hover_text.as_ptr(),
+        second.boundary_rows[0].hover_text.as_ptr()
+    );
+    assert_eq!(first.boundary_motif_rows.len(), 1);
+    assert_eq!(first.boundary_motif_class_counts["other_noncanonical"], 1);
+    assert_eq!(serde_json::to_value(&view).unwrap(), before);
+
+    view.boundaries[0].annotation = "changed synthetic source note".into();
+    area.open_splicing_expert_window_for_view(&view);
+    let replaced = area.splicing_expert_window_view.clone().unwrap();
+    assert_ne!(
+        stored.presentation_fingerprint_sha256,
+        replaced.presentation_fingerprint_sha256
+    );
+    let third = area.splicing_expert_presentation_for_view(&replaced);
+    assert!(!Arc::ptr_eq(&second, &third));
+    assert_eq!(
+        third.boundary_rows[0].hover_text,
+        "n-11 tx1: changed synthetic source note"
+    );
+    assert_eq!(
+        first.boundary_rows[0].hover_text,
+        "n-11 tx1: synthetic source note"
+    );
 }
 
 #[test]

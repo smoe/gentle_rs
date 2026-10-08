@@ -12668,6 +12668,12 @@ Cryptic-splicing inspection (implemented):
     headers inert during hit-testing. No operation payload order, fingerprint,
     derivation order, schema or command route changes. Boundary summaries retain
     every underlying marker, grouping only identical oriented boundary/pair text.
+    Shared nonserialized boundary presentation rows retain readable source-note
+    hovers and treat either a noncanonical boundary or pair as exceptional.
+    GUI caches these rows and motif details under the existing validated view
+    identity; SVG uses the same text without debug-struct output. No evidence
+    classification or fingerprint input changes. Badge `?` means a diagnostic,
+    not necessarily transcript ambiguity; `+N` counts additional exact-xref sources.
   - shared splicing expert payloads also carry conservative intron-signal
     heuristics per intron:
     - donor/acceptor positions and intron length
