@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-10-08 - Preserve Unprivileged Native Replay Diagnostics
+
+- Drop namespace-creation privilege before the native tutorial runner so its
+  private projects belong to the Actions user, not root. Upload diagnostics
+  before public reference preparation; do not mask the GUI's initial exit 101.
+- The public CLI/shared-shell audit at `a1fb305a` passed separately. Native
+  startup, screenshots and final-candidate acceptance remain pending.
+
 ## 2026-10-08 - Verify A Help-Grounded Synthetic Live-Agent Pilot
 
 - The CI-built macOS dev CLI at `f99c44a1` ran three real Codex requests with

@@ -886,7 +886,10 @@ allele-choice companion by chapter ID. Its CI helper
 `scripts/ci_vkorc1_gui_audit.py` generates projections in a disposable exact-HEAD
 clone, restores the three historical PATZ1 baseline bytes/hashes, checks the
 projections and drives ordinary input under Openbox/Xvfb in a distinct network
-namespace. Retained receipts bind the dev binaries, source/lock, logs, raw
+namespace. CI creates that namespace with privilege, then drops to the runner's
+UID/GID before running GENtle; private project files remain readable by the
+artifact uploader. Retain native diagnostics before costly public preparation.
+Retained receipts bind the dev binaries, source/lock, logs, raw
 screenshots and semantic geometry. A separate JSON/SVG view checks the saved
 20-base C/T pair and is explicitly synthetic, not a native screenshot. This
 does not accept the online VKORC1 workflow, real agent planning, package-opt1

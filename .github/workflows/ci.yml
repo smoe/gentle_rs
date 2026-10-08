@@ -144,11 +144,6 @@ jobs:
         run: |
           python3 scripts/ci_vkorc1_gui_audit.py --repo-root . --binary-dir target/debug \
             --evidence-dir "$RUNNER_TEMP/vkorc1-gui-audit"
-      - name: Prepare fresh public 08.04 inputs and verify CLI/shared-shell parity
-        if: ${{ !cancelled() && inputs.audit_public_vkorc1 }}
-        run: |
-          python3 scripts/prepare_public_vkorc1_audit.py --repo-root . \
-            --gentle-cli target/debug/gentle_cli --evidence-dir "$RUNNER_TEMP/vkorc1-public-audit"
       - name: Preserve candidate-bound evidence, including failures
         if: always()
         uses: actions/upload-artifact@v6
@@ -157,6 +152,11 @@ jobs:
           path: ${{ runner.temp }}/vkorc1-gui-audit/
           if-no-files-found: error
           retention-days: 30
+      - name: Prepare fresh public 08.04 inputs and verify CLI/shared-shell parity
+        if: ${{ !cancelled() && inputs.audit_public_vkorc1 }}
+        run: |
+          python3 scripts/prepare_public_vkorc1_audit.py --repo-root . \
+            --gentle-cli target/debug/gentle_cli --evidence-dir "$RUNNER_TEMP/vkorc1-public-audit"
       - name: Preserve public-data evidence without uploading the whole reference cache
         if: always() && inputs.audit_public_vkorc1
         uses: actions/upload-artifact@v6

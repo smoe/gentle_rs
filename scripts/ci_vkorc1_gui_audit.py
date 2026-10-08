@@ -138,6 +138,7 @@ def main() -> int:
         sleep 1
         parent_netns=$(readlink /proc/self/ns/net)
         sudo --preserve-env=DISPLAY,XAUTHORITY unshare --net -- \
+          setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups \
           python3 "$2/scripts/tutorial_gui_acceptance.py" --repo-root "$2" \
           --gentle "$3/gentle" --gentle-cli "$3/gentle_cli" --examples-docs "$3/gentle_examples_docs" \
           --chapter vkorc1_warfarin_promoter_luciferase_gui --evidence-dir "$1" \

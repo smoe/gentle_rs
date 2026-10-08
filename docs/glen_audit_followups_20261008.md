@@ -205,6 +205,16 @@ follow-up merely to improve those observations.
   metadata-only rerun `37778064938` was cancelled to avoid duplicate builds;
   cancellation is not acceptance. On `a1fb305a`, all 23 fast LF/CRLF checkout
   regressions pass on macOS without Rust execution.
+- On `a1fb305a`, complete public reference preparation, direct/shared-shell
+  reports, ambiguous refusal and the explicit C/T pair pass in run `37778513095`.
+  Generation checks also pass, but GENtle exits 101 before `open_fragment` in
+  native replay. Root-owned mode-private projects then prevent both receipt
+  hashing and artifact upload, hiding the panic detail. Drop to the runner's
+  UID/GID inside the isolated network namespace and upload native diagnostics
+  before public preparation; do not relabel native startup as accepted.
+  Run `37776460982` was cancelled after retaining its passing macOS CLI;
+  that cancellation does not invalidate its recorded synthetic pilot or
+  constitute overall CI acceptance.
 - Genuine synthetic agent pilot on the independently verified `f99c44a1`
   macOS CLI used `codex_local_stdio`, the existing authorized host login and
   `execution=ask`, with no auto/execute-all flags or credential inspection.
