@@ -73,6 +73,25 @@
   with Glen/CI. Changes are documentation only; no source, poster, tutorial,
   dependency or generated artifact is changed.
 
+## 2026-10-08 - Preserve Glen's Exact-Candidate Tutorial And GUI Audit
+
+- Retain the owner-supplied [Linux/X11 audit](glen_tutorial_parity_gui_audit_20261008.md)
+  unchanged, bound to `30f23aa4cb084694870a139714d0f0fef1726378` and the original
+  report SHA-256. Record reported checkout/walkthrough passes (18/9), splicing
+  protocol/renderer/root passes (10/9/108) and VKORC1 explicit-T parity without
+  calling them new Codex runs or macOS/Windows acceptance.
+- Add the owner-authorized [six-item evidence checklist](glen_audit_followups_20261008.md).
+  Raw archive verification, typed 08.04 GUI/agent execution, live model planning,
+  base-level visual proof, scroll benchmarking and .12 package-opt1 acceptance
+  remain pending. Stripped development binaries and CPU proxy measurements do
+  not close package, native-latency or scientific gates.
+- No historical preview, fixture, dependency, release version or publication
+  changes. Unrelated `paper` and `output/` remain untouched; Rust validation
+  belongs to CI/external execution under the owner's no-local-build restriction.
+- Exact report bytes verified against the supplied original; LF/CRLF checkout
+  regressions, including the missing-attribute negative control, pass 21/21 on
+  macOS. `git diff --check` passes; the raw audit bundle remains unverified.
+
 ## 2026-10-08 - Bind Legacy Splicing Cache To Boundary Content
 
 - Record Claude's independently reported macOS results at `30f23aa4`:
