@@ -24,6 +24,7 @@ else:
 
 
 PACKAGE_PROFILE = "package-opt1"
+CONTAINER_BINARIES = ("gentle_cli", "gentle_mcp", "gentle_examples_docs")
 PACKAGE_BUILD_RECIPE = {
     "opt_level": 1, "lto": "off", "codegen_units": 256,
     "incremental": False, "debug": 0, "debug_assertions": True,
@@ -63,6 +64,32 @@ def native_build_settings(tag: str) -> dict[str, str]:
         "native_profile": PACKAGE_PROFILE,
         "native_target_subdir": PACKAGE_PROFILE,
     }
+
+
+def container_binary_identities(image_id: str, revision: str, tag: str) -> dict:
+    """Execute the loaded image's binaries and bind their identities to the candidate."""
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        raise ValueError("A full local container image ID is required")
+    expected_source = f"Source revision {release_tag(tag)[1:]}+git.{full_sha(revision)}"
+    records = {}
+    for binary in CONTAINER_BINARIES:
+        path = f"/opt/gentle/bin/{binary}"
+        version = subprocess.check_output(
+            ["docker", "run", "--rm", "--network", "none", "--entrypoint",
+             path, image_id, "--version"], text=True, timeout=60,
+        )
+        sources = [line for line in version.splitlines() if line.startswith("Source revision ")]
+        if sources != [expected_source]:
+            raise ValueError(f"{binary} does not report the exact candidate source revision")
+        digest = subprocess.check_output(
+            ["docker", "run", "--rm", "--network", "none", "--entrypoint",
+             "/usr/bin/sha256sum", image_id, path], text=True, timeout=60,
+        ).split()
+        if (len(digest) != 2 or not re.fullmatch(r"[0-9a-f]{64}", digest[0])
+                or digest[1] != path):
+            raise ValueError(f"Invalid container binary digest for {binary}")
+        records[binary] = {"version": version.strip(), "sha256": digest[0]}
+    return records
 
 
 def publication_allowed(event: str, action: str, requested: str) -> bool:

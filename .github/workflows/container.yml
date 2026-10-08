@@ -78,6 +78,7 @@ jobs:
           file: ./Dockerfile
           build-args: |
             DEBIAN_SUITE=forky
+            GENTLE_GIT_COMMIT=${{ needs.candidate.outputs.revision }}
           target: runtime-cli
           platforms: linux/amd64
           push: false
@@ -131,15 +132,15 @@ jobs:
           python3 scripts/release_candidate.py verify
           python3 - <<'PY'
           import hashlib, json, os, pathlib, subprocess
-          from scripts.release_candidate import PACKAGE_PROFILE, package_build_recipe
+          from scripts.release_candidate import PACKAGE_PROFILE, container_binary_identities, package_build_recipe
           rows = []
           for flavor in ("cli",):
               image_id = os.environ[f"{flavor.upper()}_IMAGE"]
-              if not image_id.startswith("sha256:"):
-                  raise SystemExit("Build did not retain a local image identity")
+              identities = container_binary_identities(
+                  image_id, os.environ["EXPECTED_REVISION"], os.environ["RELEASE_TAG"])
               rows.append({"target": f"runtime-{flavor}", "image_id": image_id,
                            "digest": os.environ[f"{flavor.upper()}_DIGEST"],
-                           "entrypoint_smoke": "passed"})
+                           "entrypoint_smoke": "passed", "binary_identities": identities})
           record = {
               "schema": "gentle.container_build.v1", "tag": os.environ["RELEASE_TAG"],
               "revision": os.environ["EXPECTED_REVISION"],
@@ -157,7 +158,9 @@ jobs:
                           pathlib.Path("docker/rnapkin/Cargo.lock").read_bytes()).hexdigest(),
                   },
               },
-              "build_args": {"DEBIAN_SUITE": "forky"}, "platform": "linux/amd64",
+              "build_args": {"DEBIAN_SUITE": "forky",
+                             "GENTLE_GIT_COMMIT": os.environ["EXPECTED_REVISION"]},
+              "platform": "linux/amd64",
               "buildx": subprocess.check_output(["docker", "buildx", "version"], text=True).strip(),
               "images": rows,
           }
@@ -237,6 +240,7 @@ jobs:
           file: ./Dockerfile
           build-args: |
             DEBIAN_SUITE=forky
+            GENTLE_GIT_COMMIT=${{ needs.candidate.outputs.revision }}
           target: runtime-cli
           platforms: linux/amd64
           push: true

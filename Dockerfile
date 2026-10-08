@@ -73,6 +73,8 @@ RUN cargo tree --locked --no-default-features --edges normal,build --prefix none
         echo "Desktop or embedded scripting dependency leaked into the headless build" >&2; exit 1; \
     fi
 # Same bounded opt-level=1 recipe as native installers; helpers stay dev.
+ARG GENTLE_GIT_COMMIT=""
+ENV GENTLE_GIT_COMMIT=${GENTLE_GIT_COMMIT}
 RUN cargo build --locked --profile package-opt1 --no-default-features \
     --bin gentle_cli --bin gentle_mcp --bin gentle_examples_docs -j1
 

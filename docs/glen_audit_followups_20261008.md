@@ -39,7 +39,25 @@ historical source. The current candidate's checklist is:
 | 3. Live-agent acceptance | Post-rebase verification pending | New verified macOS CLI and fresh public starter, genuine clarification and unexecuted explicit-T suggestions, unchanged requests/refusal and full-record manual-execution parity. |
 | 4. Honest visual evidence | Post-rebase verification pending | New source-bound unedited synthetic native captures and labelled public base projection, independently hashed and visually inspected. No public-locus GUI or scientific claim. |
 | 5. Scroll benchmarks | Post-rebase verification pending | New same-SHA executable/receipt and all 24 bidirectional fixture, viewport-bound and unchanged-content checks. No timing or native-latency claim. |
-| 6. .12 package acceptance | Post-rebase verification pending | After fresh focused success, non-publishing native/container builds, all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates at one frozen SHA/lockfile/`package-opt1` recipe. |
+| 6. .12 package acceptance | Post-rebase verification pending | After fresh focused success, non-publishing native/container builds, all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates at one frozen SHA/lockfile/`package-opt1` recipe. Require actual embedded source revisions and per-binary container hashes, not only image labels/help output. |
+
+The post-rebase `1e12fd0ff70c57413dffe91d92a7a85d92a2f7b7` policy job
+([37846506619](https://github.com/smoe/gentle_rs/actions/runs/37846506619))
+passed 172 Python tests. Its raw log SHA-256 is
+`acab72653732a960fdb8f67e8af3ca4b145c61521238e184f80cc70f18ed55fa`.
+It does not accept Rust/native/package behavior. Subsequent container review
+found that `.git` is excluded and no source argument reached `build.rs`;
+help-only smoke and image labels cannot verify embedded binary identity.
+The scoped repair passes the frozen SHA and checks all three actual versions
+and digests in the loaded image before writing its receipt. Eight new offline
+regressions pass with the existing 15 container tests. A new exact-SHA freeze
+and fresh gates are required; `1e12fd0f` and `6d8b4db7` verdicts are not inherited.
+On `1e12fd0f` plus this scoped container/status diff, all 157 tests in the seven
+offline policy/checkout/GUI-helper suites pass on macOS (23.661 s); log SHA-256
+`0633fd497ba2b8442441066f79f55d0b24334b4304829dc19f5bc7fff818359e`.
+This is not actual container or Rust acceptance. Fresh `1e12fd0f` CI failed
+compilation in the unchanged main primer handoff family (missing filesystem
+import and result-field initializers); address those separately before freeze.
 
 ### Historical `6d8b4db7` Snapshot
 

@@ -294,6 +294,14 @@ receipts and an aggregate metadata receipt. Container checks build/load only
 check runtime libraries/assets and the absence of GUI/JS/Lua binaries, and
 retain the local image ID/digest and a container receipt. Docker build records
 remain with the Actions run; container validation does not upload images to GHCR.
+Because the Docker context excludes `.git`, both workflow build paths pass the
+full candidate SHA as `GENTLE_GIT_COMMIT`. Before writing a validation receipt,
+CI executes each of the three loaded-image binaries with `--version` and checks
+its exact version-plus-source revision, then hashes that binary in the same
+image. All six probes disable networking; missing/stale identities, malformed
+digests or failed commands refuse the receipt. Per-binary versions and SHA-256
+digests are retained under the image's `binary_identities`. Manual Docker builds
+may supply the same build argument; omitting it provides no source-bound claim.
 These are packaging/entrypoint checks, not graphical or scientific acceptance.
 
 The shared `gentle.release_candidate.v1` receipt records candidate SHA, lockfile

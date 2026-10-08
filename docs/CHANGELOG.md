@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-08 - Bind Container Binaries To The Candidate
+
+- Fix the `.git`-excluded Docker build's missing embedded source identity by
+  passing the frozen candidate SHA only to the GENtle build; RNAPKIN stays dev.
+  Retain the bounded `package-opt1` recipe and non-publishing workflow guards.
+- Before recording container acceptance, execute all three binaries' versions
+  and SHA-256 probes in the loaded image without networking. Reject unbound,
+  stale, duplicate or wrong-version identities, malformed hashes and failed
+  commands without emitting a partial receipt. Add eight offline regressions;
+  all 23 container-policy tests pass locally on macOS without Docker/Rust builds.
+  The broader seven-suite offline check also passes all 157 Python tests.
+- This repair requires a new frozen candidate and fresh acceptance. Existing
+  `6d8b4db7` receipts remain unchanged; their help-only smoke does not establish
+  embedded binary identity. No main, tag, release or GHCR publication.
+
 ## 2026-10-08 - Reconcile Latest Main And Audit Pair Protections
 
 - Include main's newer `b1547544` merge in the isolated codex rebase before
