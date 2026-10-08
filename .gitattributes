@@ -12,6 +12,7 @@ Cargo.lock text eol=lf
 
 # Preserve the owner-supplied audit report's exact SHA-256 on every checkout.
 docs/glen_tutorial_parity_gui_audit_20261008.md text eol=lf
+docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json text eol=lf
 
 # The generated capability matrix is compared byte-for-byte with LF output.
 docs/gui_cli_mcp_parity.md text eol=lf
