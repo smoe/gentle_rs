@@ -27,8 +27,8 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | --- | --- | --- |
 | 1. Audit preservation | Report preserved; raw bundle pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen reports Linux/X11 results at `30f23aa4`. Obtain and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
 | 2. Tutorial 08.04 GUI/agent contracts | In progress | Add closed semantic controls and typed starter/oracle acceptance plus shared-shell agent parity. Require explicit genomic-forward T, refusal of unspecified A/G/T, source-bound reports and matched inserts differing at exactly one reviewed base. Compile and execute on a fresh exact candidate via CI/external validation. |
-| 3. Live-agent acceptance | Source-bound synthetic pilot passed; public candidate acceptance pending | CI-built macOS dev CLI `f99c44a1` exercised real ambiguity clarification, help-grounded review-first C/T suggestions and reviewed execution on the 20-base guard, recorded below. The older public TP73 authentication pilot remains separate. Require the final candidate/public VKORC1 run; neither this synthetic input nor echo transport certifies it. Never copy or inspect credentials. |
-| 4. Honest visual evidence | Pending | Preserve native canvas appearance. Retain raw, candidate/binary/snapshot-bound captures and an inspectable base-level C/T comparison. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
+| 3. Live-agent acceptance | Public pilot passed at `a1fb305a`; final candidate pending | Independently verified macOS dev CLI and Linux-prepared public starter share this exact source/lock. Real ambiguity clarification, help-grounded review-first C/T suggestions and reviewed execution pass, recorded below. Repeat at the frozen package candidate; neither echo transport nor an older pilot certifies it. Never copy or inspect credentials. |
+| 4. Honest visual evidence | Public base projection verified; native pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`; SVG rendered without clipping or recolouring native canvases. Require raw candidate/binary/snapshot-bound native captures. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
 | 6. .12 package acceptance | Pending | Freeze one final pushed candidate; dispatch native installers and runtime-cli container with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at that same source/lock SHA. Native GUI and scientific approval remain separate. |
 
@@ -239,3 +239,36 @@ follow-up merely to improve those observations.
   `76acd4aecc4713a45afc3069193f6a39422959dae589c74951b62a7e8062e4c5`.
   This is real model-planning evidence on synthetic DNA, not public 08.04,
   final package, Linux authentication or human scientific approval.
+- Native retention repair run
+  [37782548046](https://github.com/smoe/gentle_rs/actions/runs/37782548046)
+  is verified against `0cba2e9c79d5563bd40f7fb8b65fa282ec98708c`.
+  It omits repeat public preparation, builds only on Actions, and keeps native
+  acceptance pending. All 44 scoped helper/release-policy Python tests pass on
+  macOS; no local Rust build/check/test was run.
+- Independently verified the `a1fb305a` public receipt SHA-256
+  `d5865df2a9940075d6edd9c3729ab68487b347301fd6ae67d8e1ea2c30f47820`
+  and all 44 listed artifact hashes from run `37778513095`. The raw C/T inserts
+  are 1,089 bp and differ only at zero-based position 588. Direct/shared-shell
+  full sequence records and scientific report content agree. The public SVG
+  renders legibly with `rsvg-convert`; it explicitly remains an exported data
+  view, not a native screenshot or a full reporter-construct map. Bundle:
+  `/private/tmp/gentle-vkorc1-public-a1fb305a` (also the run's public artifact).
+- Genuine public-input agent pilot used this same `a1fb305a` macOS/arm64 dev
+  CLI, binary SHA-256
+  `f678e85c9be3a08e85ccd8422fbe3392bd11b639a81d580049ab1ea5833f9619`,
+  with the authorized host login and `codex_local_stdio`. The retained starter
+  SHA-256 is `35ee53107482d13cb5291c8408e3c220294fb5d797cf6e52afb3df1b839a58f5`.
+  The model asks which A/G/T alternate to use; after actual GENtle help and
+  the reviewed genomic-forward T choice, it proposes exactly two parser-valid
+  `ask` commands. Both are unexecuted until Codex review. Bare-alternate refusal
+  leaves persisted bytes unchanged; reviewed execution preserves both source
+  records and produces full insert records identical to the CI route, including
+  the sole C/T difference at position 588. Response SHA-256 values are
+  `13a1683010c27730f92b185326b0efae759a576fa4671897c4e04b8c562b3c35`
+  (clarification) and
+  `d215a897763a64e3d2a861c8247db771c15bde90d9bc39687a7703a45e5be8bc`
+  (reviewed-T suggestions); final project SHA-256 is
+  `a7a317131d14902400b79abbe27ae2a8916f578948a8a1c04fc236cb9e5cfda7`.
+  Raw evidence is `/private/tmp/gentle-agent-public-a1fb305a`. This accepts the
+  bounded public-input live-model boundary at this SHA, not the final package,
+  native GUI, clinical effect, wet-lab suitability or human scientific approval.
