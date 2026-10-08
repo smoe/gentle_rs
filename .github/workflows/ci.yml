@@ -150,6 +150,7 @@ jobs:
         with:
           name: vkorc1-gui-audit-${{ github.sha }}
           path: ${{ runner.temp }}/vkorc1-gui-audit/
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
       - name: Prepare fresh public 08.04 inputs and verify CLI/shared-shell parity
