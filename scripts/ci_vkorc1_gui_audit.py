@@ -28,6 +28,12 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def write_generation_ledger(path: Path, ledger: dict) -> None:
+    """Keep Rust's UTF-8/LF presentation when restoring historical checksums."""
+    path.write_text(json.dumps(ledger, indent=2, ensure_ascii=False) + "\n",
+                    encoding="utf-8", newline="\n")
+
+
 def run_logged(command: list[str], label: str, cwd: Path, evidence: Path,
                receipt: dict) -> None:
     path = evidence / f"{label}.log"
@@ -117,7 +123,7 @@ def main() -> int:
         for name, payload in historical.items():
             (generated / name).write_bytes(payload)
             ledger["file_checksums"][name] = old_ledger["file_checksums"][name]
-        ledger_path.write_text(json.dumps(ledger, indent=2))
+        write_generation_ledger(ledger_path, ledger)
         for mode in ("--check", "tutorial-catalog-check", "tutorial-manifest-check", "tutorial-check"):
             run([helper, mode], mode.lstrip("-"))
         changed = subprocess.check_output(["git", "diff", "--name-only", "--", "docs/examples", "docs/tutorial"], cwd=work, text=True).splitlines()

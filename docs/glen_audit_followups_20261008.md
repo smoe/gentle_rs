@@ -254,6 +254,18 @@ follow-up merely to improve those observations.
   all focused Rust filters and four generator checks pass on Linux/dev at
   that SHA. Add `libxkbcommon-x11-dev` only to the native audit dependencies;
   native captures and tutorial-input acceptance still require a fresh run.
+- Import the five required projections retained by the passing `0cba2e9c`
+  generator checks. The companion's `executed` flag refers to its engine
+  workflow, not the failed native replay. Restore only the ledger's original
+  Unicode/LF presentation; historical PATZ1 bytes and checksum values stay
+  unchanged. Test the real generated chapter and hub hashes in both LF/CRLF
+  checkouts, including an unprotected negative control.
+- At `4ca26d7a` plus the scoped projection/serializer diff, 145 Python tests
+  pass on macOS across audit helpers, public assertions, GUI runner, LF/CRLF
+  checkouts, release policy, native packaging and container wiring. Independently
+  verify both imported Markdown hashes and all three unchanged historical
+  PATZ1 report bytes/checksums against `30f23aa4`. No local Rust build/check/test
+  or real installer/container execution is represented by these fixture tests.
 - Independently verified the `a1fb305a` public receipt SHA-256
   `d5865df2a9940075d6edd9c3729ab68487b347301fd6ae67d8e1ea2c30f47820`
   and all 44 listed artifact hashes from run `37778513095`. The raw C/T inserts

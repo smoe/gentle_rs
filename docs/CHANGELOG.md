@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-08 - Import The Required 08.04 Tutorial Projections
+
+- Import only the five companion projections checked by CI at `0cba2e9c`:
+  catalog, manifest, generated hub/chapter and ledger. Preserve the three
+  historical PATZ1 reports and their hashes without regeneration.
+- Keep restored ledger Unicode and its final LF unchanged, and test real
+  generated chapter/hub hashes in LF/CRLF checkouts with a negative control.
+  Generator workflow success is not native input or human scientific approval.
+
 ## 2026-10-08 - Supply The Native Audit's X11 Keyboard Library
 
 - The retained `0cba2e9c` startup panic identifies the missing dynamically

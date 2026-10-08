@@ -144,10 +144,16 @@ class TutorialCheckoutTests(unittest.TestCase):
     def test_vkorc1_guard_and_generated_chapter_survive_both_checkout_modes(self):
         fixture = Path("docs/examples/assets/allele_pair_guard/multiallelic.gb")
         chapter = Path("docs/tutorial/generated/chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md")
+        hub = Path("docs/tutorial/generated/README.md")
         payloads = {
             fixture: (checker.ROOT / fixture).read_bytes(),
-            chapter: b"# Synthetic generated 08.04 chapter\n\nExplicit genomic-forward T.\n",
+            chapter: (checker.ROOT / chapter).read_bytes(),
+            hub: (checker.ROOT / hub).read_bytes(),
         }
+        ledger = json.loads((checker.ROOT / "docs/tutorial/generated/report.json").read_bytes())
+        for path in (chapter, hub):
+            name = str(path.relative_to("docs/tutorial/generated"))
+            self.assertEqual(hashlib.sha256(payloads[path]).hexdigest(), ledger["file_checksums"][name])
         attributes = (checker.ROOT / ".gitattributes").read_bytes()
         (self.root / ".gitattributes").write_bytes(attributes)
         for relative, payload in payloads.items():

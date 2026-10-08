@@ -24,6 +24,7 @@ docs/tutorial/manifest.json text eol=lf
 # The offline 08.04 guard and its generated chapter are byte-bound acceptance inputs.
 docs/examples/assets/allele_pair_guard/multiallelic.gb text eol=lf
 docs/tutorial/generated/chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md text eol=lf
+docs/tutorial/generated/README.md text eol=lf
 
 # Historical panel baselines keep their original generator identity and raw hashes.
 docs/tutorial/generated/artifacts/patz1_transcript_assay_panels_cli/artifacts/patz1_endpoint_end_matrix.report.json text eol=lf
