@@ -2320,11 +2320,25 @@ Primer3 wrapper integration status (baseline implemented):
   - used backend
   - optional fallback reason
   - optional Primer3 executable/version details
+- The GUI's `Primer backend and Primer3 preflight` block above the design
+  forms calls the same engine preflight as `primers preflight`. It displays
+  configured/effective executable, resolved path, working directory,
+  availability/version diagnostics, tri-state progress support and probe
+  timing. This confirms executable capabilities, not design equivalence or
+  assay specificity.
 - Remaining work:
   - deeper Primer3 constraint mapping parity for edge-case constraints
   - broader fixture-backed equivalence matrix between internal and Primer3
-  - dedicated preflight/status views in GUI configuration panels
   - multi-BLAST specificity tiers integrated into primer-pair post-filtering
+
+These tiers are distinct from the existing local pair-specificity and
+collection assessment operations, each of which selects one target genome per
+request. Persisted filtered primer views (`primers view-*`) remain planned in
+[`primer_design_specialist_plan.md`](primer_design_specialist_plan.md).
+General engine-native single-primer design and automatic adapter/tail design
+also remain open: specialised terminal-exon RT/capture oligos, explicit
+non-annealing tails and mutant-derived overlap-extension tails do not fulfill
+those general contracts.
 
 ### Primer/PCR/BLAST UI and internal BLAST abstraction plan (new)
 

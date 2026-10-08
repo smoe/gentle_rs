@@ -1,5 +1,24 @@
 # GENtle Changelog
 
+## 2026-10-08 - Reconcile Primer Backlog With Live Preflight
+
+- Cross-check the older `6f5f2365` review against local `84cc8e16`, without
+  fetching or inferring implementation from unrelated commit volume. Remove
+  the stale architecture remaining-work bullet: the GUI already calls the
+  shared Primer3 preflight and displays executable/version/progress status.
+  A successful probe is not design-equivalence or specificity acceptance.
+- Keep constraint/fixture parity and tiered multi-BLAST post-filtering open.
+  Clarify that existing local pair/collection specificity selects one target
+  per request, and that specialised RT/capture oligos and explicit or
+  overlap-extension tails are not general single-primer/adapter design.
+  Name the still-planned `primers view-*` contracts in the roadmap parking lot;
+  no new primer feature or release gate is introduced.
+- Inspect existing engine preflight success, native-about, failed-probe,
+  missing-executable and default-executable tests, plus the shared-shell
+  preflight regression. Do not claim they were run: Rust verification remains
+  with Glen/CI. Changes are documentation only; no source, poster, tutorial,
+  dependency or generated artifact is changed.
+
 ## 2026-10-08 - Bind Legacy Splicing Cache To Boundary Content
 
 - Record Claude's independently reported macOS results at `30f23aa4`:
