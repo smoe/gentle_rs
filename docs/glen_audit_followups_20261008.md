@@ -157,3 +157,12 @@ follow-up merely to improve those observations.
   a public starter plus the explicit C/T outputs. Complete reference input
   hashes/manifests are retained, but the multi-gigabyte cache is not uploaded.
   No new public replay, live-agent or native/public-GUI pass is yet claimed.
+- On `9100235c`, all focused Rust filters and the locked GUI-support check
+  passed on Linux. Tutorial generation then failed before native input replay;
+  the original diagnostic artifact upload also failed because a Rust filter
+  containing `::` became a nonportable filename. Sanitize only the log basename,
+  keep the test filter unchanged and expose a bounded retained error excerpt.
+  Do not count generation or native replay as accepted. Run
+  [37774017701](https://github.com/smoe/gentle_rs/actions/runs/37774017701) is
+  verified against `8d81f41714a5ce6774606d7753e4046a8ab55eb0` and includes
+  public preparation; that still-running run predates this retention repair.

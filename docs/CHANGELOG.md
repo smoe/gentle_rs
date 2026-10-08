@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-10-08 - Retain Portable Native Audit Failure Logs
+
+- Keep Rust test filters unchanged but replace colons in their CI log basenames
+  so diagnostic artifacts can be downloaded on Windows as well as Unix.
+- Expose bounded generation/replay failure excerpts and retain exit codes.
+  Four helper/retention and 37 release-policy Python regressions pass on macOS;
+  failed generation remains unaccepted and native replay still requires CI.
+
 ## 2026-10-08 - Prepare Public 08.04 Follow-Up Inputs In CI
 
 - Add an explicitly opt-in, non-publishing public-data audit using GENtle's
