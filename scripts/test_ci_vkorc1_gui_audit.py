@@ -1,8 +1,39 @@
-"""Inline hand-crafted JSON tests for the synthetic CI base-comparison boundary."""
+"""Hand-crafted tests for synthetic base proofs and CI failure retention."""
 
+from contextlib import redirect_stdout
+import io
+from pathlib import Path
+import subprocess
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from scripts.ci_vkorc1_gui_audit import pair_evidence
+from scripts.ci_vkorc1_gui_audit import pair_evidence, run_logged
+
+
+class FailureRetentionTests(unittest.TestCase):
+    def test_failed_generation_records_exit_and_exposes_retained_diagnostic(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            receipt = {"commands": []}
+            output = io.StringIO()
+
+            def fail(command, **kwargs):
+                kwargs["stdout"].write(b"hand-crafted generation failure\n")
+                return subprocess.CompletedProcess(command, 1)
+
+            with patch("scripts.ci_vkorc1_gui_audit.subprocess.run", side_effect=fail), redirect_stdout(output):
+                with self.assertRaisesRegex(RuntimeError, "tutorial-generate failed"):
+                    run_logged(["unused-test-helper"], "tutorial-generate", root, root, receipt)
+            self.assertIn("hand-crafted generation failure", output.getvalue())
+            self.assertEqual((root / "tutorial-generate.log").read_bytes(), b"hand-crafted generation failure\n")
+            self.assertEqual(receipt["commands"][0]["exit_code"], 1)
+
+    def test_rust_filter_log_names_are_portable_without_changing_filters(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text()
+        self.assertIn("tutorial_gui_semantics::tests; do", workflow)
+        self.assertIn('vkorc1-gui-audit/${filter//:/_}.log', workflow)
+        self.assertNotIn('vkorc1-gui-audit/$filter.log', workflow)
 
 
 class PairEvidenceTests(unittest.TestCase):

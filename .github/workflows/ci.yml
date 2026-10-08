@@ -71,7 +71,7 @@ jobs:
             tutorial_gui_acceptance_feature_targets tutorial_gui_semantics::tests; do
             cargo test --locked --no-default-features --features desktop-gui,gui-test-support \
               --lib "$filter" -- --test-threads=1 \
-              > "$RUNNER_TEMP/vkorc1-gui-audit/$filter.log" 2>&1
+              > "$RUNNER_TEMP/vkorc1-gui-audit/${filter//:/_}.log" 2>&1
           done
           cargo check -q --locked --no-default-features --features desktop-gui,gui-test-support
           rustc -Vv > "$RUNNER_TEMP/vkorc1-gui-audit/rustc.txt"

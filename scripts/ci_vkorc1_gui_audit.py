@@ -28,6 +28,17 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def run_logged(command: list[str], label: str, cwd: Path, evidence: Path,
+               receipt: dict) -> None:
+    path = evidence / f"{label}.log"
+    with path.open("wb") as log:
+        result = subprocess.run(command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, timeout=1800)
+    receipt["commands"].append({"label": label, "argv": command, "exit_code": result.returncode})
+    if result.returncode:
+        print(f"{label} failed; retained log excerpt:\n{path.read_text(errors='replace')[-12000:]}", flush=True)
+        raise RuntimeError(f"{label} failed: inspect retained log")
+
+
 def pair_evidence(project: dict) -> dict:
     """Fail closed on the persisted synthetic guard, not on image similarity."""
     sequences = project["sequences"]
@@ -91,11 +102,7 @@ def main() -> int:
                "commands": [], "status": "running"}
 
     def run(command: list[str], label: str, cwd: Path = work) -> None:
-        with (evidence / f"{label}.log").open("wb") as log:
-            result = subprocess.run(command, cwd=cwd, stdout=log, stderr=subprocess.STDOUT, timeout=1800)
-        receipt["commands"].append({"label": label, "argv": command, "exit_code": result.returncode})
-        if result.returncode:
-            raise RuntimeError(f"{label} failed: inspect retained log")
+        run_logged(command, label, cwd, evidence, receipt)
 
     try:
         run(["git", "clone", "--quiet", "--local", "--no-hardlinks", str(repo), str(work)], "clone", repo)
