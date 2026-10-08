@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-08 - Reconcile Latest Main And Audit Pair Protections
+
+- Include main's newer `b1547544` merge in the isolated codex rebase before
+  fresh CI. Preserve all 34 audit commits and the prior status commit, both
+  changelog histories and pending acceptance scopes; do not alter main itself.
+- Resolve the overlapping pair boundary by retaining main's reusable guarded
+  rollback helper and GUI documentation unchanged. Both main preflight/late-
+  refusal tests and all four audit `promoter_pair_` tests remain selected by
+  native CI. Do not restore the older inline panic/indexing path or duplicate
+  the helper. Mixed-SNV/indel, primer and rack source changes are retained.
+- Existing `6d8b4db7` receipts remain immutable historical passes only.
+  Rebased `2783d80b` plus this status-only diff passes all 149 fast Python
+  tests, scoped formatting and whitespace checks on macOS. Fresh exact-SHA
+  Actions acceptance remains pending; no Rust execution locally, Claude,
+  tag, main merge, publication or scientific/performance claim.
+
 ## 2026-10-08 - Rebase Audit Follow-Ups Onto Current Main
 
 - Rebase only `codex/glen-audit-followups-20261008` in its isolated managed

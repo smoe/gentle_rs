@@ -24,9 +24,12 @@ source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
 The owner-requested rebase is now on local main
-`51f31afacef0fc942f523aea16d56f32790f3dee`. The isolated codex worktree retained
-all 34 audit commits; two changelog conflicts preserve both histories, with no
-runtime conflict resolution. Evidence at `6d8b4db7` stays accepted only for that
+`b1547544980cb423dbda9ee57dfce81f8b193f5b`. The isolated codex worktree retained
+all 34 audit commits and the subsequent status commit. Changelog and roadmap
+resolutions preserve both histories and pending gates. The overlapping pair
+execution keeps main's existing guarded rollback helper unchanged, with both
+main/audit test families; the mixed-SNV/indel guard is unchanged. Evidence at
+`6d8b4db7` stays accepted only for that
 historical source. The current candidate's checklist is:
 
 | Item | Current Status | Required Evidence |
@@ -565,3 +568,22 @@ follow-up merely to improve those observations.
   exactly match main, and original report, historical receipts and lockfile
   remain byte-identical. The roadmap remains 400 lines. No local Rust build,
   check or test was run; fresh Actions source-bound acceptance is still pending.
+- Main advanced again to `b1547544980cb423dbda9ee57dfce81f8b193f5b` while
+  the initial rebase was being verified. Include that completed merge before
+  pushing or dispatching fresh CI. Rebased HEAD before this final status-only
+  addition is `2783d80b029fe6778c3f5532e0583e9887c7ecbe`; all 35 picks remain.
+  Preserve main's reusable `apply_variant_followup_allele_pair` helper, its
+  non-panicking lock/output checks, preflight, active-view preservation and
+  late-refusal/history regression. Retain all four `promoter_pair_` and both
+  `variant_followup_allele_pair_` tests; native CI already selects both families.
+  The mixed-SNV/indel and incoming primer/rack implementations stay unchanged.
+  Main's [M1-M3/L1 verification handoff](vkorc1_allele_review_followup_20261008.md)
+  remains applicable; this is conflict reconciliation, not executed acceptance.
+- On rebased `2783d80b` plus this final status-only diff, all 149 fast Python
+  tests pass on macOS (24.807 s); retained log SHA-256 is
+  `5013e2f90b07cb55bf458aa2d569299a0dcfdf382eac185f51577040fe5fc9fc`.
+  Scoped Rust formatting, whitespace and conflict-marker checks pass. Original
+  report, archive/acceptance receipts and lockfile are unchanged; incoming
+  rack, primer, mixed-allele and engine-test source matches `b1547544` exactly.
+  The roadmap remains 400 lines; primary main still has only the owner's
+  untouched `paper`/`output/` changes. No local Rust build/check/test was run.
