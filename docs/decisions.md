@@ -50,6 +50,9 @@ hit-testing; headers cannot select adjacent transcripts. Boundary summaries
 deduplicate oriented presentation text only, retaining every source marker.
 GUI caches summary labels/hovers and motif-detail rows with the existing
 validated content identity; SVG consumes the same readable source-note wording.
+For views without a valid fingerprint, the fallback cache identity includes
+every ordered boundary record, including source annotations and pair flags;
+changing only a boundary must invalidate cached summaries and motif details.
 Boundary and paired-signature exception flags share one presentation predicate.
 
 Grouping never reorders/mutates engine payloads or changes their fingerprints,

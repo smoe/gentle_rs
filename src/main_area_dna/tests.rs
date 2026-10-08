@@ -15750,6 +15750,99 @@ fn splicing_boundary_summary_text_is_cached_and_rebound_after_ingress() {
 }
 
 #[test]
+fn splicing_boundary_fallback_cache_rebinds_without_a_valid_fingerprint() {
+    // Hand-crafted boundary records deliberately bypass engine fingerprint normalization.
+    use super::auxiliary_workspaces::SplicingExpertPresentationKey;
+    let mutations: [(&str, fn(&mut SplicingBoundaryMarker)); 11] = [
+        ("feature identity", |marker| {
+            marker.transcript_feature_id = 12
+        }),
+        ("transcript identity", |marker| {
+            marker.transcript_id = "tx2".into()
+        }),
+        ("side", |marker| marker.side = "acceptor".into()),
+        ("position", |marker| marker.position_1based = 9),
+        ("motif", |marker| marker.motif_2bp = "GC".into()),
+        ("canonical", |marker| marker.canonical = false),
+        ("canonical pair", |marker| marker.canonical_pair = false),
+        ("partner position", |marker| {
+            marker.partner_position_1based = 22
+        }),
+        ("paired signature", |marker| {
+            marker.paired_motif_signature = "GT-TT".into()
+        }),
+        ("motif class", |marker| {
+            marker.motif_class = "other_noncanonical".into()
+        }),
+        ("annotation", |marker| {
+            marker.annotation = "changed source note".into()
+        }),
+    ];
+    for fingerprint in [String::new(), format!("sha256:{}", "zz".repeat(32))] {
+        let mut view = splicing_expert_presentation_test_view();
+        view.presentation_fingerprint_sha256 = fingerprint;
+        view.boundaries = vec![SplicingBoundaryMarker {
+            transcript_feature_id: 11,
+            transcript_id: "tx1".into(),
+            side: "donor".into(),
+            position_1based: 10,
+            motif_2bp: "GT".into(),
+            canonical: true,
+            canonical_pair: true,
+            partner_position_1based: 21,
+            paired_motif_signature: "GT-AG".into(),
+            motif_class: "major_canonical".into(),
+            annotation: "original source note".into(),
+        }];
+        let before = serde_json::to_value(&view).unwrap();
+        let key = SplicingExpertPresentationKey::from_view(&view);
+        for (field, mutate) in mutations {
+            let mut changed = view.clone();
+            mutate(&mut changed.boundaries[0]);
+            assert_ne!(
+                key,
+                SplicingExpertPresentationKey::from_view(&changed),
+                "{field}"
+            );
+        }
+        let mut removed = view.clone();
+        removed.boundaries.clear();
+        assert_ne!(key, SplicingExpertPresentationKey::from_view(&removed));
+        let mut added = view.clone();
+        added.boundaries.push(view.boundaries[0].clone());
+        assert_ne!(key, SplicingExpertPresentationKey::from_view(&added));
+
+        let mut area = MainAreaDna::new(
+            DNAsequence::from_sequence("ACGT").unwrap(),
+            Some("seq1".into()),
+            None,
+        );
+        let first = area.splicing_expert_presentation_for_view(&view);
+        let repeated = area.splicing_expert_presentation_for_view(&view);
+        assert!(Arc::ptr_eq(&first, &repeated));
+        let mut changed = view.clone();
+        changed.boundaries[0].annotation = "changed source note".into();
+        let refreshed = area.splicing_expert_presentation_for_view(&changed);
+        assert!(!Arc::ptr_eq(&first, &refreshed));
+        assert_eq!(
+            first.boundary_rows[0].hover_text,
+            "n-11 tx1: original source note"
+        );
+        assert_eq!(
+            refreshed.boundary_rows[0].hover_text,
+            "n-11 tx1: changed source note"
+        );
+        assert_eq!(
+            refreshed.boundary_motif_rows[0].annotation,
+            "changed source note"
+        );
+        assert_eq!(area.splicing_expert_presentation_cache_hits, 1);
+        assert_eq!(area.splicing_expert_presentation_cache_misses, 2);
+        assert_eq!(serde_json::to_value(&view).unwrap(), before);
+    }
+}
+
+#[test]
 fn splicing_grouped_canvas_keeps_header_clicks_inert_and_selects_reordered_introns() {
     // Synthetic annotation from the existing presentation fixture, not PATZ1/FLNA.
     let mut view = splicing_expert_presentation_test_view();

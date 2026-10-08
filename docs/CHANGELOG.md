@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-10-08 - Bind Legacy Splicing Cache To Boundary Content
+
+- Record Claude's independently reported macOS results at `30f23aa4`:
+  protocol splicing 10 passed; renderer splicing 9 passed, 1 intentional manual
+  FLNA smoke ignored; root splicing 108 passed. Claude did not run the full
+  root suite or Cargo check. These results do not verify the later cDNA repair,
+  this fallback-key follow-up, native fonts or Glen's live FLNA/2400-px gate.
+- Confirm the remaining fallback cache-key omission at `58d88173`. Hash the
+  complete ordered boundary records with existing length-prefixed helpers,
+  including transcript identity, both positions, side/motif/pair/class,
+  canonical flags and annotation. Valid engine-fingerprint handling, biological
+  records, SVG output and the dense-matrix test remain unchanged.
+- Add an inline hand-crafted regression for empty and malformed fingerprints:
+  every marker field and boundary addition/removal changes the fallback key;
+  identical views reuse the cached model, while an annotation-only edit refreshes
+  both summary hover and motif details without mutating the original view.
+- Rust execution stays with Glen/CI under the owner's latest instruction.
+  Run `cargo test --locked --lib splicing_boundary_fallback_cache` and the
+  broader splicing gates, then Cargo check at the final SHA. No new fixture
+  files, dependencies, schema changes, acceptance or performance claims.
+- Formatting and whitespace pass. Session-close reports four OK, two routine
+  warnings for five intentional uncommitted files and manual scope confirmation,
+  no failures; the roadmap remains 400 lines.
+
 ## 2026-10-08 - Prevent Reversing Transcript-Oriented cDNA Twice
 
 - Investigate the reported exon-skip phase regression against `30f23aa4`.

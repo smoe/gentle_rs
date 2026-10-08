@@ -132,6 +132,21 @@ impl SplicingExpertPresentationKey {
             }
         }
 
+        Self::digest_usize(&mut context, view.boundaries.len());
+        for boundary in &view.boundaries {
+            Self::digest_usize(&mut context, boundary.transcript_feature_id);
+            Self::digest_str(&mut context, &boundary.transcript_id);
+            Self::digest_str(&mut context, &boundary.side);
+            Self::digest_usize(&mut context, boundary.position_1based);
+            Self::digest_str(&mut context, &boundary.motif_2bp);
+            Self::digest_bool(&mut context, boundary.canonical);
+            Self::digest_bool(&mut context, boundary.canonical_pair);
+            Self::digest_usize(&mut context, boundary.partner_position_1based);
+            Self::digest_str(&mut context, &boundary.paired_motif_signature);
+            Self::digest_str(&mut context, &boundary.motif_class);
+            Self::digest_str(&mut context, &boundary.annotation);
+        }
+
         let digest = context.finish();
         let mut content_sha256 = [0u8; 32];
         content_sha256.copy_from_slice(digest.as_ref());
