@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-08 - Prepare Public 08.04 Follow-Up Inputs In CI
+
+- Add an explicitly opt-in, non-publishing public-data audit using GENtle's
+  complete catalogue-bound reference preparation and existing allele/report
+  operations. Preserve the exact public refSNP response, input manifests/hashes,
+  read-only report parity, ambiguous refusal and explicit C/T insert evidence.
+- Keep the raw reference cache off this local checkout and out of the uploaded
+  evidence. Retain a public starter for later authenticated final-candidate
+  agent acceptance; authored assertions do not establish a live pass, native
+  public-locus GUI acceptance or scientific approval.
+
 ## 2026-10-08 - Verify Deterministic Scroll CPU Cases
 
 - The opt-in Linux smoke at `d1bf3fd3` passed all 24 fixture/size/direction
