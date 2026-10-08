@@ -231,6 +231,13 @@ impl MainAreaDna {
         variant_label: &str,
         gene_label: &str,
     ) -> String {
+        if !variant_label.trim().is_empty() && !gene_label.trim().is_empty() {
+            return format!(
+                "{}_{}",
+                Self::sanitize_export_name_component(gene_label, "gene"),
+                Self::variant_followup_suggested_token(variant_label)
+            );
+        }
         if !variant_label.trim().is_empty() {
             return Self::variant_followup_suggested_token(variant_label);
         }
@@ -264,6 +271,19 @@ impl MainAreaDna {
         } else {
             String::new()
         };
+        let alternate_allele = feature
+            .qualifier_values("vcf_alt")
+            .next()
+            .map(str::trim)
+            .filter(|value| {
+                value
+                    .split([',', '/', '|'])
+                    .filter(|candidate| !candidate.trim().is_empty())
+                    .count()
+                    == 1
+            })
+            .unwrap_or_default()
+            .to_string();
         let token = Self::feature_seed_token(&feature, &variant_label, &gene_label);
         let seq_len = self
             .variant_followup_sequence_len(&source_seq_id)
@@ -299,6 +319,7 @@ impl MainAreaDna {
             fragment_output_id: format!("{token}_promoter_fragment"),
             reference_output_id: format!("{token}_promoter_reference"),
             alternate_output_id: format!("{token}_promoter_alternate"),
+            alternate_allele,
             reporter_backbone_seq_id: "gentle_mammalian_luciferase_backbone_v1".to_string(),
             reporter_backbone_path:
                 "data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb".to_string(),
@@ -2811,6 +2832,7 @@ impl MainAreaDna {
                 input: input.clone(),
                 variant_label_or_id: variant_label_or_id.clone(),
                 allele: VariantAlleleChoice::Reference,
+                alternate_allele: None,
                 output_id: reference_output_id,
             });
         let Some(reference_seq_id) = reference_result
@@ -2826,6 +2848,9 @@ impl MainAreaDna {
                 input,
                 variant_label_or_id,
                 allele: VariantAlleleChoice::Alternate,
+                alternate_allele: Self::variant_followup_optional_text(
+                    &self.variant_followup_ui.alternate_allele,
+                ),
                 output_id: alternate_output_id,
             });
         let Some(alternate_seq_id) = alternate_result
@@ -3176,7 +3201,10 @@ impl MainAreaDna {
                 },
                 "allele_specific_inserts": {
                     "reference": self.variant_followup_ui.reference_output_id.trim(),
-                    "alternate": self.variant_followup_ui.alternate_output_id.trim()
+                    "alternate": self.variant_followup_ui.alternate_output_id.trim(),
+                    "alternate_allele": Self::variant_followup_optional_text(
+                        &self.variant_followup_ui.alternate_allele,
+                    )
                 },
                 "backbone": {
                     "sequence_id": self.variant_followup_ui.reporter_backbone_seq_id.trim(),
@@ -3309,7 +3337,7 @@ impl MainAreaDna {
         let alternate_reporter_id = format!("{prefix}_alternate");
         let reference_assembly_id = format!("{prefix}_reference_assembly_1");
         let alternate_assembly_id = format!("{prefix}_alternate_assembly_1");
-        format!(
+        let commands = format!(
             "#!/usr/bin/env bash\nset -euo pipefail\n\nSTATE=\"${{STATE:-/tmp/{bundle_id}.state.json}}\"\nBUNDLE_DIR=\"${{BUNDLE_DIR:-$(pwd)}}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  genomes status \"{prepared_genome}\" \\\n  --catalog assets/genomes.json \\\n  --cache-dir data/genomes\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"FetchDbSnpRegion\":{{\"rs_id\":\"{variant}\",\"genome_id\":\"{prepared_genome}\",\"flank_bp\":{flank_bp},\"output_id\":\"{source_seq_id}\",\"annotation_scope\":\"full\",\"catalog_path\":\"assets/genomes.json\",\"cache_dir\":\"data/genomes\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant annotate-promoters {source_seq_id} \\\n  --gene-label {gene_label} \\\n  --upstream-bp {promoter_upstream_bp} \\\n  --downstream-bp {promoter_downstream_bp}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant promoter-context {source_seq_id} \\\n  --variant {variant} \\\n  --gene-label {gene_label} \\\n  --path \"$BUNDLE_DIR/{promoter_context_json}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant reporter-fragments {source_seq_id} \\\n  --variant {variant} \\\n  --gene-label {gene_label} \\\n  --retain-downstream-from-tss-bp {retain_downstream_from_tss_bp} \\\n  --retain-upstream-beyond-variant-bp {retain_upstream_beyond_variant_bp} \\\n  --path \"$BUNDLE_DIR/{promoter_candidates_json}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"ExtractRegion\":{{\"input\":\"{source_seq_id}\",\"from\":{fragment_start},\"to\":{fragment_end},\"output_id\":\"{fragment_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant materialize-allele {fragment_id} \\\n  --variant {variant} \\\n  --allele reference \\\n  --output-id {reference_insert}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  variant materialize-allele {fragment_id} \\\n  --variant {variant} \\\n  --allele alternate \\\n  --output-id {alternate_insert}\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"LoadFile\":{{\"path\":\"{backbone_path}\",\"as_id\":\"{backbone_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Ligation\":{{\"inputs\":[\"{reference_insert}\",\"{backbone_id}\"],\"circularize_if_possible\":false,\"protocol\":\"Blunt\",\"output_prefix\":\"{prefix}_reference_assembly\",\"unique\":false}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Branch\":{{\"input\":\"{reference_assembly_id}\",\"output_id\":\"{reference_reporter_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Ligation\":{{\"inputs\":[\"{alternate_insert}\",\"{backbone_id}\"],\"circularize_if_possible\":false,\"protocol\":\"Blunt\",\"output_prefix\":\"{prefix}_alternate_assembly\",\"unique\":false}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"Branch\":{{\"input\":\"{alternate_assembly_id}\",\"output_id\":\"{alternate_reporter_id}\"}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  op '{{\"SetLinearViewport\":{{\"start_bp\":{viewport_start},\"span_bp\":{viewport_span}}}}}' \\\n  --confirm\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  render-svg {source_seq_id} linear \"$BUNDLE_DIR/{promoter_context_svg}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  render-svg {reference_reporter_id} circular \"$BUNDLE_DIR/{reference_svg}\"\n\ncargo run --quiet --bin gentle_cli -- \\\n  --state \"$STATE\" \\\n  render-svg {alternate_reporter_id} circular \"$BUNDLE_DIR/{alternate_svg}\"\n",
             bundle_id = artifacts.bundle_id.as_str(),
             prepared_genome = prepared_genome,
@@ -3348,6 +3376,16 @@ impl MainAreaDna {
             promoter_context_svg = artifacts.promoter_context_svg.as_str(),
             reference_svg = artifacts.reference_reporter_svg.as_str(),
             alternate_svg = artifacts.alternate_reporter_svg.as_str(),
+        );
+        let alternate_allele =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.alternate_allele)
+                .unwrap_or_else(|| "REVIEW_REQUIRED".to_string());
+        let alternate_allele = crate::engine_shell::shell_quote(&alternate_allele);
+        commands.replace(
+            "  --allele alternate \\\n  --output-id",
+            &format!(
+                "  --allele alternate \\\n  --alternate-base {alternate_allele} \\\n  --output-id"
+            ),
         )
     }
 
@@ -3554,6 +3592,13 @@ impl MainAreaDna {
             .show(ui, |ui| {
                 ui.small("Variant");
                 ui.monospace(&report.variant_label);
+                ui.end_row();
+                ui.small("Genomic alleles");
+                ui.monospace(format!(
+                    "{} -> {}",
+                    report.genomic_ref.as_deref().unwrap_or("?"),
+                    report.genomic_alt.as_deref().unwrap_or("?")
+                ));
                 ui.end_row();
                 ui.small("Chosen gene");
                 ui.label(
@@ -7390,6 +7435,10 @@ impl MainAreaDna {
                 ui.label("/");
                 ui.text_edit_singleline(&mut self.variant_followup_ui.alternate_output_id);
             });
+            ui.end_row();
+
+            ui.label("Alternate base (required for multiallelic variants)");
+            ui.text_edit_singleline(&mut self.variant_followup_ui.alternate_allele);
             ui.end_row();
 
             ui.label("Reporter backbone");

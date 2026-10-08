@@ -11415,7 +11415,7 @@ fn parse_variant_annotate_promoters_tss_cluster_tolerance() {
 #[test]
 fn parse_variant_materialize_allele_command() {
     let cmd = parse_shell_line(
-        "variant materialize-allele seq_a --allele alternate --variant rs9923231 --output-id seq_alt",
+        "variant materialize-allele seq_a --allele alternate --alternate-base T --variant rs9923231 --output-id seq_alt",
     )
     .expect("parse variant materialize-allele");
     match cmd {
@@ -11423,11 +11423,13 @@ fn parse_variant_materialize_allele_command() {
             seq_id,
             variant_label_or_id,
             allele,
+            alternate_allele,
             output_id,
         } => {
             assert_eq!(seq_id, "seq_a");
             assert_eq!(variant_label_or_id.as_deref(), Some("rs9923231"));
             assert_eq!(allele, VariantAlleleChoice::Alternate);
+            assert_eq!(alternate_allele.as_deref(), Some("T"));
             assert_eq!(output_id.as_deref(), Some("seq_alt"));
         }
         other => panic!("unexpected command: {other:?}"),
@@ -21750,6 +21752,7 @@ fn execute_variant_materialize_allele_shell_command_creates_sequence() {
             seq_id: "demo".to_string(),
             variant_label_or_id: Some("rsDemo".to_string()),
             allele: VariantAlleleChoice::Alternate,
+            alternate_allele: None,
             output_id: Some("demo_alt".to_string()),
         },
     )
@@ -21768,6 +21771,55 @@ fn execute_variant_materialize_allele_shell_command_creates_sequence() {
     assert_eq!(
         run.output["result"]["created_seq_ids"][0].as_str(),
         Some("demo_alt")
+    );
+}
+
+#[test]
+fn execute_variant_materialize_allele_requires_reported_multiallelic_choice() {
+    // Synthetic marker: test the shared parser/executor boundary, not dbSNP data.
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("sequence");
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsDemo".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,T".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("demo".to_string(), dna);
+    let mut engine = GentleEngine::from_state(state);
+
+    let ambiguous = parse_shell_line(
+        "variant materialize-allele demo --allele alternate --variant rsDemo --output-id rejected",
+    )
+    .expect("parse ambiguous request");
+    assert!(execute_shell_command(&mut engine, &ambiguous).is_err());
+    assert_eq!(engine.state().sequences.len(), 1);
+
+    for (flag, output_id) in [
+        ("--alternate-base", "chosen"),
+        ("--alternate-allele", "alias"),
+    ] {
+        let selected = parse_shell_line(&format!(
+            "variant materialize-allele demo --allele alternate {flag} t --variant rsDemo --output-id {output_id}"
+        ))
+        .expect("parse selected alternate");
+        let run = execute_shell_command(&mut engine, &selected).expect("materialize selected base");
+        assert!(run.state_changed);
+        let output = &engine.state().sequences[output_id];
+        assert_eq!(output.get_forward_string(), "ACTGT");
+        assert_eq!(
+            output.features()[0]
+                .qualifier_values("materialized_base")
+                .next(),
+            Some("T")
+        );
+    }
+    assert_eq!(
+        engine.state().sequences["demo"].get_forward_string(),
+        "ACCGT"
     );
 }
 

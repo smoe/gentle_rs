@@ -52,6 +52,8 @@ pub(super) struct DbsnpResolvedPlacement {
     pub position_1based: usize,
     pub assembly_name: Option<String>,
     pub gene_symbols: Vec<String>,
+    pub reference_allele: Option<String>,
+    pub alternate_alleles: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -401,7 +403,15 @@ impl GentleEngine {
             })?;
         let mut available_assemblies = std::collections::BTreeSet::new();
         let mut available_families = std::collections::BTreeSet::new();
-        let mut best: Option<(usize, String, String, Option<String>)> = None;
+        let mut best: Option<(
+            usize,
+            String,
+            String,
+            Option<String>,
+            usize,
+            Option<String>,
+            Vec<String>,
+        )> = None;
         for placement in placements {
             let placement_seq_id = placement
                 .get("seq_id")
@@ -484,18 +494,38 @@ impl GentleEngine {
             {
                 continue;
             }
-            let (_position_0based, spdi_seq_id) = placement
+            let allele_spdis = placement
                 .get("alleles")
                 .and_then(|value| value.as_array())
-                .and_then(|alleles| {
-                    alleles.iter().find_map(|allele| {
-                        let spdi = allele.get("allele")?.get("spdi")?;
-                        let position = spdi.get("position")?.as_u64()?;
-                        let seq_id = spdi.get("seq_id").and_then(Self::json_scalar_to_string);
-                        Some((position as usize, seq_id.unwrap_or_default()))
-                    })
+                .map(|alleles| {
+                    alleles
+                        .iter()
+                        .filter_map(|allele| {
+                            let spdi = allele.get("allele")?.get("spdi")?;
+                            let position = spdi.get("position")?.as_u64()?;
+                            let seq_id = spdi.get("seq_id").and_then(Self::json_scalar_to_string);
+                            let deleted_sequence = spdi
+                                .get("deleted_sequence")
+                                .and_then(Self::json_scalar_to_string)
+                                .unwrap_or_default()
+                                .to_ascii_uppercase();
+                            let inserted_sequence = spdi
+                                .get("inserted_sequence")
+                                .and_then(Self::json_scalar_to_string)
+                                .unwrap_or_default()
+                                .to_ascii_uppercase();
+                            Some((
+                                position as usize,
+                                seq_id.unwrap_or_default(),
+                                deleted_sequence,
+                                inserted_sequence,
+                            ))
+                        })
+                        .collect::<Vec<_>>()
                 })
-                .ok_or_else(|| EngineError {
+                .unwrap_or_default();
+            let (position_0based, spdi_seq_id, reference_allele, _) =
+                allele_spdis.first().cloned().ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!(
                         "dbSNP record '{}' does not include chromosome-position allele coordinates",
@@ -504,6 +534,20 @@ impl GentleEngine {
 
                     cause_chain: vec![],
                 })?;
+            let reference_allele = (!reference_allele.is_empty()).then_some(reference_allele);
+            let mut alternate_alleles = allele_spdis
+                .iter()
+                .filter(|(position, seq_id, deleted, _)| {
+                    *position == position_0based
+                        && *seq_id == spdi_seq_id
+                        && reference_allele.as_deref() == Some(deleted.as_str())
+                })
+                .filter_map(|(_, _, deleted, inserted)| {
+                    (!inserted.is_empty() && inserted != deleted).then_some(inserted.clone())
+                })
+                .collect::<Vec<_>>();
+            alternate_alleles.sort();
+            alternate_alleles.dedup();
             let chromosome = if spdi_seq_id.trim().is_empty() {
                 placement_seq_id.clone()
             } else {
@@ -512,7 +556,7 @@ impl GentleEngine {
             let overall_score = best_trait_score;
             let is_better = best
                 .as_ref()
-                .map(|(score, _, _, _)| overall_score > *score)
+                .map(|(score, ..)| overall_score > *score)
                 .unwrap_or(true);
             if is_better {
                 best = Some((
@@ -521,6 +565,9 @@ impl GentleEngine {
                     Self::dbsnp_accession_chromosome_alias(&placement_seq_id)
                         .unwrap_or_else(|| placement_seq_id.clone()),
                     matched_assembly_name,
+                    position_0based.saturating_add(1),
+                    reference_allele,
+                    alternate_alleles,
                 ));
             }
             if best_trait_score >= 15 {
@@ -528,7 +575,16 @@ impl GentleEngine {
                 break;
             }
         }
-        let Some((_, chromosome, chromosome_display, assembly_name)) = best else {
+        let Some((
+            _,
+            chromosome,
+            chromosome_display,
+            assembly_name,
+            position_1based,
+            reference_allele,
+            alternate_alleles,
+        )) = best
+        else {
             if let Some(requested_family) = requested_family.as_deref()
                 && !available_families.contains(requested_family)
             {
@@ -561,55 +617,6 @@ impl GentleEngine {
             });
         };
         let gene_symbols = Self::dbsnp_collect_gene_symbols(document);
-        let position_1based = placements
-            .iter()
-            .find_map(|placement| {
-                let placement_seq_id = placement
-                    .get("seq_id")
-                    .and_then(Self::json_scalar_to_string)
-                    .unwrap_or_default();
-                let matches_chromosome = placement_seq_id == chromosome
-                    || placement
-                        .get("alleles")
-                        .and_then(|value| value.as_array())
-                        .map(|alleles| {
-                            alleles.iter().any(|allele| {
-                                allele
-                                    .get("allele")
-                                    .and_then(|value| value.get("spdi"))
-                                    .and_then(|value| value.get("seq_id"))
-                                    .and_then(Self::json_scalar_to_string)
-                                    .map(|seq_id| seq_id == chromosome)
-                                    .unwrap_or(false)
-                            })
-                        })
-                        .unwrap_or(false);
-                if !matches_chromosome {
-                    return None;
-                }
-                placement
-                    .get("alleles")
-                    .and_then(|value| value.as_array())
-                    .and_then(|alleles| {
-                        alleles.iter().find_map(|allele| {
-                            allele
-                                .get("allele")
-                                .and_then(|value| value.get("spdi"))
-                                .and_then(|value| value.get("position"))
-                                .and_then(|value| value.as_u64())
-                                .map(|value| value as usize + 1)
-                        })
-                    })
-            })
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::NotFound,
-                message: format!(
-                    "dbSNP record '{}' did not expose a usable 1-based genomic position",
-                    resolved_rs_id
-                ),
-
-                cause_chain: vec![],
-            })?;
         Ok(DbsnpResolvedPlacement {
             rs_id: resolved_rs_id,
             chromosome,
@@ -617,6 +624,8 @@ impl GentleEngine {
             position_1based,
             assembly_name,
             gene_symbols,
+            reference_allele,
+            alternate_alleles,
         })
     }
 

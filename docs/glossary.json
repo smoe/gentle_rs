@@ -1678,7 +1678,7 @@
          ],
          "path": "variant materialize-allele",
          "summary": "Create one reference or alternate single-allele sequence from a promoter fragment carrying a single-nucleotide variant.",
-         "usage": "variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]"
+         "usage": "variant materialize-allele SEQ_ID --allele reference|alternate [--alternate-base BASE] [--variant ID] [--output-id ID]"
       },
       {
          "aliases": [],

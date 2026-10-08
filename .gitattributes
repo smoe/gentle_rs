@@ -66,6 +66,10 @@ docs/tutorial/reproducibility/tp53_uniprot_projection_online/map-result.json tex
 docs/tutorial/reproducibility/tp53_uniprot_projection_online/feature-coding-dna.json text eol=lf
 docs/tutorial/reproducibility/tp73_uniprot_projection_audit_online/tp73_uniprot_projection.svg text eol=lf
 
+# Retained VKORC1 WIP previews are checksum-bound in their provenance README.
+docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/*.json text eol=lf
+docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter/*.svg text eol=lf
+
 # This retained adapter output is compared byte-for-byte with LF serialization.
 test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation/* text eol=lf
 

@@ -3567,7 +3567,11 @@ Shared shell command:
         sequence. Retrieval remains an explicit `FetchGenBankAccession`
         operation. KpnI/Acc65I and SacI/EcoICRI equivalence is reported without
         pretending the absent names are loaded in the active enzyme catalog
-    - `variant materialize-allele SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]`
+    - `variant materialize-allele SEQ_ID --allele reference|alternate [--alternate-base BASE] [--variant ID] [--output-id ID]`
+      - `--alternate-base` (alias `--alternate-allele`) selects one reported
+        A/C/G/T alternative; required for multiallelic markers and invalid for
+        `--allele reference`. Selection uses the loaded sequence's forward
+        orientation, not clinical/gene-strand allele nomenclature
     - `primers design REQUEST_JSON_OR_@FILE [--backend auto|internal|primer3] [--primer3-exec PATH]`
     - `primers design-transcript-capture-pool REQUEST_JSON_OR_@FILE`
       - offline exact-site discovery for explicit transcript sets, sense or
@@ -8031,6 +8035,7 @@ cargo run --quiet --bin gentle_cli -- \
   variant materialize-allele vkorc1_rs9923231_promoter_fragment \
   --variant rs9923231 \
   --allele alternate \
+  --alternate-base T \
   --output-id vkorc1_rs9923231_promoter_alternate
 ```
 

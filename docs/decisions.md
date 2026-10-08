@@ -1,5 +1,21 @@
 # GENtle Decisions
 
+## Explicit Variant Allele Selection
+
+`MaterializeVariantAllele` is the shared engine boundary for single-base
+allele materialization. A multiallelic marker never authorizes an arbitrary
+alternate: GUI, shell and agents must provide a reviewed reported A/C/G/T
+choice, distinct from the reference. Reference materialization needs no
+alternate; invalid/unlisted or contradictory selections fail before sequence
+creation. Exact selected bases remain in output qualifiers and handoffs.
+
+Alleles refer to the loaded sequence's forward orientation. dbSNP position,
+reference and alternatives stay bound to the selected genomic placement;
+gene strand or clinical nomenclature does not reinterpret them. A base/ref
+mismatch is a refusal, not permission to guess a complement. Reporter preview
+geometry, insert orientation and topology remain separate from SNP selection.
+Historical SVG presence and synthetic backbones never establish assay validity.
+
 ## Splicing UniProt Presentation Order
 
 Status: active for the Splicing Expert canvas, transcript/exon matrix and SVG.

@@ -2700,6 +2700,7 @@ pub enum ShellCommand {
         seq_id: String,
         variant_label_or_id: Option<String>,
         allele: VariantAlleleChoice,
+        alternate_allele: Option<String>,
         output_id: Option<String>,
     },
     PrimersDesign {
@@ -11966,12 +11967,14 @@ impl ShellCommand {
                 seq_id,
                 variant_label_or_id,
                 allele,
+                alternate_allele,
                 output_id,
             } => format!(
-                "materialize {} allele on '{}' (variant='{}', output_id='{}')",
+                "materialize {} allele on '{}' (variant='{}', alternate='{}', output_id='{}')",
                 allele.as_str(),
                 seq_id,
                 variant_label_or_id.as_deref().unwrap_or("auto"),
+                alternate_allele.as_deref().unwrap_or("auto"),
                 output_id.as_deref().unwrap_or("auto"),
             ),
             Self::PrimersDesign {
@@ -24501,6 +24504,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying a variant feature"},
                 {"name": "--allele", "required": true, "detail": "reference or alternate allele choice"},
+                {"name": "--alternate-base", "required": false, "detail": "explicit alternate SNV base; required when vcf_alt lists more than one candidate"},
                 {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit sequence id supplied with --output-id; required for deterministic effect verification"}
             ],
             "reads": [
@@ -24518,7 +24522,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                     {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}}
                 ]
             },
-            "description": "Create one reference or alternate single-allele sequence from a variant-bearing sequence.",
+            "description": "Create one reference or explicit alternate single-allele sequence from a variant-bearing sequence; multiallelic variants require --alternate-base.",
             "annotation_status": "fact_annotated",
             "registry": registry_metadata_for_introspection("variant materialize-allele")
         }),
@@ -24530,6 +24534,7 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             "args": [
                 {"name": "INPUT_SEQ_ID", "required": true, "subject_kind": "sequence", "detail": "loaded sequence carrying a variant feature, carried by the operation input field"},
                 {"name": "ALLELE", "required": true, "detail": "reference or alternate allele choice carried by the operation payload"},
+                {"name": "ALTERNATE_ALLELE", "required": false, "detail": "explicit alternate SNV base carried by alternate_allele; required when vcf_alt lists more than one candidate"},
                 {"name": "OUTPUT_ID", "required": false, "subject_kind": "sequence", "detail": "explicit sequence id carried by the operation payload; required for deterministic effect verification"}
             ],
             "reads": [
@@ -38954,7 +38959,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
         "materialize-allele" => {
             if tokens.len() < 3 {
                 return Err(
-                    "variant materialize-allele requires SEQ_ID --allele reference|alternate [--variant ID] [--output-id ID]"
+                    "variant materialize-allele requires SEQ_ID --allele reference|alternate [--alternate-base BASE] [--variant ID] [--output-id ID]"
                         .to_string(),
                 );
             }
@@ -38964,6 +38969,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
             }
             let mut variant_label_or_id: Option<String> = None;
             let mut allele: Option<VariantAlleleChoice> = None;
+            let mut alternate_allele: Option<String> = None;
             let mut output_id: Option<String> = None;
             let mut idx = 3usize;
             while idx < tokens.len() {
@@ -38984,6 +38990,14 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
                             "variant materialize-allele",
                         )?;
                         allele = Some(parse_variant_allele_choice(&raw)?);
+                    }
+                    "--alternate-base" | "--alternate-allele" => {
+                        alternate_allele = Some(parse_option_path(
+                            tokens,
+                            &mut idx,
+                            "--alternate-base",
+                            "variant materialize-allele",
+                        )?);
                     }
                     "--output-id" => {
                         output_id = Some(parse_option_path(
@@ -39006,6 +39020,7 @@ fn parse_variant_command(tokens: &[String]) -> Result<ShellCommand, String> {
                 allele: allele.ok_or_else(|| {
                     "variant materialize-allele requires --allele reference|alternate".to_string()
                 })?,
+                alternate_allele,
                 output_id,
             })
         }
@@ -62199,6 +62214,7 @@ fn execute_sequence_analysis_command(
             seq_id,
             variant_label_or_id,
             allele,
+            alternate_allele,
             output_id,
         } => {
             let op_result = engine
@@ -62206,6 +62222,7 @@ fn execute_sequence_analysis_command(
                     input: seq_id.clone(),
                     variant_label_or_id: variant_label_or_id.clone(),
                     allele: *allele,
+                    alternate_allele: alternate_allele.clone(),
                     output_id: output_id.clone(),
                 })
                 .map_err(|e| e.to_string())?;
