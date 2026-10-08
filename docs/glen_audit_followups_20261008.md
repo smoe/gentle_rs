@@ -27,7 +27,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | --- | --- | --- |
 | 1. Audit preservation | Report preserved; raw bundle pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen reports Linux/X11 results at `30f23aa4`. Obtain and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
 | 2. Tutorial 08.04 GUI/agent contracts | In progress | Add closed semantic controls and typed starter/oracle acceptance plus shared-shell agent parity. Require explicit genomic-forward T, refusal of unspecified A/G/T, source-bound reports and matched inserts differing at exactly one reviewed base. Compile and execute on a fresh exact candidate via CI/external validation. |
-| 3. Live-agent acceptance | Pending | Local Codex reports authenticated ChatGPT access; Glen's isolated Linux adapter reported HTTP 401. A fresh GENtle request, real model response, command validation and review-first execution on public data must pass; echo transport is not model-planning acceptance. Never copy or inspect credentials. |
+| 3. Live-agent acceptance | Older-binary authentication pilot passed; candidate acceptance pending | Actual GENtle/Codex request and review-first read-only command passed on public TP73 with pre-existing CLI `04debbe0` on macOS, recorded below. This does not accept fresh 08.04 planning or Glen's isolated Linux adapter. Require the final candidate/public VKORC1 run; echo transport is not model-planning acceptance. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Pending | Preserve native canvas appearance. Retain raw, candidate/binary/snapshot-bound captures and an inspectable base-level C/T comparison. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
 | 6. .12 package acceptance | Pending | Freeze one final pushed candidate; dispatch native installers and runtime-cli container with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at that same source/lock SHA. Native GUI and scientific approval remain separate. |
@@ -110,3 +110,30 @@ follow-up merely to improve those observations.
   focused tests are in progress. The pre-existing local CLI identifies itself
   as `04debbe0eb229e9758090d1964663849621470b9`; it is not the new candidate and
   is not used to claim candidate acceptance. No local Rust build was run.
+- On `93414fc89734fe70a70772a1c1c241a8661d4c4a`, all 23
+  `scripts.test_tutorial_checkouts` regressions passed on macOS, including the
+  scoped report, synthetic guard and scroll-receipt LF/CRLF negative controls.
+  The `1aee220c` scroll job also passed; this does not substitute for inspecting
+  that run's artifact or accept the still-running native replay.
+- Real-agent authentication pilot on macOS used the existing
+  `target/debug/gentle_cli`, self-reporting source
+  `04debbe0eb229e9758090d1964663849621470b9`, binary SHA-256
+  `441c608aa4325d81d5ccbcf7f7754629d63bdee61c8d3703b49bf74e3387e4e4`.
+  Load the public `test_files/tp73.ncbi.gb` as `tp73_public`, then call
+  `agents ask codex_local_stdio --catalog assets/agent_systems.json
+  --timeout-secs 180 --max-retries 0` with an identifier/length-only prompt,
+  `execution=ask`, and an explicit prohibition on mutation, fetching, nested
+  agents and OS commands. `CODEX_BIN` identified the already-authenticated
+  packaged Codex executable; no credentials were inspected or copied.
+  The actual `external_json_stdio` response returned `tp73_public: 83,686 bp.`
+  and one unexecuted suggestion:
+  `introspect facts --domain project --seq-id tp73_public`. After review,
+  that exact read-only GENtle command exited zero and returned the expected
+  `sequence.length=83686` project fact. No command ran automatically.
+  Raw files are retained in `/private/tmp/gentle-agent-auth-04debbe0`;
+  `agent-result.json` SHA-256 is
+  `79d26e92b9a1ce8b81860a46b07c9b94f8feb139e56d433e8d6839654bcc2d21`
+  and `reviewed-command-result.json` SHA-256 is
+  `a19747758f82844cd762c0cb0d4391998374e5f5388a675e3d2b5a1cad946f2d`.
+  This older-binary pilot makes no build-profile, fresh 08.04, package,
+  Linux-authentication or scientific-approval claim.
