@@ -4788,6 +4788,11 @@ Rack view is the first physical-placement layer on top of arrangements.
     project reopens with the same rack-help visibility you last used
   - when the strip is not pinned open, GENtle auto-minimizes it after a few
     successful rack moves; `Pin open` keeps it visible
+- At compact window sizes, rack/profile/template controls wrap instead of
+  disappearing beyond the right edge. The four help cards become one concise
+  interaction summary, and the rack grid receives its own bounded scroll
+  viewport so the label and physical-carrier export controls remain visible
+  below it; scrolling a large plate no longer hides the export block.
 - Built-in profiles:
   - `Small tube rack (4 x 6)`
   - `Plate 96`
@@ -4849,6 +4854,9 @@ Interaction model:
 
 Exports:
 
+- The compact footer separates label preview from physical-carrier export
+  settings and keeps both groups visible at the documented minimum Rack-window
+  size.
 - `Preview Labels...` in the rack window opens one in-app preview of the
   deterministic rack label sheet using the selected label-sheet preset.
   - `Export SVG...` from that preview writes the exact same label sheet once
