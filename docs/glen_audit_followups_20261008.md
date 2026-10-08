@@ -27,7 +27,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | --- | --- | --- |
 | 1. Audit preservation | Report preserved; raw bundle pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen reports Linux/X11 results at `30f23aa4`. Obtain and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
 | 2. Tutorial 08.04 GUI/agent contracts | In progress | Add closed semantic controls and typed starter/oracle acceptance plus shared-shell agent parity. Require explicit genomic-forward T, refusal of unspecified A/G/T, source-bound reports and matched inserts differing at exactly one reviewed base. Compile and execute on a fresh exact candidate via CI/external validation. |
-| 3. Live-agent acceptance | Older-binary authentication pilot passed; candidate acceptance pending | Actual GENtle/Codex request and review-first read-only command passed on public TP73 with pre-existing CLI `04debbe0` on macOS, recorded below. This does not accept fresh 08.04 planning or Glen's isolated Linux adapter. Require the final candidate/public VKORC1 run; echo transport is not model-planning acceptance. Never copy or inspect credentials. |
+| 3. Live-agent acceptance | Source-bound synthetic pilot passed; public candidate acceptance pending | CI-built macOS dev CLI `f99c44a1` exercised real ambiguity clarification, help-grounded review-first C/T suggestions and reviewed execution on the 20-base guard, recorded below. The older public TP73 authentication pilot remains separate. Require the final candidate/public VKORC1 run; neither this synthetic input nor echo transport certifies it. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Pending | Preserve native canvas appearance. Retain raw, candidate/binary/snapshot-bound captures and an inspectable base-level C/T comparison. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
 | 6. .12 package acceptance | Pending | Freeze one final pushed candidate; dispatch native installers and runtime-cli container with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at that same source/lock SHA. Native GUI and scientific approval remain separate. |
@@ -199,3 +199,33 @@ follow-up merely to improve those observations.
   receipt and self-reported full SHA; binary SHA-256 is
   `b09b92a7c8353fb4c798922e1a35e2ea34767fcf22ea79e2fac62e36a9403da6`.
   It has not yet run a genuine public 08.04 model request or package acceptance.
+- Public repair run
+  [37778513095](https://github.com/smoe/gentle_rs/actions/runs/37778513095) is
+  verified against `a1fb305a9d3c2dcdad1f75d732340fb0aa08ea9d`. The superseded
+  metadata-only rerun `37778064938` was cancelled to avoid duplicate builds;
+  cancellation is not acceptance. On `a1fb305a`, all 23 fast LF/CRLF checkout
+  regressions pass on macOS without Rust execution.
+- Genuine synthetic agent pilot on the independently verified `f99c44a1`
+  macOS CLI used `codex_local_stdio`, the existing authorized host login and
+  `execution=ask`, with no auto/execute-all flags or credential inspection.
+  Input is the unchanged hand-crafted 20-base guard, SHA-256
+  `4eed8b3c4977eb5369a591366d993753cc61b5c2cb00dd382dd4f40e4d100394`.
+  The first real response asks which A/G/T alternate is intended and suggests
+  no mutation. The explicit-T response requests command syntax instead of
+  inventing it. After receiving this binary's `help variant materialize-allele`,
+  a third response proposes exactly two parser-valid `ask` commands with the
+  named outputs and explicit T; both remain unexecuted until Codex review.
+  Bare-alternate engine refusal then leaves the saved state byte-identical.
+  Reviewed execution creates two 20-base inserts with one C/T difference at
+  zero-based position 6; all other raw bases and the source record are unchanged.
+  Raw responses/projects are `/private/tmp/gentle-agent-pair-f99c44a1`;
+  ambiguity response SHA-256 is
+  `c151b9e71f4bc3b612a7dea8c423e0f56cd521b7e07fd84f9165caefcdc768d7`,
+  initial explicit-T response is
+  `4b63a1809662b20f06c76733353cd631dd707d08f865a86c64657e3e0403a9a6`,
+  help-grounded response is
+  `51661027985910dcfa9c1bf15e54f1a3c1104dd03a7ab13d8101382f9aa72f0a`
+  and final project is
+  `76acd4aecc4713a45afc3069193f6a39422959dae589c74951b62a7e8062e4c5`.
+  This is real model-planning evidence on synthetic DNA, not public 08.04,
+  final package, Linux authentication or human scientific approval.
