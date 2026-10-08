@@ -128,6 +128,8 @@ Before timing, both scroll directions must change the actual viewport without
 changing its span or sequence length, emit paint shapes and leave sequence,
 annotation, enzyme and methylation inputs byte-identical. The following frame
 must retain the moved viewport. `GUI_SCROLL_OBSERVATION` JSON lines record these
+checks against the full Git SHA and version. The pointer target comes from the
+clipped egui interaction rectangle, not the potentially off-screen paint extent.
 checks for every fixture and size, including the exact source revision and
 content digest. A failed assertion invalidates the run. An omitted PATZ1 input
 does not count as PATZ1 acceptance. Use `-- --test` instead of `-- --quick

@@ -183,12 +183,11 @@ impl MainAreaDna {
             .set_linear_viewport(0, 5_000);
     }
 
-    /// Probe the actual rendered map rectangle, not an assumed screen position.
+    /// Probe the clipped interaction rectangle, not the larger paint extent.
     pub fn latency_benchmark_hover_position(&self) -> Option<egui::Pos2> {
-        match &self.map_dna {
-            RenderDna::Linear(renderer) => renderer.read().ok().map(|r| r.area().center()),
-            RenderDna::Circular(_) => None,
-        }
+        self.benchmark_map_interact_rect
+            .filter(|rect| rect.is_finite() && rect.is_positive())
+            .map(|rect| rect.center())
     }
 
     /// Observe the actual clamped viewport without changing presentation state.
