@@ -115,7 +115,7 @@ jobs:
           PY
       - name: Preserve smoke evidence, including failures
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gui-scroll-cpu-smoke-${{ github.sha }}
           path: ${{ runner.temp }}/gui-scroll-audit/
