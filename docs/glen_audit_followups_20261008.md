@@ -313,3 +313,16 @@ follow-up merely to improve those observations.
   `native/vkorc1_warfarin_promoter_luciferase_gui/profile/home/.gentle_gui_settings.json`.
   Include hidden files only in the isolated audit evidence directory and rerun;
   preserve this incomplete upload as failed evidence.
+- On `6f5f2365` plus the scoped layout diff, move only the pair action out of
+  the wide toolbar into its own left-aligned row. A synthetic egui regression
+  sends only vertical wheel events and requires the real semantic button to
+  become visible/enabled without mutation. The native contract and independent
+  starter/oracle remain unchanged. New source-bound CI/package execution is
+  required; no local Rust build/check/test is run.
+- Owner identified two additional Downloads documents. Read
+  `GENTLE_DOCS_AUDIT_2026-10-07.md` (an older documentation audit at `04debbe0`)
+  and `GENTLE_SMOE_BOT_BRANCH_HANDOFF_2026-10-08.md` (branch inventory at
+  `a02ef777`), as well as the unchanged `REPORT (2).md`. Neither additional
+  document supplies the original `30f23aa4` raw bundle or a remote-runner access
+  route. Their cleanup/merge suggestions are out of this six-item scope and
+  are not executed. Fresh Actions evidence does not verify Glen's raw archive.

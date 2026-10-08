@@ -11544,6 +11544,60 @@ fn promoter_pair_invalid_explicit_allele_rolls_back_reference() {
     assert_eq!(engine.read().unwrap().journal_len(), 0);
 }
 
+#[cfg(feature = "gui-test-support")]
+#[test]
+fn promoter_pair_button_is_reachable_without_horizontal_scrolling() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    area.variant_followup_ui.alternate_allele = "T".into();
+    let ctx = egui::Context::default();
+    ctx.set_embed_viewports(true);
+    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0));
+    let mut pointer = egui::Pos2::ZERO;
+    let mut reachable = false;
+    for frame in 0..64 {
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(screen_rect),
+            time: Some(frame as f64 * 0.1),
+            events: vec![
+                egui::Event::PointerMoved(pointer),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -120.0),
+                    modifiers: egui::Modifiers::default(),
+                },
+            ],
+            ..Default::default()
+        });
+        crate::gui_test_support::begin_frame(&ctx);
+        area.render_variant_followup_window(&ctx);
+        let _ = crate::egui_compat::end_test_pass(&ctx);
+        let snapshot = crate::gui_test_support::snapshot(&ctx);
+        if snapshot.items.iter().any(|item| {
+            item.semantic_id == crate::tutorial_gui_semantics::PROMOTER_MATERIALIZE_PAIR
+                && item.state.visible
+                && item.state.enabled
+                && item.rect_logical_points.max_x - item.rect_logical_points.min_x > 100.0
+        }) {
+            reachable = true;
+            break;
+        }
+        if let Some(panel) = snapshot
+            .items
+            .iter()
+            .find(|item| item.semantic_id == crate::tutorial_gui_semantics::PROMOTER_PANEL)
+        {
+            let rect = panel.rect_logical_points;
+            pointer = egui::pos2(rect.min_x + 12.0, (rect.min_y + rect.max_y) * 0.5);
+        }
+    }
+    assert!(
+        reachable,
+        "pair action must not require horizontal scrolling"
+    );
+    assert_eq!(engine.read().unwrap().state().sequences.len(), 1);
+    assert_eq!(engine.read().unwrap().journal_len(), 0);
+}
+
 #[test]
 fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans() {
     // Hand-crafted multi-allelic SNV; not a real locus or biological assertion.
