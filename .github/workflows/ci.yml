@@ -212,6 +212,7 @@ jobs:
       - run: python3 -m unittest scripts.test_container -v
       - run: python3 -m unittest scripts.test_tutorial_checkouts -v
       - run: python3 -m unittest scripts.test_ci_vkorc1_gui_audit scripts.test_tutorial_gui_acceptance -v
+      - run: python3 -m unittest scripts.test_prepare_public_vkorc1_audit -v
 
   select-platform:
     name: Select CI platform
