@@ -902,6 +902,11 @@ pass does it export a JSON/SVG base window with the one C/T difference. This is
 a labelled data projection, not a native screenshot, theme change, live-agent
 pass, reporter-construct acceptance or scientific approval.
 
+`audit_followups` also retains a headless macOS CLI and exact source/lock/binary
+receipt for a later locally authenticated agent run. The CI job never invokes
+an agent or receives model credentials. Verify the downloaded binary and host
+architecture before execution; a dev CLI receipt is not package acceptance.
+
 The two cloning contracts start from load-only workflows
 `branch_gui_starter` and `digest_gui_starter`, not completed results.
 `branch_gui_oracle` deliberately uses the GUI's default `_revcomp` ID;

@@ -174,3 +174,8 @@ follow-up merely to improve those observations.
   assertion/view and four synthetic/retention Python tests pass on macOS.
   Only successful public reference/parity validation may emit this labelled
   projection; it is not a native capture or an already-executed public pass.
+- On `8ac39726` plus the scoped CI addition, 38 release-policy Python tests
+  pass on macOS. The opt-in audit now builds a headless macOS CLI for later
+  use with the host's existing authorized login. CI records full source,
+  lockfile, binary, architecture and toolchain identities; no model invocation
+  or credential transfer occurs there. Fresh agent execution remains pending.
