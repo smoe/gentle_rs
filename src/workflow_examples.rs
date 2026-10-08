@@ -8589,6 +8589,85 @@ mod tests {
     }
 
     #[test]
+    fn vkorc1_pair_gui_starter_and_oracle_are_independent_and_base_bound() {
+        let source: TutorialSourceUnit = serde_json::from_str(include_str!(
+            "../docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json"
+        ))
+        .unwrap();
+        let contract = source.generated_chapter.unwrap().gui_acceptance.unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let by_id = example_lookup(&examples);
+        let starter_dir = TempDir::new().unwrap();
+        let oracle_dir = TempDir::new().unwrap();
+        let starter = run_example_workflow_for_project_state(
+            &by_id[&contract.starter.example_id].example,
+            Path::new("."),
+            starter_dir.path(),
+        )
+        .unwrap();
+        let oracle = run_example_workflow_for_project_state(
+            &by_id[&contract.oracle.example_id].example,
+            Path::new("."),
+            oracle_dir.path(),
+        )
+        .unwrap();
+        let starter = GentleEngine::from_state(starter);
+        let oracle = GentleEngine::from_state(oracle);
+        let input = "vkorc1_rs9923231_promoter_fragment";
+        let reference = "vkorc1_rs9923231_promoter_reference";
+        let alternate = "vkorc1_rs9923231_promoter_alternate";
+        assert_eq!(starter.state().sequences.len(), 1);
+        assert_eq!(oracle.state().sequences.len(), 3);
+        assert_eq!(
+            starter
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied
+        );
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied
+        );
+        let source_bases = starter.state().sequences[input].forward_bytes();
+        assert_eq!(source_bases, b"AAAAAACAAAAAAAAAAAAA");
+        assert_eq!(
+            source_bases,
+            oracle.state().sequences[input].forward_bytes()
+        );
+        assert_eq!(
+            source_bases,
+            oracle.state().sequences[reference].forward_bytes()
+        );
+        let differences: Vec<_> = source_bases
+            .iter()
+            .zip(oracle.state().sequences[alternate].forward_bytes())
+            .enumerate()
+            .filter(|(_, (before, after))| before != after)
+            .map(|(position, (before, after))| (position, *before, *after))
+            .collect();
+        assert_eq!(differences, vec![(6, b'C', b'T')]);
+        assert_eq!(oracle.state().sequences[alternate].len(), 20);
+        assert!(contract.steps.iter().any(|step| {
+            matches!(&step.interaction, TutorialGuiInteraction::ReplaceText { text } if text == "T")
+        }));
+        let path = oracle_dir.path().join("reopened.json");
+        oracle.state().save_to_path(path.to_str().unwrap()).unwrap();
+        let reopened = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        for seq_id in [input, reference, alternate] {
+            assert_eq!(
+                reopened.sequences[seq_id].forward_bytes(),
+                oracle.state().sequences[seq_id].forward_bytes()
+            );
+            assert_eq!(
+                serde_json::to_value(reopened.sequences[seq_id].features()).unwrap(),
+                serde_json::to_value(oracle.state().sequences[seq_id].features()).unwrap()
+            );
+        }
+    }
+
+    #[test]
     fn tss_gui_acceptance_starter_and_oracle_are_independent_and_report_bound() {
         let source: TutorialSourceUnit = serde_json::from_str(include_str!(
             "../docs/tutorial/sources/08-15_tss_collection_gui.json"

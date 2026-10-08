@@ -1,0 +1,17 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "vkorc1_pair_gui_oracle",
+  "title": "08.04 synthetic C/T pair oracle (offline guard only)",
+  "summary": "Independently load the hand-crafted input and materialize reference and explicit genomic-forward T with shared engine operations; this is not human VKORC1 DNA.",
+  "test_mode": "always",
+  "required_files": ["docs/examples/assets/allele_pair_guard/multiallelic.gb"],
+  "tags": ["tutorial", "gui", "variant", "synthetic", "offline"],
+  "workflow": {
+    "run_id": "example_vkorc1_pair_gui_oracle",
+    "ops": [
+      {"LoadFile": {"path": "docs/examples/assets/allele_pair_guard/multiallelic.gb", "as_id": "vkorc1_rs9923231_promoter_fragment"}},
+      {"MaterializeVariantAllele": {"input": "vkorc1_rs9923231_promoter_fragment", "variant_label_or_id": "rs9923231", "allele": "reference", "output_id": "vkorc1_rs9923231_promoter_reference"}},
+      {"MaterializeVariantAllele": {"input": "vkorc1_rs9923231_promoter_fragment", "variant_label_or_id": "rs9923231", "allele": "alternate", "alternate_allele": "T", "output_id": "vkorc1_rs9923231_promoter_alternate"}}
+    ]
+  }
+}
