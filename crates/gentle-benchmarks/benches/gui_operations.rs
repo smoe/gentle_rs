@@ -7,7 +7,7 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui;
 use gentle::{
-    about::GENTLE_SOURCE_REVISION,
+    about::{GENTLE_GIT_COMMIT, GENTLE_SOURCE_REVISION},
     dna_sequence::{DNAsequence, load_from_file},
     engine::{GentleEngine, ProjectState},
     main_area_dna::MainAreaDna,
@@ -331,7 +331,10 @@ fn verify_scroll(fixture: &GuiFixture, size: ScreenSize, delta_x: f32) {
         } else {
             after.0 < before.0
         },
-        "wheel input must move the real map viewport in the intended direction"
+        "{} at {}: wheel {delta_x} at {:?} must move viewport {before:?} -> {after:?}",
+        fixture.id,
+        size.id,
+        window.scroll_target_for_benchmark().0,
     );
     assert_nonempty_frame(
         fixture,
@@ -350,7 +353,8 @@ fn verify_scroll(fixture: &GuiFixture, size: ScreenSize, delta_x: f32) {
     eprintln!(
         "GUI_SCROLL_OBSERVATION {}",
         serde_json::json!({
-            "source_revision": GENTLE_SOURCE_REVISION,
+            "source_revision": GENTLE_GIT_COMMIT,
+            "source_version": GENTLE_SOURCE_REVISION,
             "fixture": fixture.benchmark_id(), "screen": size.id,
             "delta_x_points": delta_x, "before": before, "after": after,
             "sequence_content_sha256": sha256_prefixed(&content),
