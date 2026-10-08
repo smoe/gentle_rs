@@ -881,6 +881,18 @@ Profiles select exactly their declared contracts, not a cumulative tier.
 chapter; inspecting its prepared result does not prove a new BLAST computation.
 `full` has no contracts yet. Online chapters remain explicit and authorized.
 
+The opt-in `audit_followups` CI input additionally runs the synthetic 08.04
+allele-choice companion by chapter ID. Its CI helper
+`scripts/ci_vkorc1_gui_audit.py` generates projections in a disposable exact-HEAD
+clone, restores the three historical PATZ1 baseline bytes/hashes, checks the
+projections and drives ordinary input under Openbox/Xvfb in a distinct network
+namespace. Retained receipts bind the dev binaries, source/lock, logs, raw
+screenshots and semantic geometry. A separate JSON/SVG view checks the saved
+20-base C/T pair and is explicitly synthetic, not a native screenshot. This
+does not accept the online VKORC1 workflow, real agent planning, package-opt1
+artifacts or laboratory suitability. Failed runs retain their diagnostic
+evidence and must not be relabelled as passes.
+
 The two cloning contracts start from load-only workflows
 `branch_gui_starter` and `digest_gui_starter`, not completed results.
 `branch_gui_oracle` deliberately uses the GUI's default `_revcomp` ID;
