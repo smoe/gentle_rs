@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-08 - Accept Fresh Public And Live-Agent Evidence
+
+- Independently verify all 44 public artifacts at frozen runtime SHA `6d8b4db7`;
+  retain unchanged receipt and labelled base-window JSON/SVG. Inspect the honest
+  projection separately from unedited synthetic native captures and historical
+  whole-map previews; no public-locus GUI or scientific approval is implied.
+- Preserve the older-starter pilot's full-record mismatch. Repeat real-agent
+  clarification and explicit-T requests from the fresh public starter, without
+  automatic execution or credential inspection. Reviewed execution preserves
+  both sources, and all four full ordered `Seq` records match both CI routes.
+  Retain separate CLI-build and executed-live receipts with scoped LF/CRLF
+  guards; runtime/package acceptance stays bound to `6d8b4db7`, not this ledger.
+
 ## 2026-10-08 - Accept The Frozen Native Contract And Scroll Cases
 
 - At runtime candidate `6d8b4db7`, independently verify all 115 native artifact
