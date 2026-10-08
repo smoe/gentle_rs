@@ -34,6 +34,70 @@ on:
         default: false
 
 jobs:
+  audit-agent-cli:
+    name: macOS CLI for local authenticated audit (no credentials in CI)
+    if: github.event_name == 'workflow_dispatch' && inputs.audit_followups
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    env:
+      CARGO_BUILD_JOBS: '1'
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      RUST_MIN_STACK: '67108864'
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-headless-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-headless-cargo-registry-
+            ${{ runner.os }}-cargo-registry-
+      - name: Build and retain exact-source headless CLI without invoking an agent
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/agent-audit-cli"
+          cargo build --locked --no-default-features --bin gentle_cli \
+            2> "$RUNNER_TEMP/agent-audit-cli/build.log"
+          git diff --exit-code -- Cargo.lock Cargo.toml
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'agent-audit-cli'
+          binary = root / 'gentle_cli'
+          shutil.copy2('target/debug/gentle_cli', binary)
+          revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+          assert revision == os.environ['GITHUB_SHA']
+          version = subprocess.check_output([str(binary), '--version'], text=True)
+          assert any(line.startswith('Source revision ') and line.endswith('+git.' + revision)
+                     for line in version.splitlines()), 'binary source differs from selected candidate'
+          def sha(path):
+              return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+          receipt = {'schema': 'gentle.audit_agent_cli.v1', 'source_revision': revision,
+                     'profile': 'dev', 'default_features': False, 'platform': 'macOS',
+                     'architecture': subprocess.check_output(['uname', '-m'], text=True).strip(),
+                     'binary_sha256': sha(binary), 'cargo_lock_sha256': sha('Cargo.lock'),
+                     'binary_version': version, 'rustc': subprocess.check_output(['rustc', '-Vv'], text=True),
+                     'cargo': subprocess.check_output(['cargo', '-V'], text=True),
+                     'run_url': 'https://github.com/' + os.environ['GITHUB_REPOSITORY'] + '/actions/runs/' + os.environ['GITHUB_RUN_ID'],
+                     'live_agent_accepted': False, 'package_accepted': False,
+                     'artifacts': {path.name: sha(path) for path in sorted(root.iterdir()) if path.is_file()}}
+          (root / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print(json.dumps(receipt, indent=2))
+          PY
+      - name: Preserve audit CLI and build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: agent-audit-cli-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/agent-audit-cli/
+          if-no-files-found: error
+          retention-days: 30
+
   vkorc1-gui-audit:
     name: 08.04 synthetic GUI contracts (not online or scientific acceptance)
     if: github.event_name == 'workflow_dispatch' && inputs.audit_followups

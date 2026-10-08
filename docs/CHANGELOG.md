@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-10-08 - Supply A Source-Bound Agent-Audit CLI From CI
+
+- Add an opt-in macOS headless CLI build with source/lock/binary/toolchain and
+  architecture receipts so final-candidate agent acceptance needs no local Rust
+  build. CI never invokes a model, receives credentials or publishes a release.
+- Keep real authentication and review-first execution on the authorized local
+  host; a retained dev binary does not certify agent quality or native packages.
+
 ## 2026-10-08 - Keep Public C/T Visual Proof Separate From Native Captures
 
 - Export a source/binary-bound base window only after the public input/parity

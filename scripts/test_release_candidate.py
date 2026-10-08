@@ -652,6 +652,20 @@ class WorkflowWiringTests(unittest.TestCase):
         text = (root / ".github/workflows/ci.yml").read_text()
         self.assertIn("python3 -m unittest scripts.test_release_candidate -v", text)
 
+    def test_audit_agent_cli_is_opt_in_source_bound_and_never_receives_authentication(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        job = text.split("\n  audit-agent-cli:\n", 1)[1].split("\n  vkorc1-gui-audit:\n", 1)[0]
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.audit_followups", job)
+        self.assertIn("contents: read", job)
+        self.assertIn("cargo build --locked --no-default-features --bin gentle_cli", job)
+        self.assertIn("assert revision == os.environ['GITHUB_SHA']", job)
+        self.assertIn("line.endswith('+git.' + revision)", job)
+        self.assertIn("'live_agent_accepted': False, 'package_accepted': False", job)
+        self.assertIn("agent-audit-cli-macos-${{ github.sha }}", job)
+        for forbidden in ("secrets.", "codex login", "agents ask", "OPENAI_API_KEY", "CODEX_HOME"):
+            self.assertNotIn(forbidden, job)
+
     def test_ci_summary_requires_release_policy_and_build_success(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
