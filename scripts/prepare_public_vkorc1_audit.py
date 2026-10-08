@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+from html import escape
 import json
 from pathlib import Path
 import os
@@ -75,6 +76,43 @@ def pair_content(project: dict) -> dict:
             "sequence_sha256": {role: hashlib.sha256(value).hexdigest() for role, value in bases.items()},
             "raw_sequences": {role: value.decode("ascii") for role, value in bases.items()},
             "native_screenshot": False, "human_scientific_approval": False}
+
+
+def public_pair_svg(proof: dict, revision: str, binary_sha256: str) -> str:
+    """A labelled base-data projection, never a recoloured native capture."""
+    assert len(revision) == 40 and all(value in "0123456789abcdef" for value in revision)
+    assert len(binary_sha256) == 64 and all(value in "0123456789abcdef" for value in binary_sha256)
+    assert proof["synthetic"] is False
+    raw = proof["raw_sequences"]
+    checked = pair_content({"sequences": {PREFIX + role: {"seq": {"seq": list(value.encode("ascii"))}}
+                                         for role, value in raw.items()}})
+    for key in ("length_bp", "differences", "sequence_sha256"):
+        assert proof[key] == checked[key], "base-view proof changed"
+    position = proof["differences"][0]["position_0based"]
+    start, end = max(0, position - 16), min(proof["length_bp"], position + 17)
+    highlight_x = 150 + 22 * (position - start)
+    rows = []
+    for row, role in enumerate(("fragment", "reference", "alternate")):
+        y = 170 + row * 46
+        rows.append(f'<text x="24" y="{y}">{role}</text>')
+        rows.append(f'<rect x="{highlight_x - 3}" y="{y - 24}" width="22" height="32" fill="#e8ca76"/>')
+        for index, base in enumerate(raw[role][start:end].upper()):
+            rows.append(f'<text x="{150 + 22 * index}" y="{y}">{escape(base)}</text>')
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="920" height="430" viewBox="0 0 920 430">'
+        '<rect width="920" height="430" fill="#faf8ef"/>'
+        '<g fill="#242c30" font-family="monospace" font-size="19">'
+        '<text x="24" y="34">Public VKORC1 C/T insert: base-data comparison</text>'
+        f'<text x="24" y="70" font-size="11">source: {revision}</text>'
+        f'<text x="24" y="90" font-size="11">CLI SHA-256: {binary_sha256}</text>'
+        f'<text x="24" y="121" font-size="15">Insert window [{start}, {end}), differing base {position} (zero-based)</text>'
+        + "".join(rows)
+        + '<text x="24" y="315" font-size="15">Uppercase display only; JSON retains exact GenBank case and full insert hashes.</text>'
+        f'<text x="24" y="343" font-size="15">Full matched insert length: {proof["length_bp"]} bp; exactly one reviewed C/T difference.</text>'
+        '<text x="24" y="377" font-size="15">Exported comparison, not a native screenshot or reporter-construct map.</text>'
+        '<text x="24" y="407" font-size="15">No functional, wet-lab, clinical or human scientific approval claim.</text>'
+        '</g></svg>\n'
+    )
 
 
 def audit(repo: Path, binary: Path, root: Path) -> int:
@@ -217,6 +255,7 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
         assert len(manifests) == 1, "one complete matching reference manifest required"
         receipt["reference_inputs"] = manifests
         (root / "base-comparison.json").write_text(json.dumps(proof, indent=2) + "\n")
+        (root / "base-comparison.svg").write_text(public_pair_svg(proof, revision, receipt["binary_sha256"]))
         receipt["status"] = "pass"
         receipt["claim"] = "public source-bound CLI/shared-shell promoter and explicit C/T insert parity only"
     except Exception as error:

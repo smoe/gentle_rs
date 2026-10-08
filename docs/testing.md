@@ -893,6 +893,15 @@ does not accept the online VKORC1 workflow, real agent planning, package-opt1
 artifacts or laboratory suitability. Failed runs retain their diagnostic
 evidence and must not be relabelled as passes.
 
+The separate `audit_public_vkorc1` opt-in prepares the complete catalogue-bound
+reference on CI, retains one raw public NCBI refSNP response and replays that
+exact file through GENtle's existing override. Its direct/shared-shell parity,
+ambiguous refusal and explicit C/T checks retain project/input hashes and
+manifests, but never upload the whole reference cache. Only after those checks
+pass does it export a JSON/SVG base window with the one C/T difference. This is
+a labelled data projection, not a native screenshot, theme change, live-agent
+pass, reporter-construct acceptance or scientific approval.
+
 The two cloning contracts start from load-only workflows
 `branch_gui_starter` and `digest_gui_starter`, not completed results.
 `branch_gui_oracle` deliberately uses the GUI's default `_revcomp` ID;

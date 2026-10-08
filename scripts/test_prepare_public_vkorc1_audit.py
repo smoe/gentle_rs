@@ -2,9 +2,10 @@
 
 import unittest
 from pathlib import Path
+from xml.etree import ElementTree
 
 from scripts.prepare_public_vkorc1_audit import (
-    assert_reviewed_fragment, pair_content, report_content, retained_refsnp_url, PREFIX,
+    assert_reviewed_fragment, pair_content, public_pair_svg, report_content, retained_refsnp_url, PREFIX,
 )
 
 
@@ -42,6 +43,30 @@ class PublicAuditAssertionsTests(unittest.TestCase):
                         self.project(alternate="aaTta"), self.project(reference="AaCaa", alternate="AaTaa")):
             with self.subTest(project=project), self.assertRaises(AssertionError):
                 pair_content(project)
+
+    def test_base_view_is_data_bound_and_not_a_native_or_scientific_claim(self):
+        proof = pair_content(self.project())
+        proof["synthetic"] = False  # Renderer test only; inline DNA remains hand-crafted.
+        source, binary = "a" * 40, "b" * 64
+        svg = public_pair_svg(proof, source, binary)
+        self.assertEqual(ElementTree.fromstring(svg).tag, "{http://www.w3.org/2000/svg}svg")
+        self.assertIn(source, svg)
+        self.assertIn(binary, svg)
+        self.assertIn("differing base 2 (zero-based)", svg)
+        self.assertIn("not a native screenshot", svg)
+        self.assertIn("No functional, wet-lab, clinical or human scientific approval claim", svg)
+        proof["sequence_sha256"]["alternate"] = "0" * 64
+        with self.assertRaisesRegex(AssertionError, "base-view proof changed"):
+            public_pair_svg(proof, source, binary)
+
+    def test_base_view_refuses_synthetic_or_wrong_revision_bindings(self):
+        proof = pair_content(self.project())
+        proof["synthetic"] = True
+        with self.assertRaises(AssertionError):
+            public_pair_svg(proof, "a" * 40, "b" * 64)
+        proof["synthetic"] = False
+        with self.assertRaises(AssertionError):
+            public_pair_svg(proof, "short", "b" * 64)
 
 
 if __name__ == "__main__":
