@@ -6526,13 +6526,21 @@ Tutorial projects:
     - `commands.sh`
   - the tutorial uses a TSS-centered reverse-strand `VKORC1` fragment that
     keeps `rs9923231` inside the cloned insert instead of on its edge.
+  - `Genomic alleles` exposes the marker's supplied ref/alt qualifiers.
+    `Alternate base` is prefilled only for a single alternative; multiallelic
+    markers require an explicit reviewed A/C/G/T choice. The field is passed
+    unchanged to the shared engine; the UI never chooses an allele by gene
+    strand or a pharmacogenomic label. The materialized base is retained in
+    the output feature and handoff; generated Bash arguments are quoted.
   - the preferred community-facing opener for that story is the
     `VKORC1/rs9923231` hero figure in
     `docs/figures/vkorc1_rs9923231_luciferase_hero.svg`.
   - canonical workflow skeleton:
     `docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json`
-    (`test_mode: skip`, offline local backbone import plus shared promoter
-    reasoning ops).
+    (`test_mode: online`, online dbSNP lookup/reference preparation, followed
+    by local backbone import and shared promoter reasoning ops). Retained
+    reporter SVGs are historical WIP previews, not current-candidate or
+    experimentally validated constructs; see their reproducibility README.
   - `docs/tutorial/03-05_gibson_specialist_testing_gui.md`
     - focused end-to-end test script for `Patterns -> Gibson...`
     - uses local committed inputs plus `gibson preview` parity checking

@@ -115,6 +115,32 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), self.payload)
 
+    def test_retained_vkorc1_wip_bytes_and_hashes_survive_both_checkout_modes(self):
+        relative = Path("docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter")
+        files = ["variant_promoter_context.json", "promoter_reporter_candidates.json",
+                 "vkorc1_rs9923231_promoter_context.svg",
+                 "vkorc1_rs9923231_reporter_reference.svg",
+                 "vkorc1_rs9923231_reporter_alternate.svg"]
+        provenance = (checker.ROOT / relative / "README.md").read_text(encoding="utf-8")
+        self.assertIn("historical, unverified WIP", provenance)
+        (self.root / ".gitattributes").write_bytes((checker.ROOT / ".gitattributes").read_bytes())
+        for name in files:
+            destination = self.root / relative / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            payload = (checker.ROOT / relative / name).read_bytes()
+            self.assertIn(hashlib.sha256(payload).hexdigest(), provenance)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "retained historical VKORC1 previews")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"vkorc1-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for name in files:
+                with self.subTest(mode=mode[0], file=name):
+                    self.assertEqual((target / relative / name).read_bytes(),
+                                     (checker.ROOT / relative / name).read_bytes())
+
     def test_sequence_design_tutorial_semantics_survive_both_checkout_modes(self):
         from scripts.test_sequence_design_tutorial import fenced_request
 

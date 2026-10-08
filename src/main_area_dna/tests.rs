@@ -11352,6 +11352,8 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
             ("label".into(), Some("rs9923231".to_string())),
             ("db_xref".into(), Some("dbSNP:rs9923231".to_string())),
             ("gene".into(), Some("VKORC1".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,T".to_string())),
         ],
     });
     let mut area = MainAreaDna::new(dna, Some("vkorc1_context".to_string()), None);
@@ -11368,16 +11370,17 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
     assert_eq!(area.variant_followup_ui.gene_label, "VKORC1");
     assert_eq!(
         area.variant_followup_ui.fragment_output_id,
-        "rs9923231_promoter_fragment"
+        "vkorc1_rs9923231_promoter_fragment"
     );
     assert_eq!(
         area.variant_followup_ui.reference_output_id,
-        "rs9923231_promoter_reference"
+        "vkorc1_rs9923231_promoter_reference"
     );
     assert_eq!(
         area.variant_followup_ui.alternate_output_id,
-        "rs9923231_promoter_alternate"
+        "vkorc1_rs9923231_promoter_alternate"
     );
+    assert_eq!(area.variant_followup_ui.alternate_allele, "");
     assert_eq!(area.variant_followup_ui.score_track_motifs, "SP1");
     assert_eq!(
         area.variant_followup_ui.score_track_value_kind,
@@ -13162,6 +13165,11 @@ fn variant_followup_handoff_commands_render_svg_paths_expand_bundle_dir() {
     assert!(!commands.contains(
         "RenderSequenceSvg\":{\"seq_id\":\"vkorc1_context\",\"mode\":\"Linear\",\"path\":\"$BUNDLE_DIR/"
     ));
+    assert!(commands.contains("--alternate-base 'REVIEW_REQUIRED'"));
+    area.variant_followup_ui.alternate_allele = "T; echo 'not-a-command'".to_string();
+    let quoted = area.build_variant_followup_handoff_commands(&artifacts, &report, &recommended);
+    assert!(quoted.contains("--alternate-base 'T; echo '\\''not-a-command'\\'''"));
+    assert!(!quoted.contains("--alternate-base T; echo"));
 }
 
 #[test]

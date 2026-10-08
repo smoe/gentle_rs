@@ -4483,12 +4483,21 @@ Sequencing-trace evidence notes:
     stock identity
   - does not create constructs, fetch live registries, optimize codons, or make
     wet-lab claims
-- `MaterializeVariantAllele { input, variant_label_or_id?, allele=reference|alternate, output_id? }`
+- `MaterializeVariantAllele { input, variant_label_or_id?, allele=reference|alternate, alternate_allele?, output_id? }`
   - phase-1 scope is single-nucleotide variants only
-  - rejects indels, multi-allelic variants, or variants without explicit
-    ref/alt qualifiers
+  - reference uses the single A/C/G/T `vcf_ref` and requires no alternate;
+    supplying `alternate_allele` with `allele=reference` is rejected
+  - alternate uses the single A/C/G/T `vcf_alt`, or requires an explicit
+    `alternate_allele` when several alternatives are present. The choice must
+    occur in `vcf_alt` and differ from the reference; unknown bases, indels,
+    empty selections and unlisted alternatives fail before output creation
+  - allele qualifiers and choices refer to the loaded sequence's forward
+    orientation. `FetchDbSnpRegion` retains genomic-forward placement alleles;
+    a negative gene strand alone does not complement those bases. The sequence
+    base must match `vcf_ref`; mismatched or stale qualifiers fail closed
   - preserves the variant feature on the derived output while marking the
-    materialized allele
+    materialized allele and exact base; legacy operations omit the optional
+    selection and retain single-alternate behavior
 - `SetTopology { seq_id, circular }`
 - `RecomputeFeatures { seq_id }`
 - `SetParameter { name, value }` (purely in-silico project parameter change)

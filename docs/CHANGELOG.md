@@ -1,5 +1,41 @@
 # GENtle Changelog
 
+## 2026-10-08 - Integrate Glen's VKORC1 Reporter WIP Conservatively
+
+- Merge `40430f98` from `bot/vkorc1-promoter-reporter-wip-20261008`, retaining
+  Glen's ancestry rather than cherry-picking over the newer CDS/splicing work.
+  Preserve dbSNP alleles with the selected placement coordinates. Carry
+  explicit `alternate_allele` through the engine, shell, GUI and inner-agent
+  guidance; single-alternate and legacy payloads remain readable.
+- Add integration guards for unambiguous A/C/G/T, reported membership,
+  reference-distinct alternates and contradictory reference/alternate requests.
+  Invalid selection creates no output. Quote GUI-generated Bash alternate
+  arguments and test placement coherence, legacy JSON and invalid selections.
+  These narrowly required repairs do not redesign reporter assembly.
+- Update tutorial 08.04 and interface docs with the explicit genomic-forward
+  T selection, online prerequisites and conservative materialization semantics.
+  Retain Glen's JSON/SVG bytes as historical unverified WIP, add a provenance
+  README and scoped LF/CRLF checksum regression, and reconcile stale status
+  projections. Synthetic backbone, blunt-product choice, promoter-to-luc2
+  orientation and circular topology still need independent verification;
+  preview presence is not current-candidate, native or wet-lab acceptance.
+- The requested detailed read-only Claude CLI review was attempted after
+  integration, but returned no response after 23 minutes and was stopped.
+  The integration is not Claude-reviewed; a detailed forwarding prompt is
+  supplied for the owner. Real-data replay, native-platform checks and release
+  gates remain pending; no remote push, tag or publication is performed.
+- Local macOS verification on `a02ef777` plus the integration diff: 66 focused
+  variant, seven dbSNP, three shared-shell materialization and three fresh
+  catalog/manifest/agent-guidance tests pass. The latter shell regression checks
+  both flag names, ambiguous refusal and exact selected-base provenance.
+  Fifty Python checkout/walkthrough/acceptance tests pass with three expected
+  skips, including retained-artifact LF/CRLF hashes. Locked offline Cargo
+  check, formatting, Bash syntax and whitespace checks pass. The existing
+  documentation binary also passes the 29-chapter tutorial check (two known
+  stale human-review warnings); this is not a fresh CLI real-data replay.
+  Session-close confirms scope/provenance and 400 roadmap lines; its dirty-tree
+  warning describes the intentional pending merge, not unrelated user files.
+
 ## 2026-10-07 - Make Dense Splicing Views Readable Without Reordering Biology
 
 - Apply Claude's reviewed FLNA plan on `b1c47ed6`, with fetched public base

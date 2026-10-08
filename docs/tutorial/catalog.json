@@ -47,6 +47,21 @@
         "pharmacogenomics"
       ],
       "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.",
+      "estimated_minutes": 45,
+      "difficulty": "advanced",
+      "network": "online dbSNP lookup and first genome preparation; local construct build",
+      "interfaces": [
+        "native GUI / Promoter design",
+        "CLI / shared shell and workflow",
+        "Agent Assistant (inner, review-first and multiallelic-safe)"
+      ],
+      "starting_state": "Prepared or preparable Human GRCh38 Ensembl 116 reference and network access to NCBI Variation",
+      "produces": [
+        "VKORC1 promoter-context report",
+        "explicit C/T promoter insert pair",
+        "paired mammalian luciferase reporter previews",
+        "reviewable promoter-design handoff bundle"
+      ],
       "review_status": "unreviewed",
       "review_issue_template": "Tutorial confusion",
       "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"

@@ -7875,6 +7875,8 @@ impl GentleEngine {
         position_1based: usize,
         assembly_name: Option<&str>,
         gene_symbols: &[String],
+        reference_allele: Option<&str>,
+        alternate_alleles: &[String],
         local_start_0based: usize,
     ) -> gb_io::seq::Feature {
         let chromosome_label = if chromosome_display.trim().is_empty() {
@@ -7918,6 +7920,39 @@ impl GentleEngine {
             && !chromosome.trim().eq_ignore_ascii_case(chromosome_label)
         {
             qualifiers.push(("refseq_accession".into(), Some(chromosome.to_string())));
+        }
+        let primary_gene = gene_symbols
+            .iter()
+            .map(|value| value.trim())
+            .find(|value| {
+                !value.is_empty()
+                    && !value.chars().any(char::is_whitespace)
+                    && !value.to_ascii_uppercase().starts_with("LOC")
+            })
+            .or_else(|| {
+                gene_symbols
+                    .iter()
+                    .map(|value| value.trim())
+                    .find(|value| !value.is_empty() && !value.chars().any(char::is_whitespace))
+            });
+        if let Some(primary_gene) = primary_gene {
+            qualifiers.push(("gene".into(), Some(primary_gene.to_string())));
+        }
+        for gene_symbol in gene_symbols
+            .iter()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            qualifiers.push(("dbsnp_gene".into(), Some(gene_symbol.to_string())));
+        }
+        if let Some(reference_allele) = reference_allele
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            qualifiers.push(("vcf_ref".into(), Some(reference_allele.to_string())));
+        }
+        if !alternate_alleles.is_empty() {
+            qualifiers.push(("vcf_alt".into(), Some(alternate_alleles.join(","))));
         }
         gb_io::seq::Feature {
             kind: "variation".into(),
@@ -42433,6 +42468,8 @@ impl GentleEngine {
                                     placement.position_1based,
                                     placement.assembly_name.as_deref(),
                                     &placement.gene_symbols,
+                                    placement.reference_allele.as_deref(),
+                                    &placement.alternate_alleles,
                                     local_start_0based,
                                 ));
                             Self::prepare_sequence(dna);
@@ -52013,6 +52050,7 @@ impl GentleEngine {
                     input,
                     variant_label_or_id,
                     allele,
+                    alternate_allele,
                     output_id,
                 } => {
                     parent_seq_ids.push(input.clone());
@@ -52020,6 +52058,7 @@ impl GentleEngine {
                         &input,
                         variant_label_or_id.as_deref(),
                         allele,
+                        alternate_allele.as_deref(),
                         output_id.as_deref(),
                     )?;
                     let seq_id = self.unique_seq_id(&base);
