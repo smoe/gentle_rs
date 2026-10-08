@@ -137,3 +137,10 @@ follow-up merely to improve those observations.
   `a19747758f82844cd762c0cb0d4391998374e5f5388a675e3d2b5a1cad946f2d`.
   This older-binary pilot makes no build-profile, fresh 08.04, package,
   Linux-authentication or scientific-approval claim.
+- The `1aee220c` native job compiled its three binaries and passed all three
+  pair regressions. Its starter/oracle test rejected an incorrect uppercase
+  fixture expectation: GenBank retains lowercase input, and materialization
+  uppercases only the selected reference/alternate base. Correct the test and
+  synthetic visual-proof helper while keeping exact source preservation,
+  unchanged nonvariant bytes and the sole reference/alternate C/T difference.
+  Generation and native input replay did not run after that failure.

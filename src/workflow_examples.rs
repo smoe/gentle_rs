@@ -8631,16 +8631,19 @@ mod tests {
             crate::engine::protocol::FactTruth::Satisfied
         );
         let source_bases = starter.state().sequences[input].forward_bytes();
-        assert_eq!(source_bases, b"AAAAAACAAAAAAAAAAAAA");
+        assert_eq!(source_bases, b"aaaaaacaaaaaaaaaaaaa");
         assert_eq!(
             source_bases,
             oracle.state().sequences[input].forward_bytes()
         );
+        // GenBank preserves input case; materialization writes the selected base uppercase.
+        let mut reference_bases = source_bases.to_vec();
+        reference_bases[6] = b'C';
         assert_eq!(
-            source_bases,
+            reference_bases,
             oracle.state().sequences[reference].forward_bytes()
         );
-        let differences: Vec<_> = source_bases
+        let differences: Vec<_> = reference_bases
             .iter()
             .zip(oracle.state().sequences[alternate].forward_bytes())
             .enumerate()
