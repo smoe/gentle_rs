@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-08 - Add Real Wheel-Input CPU Benchmark Cases
+
+- Extend the maintained GUI operations benchmark with real horizontal egui
+  wheel input and a separately timed following frame at all four screen sizes.
+  Fresh warmed inputs and window destruction stay outside each timed loop.
+- Require untimed bidirectional viewport movement, unchanged sequence/annotation
+  content and nonempty paint output. Emit source/content-bound observations;
+  keep the authentic optional PATZ1 workload and older baselines unchanged.
+- Add an opt-in, non-publishing CI smoke that prepares PATZ1 offline and retains
+  all 24 observations, the executable, build logs, toolchain and lock/source
+  receipts. This is authored coverage, not an executed or native-latency pass.
+  Formatting and whitespace checks pass; no local Rust builds/tests were run.
+
 ## 2026-10-08 - Preserve Glen's Exact-Candidate Tutorial And GUI Audit
 
 - Retain the owner-supplied [Linux/X11 audit](glen_tutorial_parity_gui_audit_20261008.md)

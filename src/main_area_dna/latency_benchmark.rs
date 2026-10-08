@@ -191,6 +191,11 @@ impl MainAreaDna {
         }
     }
 
+    /// Observe the actual clamped viewport without changing presentation state.
+    pub fn latency_benchmark_viewport(&self) -> (usize, usize, usize) {
+        self.current_linear_viewport()
+    }
+
     /// Exercise the same display setters used by normal viewer interactions.
     pub fn apply_latency_benchmark_interaction(&mut self, interaction: DnaLatencyInteraction) {
         let (start, span, len) = self.current_linear_viewport();

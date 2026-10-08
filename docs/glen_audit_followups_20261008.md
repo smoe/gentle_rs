@@ -29,7 +29,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | 2. Tutorial 08.04 GUI/agent contracts | In progress | Add closed semantic controls and typed starter/oracle acceptance plus shared-shell agent parity. Require explicit genomic-forward T, refusal of unspecified A/G/T, source-bound reports and matched inserts differing at exactly one reviewed base. Compile and execute on a fresh exact candidate via CI/external validation. |
 | 3. Live-agent acceptance | Pending | Local Codex reports authenticated ChatGPT access; Glen's isolated Linux adapter reported HTTP 401. A fresh GENtle request, real model response, command validation and review-first execution on public data must pass; echo transport is not model-planning acceptance. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Pending | Preserve native canvas appearance. Retain raw, candidate/binary/snapshot-bound captures and an inspectable base-level C/T comparison. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
-| 5. Scroll benchmarks | Pending | Add deterministic scroll input plus next-frame CPU cases over the maintained fixtures/sizes, with assertions that the viewport really changes and sequence content does not. Retain exact build/profile/toolchain and smoke results; timing/native responsiveness verdict remains external. |
+| 5. Scroll benchmarks | Authored; execution pending | Real egui wheel-event and following-frame CPU cases added over the maintained fixtures/sizes. Untimed checks require bidirectional viewport movement, nonempty frames and unchanged sequence/annotation inputs. Exact build/profile/toolchain, PATZ1 preparation and CI/external smoke evidence are still required; timing/native responsiveness verdict remains external. |
 | 6. .12 package acceptance | Pending | Freeze one final pushed candidate; dispatch native installers and runtime-cli container with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at that same source/lock SHA. Native GUI and scientific approval remain separate. |
 
 ## Retained Baseline
@@ -60,5 +60,9 @@ follow-up merely to improve those observations.
   report SHA-256 match exactly; `python3 -m unittest scripts.test_tutorial_checkouts
   -v` passed 21/21 on macOS. The new regression includes LF/CRLF checkouts and a
   failing-hash negative control without the report's LF attribute.
+- Audit archive commit `5bea5ace`: the focused report LF/CRLF regression was
+  rerun successfully on macOS. The scroll follow-up adds an opt-in Linux CI smoke
+  with all three fixtures and 24 directional observations; Rust execution is
+  still pending. Scoped `rustfmt`, YAML parsing and `git diff --check` pass.
 - No new Rust, live-model, native GUI, benchmark or package execution is yet
   claimed. Do not mark the goal complete while an item remains unverified.
