@@ -1,5 +1,39 @@
 # GENtle Changelog
 
+## 2026-10-08 - Guard Mixed dbSNP Alleles And VKORC1 Pair Rollback
+
+- Reconcile the full `91038fe0` review against clean `d8a2a1c1`: M1 reference
+  and assembly checks, M2 lossless non-SNV SPDI and L1 reviewed alternate
+  handoffs already landed in `f14255cb`. Do not duplicate those engine paths
+  or treat prior source inspection as a fresh test pass.
+- Complete M2's all-alleles boundary: check every retained raw SPDI
+  deleted/inserted sequence before emitting SNV-only VCF fields. An indel
+  excluded from normalized same-reference alternates must not permit partial
+  SNP classification. Extend the existing synthetic fetch regression with
+  mixed SNP/deletion and SNP/insertion cases, raw evidence equality and
+  no-materialization assertions.
+- Close the remaining M3 execution gap in this checkout: preserve shared
+  preflight, then compose the two canonical allele operations under one write
+  lock with the existing engine rollback helper. Publish GUI success/output
+  names only after both succeed. No biology, command/schema, automatic
+  approval, successful-pair undo granularity or external-file transaction is
+  changed.
+- Strengthen the preflight test with unchanged active-view assertions and add
+  an inline hand-crafted late-refusal regression through the GUI's execution
+  seam: restore project/history, retain existing redo, invalidate revisions,
+  and retry with exact unsuffixed reference/alternate names and unchanged
+  source. No real-locus fixture or scientific artifact is invented.
+- Add `docs/vkorc1_allele_review_followup_20261008.md` with M1-M3/L1 evidence,
+  focused commands and separate native C/T/raw-archive/package gates; update
+  GUI and durable decisions. L2/L3 cosmetics remain out of scope.
+  Rust tests and Cargo check stay with Glen/CI under the owner's instruction;
+  no native GUI, real-reference or release acceptance is claimed.
+- Local macOS formatting and whitespace pass. Python tutorial
+  checkout/walkthrough checks run 29 cases: 26 pass, three explicit
+  existing-binary replay skips. Session-close reports four OK, two routine
+  warnings for nine intentional edited/new files and manual scope confirmation,
+  no failures; the roadmap remains 400 lines. No Cargo build/test is run.
+
 ## 2026-10-08 - Reconcile Primer Backlog With Live Preflight
 
 - Cross-check the older `6f5f2365` review against local `84cc8e16`, without

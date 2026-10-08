@@ -23957,6 +23957,28 @@ fn dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi() {
             false,
         ),
         (
+            "mixed_deletion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "mixed_insertion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
             "ambiguous",
             "BoundGenome",
             "SyntheticAsm1",
@@ -23974,7 +23996,15 @@ fn dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi() {
                 "deleted_sequence": reference, "inserted_sequence": inserted,
             })
         };
-        let raw_alleles = [spdi(reference), spdi(alternate)];
+        let mut raw_alleles = vec![spdi(reference), spdi(alternate)];
+        if matches!(case, "mixed_deletion" | "mixed_insertion") {
+            // Different indel reference spans must not disappear from SNV classification.
+            raw_alleles.push(json!({
+                "seq_id": "NC_000001.11", "position": 29,
+                "deleted_sequence": if case == "mixed_deletion" { "CC" } else { "" },
+                "inserted_sequence": if case == "mixed_deletion" { "" } else { "A" },
+            }));
+        }
         let document = json!({"refsnp_id": "123", "primary_snapshot_data": {
             "placements_with_allele": [{
                 "seq_id": "NC_000001.11", "is_ptlp": true,

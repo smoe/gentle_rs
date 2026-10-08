@@ -80,12 +80,28 @@ impl DbsnpReferenceCheck {
 
 impl DbsnpResolvedPlacement {
     pub(super) fn is_snv(&self) -> bool {
-        let single_base = |value: &str| matches!(value.as_bytes(), [b'A' | b'C' | b'G' | b'T']);
+        let single_base = |value: &str| {
+            value.len() == 1
+                && matches!(
+                    value.as_bytes()[0].to_ascii_uppercase(),
+                    b'A' | b'C' | b'G' | b'T'
+                )
+        };
         self.reference_allele.as_deref().is_some_and(single_base)
             && self
                 .alternate_alleles
                 .iter()
                 .all(|value| single_base(value))
+            && !self.spdi_alleles.is_empty()
+            && self.spdi_alleles.iter().all(|spdi| {
+                ["deleted_sequence", "inserted_sequence"]
+                    .iter()
+                    .all(|field| {
+                        spdi.get(*field)
+                            .and_then(|value| value.as_str())
+                            .is_some_and(single_base)
+                    })
+            })
     }
 
     pub(super) fn assembly_check(&self) -> &'static str {
