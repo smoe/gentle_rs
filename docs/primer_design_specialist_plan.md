@@ -1,21 +1,38 @@
 # Primer Design Specialist Window Plan
 
-Last updated: 2026-03-03
+Last updated: 2026-10-08
 
-## Current Gap
+## Verified Starting Point
 
 Engine and shared-shell support for primer-pair design is already available via
 `DesignPrimerPairs` plus report inspection/export (`primers design`,
 `primers list-reports`, `primers show-report`, `primers export-report`).
 
-The remaining gap is GUI presentation: there is no dedicated, report-centric
-primer design workflow window for designing pairs, inspecting alternatives, and
-filtering/ranking outcomes before PCR handoff.
+The dedicated PCR Designer already provides pair-design forms, alternative
+pair/report inspection, backend provenance, Primer3 preflight and explicit PCR
+handoffs. The transcript-panel and gene-assay-study workspaces are additional,
+narrower entry points. See [the GUI guide](gui.md) and
+[PATZ1 tutorial 04.08](tutorial/04-08_gene_assay_study_gui.md). Their existence
+does not establish native acceptance at the current candidate.
 
-## Scope (This Plan)
+The remaining specialist scope is a general report-centric entry point,
+persisted filtered views and the separately proposed single-primer pane. Do
+not implement another pair-design engine or duplicate the PCR Designer just
+to satisfy this historical plan. First reconcile each proposed control with
+its existing owner.
 
-- Add a dedicated primer specialist GUI window.
-- Support primer-pair design execution and report browsing in that window.
+Whole-reference specificity is a separate evidence workflow. Source-bound
+intended-target geometry and companion per-dimension reference-selection
+receipts now prevent a newer report on another database from silently replacing
+the active evidence. Legacy unbound evidence is inspectable, not passing.
+The approved standalone multi-reference handoff does not add panel fan-out or
+automatically attach its aggregate to order readiness. Those integrations,
+automatic tail selection and engine-native single-primer design remain separate.
+
+## Remaining Scope (Requires Separate Approval)
+
+- Reuse the PCR Designer and shared report paths for a general specialist entry
+  point, only where a verified presentation gap remains.
 - Support alternative-result filtering with persisted filtered views.
 - Add a UI-derived single-primer inspection pane (derived from pair reports).
 - Add explicit handoff actions into PCR, PCR Advanced, and PCR Mutagenesis
@@ -52,9 +69,10 @@ filtering/ranking outcomes before PCR handoff.
 
 ### Phase 1: specialist window + pair reports
 
-- Add dedicated primer specialist window entry points (menu + command palette).
-- Implement pair-design run form and report list/detail rendering.
-- Expose backend provenance in GUI result detail.
+- Audit the existing PCR Designer before adding menu/palette entry points.
+- Reuse its pair-design form and report details; do not treat those implemented
+  controls or its backend/preflight display as outstanding engine work.
+- Identify any remaining general report-browser presentation gap explicitly.
 
 ### Phase 2: persisted filtered views
 

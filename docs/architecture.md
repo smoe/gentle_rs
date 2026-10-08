@@ -2295,6 +2295,12 @@ Primer3 wrapper integration status (baseline implemented):
 - Engine backend selection is now explicit and deterministic via parameters:
   - `primer_design_backend = auto|internal|primer3`
   - `primer3_executable` (default `primer3_core`)
+- The GUI's `Primer backend and Primer3 preflight` panel already exposes
+  backend/executable settings and an explicit `Probe Primer3` action. It calls
+  the shared engine preflight and displays reachability, version/progress
+  capability, resolved path, working directory and probe diagnostics. The
+  shared-shell equivalent is `primers preflight`; implementation does not
+  establish current-candidate native GUI acceptance.
 - `auto` mode attempts Primer3 and deterministically falls back to the internal
   backend with explicit warning text when Primer3 is unavailable.
 - GENtle probes `primer3_core --help` once per resolved executable identity and
@@ -2323,7 +2329,6 @@ Primer3 wrapper integration status (baseline implemented):
 - Remaining work:
   - deeper Primer3 constraint mapping parity for edge-case constraints
   - broader fixture-backed equivalence matrix between internal and Primer3
-  - dedicated preflight/status views in GUI configuration panels
   - multi-BLAST specificity tiers integrated into primer-pair post-filtering
 
 ### Primer/PCR/BLAST UI and internal BLAST abstraction plan (new)
