@@ -138,18 +138,18 @@ struct NormalizedCdnaAssayTestRequest {
 }
 
 #[derive(Debug, Clone)]
-struct PrimerSpecificityResolvedInput {
-    primer_report_id: Option<String>,
-    pair_rank: Option<usize>,
-    pair_index: Option<usize>,
-    expected_amplicon_length_bp: Option<usize>,
-    primary_seq_id: Option<String>,
-    related_seq_ids: Vec<String>,
-    design_provenance: PrimerDesignProvenanceCitation,
-    source_handoff_id: Option<String>,
-    intended_target: PrimerSpecificityIntendedTarget,
-    forward: PrimerSpecificityInputPrimer,
-    reverse: PrimerSpecificityInputPrimer,
+pub(super) struct PrimerSpecificityResolvedInput {
+    pub(super) primer_report_id: Option<String>,
+    pub(super) pair_rank: Option<usize>,
+    pub(super) pair_index: Option<usize>,
+    pub(super) expected_amplicon_length_bp: Option<usize>,
+    pub(super) primary_seq_id: Option<String>,
+    pub(super) related_seq_ids: Vec<String>,
+    pub(super) design_provenance: PrimerDesignProvenanceCitation,
+    pub(super) source_handoff_id: Option<String>,
+    pub(super) intended_target: PrimerSpecificityIntendedTarget,
+    pub(super) forward: PrimerSpecificityInputPrimer,
+    pub(super) reverse: PrimerSpecificityInputPrimer,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -11128,7 +11128,7 @@ impl GentleEngine {
         Ok(out)
     }
 
-    fn primer_specificity_input_from_record(
+    pub(super) fn primer_specificity_input_from_record(
         role: PrimerSpecificityPrimerRole,
         record: &PrimerDesignPrimerRecord,
     ) -> Result<PrimerSpecificityInputPrimer, EngineError> {
@@ -11231,8 +11231,11 @@ impl GentleEngine {
             pair.amplicon_start_0based,
             pair.amplicon_end_0based_exclusive,
         );
+        let source_reference = self.primer_specificity_source_reference_from_anchor(&anchor);
         let subject_id = anchor.chromosome;
         PrimerSpecificityIntendedTarget {
+            source_reference,
+            reference_binding: None,
             model: PrimerSpecificityIntendedTargetModel::GenomicInterval,
             subject_id: Some(subject_id),
             forward_binding_ranges: vec![forward],
@@ -11439,7 +11442,7 @@ impl GentleEngine {
         }
     }
 
-    fn resolve_primer_specificity_input(
+    pub(super) fn resolve_primer_specificity_input(
         &self,
         primer_report_id: Option<&str>,
         pair_rank: Option<usize>,
@@ -15984,7 +15987,7 @@ impl GentleEngine {
         )
     }
 
-    fn normalize_primer_specificity_policy(
+    pub(super) fn normalize_primer_specificity_policy(
         target_genome_id: &str,
         mut policy: PrimerSpecificityPolicy,
     ) -> Result<(String, PrimerSpecificityPolicy), EngineError> {
@@ -16150,9 +16153,9 @@ impl GentleEngine {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn prepare_primer_specificity_handoff_resolved(
+    pub(super) fn prepare_primer_specificity_handoff_resolved(
         &self,
-        resolved_input: PrimerSpecificityResolvedInput,
+        mut resolved_input: PrimerSpecificityResolvedInput,
         target_genome_id: &str,
         policy: PrimerSpecificityPolicy,
         catalog_path: Option<&str>,
@@ -16250,6 +16253,10 @@ impl GentleEngine {
                 ),
                 cause_chain: vec![],
             })?;
+        resolved_input.intended_target = Self::primer_specificity_bind_intended_target(
+            &resolved_input.intended_target,
+            Some(&blast_database),
+        );
         let blast_db_prefix = inspection
             .blast_db_prefix
             .clone()
@@ -16600,6 +16607,11 @@ impl GentleEngine {
         if current.prefix != planned.prefix
             || current.index_kind != planned.index_kind
             || current.content_fingerprint != planned.content_fingerprint
+            || current.source_assembly != planned.source_assembly
+            || current.source_release != planned.source_release
+            || current.subject_annotation_fingerprint != planned.subject_annotation_fingerprint
+            || current.subject_annotation_fingerprint_algorithm
+                != planned.subject_annotation_fingerprint_algorithm
         {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -16615,7 +16627,7 @@ impl GentleEngine {
         Ok(Some(current))
     }
 
-    fn primer_specificity_report_from_handoff_outputs(
+    pub(super) fn primer_specificity_report_from_handoff_outputs(
         &self,
         handoff: &PrimerSpecificityHandoff,
         validated_outputs: Option<&BTreeMap<String, String>>,
@@ -16677,24 +16689,44 @@ impl GentleEngine {
         };
         let forward = primer_for_role(PrimerSpecificityPrimerRole::Forward)?;
         let reverse = primer_for_role(PrimerSpecificityPrimerRole::Reverse)?;
+        // Read once: parsed rows and artifact hashes must describe the same bytes.
+        let retained_outputs;
+        let outputs = match validated_outputs {
+            Some(outputs) => outputs,
+            None => {
+                retained_outputs = handoff
+                    .commands
+                    .iter()
+                    .map(|command| {
+                        fs::read_to_string(&command.output_tsv_path)
+                            .map(|text| (command.command_id.clone(), text))
+                            .map_err(|error| {
+                                EngineError::new(
+                                    ErrorCode::Io,
+                                    format!(
+                                        "Could not read BLAST output '{}': {error}",
+                                        command.output_tsv_path
+                                    ),
+                                )
+                            })
+                    })
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
+                &retained_outputs
+            }
+        };
         let blast_for_role = |role| {
             let command = command_for_role(role)?;
-            match validated_outputs {
-                Some(outputs) => {
-                    let output = outputs
-                        .get(&command.command_id)
-                        .ok_or_else(|| EngineError {
-                            code: ErrorCode::InvalidInput,
-                            message: format!(
-                                "No validated output bytes were retained for command '{}'",
-                                command.command_id
-                            ),
-                            cause_chain: vec![],
-                        })?;
-                    Self::primer_specificity_blast_from_handoff_output(handoff, command, output)
-                }
-                None => Self::primer_specificity_blast_from_handoff(handoff, command),
-            }
+            let output = outputs
+                .get(&command.command_id)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "No validated output bytes were retained for command '{}'",
+                        command.command_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+            Self::primer_specificity_blast_from_handoff_output(handoff, command, output)
         };
         let forward_blast = blast_for_role(PrimerSpecificityPrimerRole::Forward)?;
         let reverse_blast = blast_for_role(PrimerSpecificityPrimerRole::Reverse)?;
@@ -16753,45 +16785,17 @@ impl GentleEngine {
             import_warnings,
         )?;
         for command in &handoff.commands {
-            let bytes = match validated_outputs {
-                Some(outputs) => outputs
-                    .get(&command.command_id)
-                    .map(String::as_bytes)
-                    .ok_or_else(|| EngineError {
-                        code: ErrorCode::InvalidInput,
-                        message: format!(
-                            "No validated output bytes were retained for command '{}'",
-                            command.command_id
-                        ),
-                        cause_chain: vec![],
-                    })?,
-                None => {
-                    let bytes =
-                        fs::read(&command.output_tsv_path).map_err(|error| EngineError {
-                            code: ErrorCode::Io,
-                            message: format!(
-                                "Could not read raw BLAST detail artifact '{}': {}",
-                                command.output_tsv_path, error
-                            ),
-                            cause_chain: vec![],
-                        })?;
-                    report
-                        .raw_detail_artifacts
-                        .push(ComputationalArtifactExternalInput {
-                            source_kind: "primer_specificity_raw_blast_tsv".to_string(),
-                            source_id: command.command_id.clone(),
-                            source_path: Some(command.output_tsv_path.clone()),
-                            checksum: Some(sha256_prefixed_bytes(&bytes)),
-                            checksum_algorithm: Some("sha256".to_string()),
-                            label: Some(format!(
-                                "{} primer raw BLAST TSV ({} bytes)",
-                                command.role.as_str(),
-                                bytes.len()
-                            )),
-                        });
-                    continue;
-                }
-            };
+            let bytes = outputs
+                .get(&command.command_id)
+                .map(String::as_bytes)
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "No validated output bytes were retained for command '{}'",
+                        command.command_id
+                    ),
+                    cause_chain: vec![],
+                })?;
             report
                 .raw_detail_artifacts
                 .push(ComputationalArtifactExternalInput {
@@ -19430,7 +19434,7 @@ impl GentleEngine {
         Ok(short_sha256_id("panel_specificity_handoff", &identity))
     }
 
-    fn primer_specificity_handoff_id_from_record(
+    pub(super) fn primer_specificity_handoff_id_from_record(
         handoff: &PrimerSpecificityHandoff,
     ) -> Result<String, EngineError> {
         let forward = handoff
@@ -19687,6 +19691,10 @@ impl GentleEngine {
             .flatten();
 
         PrimerSpecificityIntendedTarget {
+            source_reference: anchor
+                .as_ref()
+                .and_then(|anchor| self.primer_specificity_source_reference_from_anchor(anchor)),
+            reference_binding: None,
             model: PrimerSpecificityIntendedTargetModel::TranscriptSet,
             subject_id,
             forward_binding_ranges,
@@ -19745,17 +19753,27 @@ impl GentleEngine {
         if intended_transcript_ids.is_empty() {
             intended_transcript_ids.insert(assay.design_transcript_id.clone());
         }
-        Ok(
-            self.primer_specificity_intended_target_from_cdna_assay_for_transcripts(
-                &assay_test,
-                Some(&intended_transcript_ids),
-                report.source_genome_anchor.as_ref(),
-                &format!(
-                    "transcript_assay_panel:{}:assay={}",
-                    report.report_id, assay.assay_id
-                ),
+        let mut intended = self.primer_specificity_intended_target_from_cdna_assay_for_transcripts(
+            &assay_test,
+            Some(&intended_transcript_ids),
+            report.source_genome_anchor.as_ref(),
+            &format!(
+                "transcript_assay_panel:{}:assay={}",
+                report.report_id, assay.assay_id
             ),
-        )
+        );
+        if let Some(source) = self
+            .read_primer_design_store()
+            .primer_specificity_panel_sources
+            .get(&report.report_id)
+            .filter(|source| {
+                Self::primer_specificity_selection_panel_digest(report)
+                    .is_ok_and(|digest| digest == source.panel_design_digest)
+            })
+        {
+            intended.source_reference = Some(source.source_reference.clone());
+        }
+        Ok(intended)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -20423,6 +20441,8 @@ impl GentleEngine {
             TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
         } else if !failing_assay_ids.is_empty() {
             TranscriptAssayPanelSpecificityAcceptanceStatus::SpecificityFail
+        } else if !incomplete_assay_ids.is_empty() {
+            TranscriptAssayPanelSpecificityAcceptanceStatus::Incomplete
         } else if !not_assessed_assay_ids.is_empty() {
             TranscriptAssayPanelSpecificityAcceptanceStatus::NotAssessed
         } else {
@@ -20488,6 +20508,7 @@ impl GentleEngine {
             && !assessments.is_empty()
         {
             let mut updated = report;
+            let previous_assessments = updated.genomic_specificity_assessments.clone();
             updated.specificity_request = Some(TranscriptAssaySpecificityRequest {
                 policy: handoff.policy.clone(),
                 catalog_path: handoff
@@ -20528,6 +20549,13 @@ impl GentleEngine {
             }
             Self::refresh_transcript_assay_panel_primer_pair_summaries(&mut updated);
             let mut store = self.read_primer_design_store();
+            for previous in previous_assessments {
+                store
+                    .primer_specificity_reports
+                    .entry(previous.report.report_id.clone())
+                    .or_insert(previous.report);
+            }
+            Self::record_primer_specificity_reference_selection(&mut store, &updated, &acceptance)?;
             store
                 .transcript_assay_panels
                 .insert(updated.report_id.clone(), updated);
@@ -21064,7 +21092,10 @@ impl GentleEngine {
                 search_completeness.reason
             ));
         }
-        let mut intended_target = resolved_input.intended_target.clone();
+        let mut intended_target = Self::primer_specificity_bind_intended_target(
+            &resolved_input.intended_target,
+            blast_database.as_ref(),
+        );
         if let Some(subject_id) = intended_target.subject_id.clone() {
             intended_target.subject_id = Some(Self::primer_specificity_normalize_subject_id(
                 &subject_id,
@@ -21178,7 +21209,7 @@ impl GentleEngine {
             &policy,
             index_kind,
         );
-        let summary = Self::primer_specificity_summary(
+        let mut summary = Self::primer_specificity_summary(
             &forward_hits,
             &reverse_hits,
             &amplicons,
@@ -21186,6 +21217,11 @@ impl GentleEngine {
             index_kind,
             search_completeness.complete,
         );
+        if intended_target.reference_binding.is_none() {
+            summary.specificity_pass = false;
+            summary.status = "not_assessed".to_string();
+            summary.summary = "The BLAST search is retained, but intended-target reference binding is unavailable or incompatible; no specificity pass/fail claim is made.".to_string();
+        }
         let (genomic_specificity, transcriptome_specificity) =
             Self::primer_specificity_target_assessments(
                 &summary,
@@ -32371,33 +32407,34 @@ impl GentleEngine {
     }
 
     fn experimental_assay_specificity_dimension(
+        &self,
         panel: &TranscriptAssayPanelReport,
         assay_id: &str,
         target_space: BlastDatabaseIndexKind,
+        current_reference: Option<bool>,
     ) -> (ExperimentalAssayGateStatus, String, Vec<String>) {
-        let report = panel
-            .genomic_specificity_assessments
-            .iter()
-            .filter(|row| {
-                row.assay_id == assay_id && row.report.target_kind == target_space.as_str()
-            })
-            .max_by(|left, right| {
-                left.report
-                    .generated_at_unix_ms
-                    .cmp(&right.report.generated_at_unix_ms)
-                    .then(left.report.report_id.cmp(&right.report.report_id))
-            })
-            .map(|row| &row.report);
+        let report = self.selected_primer_specificity_report(panel, assay_id, target_space);
         let Some(report) = report else {
             return (
-                ExperimentalAssayGateStatus::NotEvaluated,
+                if panel.genomic_specificity_assessments.iter().any(|row| {
+                    row.assay_id == assay_id && row.report.target_kind == target_space.as_str()
+                }) {
+                    ExperimentalAssayGateStatus::Incomplete
+                } else {
+                    ExperimentalAssayGateStatus::NotEvaluated
+                },
                 format!(
-                    "No persisted {} primer-specificity report is available for this assay.",
+                    "No exact current {} reference-selection receipt is available for this assay; legacy or ambiguous evidence remains unassessed.",
                     target_space.as_str()
                 ),
                 vec![],
             );
         };
+        if current_reference != Some(true) {
+            return (ExperimentalAssayGateStatus::Incomplete,
+                "The selected specificity evidence is retained historically, but the reference is unavailable or changed; validated re-finalization is required.".to_string(),
+                vec![report.report_id]);
+        }
         let dimension = match target_space {
             BlastDatabaseIndexKind::GenomicDna => &report.genomic_specificity,
             BlastDatabaseIndexKind::TranscriptomeCdna => &report.transcriptome_specificity,
@@ -33151,6 +33188,7 @@ impl GentleEngine {
         }
         let panel = self.get_transcript_assay_panel_report(panel_report_id)?;
         let coverage_summary = Self::experimental_assay_coverage_summary(&panel);
+        let specificity_freshness = self.primer_specificity_selection_freshness(&panel);
         let panel_bytes = serde_json::to_vec(&panel).map_err(|error| EngineError {
             code: ErrorCode::Internal,
             message: format!("Could not fingerprint transcript assay panel: {error}"),
@@ -33311,44 +33349,19 @@ impl GentleEngine {
                 format!("Stored primer-pair QC status: {}", summary.oligo_qc.status),
                 vec![summary.assay_id.clone()],
             ));
-            let (mut genomic_carryover_status, mut genomic_carryover_summary, mut genomic_ids) =
-                Self::experimental_assay_specificity_dimension(
+            let (genomic_carryover_status, genomic_carryover_summary, genomic_ids) = self
+                .experimental_assay_specificity_dimension(
                     &panel,
                     &assay.assay_id,
                     BlastDatabaseIndexKind::GenomicDna,
+                    specificity_freshness.get("genomic_dna").copied(),
                 );
-            if genomic_carryover_status == ExperimentalAssayGateStatus::NotEvaluated {
-                genomic_carryover_status = match summary.whole_genome_specificity_status.as_str() {
-                    "external_blast_pass" | "specificity_pass" | "pass" => {
-                        ExperimentalAssayGateStatus::Pass
-                    }
-                    "external_blast_incomplete"
-                    | "external_blast_not_assessed"
-                    | "not_assessed"
-                    | "incomplete" => ExperimentalAssayGateStatus::Incomplete,
-                    "external_blast_fail"
-                    | "external_blast_specificity_fail"
-                    | "specificity_fail"
-                    | "fail" => ExperimentalAssayGateStatus::Fail,
-                    _ => ExperimentalAssayGateStatus::NotEvaluated,
-                };
-                if genomic_carryover_status != ExperimentalAssayGateStatus::NotEvaluated {
-                    genomic_carryover_summary = format!(
-                        "Legacy stored genomic specificity status: {}",
-                        summary.whole_genome_specificity_status
-                    );
-                    genomic_ids = panel
-                        .specificity_acceptance
-                        .as_ref()
-                        .map(|acceptance| vec![acceptance.acceptance_id.clone()])
-                        .unwrap_or_default();
-                }
-            }
-            let (transcriptome_status, transcriptome_summary, transcriptome_ids) =
-                Self::experimental_assay_specificity_dimension(
+            let (transcriptome_status, transcriptome_summary, transcriptome_ids) = self
+                .experimental_assay_specificity_dimension(
                     &panel,
                     &assay.assay_id,
                     BlastDatabaseIndexKind::TranscriptomeCdna,
+                    specificity_freshness.get("transcriptome_cdna").copied(),
                 );
             gates.push(Self::experimental_assay_gate(
                 "genomic_carryover",
@@ -47203,6 +47216,20 @@ impl GentleEngine {
                         handoff.handoff_path
                     ));
                     result.primer_specificity_handoff = Some(Box::new(handoff));
+                }
+                Operation::PreparePrimerPairMultiReferenceSpecificityHandoff {
+                    request,
+                    output_dir,
+                } => {
+                    let handoff = self.prepare_primer_pair_multi_reference_specificity_handoff(
+                        *request,
+                        &output_dir,
+                    )?;
+                    result.messages.push(format!(
+                        "Prepared {} explicit reference(s); no BLAST search was launched",
+                        handoff.references.len()
+                    ));
+                    result.primer_specificity_multi_handoff = Some(Box::new(handoff));
                 }
                 Operation::ImportPrimerPairSpecificityHandoff { handoff_path, path } => {
                     let report = self.import_primer_pair_specificity_handoff(&handoff_path)?;

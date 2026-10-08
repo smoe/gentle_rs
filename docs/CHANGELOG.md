@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-08 - Reference-Bound Primer Specificity and Plan Reconciliation
+
+- Bind intended-target geometry to the original source reference, assembly and
+  release, or an explicit exact target-reference mapping. Missing or incompatible
+  binding is `not_assessed`; a chromosome alias is not an assembly mapping.
+- Select panel specificity using hash-bound companion receipts independently
+  for genomic and transcriptome evidence, not the newest timestamp or a legacy
+  summary string. Complete re-finalization retains the replaced selection and
+  its report snapshot; incomplete finalization cannot replace it.
+- Hash the same retained BLAST bytes that are parsed, include annealing/tail
+  interpretation in pair binding and recheck database/annotation identities on
+  finalization and explicit readiness construction.
+- Reconcile the historical specialist-window plan with the existing PCR
+  Designer, transcript-panel forms and Primer3 preflight. Filtered views,
+  general single-primer design and panel-wide multi-reference integration are
+  not claimed implemented.
+- Add synthetic binding, reference-selection/history, legacy and changed-tail
+  regressions. Rust execution and Cargo check remain deferred to Glen/CI under
+  the owner's no-local-build instruction; formatting/whitespace are checked.
+
 ## 2026-10-08 - Bind Legacy Splicing Cache To Boundary Content
 
 - Record Claude's independently reported macOS results at `30f23aa4`:
@@ -23,6 +43,23 @@
 - Formatting and whitespace pass. Session-close reports four OK, two routine
   warnings for five intentional uncommitted files and manual scope confirmation,
   no failures; the roadmap remains 400 lines.
+
+## 2026-10-08 - Correct Primer3 Preflight Implementation Status
+
+- Recheck Claude's primer-design status review against `f14255cb`. Remove the
+  stale GUI-preflight remaining-work bullet from the architecture document:
+  `Probe Primer3` already calls the shared engine preflight and renders its
+  diagnostic status. Record the GUI location and equivalent `primers preflight`
+  route without claiming new native acceptance.
+- General single-primer design, automatic tail/adapter selection, persisted
+  filtered report views, tiered multi-reference specificity and deeper Primer3
+  parity remain separate open work. Existing terminal-exon RT-pool design,
+  supplied 5-prime tails and explicit specificity workflows are narrower
+  implemented capabilities, not evidence that those broader gaps are closed.
+- Documentation only; no biological results, readiness gates, command routes,
+  release priorities, generated artifacts or private outputs change. Verify
+  source call sites, whitespace and session-close hygiene; Rust execution and
+  Cargo check remain deferred to Glen/CI under the owner's instruction.
 
 ## 2026-10-08 - Prevent Reversing Transcript-Oriented cDNA Twice
 

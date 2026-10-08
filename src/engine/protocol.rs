@@ -22,6 +22,10 @@ pub use reporter_fragment_selection::*;
 mod transcript_capture;
 pub use transcript_capture::*;
 
+#[path = "protocol/primer_specificity_multi.rs"]
+mod primer_specificity_multi;
+pub use primer_specificity_multi::*;
+
 use crate::genomes::{BlastDatabaseInspectionReport, BlastSubjectAnnotation};
 use crate::primerbank::PrimerBankSearchReport;
 
@@ -5532,6 +5536,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_handoff: Option<Box<PrimerSpecificityHandoff>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_specificity_multi_handoff: Option<Box<PrimerSpecificityMultiHandoff>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_report: Option<Box<PrimerSpecificityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<Box<ConstructReasoningGraph>>,
@@ -7958,6 +7964,12 @@ fn primer_specificity_bool_is_false(value: &bool) -> bool {
 #[serde(default)]
 /// Explicit intended-target geometry; never inferred from cDNA product length.
 pub struct PrimerSpecificityIntendedTarget {
+    /// Original coordinate context. Missing legacy identity is not a mapping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_reference: Option<PrimerSpecificitySourceReference>,
+    /// Exact searched reference to which this geometry was admitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_binding: Option<PrimerSpecificityReferenceIdentity>,
     pub model: PrimerSpecificityIntendedTargetModel,
     pub subject_id: Option<String>,
     #[serde(default)]

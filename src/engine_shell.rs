@@ -21895,6 +21895,22 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
             ],
         ),
         pool_artifact_descriptor(
+            "PreparePrimerPairMultiReferenceSpecificityHandoff",
+            "Prepare one non-executing primer-pair handoff for 1..=8 explicit reference indexes; required resources are inspected before any files are written.",
+            vec![
+                json!({"name":"REQUEST", "required":true, "subject_kind":"other", "detail":"gentle.primer_pair_multi_reference_request.v1; one saved or explicit pair, common policy without target selector, explicit references/kinds/requirements and optional caller-provided mappings"}),
+                json!({"name":"OUTPUT_PATH", "required":true, "subject_kind":"other", "detail":"fresh external bundle directory"}),
+            ],
+        ),
+        pool_artifact_descriptor(
+            "primers specificity-multi-handoff",
+            "Prepare explicit reference-bound BLAST commands without executing them or attaching readiness evidence.",
+            vec![
+                json!({"name":"REQUEST", "required":true, "subject_kind":"other", "detail":"versioned multi-reference request JSON or @file"}),
+                json!({"name":"OUTPUT_PATH", "required":true, "subject_kind":"other", "detail":"fresh bundle directory"}),
+            ],
+        ),
+        pool_artifact_descriptor(
             "primers specificity-plan",
             "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
             vec![
@@ -31611,6 +31627,8 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "AssessPrimerPairSpecificityCollection"
         | "collections run primer-specificity"
         | "PreparePrimerPairSpecificityHandoff"
+        | "PreparePrimerPairMultiReferenceSpecificityHandoff"
+        | "primers specificity-multi-handoff"
         | "ImportPrimerPairSpecificityHandoff"
         | "ExportPool"
         | "FilterByDesignConstraints"

@@ -2570,6 +2570,18 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
+            Operation::PreparePrimerPairMultiReferenceSpecificityHandoff {
+                request,
+                output_dir,
+            } => {
+                for reference in &request.references {
+                    Self::push_unique_token(&mut summary.genome_ids, &reference.target_genome_id);
+                }
+                Self::push_unique_token(&mut summary.file_paths, output_dir);
+                if let Some(path) = &request.catalog_path {
+                    Self::push_unique_token(&mut summary.file_paths, path);
+                }
+            }
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }
@@ -2993,7 +3005,10 @@ impl GentleEngine {
                 push(path);
             }
             Operation::ExportSequenceContextBundle { output_dir, .. }
-            | Operation::PreparePrimerPairSpecificityHandoff { output_dir, .. } => push(output_dir),
+            | Operation::PreparePrimerPairSpecificityHandoff { output_dir, .. }
+            | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { output_dir, .. } => {
+                push(output_dir)
+            }
             Operation::SummarizeRnaReadGeneSupport {
                 path: Some(path), ..
             } => push(path),

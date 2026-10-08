@@ -6343,6 +6343,25 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
     match tokens[1].as_str() {
         "primerbank" => parse_primers_primerbank_command(tokens),
         "oligo-order" => parse_primers_oligo_order_command(tokens),
+        "specificity-multi-handoff" => {
+            if tokens.len() != 4 {
+                return Err(
+                    "primers specificity-multi-handoff REQUEST_JSON_OR_@FILE OUTPUT_DIR".into(),
+                );
+            }
+            let request = parse_required_json_payload::<
+                crate::engine::PrimerSpecificityMultiRequest,
+            >(&tokens[2], "multi-reference specificity request")?;
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(
+                    &Operation::PreparePrimerPairMultiReferenceSpecificityHandoff {
+                        request: Box::new(request),
+                        output_dir: tokens[3].clone(),
+                    },
+                )
+                .map_err(|e| e.to_string())?,
+            })
+        }
         "design-transcript-capture-pool" => {
             if tokens.len() != 3 {
                 return Err(
