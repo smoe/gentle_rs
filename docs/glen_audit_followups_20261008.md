@@ -326,3 +326,13 @@ follow-up merely to improve those observations.
   document supplies the original `30f23aa4` raw bundle or a remote-runner access
   route. Their cleanup/merge suggestions are out of this six-item scope and
   are not executed. Fresh Actions evidence does not verify Glen's raw archive.
+- Linux and macOS workflow-example runtime filters at `62f7180b` each pass
+  94/95 tests, failing `tss_tutorial_agent_drafts_parse_and_keep_mutations_reviewed`
+  because its four-tutorial expectation predates the new 08.04 contract. The
+  retained `tutorial-check.log` independently reports five tutorials, 27 cases,
+  eight declared and 15 parser-classified mutations, with no parity findings.
+  Update only these exact counts; parser validation, mutation review and the
+  08.04 ambiguity refusal remain unchanged. New Rust execution is pending.
+- On `1f5610fd` plus this count-only repair, 65 Python checkout, GUI-runner and
+  public-audit helper regressions pass on macOS; scoped `rustfmt --check` and
+  `git diff --check` pass. These checks do not execute the repaired Rust test.

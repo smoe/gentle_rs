@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-08 - Count The New 08.04 Agent Contract In The Catalog Regression
+
+- Update the aggregate tutorial-agent regression for the five new 08.04 cases:
+  five tutorials, 27 cases, eight declared and 15 parser-classified mutations.
+  Keep all parser findings and review-first mutation checks unchanged.
+- Linux and macOS CI at `62f7180b` fail only the outdated four-tutorial
+  assertion in the 95-test workflow filter. The retained generator report
+  independently confirms the new totals; Rust execution of this repair remains
+  pending on CI, with no local Rust build/check/test.
+
 ## 2026-10-08 - Keep The Promoter Pair Action Vertically Reachable
 
 - Put the existing reference/alternate pair button at the start of a dedicated
