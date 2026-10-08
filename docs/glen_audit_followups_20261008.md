@@ -32,6 +32,31 @@ main/audit test families; the mixed-SNV/indel guard is unchanged. Evidence at
 `6d8b4db7` stays accepted only for that
 historical source. The current candidate's checklist is:
 
+The new frozen runtime/workflow candidate is
+`3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da`, with the unchanged lockfile above.
+It includes separate container-identity (`57cc62bc`) and eleven-line primer
+initialization (`3ac4a02d`) repairs. The remote codex branch is deliberately
+held at that SHA; subsequent local evidence/status commits are not new runtime
+acceptance. Fresh non-publishing runs are
+[Linux/Windows plus focused audits 37848423833](https://github.com/smoe/gentle_rs/actions/runs/37848423833)
+and [macOS/Windows 37848434104](https://github.com/smoe/gentle_rs/actions/runs/37848434104).
+Both run metadata independently report the exact candidate SHA. Native/public,
+live-agent, visual, scroll and full-platform gates remain pending; dispatch new
+native/container package checks only after fresh focused success, with the
+same candidate and `publish=false`. Do not reuse the now-successful historical
+`6d8b4db7` native-package run as current acceptance.
+
+At this frozen SHA, all 157 local offline Python tests pass on macOS (23.617 s),
+log SHA-256 `319f6f43384043334ae0383aea910176fdfa35e4bab3396487937c33fb47f3b1`.
+The remote policy job passes all 180 Python tests, raw log SHA-256
+`dd07dd8952e28576bb078a282dab049471b0db4e9789c202866fb4c8ab50dd52`.
+The headless CLI/MCP Rust check also passes on Linux, raw log SHA-256
+`6745dfd679f944370d2107c98bb10ef20e2434d97afc4d1426ccd6f2cea5414a`.
+Neither result accepts native tests, binary execution, extracted packages,
+container identities or scientific behavior. Scoped formatting passes and
+session-close reports five OK, one plan-fidelity reminder and zero failures;
+the necessary container/compile repairs are explicitly scoped above.
+
 | Item | Current Status | Required Evidence |
 | --- | --- | --- |
 | 1. Audit preservation | Complete; rebase does not change original bytes | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes. |

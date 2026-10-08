@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-08 - Freeze The Repaired Audit Candidate
+
+- Freeze source/workflows at `3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da`
+  on the remote codex branch, still based on local main `b1547544`. Record
+  fresh Linux/Windows and macOS/Windows run links without inheriting older
+  GUI, live-agent, scroll, full-platform or package passes.
+- At that exact SHA, 157 local offline Python tests and all 180 remote policy
+  tests pass; Linux headless CLI/MCP Rust checks pass. Retain raw-log hashes
+  in the six-item checklist. No local Rust execution or actual-container pass.
+- This evidence/status-only commit stays local to preserve the remote freeze.
+  Primary main, `paper`, `output/` and historical evidence remain untouched.
+
 ## 2026-10-08 - Repair Rebased Primer Handoff Compilation
 
 - Address the exact `1e12fd0f` CI compiler failures carried in from local main:
