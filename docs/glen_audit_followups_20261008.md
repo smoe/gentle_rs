@@ -89,3 +89,9 @@ follow-up merely to improve those observations.
   synthetic workflows and an exact one-base persistence test. Python runner
   and focused LF/CRLF checks pass 26/26 on macOS; Rust/native/public-data and
   generated-document acceptance remain pending.
+- On `9bb9e0b3` plus the scoped CI helper diff, two synthetic base-proof tests
+  and all 37 release-policy tests pass on macOS. The native job compiles/tests
+  only on Actions, restores historical baseline bytes in its disposable
+  generation checkout, and retains source-bound projections and raw captures.
+  The `d1bf3fd3` scroll job is green; its downloaded receipt still needs
+  independent hash and 24-observation inspection before checklist acceptance.

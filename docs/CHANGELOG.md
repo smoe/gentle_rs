@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-08 - Add Non-Publishing Native 08.04 CI Replay
+
+- Compile focused promoter-pair, feature-binding and semantic-policy regressions
+  only in CI. Generate and check disposable projections without overwriting
+  historical evidence, and retain the required projection delta for review.
+- Replay ordinary native input under isolated X11, retaining raw screenshots,
+  exact binary/source/lock receipts and a distinctly labelled synthetic
+  base-level comparison. Two base-proof tests and all 37 release-policy tests
+  pass locally; native execution remains pending and is not online acceptance.
+
 ## 2026-10-08 - Declare The Offline 08.04 Allele-Pair Guard
 
 - Add an incomplete load-only starter, independent engine oracle and typed
