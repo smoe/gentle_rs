@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-08 - Retain The Native Audit's Hashed GUI Settings
+
+- The `62f7180b` upload omitted its isolated hidden GUI-settings file even
+  though the receipt hashed it. Retain hidden files only within the audit-owned
+  evidence directory, never the runner's real home, and guard that upload scope.
+- Verify the 91 available artifact hashes and retain the missing-file diagnosis.
+  Native replay reaches explicit T but fails at pair-button visibility; this
+  retention repair alone does not accept the GUI or the final candidate.
+
 ## 2026-10-08 - Import The Required 08.04 Tutorial Projections
 
 - Import only the five companion projections checked by CI at `0cba2e9c`:

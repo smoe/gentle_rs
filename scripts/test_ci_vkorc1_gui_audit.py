@@ -30,6 +30,13 @@ class FailureRetentionTests(unittest.TestCase):
         native_job = workflow.split("  vkorc1-gui-audit:", 1)[1].split("  gui-scroll-audit:", 1)[0]
         self.assertIn("libxkbcommon-x11-dev", native_job)
 
+    def test_native_artifact_keeps_its_hash_bound_isolated_gui_settings(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text()
+        upload = workflow.split("- name: Preserve candidate-bound evidence, including failures", 1)[1].split("- name: Prepare fresh public 08.04 inputs", 1)[0]
+        self.assertIn("path: ${{ runner.temp }}/vkorc1-gui-audit/", upload)
+        self.assertIn("include-hidden-files: true", upload)
+        self.assertNotIn("path: ~/", upload)
+
     def test_native_namespace_drops_privilege_and_retains_before_public_preparation(self):
         root = Path(__file__).resolve().parents[1]
         helper = (root / "scripts/ci_vkorc1_gui_audit.py").read_text()

@@ -26,7 +26,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
 | 1. Audit preservation | Report preserved; raw bundle pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen reports Linux/X11 results at `30f23aa4`. Obtain and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
-| 2. Tutorial 08.04 GUI/agent contracts | Focused tests/generation pass at `0cba2e9c`; native pending | Closed semantic controls, independent starter/oracle, atomic refusal and public shared-shell parity are tested. Native replay stops before the first input at a missing X11 keyboard library. Rerun after repairing that runner dependency; authored steps are not a native pass. |
+| 2. Tutorial 08.04 GUI/agent contracts | Focused tests/generation pass; native visibility repair pending | The `62f7180b` native replay opens the dialog and enters T, but vertical scrolling cannot expose the pair button. Repair its action-row layout and rerun the unchanged visible/enabled and persisted-oracle checks; six passing inputs are not a completed native contract. |
 | 3. Live-agent acceptance | Public pilot passed at `a1fb305a`; final candidate pending | Independently verified macOS dev CLI and Linux-prepared public starter share this exact source/lock. Real ambiguity clarification, help-grounded review-first C/T suggestions and reviewed execution pass, recorded below. Repeat at the frozen package candidate; neither echo transport nor an older pilot certifies it. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Public base projection verified; native pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`; SVG rendered without clipping or recolouring native canvases. Require raw candidate/binary/snapshot-bound native captures. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
@@ -293,3 +293,23 @@ follow-up merely to improve those observations.
   Raw evidence is `/private/tmp/gentle-agent-public-a1fb305a`. This accepts the
   bounded public-input live-model boundary at this SHA, not the final package,
   native GUI, clinical effect, wet-lab suitability or human scientific approval.
+- Candidate `62f7180b40471bd6d33e71b64f3fab2a98066efa` is frozen for
+  [Linux/native/public CI 37787662254](https://github.com/smoe/gentle_rs/actions/runs/37787662254),
+  [macOS CI 37787672955](https://github.com/smoe/gentle_rs/actions/runs/37787672955),
+  [build-only installers 37787687283](https://github.com/smoe/gentle_rs/actions/runs/37787687283)
+  and [build/load-only container 37787699458](https://github.com/smoe/gentle_rs/actions/runs/37787699458).
+  Installer/container candidate receipts independently agree on this source,
+  workflow revision, unchanged lockfile, `package-opt1`, `publish=false` and
+  `mode=validate_only`; receipt SHA-256 is
+  `3d436f866a4f83d7d13a351444bf7320c04ef316f882b1d25fd20b0e0f86dc9d`.
+  Candidate resolution is not extracted-package acceptance.
+- At `62f7180b`, six native steps pass through explicit T, then `scroll_to_pair`
+  times out: `promoter.materialize_pair` remains enabled but horizontally
+  clipped. Retained raw capture and semantic snapshot identify the off-screen
+  action row; neither oracle mutation nor a relaxed verifier is an acceptable
+  substitute. Receipt SHA-256 is
+  `d9bcb400b9b52e3fc19da24492ab176544f55dac30b47f2584ef1c3f40aa51c6`.
+  The upload has 91 independently verified hashes but omitted the hashed
+  `native/vkorc1_warfarin_promoter_luciferase_gui/profile/home/.gentle_gui_settings.json`.
+  Include hidden files only in the isolated audit evidence directory and rerun;
+  preserve this incomplete upload as failed evidence.
