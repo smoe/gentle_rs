@@ -9,10 +9,22 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scripts.ci_vkorc1_gui_audit import pair_evidence, run_logged
+from scripts.ci_vkorc1_gui_audit import pair_evidence, run_logged, write_generation_ledger
 
 
 class FailureRetentionTests(unittest.TestCase):
+    def test_restored_generation_ledger_preserves_unicode_lf_and_checksum_values(self):
+        ledger = {"caption": "800\u00d7600", "file_checksums": {"historical.json": "unchanged"}}
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "report.json"
+            write_generation_ledger(path, ledger)
+            payload = path.read_bytes()
+            self.assertIn("800\u00d7600".encode("utf-8"), payload)
+            self.assertNotIn(b"\\u00d7", payload)
+            self.assertNotIn(b"\r", payload)
+            self.assertTrue(payload.endswith(b"\n"))
+            self.assertEqual(json.loads(payload), ledger)
+
     def test_native_audit_installs_dynamically_loaded_x11_keyboard_library(self):
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text()
         native_job = workflow.split("  vkorc1-gui-audit:", 1)[1].split("  gui-scroll-audit:", 1)[0]
