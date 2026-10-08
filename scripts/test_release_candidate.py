@@ -572,6 +572,16 @@ class WorkflowWiringTests(unittest.TestCase):
                               "Workflow example runtime tests", "Full test suite"):
                     self.assertLess(job.index(step), job.index(f"- name: {later}\n"))
 
+    def test_native_gui_audit_keeps_preflight_and_rollback_regressions(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        following = text.split("\n  vkorc1-gui-audit:\n", 1)[1]
+        job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+        self.assertIn("for filter in promoter_pair_ variant_followup_allele_pair_", job)
+        self.assertIn(
+            "cargo test --locked --no-default-features --features desktop-gui,gui-test-support", job)
+        self.assertNotIn("continue-on-error:", job)
+
     def test_sampled_platform_is_unix_and_manual_selection_is_preserved(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
