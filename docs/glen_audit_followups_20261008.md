@@ -25,12 +25,12 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
-| 1. Audit preservation | Report preserved; archive identified, verification pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen supplies the Storage Box archive and checksum recorded below, reporting Linux/X11 results at `30f23aa4`. Obtain approved read-only access and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
-| 2. Tutorial 08.04 GUI/agent contracts | Focused tests/generation pass; native visibility repair pending | The `62f7180b` native replay opens the dialog and enters T, but vertical scrolling cannot expose the pair button. Repair its action-row layout and rerun the unchanged visible/enabled and persisted-oracle checks; six passing inputs are not a completed native contract. |
-| 3. Live-agent acceptance | Public pilot passed at `a1fb305a`; final candidate pending | Independently verified macOS dev CLI and Linux-prepared public starter share this exact source/lock. Real ambiguity clarification, help-grounded review-first C/T suggestions and reviewed execution pass, recorded below. Repeat at the frozen package candidate; neither echo transport nor an older pilot certifies it. Never copy or inspect credentials. |
-| 4. Honest visual evidence | Public base projection verified; native pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`; SVG rendered without clipping or recolouring native canvases. Require raw candidate/binary/snapshot-bound native captures. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
+| 1. Audit preservation | Published inventory verified; archive contents pending | Unchanged report preserved; approved small metadata hashes and 721 safe, unique manifest paths verified, including the 11 owner-supplied inventory entries. Archive/binaries were not downloaded over the train connection. Verify their actual bytes, original screenshots, projects and Criterion outputs before claiming independent archive acceptance. |
+| 2. Tutorial 08.04 GUI/agent contracts | Native contract passed at `b067ae3b`; rebased candidate pending | Focused Rust tests, locked GUI-support check, generation and ordinary Linux/X11 input replay pass at the pre-rebase SHA. Keep that verdict separate from main's new pure preflight combined with rollback. Rerun both regression families and inspect the rebased candidate's raw captures, persisted oracle and listed hashes before completion. |
+| 3. Live-agent acceptance | Public pilot reverified at `62f7180b`; rebased candidate pending | Retained genuine macOS dev CLI responses and reviewed C/T outputs agree with fresh Linux public CI full sequence records at `62f7180b`. Repeat at the final rebased SHA; do not download its large CLI artifact on the train. Neither echo transport nor an older pilot certifies the new candidate. Never copy or inspect credentials. |
+| 4. Honest visual evidence | Public base projection verified; rebased native inspection pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`, then hashes/sequence facts reverified at `62f7180b`. The earlier SVG was rendered without recolouring native canvases. Native replay passes at pre-rebase `b067ae3b`, but its raw captures remain uninspected. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
-| 6. .12 package acceptance | Pending | Freeze one final pushed candidate; dispatch native installers and runtime-cli container with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at that same source/lock SHA. Native GUI and scientific approval remain separate. |
+| 6. .12 package acceptance | Rebased candidate gates pending | Rebase supersedes the frozen `b067ae3b` build-only runs. After fresh focused/native gates, freeze the new pushed SHA and dispatch with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at the same source/lock SHA. Do not transfer packages on the train or inherit older build verdicts. Native GUI and scientific approval remain separate. |
 
 ## Retained Baseline
 
@@ -352,3 +352,59 @@ follow-up merely to improve those observations.
   These are supplied archive facts, not independent Codex verification.
   Request an approved read-only SSH/SFTP alias or access-controlled URL and a
   small file/hash inventory; the owner need not transfer the archive on a train.
+- Owner supplies the approved [audit index](https://gentle.functional.domains/openclaw/canvas/gentle-30f23aa4-audit/)
+  and asks to avoid large transfers. Stop the obsolete `62f7180b` installer
+  download; retrieve only three metadata files, totalling 140,532 bytes.
+  The [complete per-file manifest](https://gentle.functional.domains/openclaw/canvas/gentle-30f23aa4-audit/tutorial-parity-30f23aa4-20261008.files.sha256)
+  is 139,612 bytes and independently hashes to
+  `0f4f723115453cb1ed491654ac7671cd392116cb1f3b8c601decd31e8d128361`.
+  All 721 paths are relative, traversal-free and unique. Its 11 small-inventory
+  hashes agree with the owner; `REPORT.md` agrees with the unchanged committed
+  report. It lists 208 `criterion-bench-audit` and 312 `criterion-patz1` files,
+  not an independent verification of those file contents.
+  The 756-byte bundle manifest hashes to
+  `dd0998fafaae4fc86dac0e6edbf16b98cc2d5e1e29d42754502875c3bc3903fa`;
+  its source, metadata sizes and metadata hashes agree with the retrieved bytes.
+  It reports the unchanged archive as 319,263,072 bytes with the supplied
+  `d257b98b...` digest. The 164-byte checksum file independently hashes to
+  `afcf0917ef17ee8696d19d834e328c37d79b6c03fbdea65949f9dfcbce29edd7`
+  and records that same archive digest and Storage Box path. Retain the small
+  files in `/private/tmp/gentle-original-audit-30f23aa4`; do not execute anything
+  from untrusted metadata. No archive, binary, screenshot or Criterion payload
+  was fetched, and no independent `zstd -t` or raw-content pass is claimed.
+- Reverify retained `62f7180b` evidence without further transfers: all 44 public
+  artifact hashes and 24 directional/content scroll observations agree with
+  their receipts. Genuine agent responses remain review-first, and reviewed
+  execution preserves both public source records; all four full sequence
+  records agree with that SHA's fresh public CI outputs, with one C/T difference
+  at zero-based position 588 in the 1,089-bp inserts. Older-candidate results
+  never certify either a nearby source SHA or the rebased main integration.
+- Pre-rebase candidate `b067ae3be024d2c2b7e4ea1ee841db8461211806` runs
+  [Linux/native/public CI 37812324779](https://github.com/smoe/gentle_rs/actions/runs/37812324779)
+  and [macOS CI 37812338675](https://github.com/smoe/gentle_rs/actions/runs/37812338675).
+  Its focused native filters, locked GUI-support check, generation and ordinary
+  native input replay pass, as do headless, policy, scroll and macOS CLI-build
+  jobs. Raw evidence is not independently inspected. Sizes were checked without
+  downloading: native 4,655,065 bytes, macOS CLI 79,759,483 bytes, scroll bundle
+  88,700,925 bytes. Exact-SHA [installers 37814554493](https://github.com/smoe/gentle_rs/actions/runs/37814554493)
+  and [container 37814563508](https://github.com/smoe/gentle_rs/actions/runs/37814563508)
+  were dispatched with `.12` as a label and `publish=false`, without creating
+  a tag or downloading packages. The subsequent rebase supersedes them.
+- Owner requests finishing the interrupted rebase onto local main
+  `84cc8e1654967edad0b1095672dfd4ff549b3990`. Replay all 29 audit commits;
+  resolve changelog/roadmap by retaining both work streams, and GUI docs/code
+  by retaining main's pure allele preflight plus the existing rollback pair.
+  Main's dbSNP evidence checks, local/source cDNA orientation and boundary cache
+  regressions remain intact. Range-diff confirms no unrelated audit patch
+  changes; the already-upstream handler visibility needs no second code change.
+  Rebased HEAD before this CI-coverage/status addition is
+  `89a3e821df839e7169db570cedb9fec83c413a1e`. Its 103 Python checkout, GUI-runner,
+  helper, public-audit and release-policy tests pass on macOS, together with
+  scoped `rustfmt --check`; lock/report hashes and historical generated bytes
+  remain unchanged. No local Rust build/check/test is run.
+- Add main's `variant_followup_allele_pair_` retry/preflight regression to the
+  native audit's existing `promoter_pair_` filter family and guard both in the
+  fast Python policy suite. Freeze and execute a fresh rebased SHA before any
+  new GUI, live-agent or package acceptance; a rewritten commit does not inherit
+  its original execution verdict. Push only the codex branch with an exact
+  remote-SHA lease; leave main, `paper`, `output/` and historical evidence alone.

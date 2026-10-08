@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-08 - Reconcile The Audit Branch With Main
+
+- Finish the owner's rebase onto `84cc8e16`, preserving all 29 audit commits,
+  main's dbSNP/assembly checks, cDNA orientation and boundary-cache regressions.
+  Resolve the GUI pair conflict with pure preflight followed by the existing
+  rollback transaction; keep both regression families in focused native CI.
+- Independently verify the approved 139,612-byte manifest, 721 safe unique
+  paths, 11 supplied inventory hashes and unchanged retained report. Fetch only
+  small metadata and stop the obsolete installer transfer on the train.
+- Preserve pre-rebase verdicts under their original SHAs; require fresh CI and
+  exact-candidate packages after the rebase. No local Rust build, large artifact
+  transfer, main merge, publication or scientific acceptance is performed.
+
 ## 2026-10-08 - Supply The Visibility Regression's Wheel Phase
 
 - Match the maintained scroll benchmark and GUI tests by setting the synthetic
