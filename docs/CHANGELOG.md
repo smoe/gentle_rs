@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-08 - Rebase Audit Follow-Ups Onto Current Main
+
+- Rebase only `codex/glen-audit-followups-20261008` in its isolated managed
+  worktree onto `51f31afacef0fc942f523aea16d56f32790f3dee`. Retain all 34 audit
+  commits and both changelog histories; range-diff shows 32 unchanged patches
+  and two changelog-only placement/context resolutions. No runtime conflict
+  resolution or primary-main, `paper`, `output/` or historical-evidence edits.
+- Preserve the exact original-byte acceptance and all immutable `6d8b4db7`
+  receipts. Reset the current candidate's GUI, public/live-agent, visual, scroll
+  and package gates to pending; rewritten commits do not inherit old verdicts.
+  Fresh exact-SHA CI and non-publishing package checks remain required.
+- The committed pre-rebase evidence HEAD `24bf5f4f` passes all 149 focused
+  Python tests. Rebased `1d8774e4` plus this status-only diff also passes all 149,
+  scoped `rustfmt --check` and whitespace checks on macOS. Lockfile, original
+  report and historical receipts remain unchanged. Rust build/check/test stays
+  exclusively on CI under the owner's restriction. No Claude, main merge,
+  tag, release publication or scientific/performance acceptance.
+
 ## 2026-10-08 - Accept Fresh Public And Live-Agent Evidence
 
 - Independently verify all 44 public artifacts at frozen runtime SHA `6d8b4db7`;

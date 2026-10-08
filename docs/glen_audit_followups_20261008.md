@@ -23,6 +23,27 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+The owner-requested rebase is now on local main
+`51f31afacef0fc942f523aea16d56f32790f3dee`. The isolated codex worktree retained
+all 34 audit commits; two changelog conflicts preserve both histories, with no
+runtime conflict resolution. Evidence at `6d8b4db7` stays accepted only for that
+historical source. The current candidate's checklist is:
+
+| Item | Current Status | Required Evidence |
+| --- | --- | --- |
+| 1. Audit preservation | Complete; rebase does not change original bytes | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes. |
+| 2. Tutorial 08.04 GUI/agent contracts | Post-rebase verification pending | New exact-SHA focused Rust tests, ordinary Linux/X11 input replay, completion transition and all three full oracle `Seq` records. |
+| 3. Live-agent acceptance | Post-rebase verification pending | New verified macOS CLI and fresh public starter, genuine clarification and unexecuted explicit-T suggestions, unchanged requests/refusal and full-record manual-execution parity. |
+| 4. Honest visual evidence | Post-rebase verification pending | New source-bound unedited synthetic native captures and labelled public base projection, independently hashed and visually inspected. No public-locus GUI or scientific claim. |
+| 5. Scroll benchmarks | Post-rebase verification pending | New same-SHA executable/receipt and all 24 bidirectional fixture, viewport-bound and unchanged-content checks. No timing or native-latency claim. |
+| 6. .12 package acceptance | Post-rebase verification pending | After fresh focused success, non-publishing native/container builds, all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates at one frozen SHA/lockfile/`package-opt1` recipe. |
+
+### Historical `6d8b4db7` Snapshot
+
+The following snapshot predates the requested rebase. Its immutable receipts,
+verdicts and run links are historical evidence, not current-candidate passes or
+live workflow status; they must not be overwritten or inherited.
+
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
 | 1. Audit preservation | Complete: original bytes independently verified | [New integrity receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md) pins the unchanged `30f23aa4` archive, manifest and report. Exact 319,263,072-byte archive digest, `zstd -t`, all 721 regular-file hashes and safe exact membership pass on macOS. Original project, raw images and both Criterion trees inspected; no historical binaries executed or performance/scientific verdict inferred. |
@@ -521,3 +542,26 @@ follow-up merely to improve those observations.
   Log SHA-256 is
   `336aec55899f6ac63391c4ea008b6730b20736a826dccce142d4db2ef07bfc22`.
   `git diff --check` passes; no local Rust build/check/test is run.
+- On committed evidence HEAD `24bf5f4ff4d6981a4c973abb04ec5ade6227419c`,
+  all 149 focused Python checkout, GUI-runner, public-reference, release-candidate,
+  native-package and container tests pass on macOS; log SHA-256 is
+  `84431e0fd61a1982a2551c0637b9269c9a75eb807fb8263712a264e48a24c9f0`.
+- At the owner's request, rebase the isolated codex branch onto local main
+  `51f31afacef0fc942f523aea16d56f32790f3dee`, including its rack and primer
+  updates. Rebased HEAD before this status-only addition is
+  `1d8774e42fc63b3d6741e240a06c1d7af98db5e9`. Verify all 34 commits with
+  `git range-diff`: 32 unchanged patches and two changelog-only context/placement
+  resolutions preserving both histories. No runtime conflict resolution or
+  primary-checkout edits. Keep the safety branch
+  `codex/glen-audit-before-main-e04f6044` and all original receipt bytes.
+  Reset current-candidate items 2-6 to pending, preserving historical `6d8b4db7`
+  verdicts. Freeze a new post-rebase SHA for fresh CI, live-agent and package
+  acceptance; do not mark rewritten commits accepted from their old runs.
+- On rebased `1d8774e4` plus this status-only diff, all 149 focused Python tests
+  pass on macOS (50.758 s); retained log SHA-256 is
+  `b6d82f10d5552a3abd345254050c510548963b51c8f864da3c1c3324685d5d86`.
+  Scoped `rustfmt --edition 2024 --config skip_children=true --check` and
+  `git diff --check` pass. Incoming main's rack and primer implementation files
+  exactly match main, and original report, historical receipts and lockfile
+  remain byte-identical. The roadmap remains 400 lines. No local Rust build,
+  check or test was run; fresh Actions source-bound acceptance is still pending.
