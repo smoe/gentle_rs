@@ -144,3 +144,16 @@ follow-up merely to improve those observations.
   synthetic visual-proof helper while keeping exact source preservation,
   unchanged nonvariant bytes and the sole reference/alternate C/T difference.
   Generation and native input replay did not run after that failure.
+- Repair run [37771959476](https://github.com/smoe/gentle_rs/actions/runs/37771959476)
+  is verified against `9100235ce19f58f23872079e1de89ad8ec0194d5`. Native replay
+  remains in progress. On that SHA, 107 Python release-candidate, desktop-package,
+  container, GUI-runner and synthetic base-proof tests passed on macOS; these
+  Python fixture checks do not run Rust or certify real installers.
+- Add an opt-in `audit_public_vkorc1` CI preparation step to obtain the complete
+  catalogued reference outside this disk-constrained checkout. The helper
+  retains one raw public NCBI response and explicitly replays that exact file
+  through GENtle's existing override. It compares direct/shared-shell reports,
+  checks unchanged persisted state on ambiguous alternate refusal and retains
+  a public starter plus the explicit C/T outputs. Complete reference input
+  hashes/manifests are retained, but the multi-gigabyte cache is not uploaded.
+  No new public replay, live-agent or native/public-GUI pass is yet claimed.
