@@ -7874,24 +7874,6 @@ impl MainAreaDna {
             {
                 self.extract_variant_followup_recommended_fragment();
             }
-            let has_fragment = !self.variant_followup_ui.fragment_output_id.trim().is_empty();
-            let materialize_pair = ui
-                .add_enabled(
-                    has_variant_seed && has_fragment,
-                    egui::Button::new("Make reference/alternate inserts"),
-                )
-                .on_hover_text(
-                    "Build matched SNV-specific promoter inserts from the extracted fragment.",
-                );
-            #[cfg(feature = "gui-test-support")]
-            crate::gui_test_support::register_response(
-                &materialize_pair, crate::tutorial_gui_semantics::PROMOTER_MATERIALIZE_PAIR,
-                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
-                Some(&subject_scope), crate::gui_test_support::GuiTestWidgetKind::Button, false,
-            );
-            if materialize_pair.clicked() {
-                self.materialize_variant_followup_alleles();
-            }
             let has_materialized = !self.variant_followup_ui.reference_output_id.trim().is_empty()
                 && !self.variant_followup_ui.alternate_output_id.trim().is_empty();
             if ui
@@ -7917,6 +7899,36 @@ impl MainAreaDna {
                 .clicked()
             {
                 self.export_variant_followup_handoff_bundle();
+            }
+        });
+
+        // The parameter grid can expand horizontally; keep the pair action
+        // at the start of its own row so vertical scrolling can reach it.
+        ui.horizontal_wrapped(|ui| {
+            let has_fragment = !self
+                .variant_followup_ui
+                .fragment_output_id
+                .trim()
+                .is_empty();
+            let materialize_pair = ui
+                .add_enabled(
+                    has_variant_seed && has_fragment,
+                    egui::Button::new("Make reference/alternate inserts"),
+                )
+                .on_hover_text(
+                    "Build matched SNV-specific promoter inserts from the extracted fragment.",
+                );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &materialize_pair,
+                crate::tutorial_gui_semantics::PROMOTER_MATERIALIZE_PAIR,
+                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Button,
+                false,
+            );
+            if materialize_pair.clicked() {
+                self.materialize_variant_followup_alleles();
             }
         });
 

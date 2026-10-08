@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-08 - Keep The Promoter Pair Action Vertically Reachable
+
+- Put the existing reference/alternate pair button at the start of a dedicated
+  action row. The wide parameter grid must not push it beyond the default
+  promoter viewport's right edge; no engine or allele-choice behavior changes.
+- Add a deterministic scroll-only visibility regression, retaining the native
+  tutorial's enabled/visible and exact persisted-oracle requirements. Rust and
+  native acceptance must run on CI; the `62f7180b` failure remains historical.
+
 ## 2026-10-08 - Retain The Native Audit's Hashed GUI Settings
 
 - The `62f7180b` upload omitted its isolated hidden GUI-settings file even
