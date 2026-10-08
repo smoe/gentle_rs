@@ -6,10 +6,16 @@ from xml.etree import ElementTree
 
 from scripts.prepare_public_vkorc1_audit import (
     assert_reviewed_fragment, pair_content, public_pair_svg, report_content, retained_refsnp_url, PREFIX,
+    REFSNP_URL,
 )
 
 
 class PublicAuditAssertionsTests(unittest.TestCase):
+    def test_public_endpoint_matches_engine_default_without_obsolete_beta_path(self):
+        engine = (Path(__file__).resolve().parents[1] / "src/engine/analysis/feature_expert_ops.rs").read_text()
+        self.assertIn(REFSNP_URL.replace("9923231", "{refsnp_id}"), engine)
+        self.assertNotIn("/beta/", REFSNP_URL)
+
     def project(self, reference="aaCaa", alternate="aaTaa", fragment="aacaa"):
         return {"sequences": {PREFIX + role: {"seq": {"seq": list(value.encode())}}
                               for role, value in (("fragment", fragment), ("reference", reference), ("alternate", alternate))}}

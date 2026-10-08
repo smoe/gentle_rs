@@ -29,7 +29,7 @@ CONTEXT = "vkorc1_rs9923231_context"
 PREFIX = "vkorc1_rs9923231_promoter_"
 WORKFLOW = "docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json"
 SOURCE = "docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json"
-REFSNP_URL = "https://api.ncbi.nlm.nih.gov/variation/v0/beta/refsnp/9923231"
+REFSNP_URL = "https://api.ncbi.nlm.nih.gov/variation/v0/refsnp/9923231"
 
 
 def sha(path: Path) -> str:
@@ -154,7 +154,6 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
             body = next(iter(operation.values()))
             body["cache_dir"] = str(root.parent / "vkorc1-public-reference")
             body["catalog_path"] = str(repo / "assets/genomes.json")
-        op(seed, prepare, "prepare-complete-reference")
         request = urllib.request.Request(REFSNP_URL, headers={"User-Agent": "GENtle-public-audit/1"})
         with urllib.request.urlopen(request, timeout=90) as response:
             raw = response.read(16 * 1024 * 1024 + 1)
@@ -169,6 +168,7 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
         receipt["refsnp_source"]["sha256"] = sha(refsnp)
         receipt["refsnp_source"]["execution_source"] = "retained file URL replay"
         env["GENTLE_NCBI_DBSNP_REFSNP_URL"] = retained_refsnp_url(refsnp)
+        op(seed, prepare, "prepare-complete-reference")
         op(seed, fetch, "fetch-retained-public-slice")
         initial = json.loads(seed.read_bytes())
         initial_bases = initial["sequences"][CONTEXT]["seq"]["seq"]

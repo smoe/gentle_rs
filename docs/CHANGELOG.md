@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-08 - Align The Public Audit With GENtle's RefSNP Endpoint
+
+- The complete reference prepared successfully at `8d81f417`; the audit
+  helper's obsolete `/beta/` endpoint then returned 404. Match the existing
+  engine endpoint, guard that agreement and retain the response before costly
+  preparation. No engine URL, biological operation or historical input changes.
+- The corrected public endpoint returns rs9923231 with GRCh38 C and A/G/T;
+  full candidate-bound workflow and live-agent acceptance still require CI.
+
 ## 2026-10-08 - Supply The Required 08.04 Use-Case Context
 
 - The retained Linux diagnostic at `4de826d1` identifies a missing use-case

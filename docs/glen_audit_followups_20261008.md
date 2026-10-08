@@ -187,3 +187,15 @@ follow-up merely to improve those observations.
   `tutorial-generate` rejects the new companion's missing use-case context.
   Add that teaching metadata without weakening the validator; generation,
   projection import and native replay still need a new executed pass.
+- The public preparation at `8d81f417` passed the complete-reference operation
+  but failed before the slice at the helper's obsolete `/beta/` NCBI endpoint
+  (HTTP 404). GENtle's existing non-beta endpoint was independently fetched on
+  macOS: rs9923231, GRCh38 `NC_000016.10` C with A/G/T, raw SHA-256
+  `080131663dad501faf0101fc1fd50b842b64d000d17c17a4222c654f4c16052a`.
+  Raw response is `/private/tmp/gentle-public-refsnp-9923231-20261008.json`.
+  Align the helper only, add an engine-default
+  agreement test and fetch the retained response before costly preparation.
+  The source-bound macOS dev CLI from `f99c44a1` independently matches its
+  receipt and self-reported full SHA; binary SHA-256 is
+  `b09b92a7c8353fb4c798922e1a35e2ea34767fcf22ea79e2fac62e36a9403da6`.
+  It has not yet run a genuine public 08.04 model request or package acceptance.
