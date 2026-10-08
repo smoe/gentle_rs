@@ -13,6 +13,16 @@ from scripts.ci_vkorc1_gui_audit import pair_evidence, run_logged
 
 
 class FailureRetentionTests(unittest.TestCase):
+    def test_native_namespace_drops_privilege_and_retains_before_public_preparation(self):
+        root = Path(__file__).resolve().parents[1]
+        helper = (root / "scripts/ci_vkorc1_gui_audit.py").read_text()
+        self.assertIn('sudo --preserve-env=DISPLAY,XAUTHORITY unshare --net --', helper)
+        self.assertIn('setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups', helper)
+        self.assertLess(helper.index('setpriv --reuid='), helper.index('python3 "$2/scripts/tutorial_gui_acceptance.py"'))
+        workflow = (root / ".github/workflows/ci.yml").read_text()
+        self.assertLess(workflow.index("- name: Preserve candidate-bound evidence, including failures"),
+                        workflow.index("- name: Prepare fresh public 08.04 inputs"))
+
     def test_vkorc1_companion_declares_required_use_case_context(self):
         root = Path(__file__).resolve().parents[1]
         source = json.loads((root / "docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json").read_bytes())
