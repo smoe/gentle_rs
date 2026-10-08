@@ -74,3 +74,11 @@ follow-up merely to improve those observations.
   with execution still pending.
 - No new Rust, live-model, native GUI, benchmark or package execution is yet
   claimed. Do not mark the goal complete while an item remains unverified.
+- On `4f8194fc` plus the scoped semantic-control diff, Python GUI-runner tests
+  pass 25/25 on macOS. Exact feature bindings and single-base policies are
+  authored; they are not a native GUI pass. The `ac18df5e` scroll executable
+  built on Linux, but smoke stopped at PATZ1 after 16 passing observations.
+  Its retained binary SHA-256 is
+  `3ed56a89a51f7998617ce51c23398221b14b9fddc95c4ae8accf67c97f84219c`.
+  Investigate the visible wheel target and bind the observation's versioned
+  source identity correctly before rerunning; do not weaken the movement check.

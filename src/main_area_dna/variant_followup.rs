@@ -6890,12 +6890,42 @@ impl MainAreaDna {
     fn render_variant_followup_window_contents(&mut self, ui: &mut egui::Ui) {
         let engine_available = self.engine.is_some();
         let source_seq_id = self.variant_followup_ui.source_seq_id.clone();
+        #[cfg(feature = "gui-test-support")]
+        let subject_scope = crate::gui_test_support::pseudonymous_subject_scope(&[&source_seq_id]);
+        #[cfg(feature = "gui-test-support")]
+        for semantic_id in [
+            crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+            crate::tutorial_gui_semantics::PROMOTER_PANEL,
+        ] {
+            crate::gui_test_support::register_rect(
+                ui.ctx().clone(),
+                semantic_id,
+                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+                Some(&subject_scope),
+                crate::gui_test_support::GuiTestWidgetKind::Window,
+                ui.clip_rect(),
+                true,
+                true,
+                false,
+                None,
+            );
+        }
         crate::agent_help::render_agent_help_button(
             ui,
             format!("Promoter design - {}", source_seq_id),
-            "window.promoter_design",
+            crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
         );
         ui.separator();
+        let _status = ui.small(&self.op_status);
+        #[cfg(feature = "gui-test-support")]
+        crate::gui_test_support::register_response(
+            &_status,
+            crate::tutorial_gui_semantics::PROMOTER_STATUS,
+            crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+            Some(&subject_scope),
+            crate::gui_test_support::GuiTestWidgetKind::Status,
+            false,
+        );
         let current_seq_id = self.seq_id.clone().unwrap_or_default();
         let source_missing = !self.variant_followup_sequence_exists(&source_seq_id);
         let has_variant_seed = self.variant_followup_has_variant_seed();
@@ -7502,7 +7532,13 @@ impl MainAreaDna {
             ui.end_row();
 
             ui.label("Alternate base (required for multiallelic variants)");
-            ui.text_edit_singleline(&mut self.variant_followup_ui.alternate_allele);
+            let _alternate_base = ui.text_edit_singleline(&mut self.variant_followup_ui.alternate_allele);
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &_alternate_base, crate::tutorial_gui_semantics::PROMOTER_ALTERNATE_BASE,
+                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+                Some(&subject_scope), crate::gui_test_support::GuiTestWidgetKind::TextInput, false,
+            );
             ui.end_row();
 
             ui.label("Reporter backbone");
@@ -7839,16 +7875,21 @@ impl MainAreaDna {
                 self.extract_variant_followup_recommended_fragment();
             }
             let has_fragment = !self.variant_followup_ui.fragment_output_id.trim().is_empty();
-            if ui
+            let materialize_pair = ui
                 .add_enabled(
                     has_variant_seed && has_fragment,
                     egui::Button::new("Make reference/alternate inserts"),
                 )
                 .on_hover_text(
                     "Build matched SNV-specific promoter inserts from the extracted fragment.",
-                )
-                .clicked()
-            {
+                );
+            #[cfg(feature = "gui-test-support")]
+            crate::gui_test_support::register_response(
+                &materialize_pair, crate::tutorial_gui_semantics::PROMOTER_MATERIALIZE_PAIR,
+                crate::tutorial_gui_semantics::WINDOW_PROMOTER_DESIGN,
+                Some(&subject_scope), crate::gui_test_support::GuiTestWidgetKind::Button, false,
+            );
+            if materialize_pair.clicked() {
                 self.materialize_variant_followup_alleles();
             }
             let has_materialized = !self.variant_followup_ui.reference_output_id.trim().is_empty()

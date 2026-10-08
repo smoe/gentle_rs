@@ -26917,13 +26917,23 @@ impl MainAreaDna {
                 } else {
                     "Open Promoter Design"
                 };
-                if ui
+                let promoter_open = ui
                     .button(button_label)
                     .on_hover_text(
                         "Open or focus the dedicated Promoter design window for this promoter-relevant feature",
-                    )
-                    .clicked()
-                {
+                    );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &promoter_open,
+                    crate::tutorial_gui_semantics::DNA_PROMOTER_OPEN,
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if promoter_open.clicked() {
                     self.open_variant_followup_for_feature(feature_id, "description panel");
                 }
             } else if let Some(reasoning_evidence_id) = self

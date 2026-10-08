@@ -633,6 +633,11 @@ Tutorial GUI acceptance contract:
   fact expressions
 - replacement text is target-constrained and replaces the existing field
   value; arbitrary command-bearing text inputs are not tutorial-eligible
+- Promoter-design alternate replacement accepts exactly one uppercase `A`,
+  `C`, `G` or `T`. Feature-tree row/group steps require a sequence plus canonical
+  zero-based `feature_index`. Project preparation returns exact feature-content
+  and kind-group scopes in additive `feature_bindings`; the runner refuses
+  missing, duplicate or ambiguous bindings rather than selecting the first row.
 - report verifiers support required field paths, equality/non-empty/numeric
   value assertions, and numeric field-to-field relations
 - state verifiers can set additive `compare_with_oracle: true` alongside

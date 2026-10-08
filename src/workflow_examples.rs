@@ -2767,6 +2767,30 @@ fn validate_tutorial_gui_acceptance(
                 step.id, step.target, target_spec.window_id, step.window
             ));
         }
+        let feature_target = matches!(
+            step.target.as_str(),
+            "dna.feature_tree.row" | "dna.feature_tree.group"
+        );
+        if feature_target || step.subject.contains_key("feature_index") {
+            let index = step.subject.get("feature_index").and_then(|value| {
+                value
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|index| index.to_string() == *value)
+            });
+            if !feature_target
+                || index.is_none()
+                || step
+                    .subject
+                    .get("sequence")
+                    .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{context} step '{}' requires an exact sequence/feature_index binding for a feature-tree target",
+                    step.id
+                ));
+            }
+        }
         let interaction_kind = tutorial_gui_interaction_kind(&step.interaction);
         if !target_spec.allowed_interactions.contains(&interaction_kind) {
             return Err(format!(
@@ -8303,6 +8327,42 @@ mod tests {
             error.to_string().contains("unknown variant `smkoe`"),
             "unexpected profile error: {error}"
         );
+    }
+
+    #[test]
+    fn tutorial_gui_acceptance_feature_targets_require_exact_binding() {
+        for index in [None, Some("-1"), Some("00"), Some("0")] {
+            let mut manifest = load_tutorial_manifest(&tutorial_manifest_path()).unwrap();
+            let acceptance = manifest
+                .chapters
+                .iter_mut()
+                .find_map(|chapter| chapter.gui_acceptance.as_mut())
+                .unwrap();
+            let step = acceptance
+                .steps
+                .iter_mut()
+                .find(|step| !step.persists_project_state)
+                .unwrap();
+            step.window = "window.dna_viewer".into();
+            step.target = "dna.feature_tree.row".into();
+            step.interaction = TutorialGuiInteraction::Click;
+            step.subject
+                .insert("sequence".into(), "fixture_sequence".into());
+            if let Some(index) = index {
+                step.subject.insert("feature_index".into(), index.into());
+            }
+            let examples = load_workflow_examples(&example_dir()).unwrap();
+            let result = validate_tutorial_manifest_against_examples(&manifest, &examples);
+            if index == Some("0") {
+                result.unwrap();
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .contains("exact sequence/feature_index binding")
+                );
+            }
+        }
     }
 
     #[test]
