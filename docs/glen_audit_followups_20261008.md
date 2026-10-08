@@ -25,7 +25,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
-| 1. Audit preservation | Published inventory verified; archive contents pending | Unchanged report preserved; approved small metadata hashes and 721 safe, unique manifest paths verified, including the 11 owner-supplied inventory entries. Archive/binaries were not downloaded over the train connection. Verify their actual bytes, original screenshots, projects and Criterion outputs before claiming independent archive acceptance. |
+| 1. Audit preservation | Complete: original bytes independently verified | [New integrity receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md) pins the unchanged `30f23aa4` archive, manifest and report. Exact 319,263,072-byte archive digest, `zstd -t`, all 721 regular-file hashes and safe exact membership pass on macOS. Original project, raw images and both Criterion trees inspected; no historical binaries executed or performance/scientific verdict inferred. |
 | 2. Tutorial 08.04 GUI/agent contracts | Native contract passes at `b13f2b65`; shared handoff repair pending | Focused Rust tests, locked GUI-support check, generation and ordinary Linux/X11 input replay pass after the rebase, including both pair regression families. The full Linux/Windows suites expose invalid unquoted reporter-handoff JSON. Repair the caller, rerun that regression family and inspect new-SHA raw captures, persisted oracle and hashes before completion. |
 | 3. Live-agent acceptance | Public pilot reverified at `62f7180b`; rebased candidate pending | Retained genuine macOS dev CLI responses and reviewed C/T outputs agree with fresh Linux public CI full sequence records at `62f7180b`. Repeat at the final rebased SHA; do not download its large CLI artifact on the train. Neither echo transport nor an older pilot certifies the new candidate. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Public base projection verified; rebased native inspection pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`, then hashes/sequence facts reverified at `62f7180b`. The earlier SVG was rendered without recolouring native canvases. Native replay passes at rebased `b13f2b65`, but its raw captures remain uninspected. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
@@ -428,3 +428,17 @@ follow-up merely to improve those observations.
   `rustfmt --check`, YAML parsing and `git diff --check` pass. The new Rust
   parser/executor regression is authored, not executed locally; acceptance
   requires the newly committed source on Actions.
+- After the owner allowlisted the hotel's IP and restored normal connectivity,
+  retrieve the unchanged approved archive. Verify its pinned size/digest,
+  `zstd -t`, all 721 regular-file hashes, 313 directories and exact safe manifest
+  membership without extraction or execution. Retain the new receipt with
+  SHA-256 `1a41c227b6e91587e6d310114d6672d875008f51170bf75428da303b3b50dbb5`.
+  Separately inspect 82 bounded data files, original native/export images and
+  Criterion slope records. Item 1 is complete for preservation only; original
+  Linux execution, source/profile authenticity and performance remain reported.
+  This evidence-only commit does not change the frozen runtime/package
+  candidate `6d8b4db772a5ed08f5fd7926ec4f1635a14a236a` or inherit its verdicts.
+  On that candidate plus this evidence-only diff, all 24 Python checkout tests
+  pass on macOS, including the new LF/CRLF missing-attribute negative control;
+  `cmp` confirms receipt byte identity and `git diff --check` passes. No local
+  Rust build/check/test was run.

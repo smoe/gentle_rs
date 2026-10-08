@@ -1,0 +1,116 @@
+{
+  "schema": "gentle.retained_audit_verification.v1",
+  "verified_at_utc": "2026-10-08T19:27:02.047133+00:00",
+  "source_revision_reported": "30f23aa4cb084694870a139714d0f0fef1726378",
+  "origin_url": "https://gentle.functional.domains/openclaw/canvas/gentle-30f23aa4-audit/",
+  "archive": {
+    "name": "tutorial-parity-30f23aa4-20261008.tar.zst",
+    "size_bytes": 319263072,
+    "sha256": "d257b98b95359c91d4639eb18d8a11008575d306fe7c8e890189721086437fe1"
+  },
+  "manifest": {
+    "name": "tutorial-parity-30f23aa4-20261008.files.sha256",
+    "size_bytes": 139612,
+    "sha256": "0f4f723115453cb1ed491654ac7671cd392116cb1f3b8c601decd31e8d128361"
+  },
+  "zstd_test": "passed; 1406382080-byte decompressed tar stream",
+  "archive_root": "tutorial-parity-30f23aa4-20261008",
+  "regular_files_verified": 721,
+  "directory_members": 313,
+  "payload_size_bytes": 1404807210,
+  "file_counts_by_top_level": {
+    "REPORT.md": 1,
+    "agent-builtin-echo-plan.json": 1,
+    "agent-codex-plan-explicit-bin.json": 1,
+    "agent-codex-plan-explicit-bin.json.stderr": 1,
+    "agent-codex-plan.json": 1,
+    "agent-codex-plan.json.stderr": 1,
+    "bin": 4,
+    "criterion-bench-audit": 208,
+    "criterion-patz1": 312,
+    "gui-scroll-smoke": 29,
+    "gui-tp73": 30,
+    "gui-vkorc1": 71,
+    "help-variant-annotate-promoters.json": 1,
+    "help-variant-materialize-allele.json": 1,
+    "help-variant-promoter-context.json": 1,
+    "help-variant-reporter-fragments.json": 1,
+    "patz1-benchmark-fixture": 18,
+    "tutorial-coverage.json": 1,
+    "tutorial-images": 3,
+    "vkorc1-parity": 24,
+    "vkorc1-workflow": 11
+  },
+  "unsafe_or_special_members": 0,
+  "duplicate_or_unmanifested_files": 0,
+  "missing_or_mismatched_files": 0,
+  "selected_files": [
+    {
+      "path": "REPORT.md",
+      "size_bytes": 8929,
+      "sha256": "186e75a987fb50cb50ed883fa2b6fa5434718fcb553ceec7aad90a8af7c1cfce"
+    },
+    {
+      "path": "bin/gentle",
+      "size_bytes": 458443024,
+      "sha256": "68a4632eb34ec03cd23c40363798ce3f68d32f7e1d1dff7e3d429705c937b958"
+    },
+    {
+      "path": "bin/gentle_cli",
+      "size_bytes": 327108392,
+      "sha256": "09965f06cdfb012300328c00c3a824aab0e9ff9a6dc5ff09c7b86a9ea2f3155c"
+    },
+    {
+      "path": "bin/gentle_examples_docs",
+      "size_bytes": 252227880,
+      "sha256": "3f0a812cd2bde2420806e312c3de5ca768ab735eaeb91e168cdb934ff3ae44ab"
+    },
+    {
+      "path": "bin/gentle_mcp",
+      "size_bytes": 326061096,
+      "sha256": "5677dea826245f119ea1ab86dd30a1fb61b0ffd7dfe36fb8556206f9673bb7a5"
+    },
+    {
+      "path": "gui-scroll-smoke/overview-after-100-wheel.png",
+      "size_bytes": 181130,
+      "sha256": "d502dc571957d36c7ddd03b14058cdee24120d9a14a1b63c45c38554b42d5e45"
+    },
+    {
+      "path": "gui-scroll-smoke/overview-before.png",
+      "size_bytes": 188756,
+      "sha256": "abbe6edd65aac1891cbbb95d69985a9080adb78f98897b1b0e8df27691285793"
+    },
+    {
+      "path": "patz1-benchmark-fixture/locus.report.json",
+      "size_bytes": 273196,
+      "sha256": "2ea1c00df161d8174945cc16d88971909b367a875259807819c8d3af11df7f5a"
+    },
+    {
+      "path": "patz1-benchmark-fixture/patz1.gentle.json",
+      "size_bytes": 603553,
+      "sha256": "42c216e44f855dd9bc66923836145666465b1edf8429131624d9b526f34799fd"
+    },
+    {
+      "path": "tutorial-coverage.json",
+      "size_bytes": 56682,
+      "sha256": "90780c3340833d1dd9ef92b281a05b1432b64ac76777b755ef60fdc62025438b"
+    },
+    {
+      "path": "vkorc1-workflow/replay/state.json",
+      "size_bytes": 5526026,
+      "sha256": "ff3235690cbad3c3c659a1a0de05970816e82e10460202201ba9bbc5f4c6f191"
+    }
+  ],
+  "verification": {
+    "method": "Pinned archive and manifest SHA-256; zstd -t; safe tar stream; exact bijection and SHA-256 for every regular file",
+    "verifier_sha256": "a4ec1c99bfaf9116c72222b39ed39302c8347122bf42ebfd59f4ba117c96280a",
+    "complete_file_receipt_sha256": "73f3577f5205f902f945e016eafd3f76093b7fce071595be1e5a25b0091f1aa0",
+    "archive_members_executed": false,
+    "archive_members_extracted": false
+  },
+  "nonclaims": [
+    "Preservation and byte integrity only; Glen's Linux execution remains reported, not rerun.",
+    "Binary hashes do not independently bind binaries to the reported source or package-opt1 profile.",
+    "No new native GUI, Windows/macOS, live-agent, timed-performance, package or scientific acceptance."
+  ]
+}
