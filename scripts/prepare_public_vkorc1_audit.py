@@ -45,6 +45,19 @@ def report_content(report: dict) -> dict:
             if key not in ("generated_at_unix_ms", "op_id", "run_id")}
 
 
+def retained_refsnp_url(path: Path) -> str:
+    """GENtle's existing file override consumes a raw path, not URI escapes."""
+    return "file://" + str(path)
+
+
+def assert_reviewed_fragment(report: dict, operation: dict) -> None:
+    recommended = [row for row in report["candidates"]
+                   if row["candidate_id"] == report["recommended_candidate_id"]]
+    assert len(recommended) == 1 and recommended[0]["recommended"] is True
+    body = operation["ExtractRegion"]
+    assert (body["from"], body["to"]) == (recommended[0]["start_0based"], recommended[0]["end_0based_exclusive"]), "tutorial fragment differs from current engine recommendation"
+
+
 def pair_content(project: dict) -> dict:
     sequences = project["sequences"]
     bases = {role: bytes(sequences[PREFIX + role]["seq"]["seq"])
@@ -112,11 +125,12 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
                                         "http_status": response.status, "date": response.headers.get("Date")}
         document = json.loads(raw)
         assert str(document["refsnp_id"]) == "9923231", "wrong public refSNP"
-        refsnp = root / "refsnp-9923231.json"
+        refsnp = root / "retained public response" / "refsnp-9923231.json"
+        refsnp.parent.mkdir()
         refsnp.write_bytes(raw)
         receipt["refsnp_source"]["sha256"] = sha(refsnp)
         receipt["refsnp_source"]["execution_source"] = "retained file URL replay"
-        env["GENTLE_NCBI_DBSNP_REFSNP_URL"] = refsnp.as_uri()
+        env["GENTLE_NCBI_DBSNP_REFSNP_URL"] = retained_refsnp_url(refsnp)
         op(seed, fetch, "fetch-retained-public-slice")
         initial = json.loads(seed.read_bytes())
         initial_bases = initial["sequences"][CONTEXT]["seq"]["seq"]
@@ -147,6 +161,7 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
         assert context["genome_anchor"]["anchor_verified"] is True
         assert context["chosen_transcript_id"] == "ENST00000498155"
         extract = next(copy.deepcopy(item) for item in workflow if "ExtractRegion" in item)
+        assert_reviewed_fragment(json.loads((root / "direct-fragments.json").read_bytes()), extract)
         reference = next(copy.deepcopy(item) for item in workflow
                          if item.get("MaterializeVariantAllele", {}).get("allele") == "reference")
         alternate = next(copy.deepcopy(item) for item in workflow
@@ -182,7 +197,6 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
         proof["project_sha256"] = sha(routes["shared"])
         proof["synthetic"] = False
         proof["origin"] = "GENtle extraction from complete catalogued GRCh38/Ensembl 116 and retained public NCBI refSNP response"
-        (root / "base-comparison.json").write_text(json.dumps(proof, indent=2) + "\n")
         cache = root.parent / "vkorc1-public-reference"
         manifests = []
         catalog_entry = json.loads((repo / "assets/genomes.json").read_bytes())["Human GRCh38 Ensembl 116"]
@@ -202,6 +216,7 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
             manifests.append({"manifest": str(destination.relative_to(root)), "inputs": inputs})
         assert len(manifests) == 1, "one complete matching reference manifest required"
         receipt["reference_inputs"] = manifests
+        (root / "base-comparison.json").write_text(json.dumps(proof, indent=2) + "\n")
         receipt["status"] = "pass"
         receipt["claim"] = "public source-bound CLI/shared-shell promoter and explicit C/T insert parity only"
     except Exception as error:
