@@ -2,6 +2,7 @@
 
 from contextlib import redirect_stdout
 import io
+import json
 from pathlib import Path
 import subprocess
 import tempfile
@@ -12,6 +13,15 @@ from scripts.ci_vkorc1_gui_audit import pair_evidence, run_logged
 
 
 class FailureRetentionTests(unittest.TestCase):
+    def test_vkorc1_companion_declares_required_use_case_context(self):
+        root = Path(__file__).resolve().parents[1]
+        source = json.loads((root / "docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json").read_bytes())
+        use_cases = source["generated_chapter"]["use_cases"]
+        self.assertTrue(use_cases)
+        self.assertTrue(all(isinstance(value, str) and value.strip() for value in use_cases))
+        self.assertIn("synthetic", " ".join(use_cases))
+        self.assertIn("genomic-forward T", " ".join(use_cases))
+
     def test_failed_generation_records_exit_and_exposes_retained_diagnostic(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
