@@ -25,7 +25,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
-| 1. Audit preservation | Report preserved; raw bundle pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen reports Linux/X11 results at `30f23aa4`. Obtain and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
+| 1. Audit preservation | Report preserved; archive identified, verification pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen supplies the Storage Box archive and checksum recorded below, reporting Linux/X11 results at `30f23aa4`. Obtain approved read-only access and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
 | 2. Tutorial 08.04 GUI/agent contracts | Focused tests/generation pass; native visibility repair pending | The `62f7180b` native replay opens the dialog and enters T, but vertical scrolling cannot expose the pair button. Repair its action-row layout and rerun the unchanged visible/enabled and persisted-oracle checks; six passing inputs are not a completed native contract. |
 | 3. Live-agent acceptance | Public pilot passed at `a1fb305a`; final candidate pending | Independently verified macOS dev CLI and Linux-prepared public starter share this exact source/lock. Real ambiguity clarification, help-grounded review-first C/T suggestions and reviewed execution pass, recorded below. Repeat at the frozen package candidate; neither echo transport nor an older pilot certifies it. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Public base projection verified; native pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`; SVG rendered without clipping or recolouring native canvases. Require raw candidate/binary/snapshot-bound native captures. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
@@ -336,3 +336,19 @@ follow-up merely to improve those observations.
 - On `1f5610fd` plus this count-only repair, 65 Python checkout, GUI-runner and
   public-audit helper regressions pass on macOS; scoped `rustfmt --check` and
   `git diff --check` pass. These checks do not execute the repaired Rust test.
+- The `1f5610fd` focused GUI build fails with `E0063`: the new visibility test
+  omits egui's required wheel `phase`. Its native step is skipped, not passed.
+  Set `TouchPhase::Move`, matching the maintained benchmark and adjacent GUI
+  tests; retain vertical-only input and all visibility/state assertions.
+  On `91038fe0` plus this one-field repair, 34 Python helper/GUI-runner tests,
+  scoped `rustfmt --check` and `git diff --check` pass on macOS; new Rust
+  execution remains pending.
+- Glen supplies the immutable original archive location:
+  `/mnt/storage-box-1-gentle/Glen/handoffs/gentle/30f23aa4/tutorial-parity-30f23aa4-20261008.tar.zst`,
+  SHA-256 `d257b98b95359c91d4639eb18d8a11008575d306fe7c8e890189721086437fe1`,
+  with a sibling `.sha256` file. He reports 305 MB compressed,
+  1,406,382,080 bytes unpacked and successful `zstd -t`. The original host-local
+  tree is `/home/clawbio/.openclaw/workspace/artifacts/tutorial-parity-30f23aa4-20261008`.
+  These are supplied archive facts, not independent Codex verification.
+  Request an approved read-only SSH/SFTP alias or access-controlled URL and a
+  small file/hash inventory; the owner need not transfer the archive on a train.
