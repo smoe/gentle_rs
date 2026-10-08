@@ -11563,6 +11563,7 @@ fn promoter_pair_button_is_reachable_without_horizontal_scrolling() {
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(0.0, -120.0),
+                    phase: egui::TouchPhase::Move,
                     modifiers: egui::Modifiers::default(),
                 },
             ],

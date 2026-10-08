@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-08 - Supply The Visibility Regression's Wheel Phase
+
+- Match the maintained scroll benchmark and GUI tests by setting the synthetic
+  wheel event's required `TouchPhase::Move`. This repairs the focused test's
+  `E0063` compile failure at `1f5610fd`, not its unexecuted visibility verdict.
+- Keep the actual vertical-wheel, visible/enabled button and unchanged-state
+  assertions intact. Remote Rust and native replay must pass at a new SHA;
+  no local Rust build/check/test or product-input change is made.
+
 ## 2026-10-08 - Count The New 08.04 Agent Contract In The Catalog Regression
 
 - Update the aggregate tutorial-agent regression for the five new 08.04 cases:
