@@ -166,3 +166,11 @@ follow-up merely to improve those observations.
   [37774017701](https://github.com/smoe/gentle_rs/actions/runs/37774017701) is
   verified against `8d81f41714a5ce6774606d7753e4046a8ab55eb0` and includes
   public preparation; that still-running run predates this retention repair.
+- Retention rerun
+  [37775099176](https://github.com/smoe/gentle_rs/actions/runs/37775099176)
+  is verified against `4de826d13047fb22144fe75de830d503654cae7a`.
+  A public base-window SVG is authored on that base, guarded by exact raw-DNA
+  hashes, one C/T difference and full source/binary identities. Seven public
+  assertion/view and four synthetic/retention Python tests pass on macOS.
+  Only successful public reference/parity validation may emit this labelled
+  projection; it is not a native capture or an already-executed public pass.

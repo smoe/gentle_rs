@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-08 - Keep Public C/T Visual Proof Separate From Native Captures
+
+- Export a source/binary-bound base window only after the public input/parity
+  audit passes. Highlight the sole C/T difference without modifying any native
+  canvas or historical image; full raw sequence case and hashes remain in JSON.
+- Seven public assertion/view and four synthetic/retention Python tests pass
+  on macOS. Authored SVG coverage is not an executed public, native GUI,
+  reporter-construct or human scientific acceptance verdict.
+
 ## 2026-10-08 - Retain Portable Native Audit Failure Logs
 
 - Keep Rust test filters unchanged but replace colons in their CI log basenames
