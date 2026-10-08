@@ -3,7 +3,10 @@
 //! No evidence is fetched or inferred here. Biological payload order and hashes
 //! remain untouched; ambiguous legacy joins cannot establish evaluated absence.
 
-use crate::{SplicingExpertView, SplicingUniprotReferenceEvidence, SplicingUniprotReferenceStatus};
+use crate::{
+    SplicingBoundaryMarker, SplicingExpertView, SplicingUniprotReferenceEvidence,
+    SplicingUniprotReferenceStatus,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One unique oriented boundary/pair, retaining every source marker and transcript.
@@ -58,6 +61,65 @@ pub fn boundary_summaries(view: &SplicingExpertView) -> Vec<SplicingBoundarySumm
         })
         .collect()
 }
+
+/// Readable summary/hover wording shared by GUI and SVG, retaining every source marker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SplicingBoundaryPresentationRow {
+    pub summary: SplicingBoundarySummary,
+    pub label: String,
+    pub hover_text: String,
+    pub exceptional: bool,
+}
+
+/// A canonical dinucleotide can still belong to a non-canonical paired signature.
+pub fn boundary_is_exceptional(marker: &SplicingBoundaryMarker) -> bool {
+    !marker.canonical || !marker.canonical_pair
+}
+
+/// Build once per immutable view for cached GUI presentation or one-shot SVG export.
+pub fn boundary_presentation_rows(
+    view: &SplicingExpertView,
+) -> Vec<SplicingBoundaryPresentationRow> {
+    boundary_summaries(view)
+        .into_iter()
+        .map(|summary| {
+            let marker = &view.boundaries[summary.marker_index];
+            let exceptional = boundary_is_exceptional(marker);
+            let label = format!(
+                "{} / {} | {} | {}:{}{} | {} | {} transcripts",
+                marker.position_1based,
+                marker.partner_position_1based,
+                summary.strand,
+                marker.side,
+                marker.motif_2bp,
+                if exceptional { "*" } else { "" },
+                marker.paired_motif_signature,
+                summary.transcript_feature_ids.len()
+            );
+            let hover_text = summary
+                .marker_indices
+                .iter()
+                .map(|&index| {
+                    let marker = &view.boundaries[index];
+                    format!(
+                        "n-{} {}: {}",
+                        marker.transcript_feature_id, marker.transcript_id, marker.annotation
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            SplicingBoundaryPresentationRow {
+                summary,
+                label,
+                hover_text,
+                exceptional,
+            }
+        })
+        .collect()
+}
+
+/// Diagnostics may concern gene-level evidence, not necessarily transcript ambiguity.
+pub const REFERENCE_BADGE_LEGEND: &str = "UniProt badges: +N = additional exact-xref entries; ? = loaded-evidence diagnostic (see hover), not necessarily transcript ambiguity.";
 
 /// One chart lane, joined to at most one matrix record by exact feature ID.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,13 +250,13 @@ pub fn reference_badge(evidence: &SplicingUniprotReferenceEvidence) -> Option<St
     } else {
         String::new()
     };
-    let ambiguity = if evidence.diagnostics.is_empty() {
+    let diagnostic = if evidence.diagnostics.is_empty() {
         ""
     } else {
         " ?"
     };
     Some(format!(
-        "UniProt {accession} [{review}]{overflow}{ambiguity}"
+        "UniProt {accession} [{review}]{overflow}{diagnostic}"
     ))
 }
 
@@ -415,6 +477,70 @@ mod tests {
     }
 
     #[test]
+    fn splicing_boundary_presentation_keeps_readable_sources_and_opposite_strands() {
+        // Hand-crafted display-only records, including a deliberately long synthetic ID.
+        let mut view = view();
+        view.transcripts[0].transcript_id = format!("SYNTHETIC_{}", "LONG_ID_".repeat(30));
+        view.transcripts[2].strand = "-".to_string();
+        for lane in &view.transcripts {
+            view.boundaries.push(serde_json::from_value(json!({
+                "transcript_feature_id":lane.transcript_feature_id,"transcript_id":lane.transcript_id,
+                "side":"donor","position_1based":10,"partner_position_1based":50,
+                "motif_2bp":"GT","paired_motif_signature":"GT-AG","canonical":true,"canonical_pair":true,
+                "annotation":format!("synthetic annotation {}",lane.transcript_feature_id)
+            })).unwrap());
+        }
+        let before = serde_json::to_value(&view).unwrap();
+        let rows = boundary_presentation_rows(&view);
+        assert_eq!(rows.len(), 2);
+        let plus = rows.iter().find(|row| row.summary.strand == "+").unwrap();
+        assert_eq!(plus.label, "10 / 50 | + | donor:GT | GT-AG | 2 transcripts");
+        assert_eq!(plus.summary.marker_indices, [0, 1]);
+        assert_eq!(plus.summary.transcript_feature_ids, [10, 30]);
+        assert_eq!(
+            plus.hover_text,
+            format!(
+                "n-30 {}: synthetic annotation 30\nn-10 {}: synthetic annotation 10",
+                view.transcripts[0].transcript_id, view.transcripts[1].transcript_id
+            )
+        );
+        let minus = rows.iter().find(|row| row.summary.strand == "-").unwrap();
+        assert_eq!(
+            minus.label,
+            "10 / 50 | - | donor:GT | GT-AG | 1 transcripts"
+        );
+        assert!(!plus.exceptional);
+        assert!(!minus.exceptional);
+        assert!(!plus.hover_text.contains("SplicingBoundaryMarker"));
+        assert_eq!(serde_json::to_value(&view).unwrap(), before);
+    }
+
+    #[test]
+    fn splicing_boundary_exception_includes_noncanonical_pairs() {
+        // Synthetic boundary: its own dinucleotide and paired signature are independent facts.
+        let mut view = view();
+        let mut marker: SplicingBoundaryMarker = serde_json::from_value(json!({
+            "transcript_feature_id":30,"transcript_id":"synthetic",
+            "side":"acceptor","position_1based":50,"partner_position_1based":10,
+            "motif_2bp":"AG","paired_motif_signature":"GC-AG","canonical":true,"canonical_pair":false
+        })).unwrap();
+        for (canonical, canonical_pair, exceptional) in [
+            (true, true, false),
+            (true, false, true),
+            (false, true, true),
+            (false, false, true),
+        ] {
+            marker.canonical = canonical;
+            marker.canonical_pair = canonical_pair;
+            assert_eq!(boundary_is_exceptional(&marker), exceptional);
+            view.boundaries = vec![marker.clone()];
+            let row = boundary_presentation_rows(&view).pop().unwrap();
+            assert_eq!(row.exceptional, exceptional);
+            assert_eq!(row.label.contains("AG*"), exceptional);
+        }
+    }
+
+    #[test]
     fn splicing_layout_is_display_only_and_joins_shuffled_matrix_ids() {
         let mut view = view();
         view.matrix_rows[1].uniprot_reference.status = SplicingUniprotReferenceStatus::Referenced;
@@ -553,5 +679,12 @@ mod tests {
             reference_badge(&evidence).as_deref(),
             Some("UniProt A_SYNTHETIC [unreviewed] +1 ?")
         );
+        evidence.diagnostics = vec!["Multiple explicit locus gene IDs".into()];
+        assert_eq!(
+            reference_badge(&evidence).as_deref(),
+            Some("UniProt A_SYNTHETIC [unreviewed] +1 ?")
+        );
+        assert!(REFERENCE_BADGE_LEGEND.contains("? = loaded-evidence diagnostic"));
+        assert!(REFERENCE_BADGE_LEGEND.contains("not necessarily transcript ambiguity"));
     }
 }

@@ -1095,12 +1095,22 @@ Feature tree grouping:
   Target first within each group, then normalized transcript ID and feature ID.
   Headers are omitted when all lanes are unevaluated. One compact accession/
   review-status badge per matched lane carries `+N` for further entries and `?`
-  for ambiguity; full evidence remains in hovers. Header clicks select nothing.
+  for a loaded-evidence diagnostic, which can concern gene-level relevance
+  rather than transcript ambiguity; the shared legend explains both symbols.
+  Full evidence remains in hovers. Header clicks select nothing.
   Missing/duplicate lane-to-matrix joins are explicitly unevaluated; orphan
   matrix records remain listed, and missing exon cells show `n/a`, not absence.
   Every boundary tick remains visible, with rose exceptional markers. Full
   motif words appear once per oriented boundary/pair in the shared summary;
   expand **Per-transcript boundary details** for all original annotations.
+  Summary labels, readable source-note hovers, per-transcript motif rows and
+  class counts reuse the content-keyed presentation cache. SVG uses the same
+  summary wording, not internal Rust debug fields. Non-canonical pairs retain
+  exceptional ticks/dots even when their own dinucleotide is canonical.
+  Unevaluated legacy views keep their 26/28-px lane spacing; evaluated groups
+  reserve 36 px for headings/badges. Dense SVG matrices retain all cells within
+  the canvas with nonoverlapping positive widths; a legend diagnostic discloses
+  sub-2-pixel compression rather than implying missing exons or transitions.
 - For debugging Splicing Expert launch stalls, launching GENtle with
   `GENTLE_TRACE_SPLICING_EXPERT=1` emits coarse open/render stage tracing to
   the terminal and mirrors it into the sequence-window status line.

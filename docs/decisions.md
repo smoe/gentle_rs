@@ -11,13 +11,17 @@ normalized transcript ID, feature ID and original lane index. The normalization
 is for sorting only; existing engine-owned exact-xref classification is unchanged.
 Headers appear only if a displayed lane was evaluated. Badges count sources
 with actual matched transcript xrefs, in accession order, with review status,
-overflow and ambiguity indicators; full evidence stays in JSON/hovers.
+overflow and diagnostic indicators; full evidence stays in JSON/hovers. `?`
+indicates a loaded-evidence diagnostic, not necessarily transcript ambiguity.
 
 Missing or duplicate joins are unevaluated, with diagnostics; unused matrix
 records remain in original order at the end. Missing cells are unknown, not
 absent exons. One shared half-open row-coordinate table drives GUI painting and
 hit-testing; headers cannot select adjacent transcripts. Boundary summaries
 deduplicate oriented presentation text only, retaining every source marker.
+GUI caches summary labels/hovers and motif-detail rows with the existing
+validated content identity; SVG consumes the same readable source-note wording.
+Boundary and paired-signature exception flags share one presentation predicate.
 
 Grouping never reorders/mutates engine payloads or changes their fingerprints,
 sequence derivation, biological coordinates or evidence. Other isoform-evidence

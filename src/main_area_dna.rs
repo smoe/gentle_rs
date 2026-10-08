@@ -1041,6 +1041,17 @@ struct SplicingLaneCanvasStyle {
 }
 
 impl SplicingLaneCanvasStyle {
+    fn lane_height_for_layout(
+        self,
+        layout: &gentle_protocol::splicing_presentation::SplicingPresentationLayout,
+    ) -> f32 {
+        if layout.show_headers || layout.lanes.iter().any(|lane| lane.badge.is_some()) {
+            self.lane_height_px.max(36.0)
+        } else {
+            self.lane_height_px
+        }
+    }
+
     fn expert() -> Self {
         Self {
             label_column_width_px: 220.0,
@@ -3643,29 +3654,6 @@ impl MainAreaDna {
         b_end_exclusive: usize,
     ) -> bool {
         a_start < b_end_exclusive && a_end_exclusive > b_start
-    }
-
-    #[cfg(test)]
-    fn splicing_lane_index_at_y(
-        y: f32,
-        lanes_top: f32,
-        lane_height_px: f32,
-        lane_count: usize,
-    ) -> Option<usize> {
-        if lane_count == 0
-            || !y.is_finite()
-            || !lanes_top.is_finite()
-            || !lane_height_px.is_finite()
-            || lane_height_px <= 0.0
-        {
-            return None;
-        }
-        let lane_f = ((y - lanes_top) / lane_height_px).floor();
-        if !lane_f.is_finite() || lane_f < 0.0 {
-            return None;
-        }
-        let lane = lane_f as usize;
-        if lane < lane_count { Some(lane) } else { None }
     }
 
     fn feature_overlaps_linear_viewport(
@@ -18526,7 +18514,7 @@ impl MainAreaDna {
     ) -> Option<usize> {
         let presentation = self.splicing_expert_presentation_for_view(view);
         let layout = &presentation.layout;
-        let canvas = layout.canvas(style.lane_height_px.max(36.0), 24.0);
+        let canvas = layout.canvas(style.lane_height_for_layout(layout), 24.0);
         let transcript_total = view.transcript_count.max(1);
         let exon_support_by_range = view
             .unique_exons
@@ -18684,7 +18672,7 @@ impl MainAreaDna {
                         egui::Stroke::new(1.3_f32, color),
                     );
                     painter.circle_filled(egui::pos2(x, y + dy), 2.2, color);
-                    if !marker.canonical || !marker.canonical_pair {
+                    if gentle_protocol::splicing_presentation::boundary_is_exceptional(marker) {
                         painter.circle_filled(egui::pos2(x, y + dy), 3.0, egui::Color32::from_rgb(190, 18, 60));
                     }
                 }
