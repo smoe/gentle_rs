@@ -49,6 +49,10 @@
     "guide_path": "docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md",
     "summary": "Offline synthetic guard for the online tutorial's explicit multiallelic insert-pair action. The 20-base input is not human VKORC1 DNA.",
     "narrative": "This companion deliberately isolates step 4 from genome retrieval and assay interpretation. Its one variation is C at zero-based position 6 with alternate candidates A,G,T. Nothing selects T automatically. The GUI must start without outputs, take an explicitly reviewed T, and save both inserts with bases and annotations matching the separate engine oracle. Refusal atomicity is also covered by adapter regressions; a native positive pass is not live-agent, online-genome, reporter or scientific acceptance.",
+    "use_cases": [
+      "Practice an explicit genomic-forward T choice in a synthetic multiallelic example before working with the public VKORC1 locus.",
+      "Check that GUI-created reference and alternate inserts preserve the source and differ at one reviewed base, without interpreting the toy sequence as an assay."
+    ],
     "gui_steps": [
       "Open the synthetic offline starter project, then open vkorc1_rs9923231_promoter_fragment (20 bp, not human DNA).",
       "Expand the variation feature group and select its exact rs9923231 feature (index 0).",

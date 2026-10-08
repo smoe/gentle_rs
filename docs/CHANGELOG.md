@@ -1,5 +1,12 @@
 # GENtle Changelog
 
+## 2026-10-08 - Supply The Required 08.04 Use-Case Context
+
+- The retained Linux diagnostic at `4de826d1` identifies a missing use-case
+  context in the synthetic companion, not a runtime allele failure. Add two
+  scoped teaching contexts and a fast metadata regression; keep manifest
+  validation intact and all native/public/scientific acceptance pending.
+
 ## 2026-10-08 - Supply A Source-Bound Agent-Audit CLI From CI
 
 - Add an opt-in macOS headless CLI build with source/lock/binary/toolchain and

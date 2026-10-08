@@ -179,3 +179,11 @@ follow-up merely to improve those observations.
   use with the host's existing authorized login. CI records full source,
   lockfile, binary, architecture and toolchain identities; no model invocation
   or credential transfer occurs there. Fresh agent execution remains pending.
+- Run [37776460982](https://github.com/smoe/gentle_rs/actions/runs/37776460982)
+  is verified against `f99c44a1a8a48d024630f00704ab98177dc2284d`; headless and
+  release-policy jobs passed, with native/public preparation and macOS CLI
+  still running. Retained diagnostics from `4de826d1` bind all four passing
+  focused Rust filters and the generation failure to exact binary/lock hashes:
+  `tutorial-generate` rejects the new companion's missing use-case context.
+  Add that teaching metadata without weakening the validator; generation,
+  projection import and native replay still need a new executed pass.
