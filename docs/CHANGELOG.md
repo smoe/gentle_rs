@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-08 - Verify Deterministic Scroll CPU Cases
+
+- The opt-in Linux smoke at `d1bf3fd3` passed all 24 fixture/size/direction
+  observations. Retain the exact dev-profile receipt and independently checked
+  binary/input/log hashes in [new follow-up evidence](audits/glen_followups_20261008/README.md).
+- This closes benchmark-case verification only. Native latency, performance
+  regression thresholds and package acceptance remain distinct; the older
+  audit is unchanged. Linux/Windows lib-test visibility errors are separately
+  repaired and require their own new CI execution.
+
 ## 2026-10-08 - Add Non-Publishing Native 08.04 CI Replay
 
 - Compile focused promoter-pair, feature-binding and semantic-policy regressions

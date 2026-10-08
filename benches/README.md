@@ -128,13 +128,18 @@ Before timing, both scroll directions must change the actual viewport without
 changing its span or sequence length, emit paint shapes and leave sequence,
 annotation, enzyme and methylation inputs byte-identical. The following frame
 must retain the moved viewport. `GUI_SCROLL_OBSERVATION` JSON lines record these
-checks against the full Git SHA and version. The pointer target comes from the
+checks for every fixture and size against the full Git SHA, version and content
+digest. The pointer target comes from the
 clipped egui interaction rectangle, not the potentially off-screen paint extent.
-checks for every fixture and size, including the exact source revision and
-content digest. A failed assertion invalidates the run. An omitted PATZ1 input
+A failed assertion invalidates the run. An omitted PATZ1 input
 does not count as PATZ1 acceptance. Use `-- --test` instead of `-- --quick
 --noplot` for deterministic smoke verification; retain its log and build receipt
 separately from an auditor's timed run. No historical results are overwritten.
+
+The development-profile deterministic smoke at `d1bf3fd3` passed all 24
+directional observations on Ubuntu 24.04 with Rust 1.99.0. Its exact
+[receipt and provenance](../docs/audits/glen_followups_20261008/README.md)
+are retained separately; this is not a native-latency or package acceptance.
 
 ## DNA feature-density latency
 

@@ -224,6 +224,28 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual(json.loads((target / request_path).read_bytes()), request)
                 self.assertEqual(json.loads((target / source_path).read_bytes()), source)
 
+    def test_scroll_followup_receipt_hash_survives_both_checkout_modes(self):
+        relative = Path("docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json")
+        payload = (checker.ROOT / relative).read_bytes()
+        expected = "60add8b059510d660c36a25c1b7115138b3fbc8693dcecf2b42fd2316ddceab5"
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "scroll smoke receipt")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "scroll-receipt-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"scroll-receipt-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            self.assertEqual((target / relative).read_bytes(), payload)
+
     def test_review_dependencies_keep_commit_dates_despite_newer_graphic_mtime(self):
         source = Path("docs/tutorial/sources/synthetic.json")
         graphic = Path("docs/screenshots/synthetic.png")

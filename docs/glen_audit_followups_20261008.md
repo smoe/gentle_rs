@@ -29,7 +29,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | 2. Tutorial 08.04 GUI/agent contracts | In progress | Add closed semantic controls and typed starter/oracle acceptance plus shared-shell agent parity. Require explicit genomic-forward T, refusal of unspecified A/G/T, source-bound reports and matched inserts differing at exactly one reviewed base. Compile and execute on a fresh exact candidate via CI/external validation. |
 | 3. Live-agent acceptance | Pending | Local Codex reports authenticated ChatGPT access; Glen's isolated Linux adapter reported HTTP 401. A fresh GENtle request, real model response, command validation and review-first execution on public data must pass; echo transport is not model-planning acceptance. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Pending | Preserve native canvas appearance. Retain raw, candidate/binary/snapshot-bound captures and an inspectable base-level C/T comparison. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
-| 5. Scroll benchmarks | Authored; execution pending | Real egui wheel-event and following-frame CPU cases added over the maintained fixtures/sizes. Untimed checks require bidirectional viewport movement, nonempty frames and unchanged sequence/annotation inputs. Exact build/profile/toolchain, PATZ1 preparation and CI/external smoke evidence are still required; timing/native responsiveness verdict remains external. |
+| 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
 | 6. .12 package acceptance | Pending | Freeze one final pushed candidate; dispatch native installers and runtime-cli container with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at that same source/lock SHA. Native GUI and scientific approval remain separate. |
 
 ## Retained Baseline
@@ -99,3 +99,14 @@ follow-up merely to improve those observations.
   tests' access to the private pair handler (`E0624`), not a runtime allele or
   tutorial-discovery failure. Match the adjacent handlers' parent-only visibility
   before dispatching the focused native replay; do not broaden the public API.
+- Verified the downloaded successful scroll artifact on macOS without executing
+  or rebuilding Rust. Its receipt is retained unchanged with SHA-256
+  `60add8b059510d660c36a25c1b7115138b3fbc8693dcecf2b42fd2316ddceab5`.
+  All listed hashes and all 24 direction/content invariants match. Item 5's
+  deterministic-case acceptance is complete at `d1bf3fd3`; timing and native
+  responsiveness remain external questions, not inherited passes.
+- [Native replay CI 37769190082](https://github.com/smoe/gentle_rs/actions/runs/37769190082)
+  is verified against `1aee220c32f6f2d498edcc27488a423c29f7042e`. Its build and
+  focused tests are in progress. The pre-existing local CLI identifies itself
+  as `04debbe0eb229e9758090d1964663849621470b9`; it is not the new candidate and
+  is not used to claim candidate acceptance. No local Rust build was run.
