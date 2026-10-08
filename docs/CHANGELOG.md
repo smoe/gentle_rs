@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-08 - Supply The Native Audit's X11 Keyboard Library
+
+- The retained `0cba2e9c` startup panic identifies the missing dynamically
+  loaded `libxkbcommon-x11` dependency. Install its development/runtime package
+  in the opt-in native audit job and guard that wiring with a fast regression.
+- All 50 retained artifact hashes, focused Rust filters and four generation
+  checks are verified at that SHA. Native input replay remains unaccepted;
+  no application workaround, local Rust build or historical evidence change.
+
 ## 2026-10-08 - Verify The Public VKORC1 Agent And Base Projection
 
 - Independently verify all 44 public audit artifacts at `a1fb305a`, matching

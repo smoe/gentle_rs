@@ -13,6 +13,11 @@ from scripts.ci_vkorc1_gui_audit import pair_evidence, run_logged
 
 
 class FailureRetentionTests(unittest.TestCase):
+    def test_native_audit_installs_dynamically_loaded_x11_keyboard_library(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text()
+        native_job = workflow.split("  vkorc1-gui-audit:", 1)[1].split("  gui-scroll-audit:", 1)[0]
+        self.assertIn("libxkbcommon-x11-dev", native_job)
+
     def test_native_namespace_drops_privilege_and_retains_before_public_preparation(self):
         root = Path(__file__).resolve().parents[1]
         helper = (root / "scripts/ci_vkorc1_gui_audit.py").read_text()

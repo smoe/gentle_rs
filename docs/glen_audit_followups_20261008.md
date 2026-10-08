@@ -26,7 +26,7 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
 | 1. Audit preservation | Report preserved; raw bundle pending | Unchanged owner-supplied report and its SHA-256 retained above. Glen reports Linux/X11 results at `30f23aa4`. Obtain and verify the retained binaries, original screenshots, manifests, project and Criterion outputs before claiming independent archive verification. |
-| 2. Tutorial 08.04 GUI/agent contracts | In progress | Add closed semantic controls and typed starter/oracle acceptance plus shared-shell agent parity. Require explicit genomic-forward T, refusal of unspecified A/G/T, source-bound reports and matched inserts differing at exactly one reviewed base. Compile and execute on a fresh exact candidate via CI/external validation. |
+| 2. Tutorial 08.04 GUI/agent contracts | Focused tests/generation pass at `0cba2e9c`; native pending | Closed semantic controls, independent starter/oracle, atomic refusal and public shared-shell parity are tested. Native replay stops before the first input at a missing X11 keyboard library. Rerun after repairing that runner dependency; authored steps are not a native pass. |
 | 3. Live-agent acceptance | Public pilot passed at `a1fb305a`; final candidate pending | Independently verified macOS dev CLI and Linux-prepared public starter share this exact source/lock. Real ambiguity clarification, help-grounded review-first C/T suggestions and reviewed execution pass, recorded below. Repeat at the frozen package candidate; neither echo transport nor an older pilot certifies it. Never copy or inspect credentials. |
 | 4. Honest visual evidence | Public base projection verified; native pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`; SVG rendered without clipping or recolouring native canvases. Require raw candidate/binary/snapshot-bound native captures. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
@@ -245,6 +245,15 @@ follow-up merely to improve those observations.
   It omits repeat public preparation, builds only on Actions, and keeps native
   acceptance pending. All 44 scoped helper/release-policy Python tests pass on
   macOS; no local Rust build/check/test was run.
+- Retained native failure at `0cba2e9c`: independently verified all 50 artifact
+  hashes and receipt SHA-256
+  `2fe4448749634f5324f6f00f3f9682e676add4861e3e064b0a84962cfa22e2c7`.
+  The GUI stderr identifies `xkbcommon-dl` failing to load
+  `libxkbcommon-x11.so` before the first `open_fragment` input; this is an
+  audit-runner dependency failure, not an allele result. The three binaries,
+  all focused Rust filters and four generator checks pass on Linux/dev at
+  that SHA. Add `libxkbcommon-x11-dev` only to the native audit dependencies;
+  native captures and tutorial-input acceptance still require a fresh run.
 - Independently verified the `a1fb305a` public receipt SHA-256
   `d5865df2a9940075d6edd9c3729ab68487b347301fd6ae67d8e1ea2c30f47820`
   and all 44 listed artifact hashes from run `37778513095`. The raw C/T inserts
