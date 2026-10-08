@@ -5536,6 +5536,8 @@ pub struct OpResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_handoff: Option<Box<PrimerSpecificityHandoff>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primer_specificity_multi_handoff: Option<Box<PrimerSpecificityMultiHandoff>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub primer_specificity_report: Option<Box<PrimerSpecificityReport>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub construct_reasoning_graph: Option<Box<ConstructReasoningGraph>>,

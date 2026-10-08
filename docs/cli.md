@@ -4431,6 +4431,13 @@ Shared shell command:
         codes, an `all_commands_success` completion policy, and `primers
         specificity-import` follow-up metadata; planning itself starts no
         BLAST search process
+      - `primers specificity-multi-handoff REQUEST_JSON_OR_@FILE OUTPUT_DIR`
+        prepares one pair against 1-8 explicitly selected genomic/transcriptome
+        references, with required/optional flags and optional reference-specific
+        intended-target mappings. Required indexes must already be validated;
+        unavailable optional indexes are unassessed, not zero-hit searches.
+        Choose a new output directory with an existing parent. It does not
+        execute BLAST, prepare resources or attach panel/order-readiness gates.
       - after both planned commands exit successfully, `primers
         specificity-import HANDOFF.json` parses their TSVs and applies the same
         specificity interpretation used by the inline route. Empty output is

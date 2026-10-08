@@ -139,17 +139,17 @@ struct NormalizedCdnaAssayTestRequest {
 
 #[derive(Debug, Clone)]
 pub(super) struct PrimerSpecificityResolvedInput {
-    primer_report_id: Option<String>,
-    pair_rank: Option<usize>,
-    pair_index: Option<usize>,
-    expected_amplicon_length_bp: Option<usize>,
-    primary_seq_id: Option<String>,
-    related_seq_ids: Vec<String>,
-    design_provenance: PrimerDesignProvenanceCitation,
-    source_handoff_id: Option<String>,
-    intended_target: PrimerSpecificityIntendedTarget,
-    forward: PrimerSpecificityInputPrimer,
-    reverse: PrimerSpecificityInputPrimer,
+    pub(super) primer_report_id: Option<String>,
+    pub(super) pair_rank: Option<usize>,
+    pub(super) pair_index: Option<usize>,
+    pub(super) expected_amplicon_length_bp: Option<usize>,
+    pub(super) primary_seq_id: Option<String>,
+    pub(super) related_seq_ids: Vec<String>,
+    pub(super) design_provenance: PrimerDesignProvenanceCitation,
+    pub(super) source_handoff_id: Option<String>,
+    pub(super) intended_target: PrimerSpecificityIntendedTarget,
+    pub(super) forward: PrimerSpecificityInputPrimer,
+    pub(super) reverse: PrimerSpecificityInputPrimer,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -47216,6 +47216,20 @@ impl GentleEngine {
                         handoff.handoff_path
                     ));
                     result.primer_specificity_handoff = Some(Box::new(handoff));
+                }
+                Operation::PreparePrimerPairMultiReferenceSpecificityHandoff {
+                    request,
+                    output_dir,
+                } => {
+                    let handoff = self.prepare_primer_pair_multi_reference_specificity_handoff(
+                        *request,
+                        &output_dir,
+                    )?;
+                    result.messages.push(format!(
+                        "Prepared {} explicit reference(s); no BLAST search was launched",
+                        handoff.references.len()
+                    ));
+                    result.primer_specificity_multi_handoff = Some(Box::new(handoff));
                 }
                 Operation::ImportPrimerPairSpecificityHandoff { handoff_path, path } => {
                     let report = self.import_primer_pair_specificity_handoff(&handoff_path)?;

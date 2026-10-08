@@ -1329,6 +1329,8 @@ pub(crate) use region_homology::validate_genomic_region_homology_report;
 pub(crate) use tss_workspace::tests::{
     approved as synthetic_tss_approval, engine as synthetic_tss_engine,
 };
+#[path = "engine/analysis/primer_specificity_multi.rs"]
+mod primer_specificity_multi;
 #[path = "engine/analysis/primer_specificity_references.rs"]
 mod primer_specificity_references;
 #[path = "engine/analysis/regulatory_partners.rs"]
@@ -4707,6 +4709,10 @@ pub enum Operation {
         handoff_path: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         path: Option<String>,
+    },
+    PreparePrimerPairMultiReferenceSpecificityHandoff {
+        request: Box<PrimerSpecificityMultiRequest>,
+        output_dir: String,
     },
     PrepareRestrictionCloningPcrHandoff {
         template: SeqId,
@@ -10141,6 +10147,7 @@ impl GentleEngine {
                 | Operation::ExportPrimerDesignReport { .. }
                 | Operation::ExportTerminalExonRtPrimerPoolReport { .. }
                 | Operation::PreparePrimerPairSpecificityHandoff { .. }
+                | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }

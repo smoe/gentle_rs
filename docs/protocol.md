@@ -24,6 +24,33 @@ a receipt. Explicit experimental-handoff construction rechecks current database
 and annotation fingerprints; historical display does not probe resources. Raw
 TSV parsing and receipt hashes use the same retained bytes.
 
+## Standalone Multi-Reference Primer Specificity
+
+`PreparePrimerPairMultiReferenceSpecificityHandoff { request, output_dir }` and
+`primers specificity-multi-handoff REQUEST_JSON_OR_@FILE OUTPUT_DIR` wrap the
+existing single-reference handoff without executing BLAST. The request is
+`gentle.primer_pair_multi_reference_request.v1`: `pair.kind` is `saved_pair`
+(report ID with optional rank or zero-based index) or `explicit_pair` (two
+normalized `PrimerSpecificityInputPrimer` records including tail boundaries).
+Its common `policy` cannot select a target. `references` has 1-8 explicit IDs,
+each with `expected_index_kind`, `required` and optional `intended_target`;
+at least one must be required. Catalog/cache paths are optional.
+
+Exact catalog resolution, actual index kind, validation/content identity and
+positive sequence count are checked for every required reference before writes.
+No newest-prepared fallback, wildcard, duplicate alias, implicit installation or
+download is admitted. Optional unavailable indexes retain an explicit row.
+Explicit per-reference geometry is marked caller-provided, not a liftover claim.
+
+The fresh output directory contains `handoff.json`, an execution-manifest
+template and each available reference's existing two-command child handoff.
+The parent `gentle.primer_pair_multi_reference_handoff.v1` hashes the complete
+record including commands and file paths. Structured `program`/`args` remain
+authoritative; the template is **pending**, not successful execution evidence.
+The corresponding execution-manifest and summary schemas are standalone and do
+not widen panel/readiness records. Imports and their reporting are described
+with their shared routes below; preparation alone produces no specificity pass.
+
 ## Synthetic Sequence Design
 
 `PlanDnaSequenceDesign { request, path? }` is a read-only bounded synonymous
