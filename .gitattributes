@@ -14,6 +14,8 @@ Cargo.lock text eol=lf
 docs/glen_tutorial_parity_gui_audit_20261008.md text eol=lf
 docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json text eol=lf
 docs/audits/glen_followups_20261008/original_archive_30f23aa4/verification.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/native_gui.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_6d8b4db7/scroll_cpu_smoke.json text eol=lf
 
 # The generated capability matrix is compared byte-for-byte with LF output.
 docs/gui_cli_mcp_parity.md text eol=lf

@@ -26,11 +26,11 @@ candidate results never overwrite or inherit the older candidate's verdict.
 | Item | Status | Evidence And Completion Boundary |
 | --- | --- | --- |
 | 1. Audit preservation | Complete: original bytes independently verified | [New integrity receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md) pins the unchanged `30f23aa4` archive, manifest and report. Exact 319,263,072-byte archive digest, `zstd -t`, all 721 regular-file hashes and safe exact membership pass on macOS. Original project, raw images and both Criterion trees inspected; no historical binaries executed or performance/scientific verdict inferred. |
-| 2. Tutorial 08.04 GUI/agent contracts | Native contract passes at `b13f2b65`; shared handoff repair pending | Focused Rust tests, locked GUI-support check, generation and ordinary Linux/X11 input replay pass after the rebase, including both pair regression families. The full Linux/Windows suites expose invalid unquoted reporter-handoff JSON. Repair the caller, rerun that regression family and inspect new-SHA raw captures, persisted oracle and hashes before completion. |
-| 3. Live-agent acceptance | Public pilot reverified at `62f7180b`; rebased candidate pending | Retained genuine macOS dev CLI responses and reviewed C/T outputs agree with fresh Linux public CI full sequence records at `62f7180b`. Repeat at the final rebased SHA; do not download its large CLI artifact on the train. Neither echo transport nor an older pilot certifies the new candidate. Never copy or inspect credentials. |
-| 4. Honest visual evidence | Public base projection verified; rebased native inspection pending | Public 1,089-bp C/T comparison and all 44 artifact hashes independently checked at `a1fb305a`, then hashes/sequence facts reverified at `62f7180b`. The earlier SVG was rendered without recolouring native canvases. Native replay passes at rebased `b13f2b65`, but its raw captures remain uninspected. Same-hash whole-map images do not demonstrate a one-base difference. Historical WIP previews remain untouched. |
-| 5. Scroll benchmarks | Complete: deterministic CPU cases | [Retained receipt](audits/glen_followups_20261008/README.md) at `d1bf3fd321c651483125ee6f588f8129490e0cd5`, Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 24 bidirectional fixture/size checks passed; receipt, binary and listed artifact hashes independently verified. This is not a timed regression verdict, native input-to-paint latency or package acceptance. |
-| 6. .12 package acceptance | Shared handoff failure blocks package dispatch | Rebase supersedes the frozen `b067ae3b` build-only runs. Do not package the known-red `b13f2b65`; repair the shared handoff, rerun fresh gates and freeze the new pushed SHA before dispatch with `publish=false`. Require package-opt1 receipts, five native/three container binaries and extracted-artifact smokes at the same source/lock SHA. Do not transfer packages on the train or inherit older build verdicts. Native GUI and scientific approval remain separate. |
+| 2. Tutorial 08.04 GUI/agent contracts | Complete: bounded native contract at `6d8b4db7` | [New native receipt](audits/glen_followups_20261008/candidate_6d8b4db7/README.md) independently verified: all 115 artifact hashes, 18 focused Rust tests, locked GUI-support/generation checks and eight ordinary Linux/X11 dev-profile input steps. Explicit T and vertically reachable pair action inspected; all three full `Seq` records match the independent oracle. This is an offline synthetic 20-base guard, not public-locus GUI or scientific acceptance. |
+| 3. Live-agent acceptance | Fresh live pilot at `6d8b4db7`; public CI comparison pending | The independently hash/version-verified CI macOS dev CLI uses the existing authorized login. The real model asks for A/G/T clarification, then proposes exactly two unexecuted parser-valid `ask` commands after explicit T and actual help. Manual execution preserves both source records and yields 1,089-bp inserts differing only at 588, C/T. Starter comes from the retained `62f7180b` public bundle; compare all four full `Seq` records against fresh `6d8b4db7` public CI before completion. No credentials inspected or copied. |
+| 4. Honest visual evidence | Fresh native inspection accepted; public projection pending | At `6d8b4db7`, all 115 native hashes and four raw semantic captures inspected without edits: honest light chrome/dark canvases, visible T and pair action. These use the synthetic guard, not human VKORC1. Retain older public projections separately; inspect the fresh public 1,089-bp base projection and hashes before closing item 4. Same-hash whole-map images do not prove the base change. Historical WIP previews remain untouched. |
+| 5. Scroll benchmarks | Complete: deterministic CPU cases at `6d8b4db7` | [New same-candidate receipt](audits/glen_followups_20261008/candidate_6d8b4db7/README.md), Ubuntu 24.04/x86-64, Rust 1.99.0, dev profile. All 25 artifact hashes, including the downloaded executable, and all 24 bidirectional fixture/size/content checks independently verified. The [older `d1bf3fd3` receipt](audits/glen_followups_20261008/README.md) stays unchanged. No timed regression, native input-to-paint latency or package acceptance claim. |
+| 6. .12 package acceptance | Frozen `6d8b4db7` builds and full platform gates running | After focused handoff/native tests pass, dispatch [native packages 37833274999](https://github.com/smoe/gentle_rs/actions/runs/37833274999) and [build/load-only container 37833283228](https://github.com/smoe/gentle_rs/actions/runs/37833283228) with `publish=false`. Both candidate receipts independently agree on source/workflow `6d8b4db7`, unchanged lockfile, `package-opt1` and `validate_only`; digest `b7afbf01b953a65a19230b7a89a72f5d06ef868c55569d08c8a63a817c04c50a`. Require all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates. No older verdict inheritance or publication; native GUI/scientific approval remain separate. |
 
 ## Retained Baseline
 
@@ -442,3 +442,44 @@ follow-up merely to improve those observations.
   pass on macOS, including the new LF/CRLF missing-attribute negative control;
   `cmp` confirms receipt byte identity and `git diff --check` passes. No local
   Rust build/check/test was run.
+- Frozen `6d8b4db7` [native/public CI 37830325283](https://github.com/smoe/gentle_rs/actions/runs/37830325283)
+  passes all 18 focused Rust tests, including the new quoted-handoff actual
+  parser/executor case, both main/audit pair families and semantic/starter
+  checks. Independently verify all 115 native artifact hashes, eight ordinary
+  input steps, completion transition and three full oracle `Seq` records.
+  Inspect four raw captures without edits; explicit T and the pair action are
+  visible. Retain receipt `c0b0c89a...` unchanged. Item 2's bounded synthetic
+  offline GUI contract is complete, not a public-locus or scientific GUI pass.
+- At that same SHA, independently verify the fresh scroll executable and all
+  25 listed artifacts, plus all 24 direction, viewport-bound and unchanged-DNA
+  checks. Receipt `420e2c28...` remains dev-profile CPU evidence, not timed
+  performance or package-opt1 acceptance. Retain both new receipts with scoped
+  LF attributes and missing-attribute LF/CRLF negative controls; older receipts
+  and historical evidence remain untouched.
+- Independently download/hash the `6d8b4db7` macOS/arm64 headless dev CLI and
+  check its actual `--version`: binary SHA-256
+  `e6129b249aa061837829df7b7f1f591f9a47e57b2fb91d5c2c18c314b736e120`.
+  Genuine `codex_local_stdio` requests retain clarification response
+  `2125c304e31eb8e27aeae5c55ea780384e0d972e5db06e88e81dd1840135a9c3`
+  and explicit-T/help response
+  `04bcfafd13b620da359a6f1484630add7de2d9c809cea5a049b8dd2b74d663f7`.
+  Both leave the public starter's bytes unchanged; no automatic execution,
+  nested agent, fetch, OS command or credential inspection. A bare alternate
+  is refused with exit 1 and unchanged bytes. Manually reviewed execution
+  creates the 1,089-bp pair with only 588 C/T and preserves both source records.
+  Final project hash is
+  `eb83a93c434766b0719bc0cb102e2bd8981bdb085d41330a22dfad9dcc5b134d`;
+  raw pilot is `/private/tmp/gentle-agent-public-6d8b4db7`. Its input is the
+  hash-verified retained `62f7180b` public starter, not a new download. Full
+  sequence-record comparison with fresh same-SHA public CI remains required.
+- Freeze runtime/package SHA `6d8b4db772a5ed08f5fd7926ec4f1635a14a236a`
+  for full [Linux/native/public CI 37830325283](https://github.com/smoe/gentle_rs/actions/runs/37830325283)
+  and [macOS/Windows CI 37830335706](https://github.com/smoe/gentle_rs/actions/runs/37830335706).
+  Dispatch installer/container runs only with `publish=false` after focused
+  native/handoff success; their identical `b7afbf01...` candidate receipts are
+  identity resolution, not extracted-package acceptance. All full platform
+  and package verdicts remain pending; no tag or publication is performed.
+- On archive-evidence commit `d17d830d` plus this native/scroll retention diff,
+  all 25 Python checkout tests pass on macOS. Both new receipts exactly match
+  their downloaded raw bytes; their missing-LF-attribute negative controls and
+  LF/CRLF replays pass. `git diff --check` is clean; no local Rust execution.

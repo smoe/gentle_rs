@@ -1,5 +1,16 @@
 # GENtle Changelog
 
+## 2026-10-08 - Accept The Frozen Native Contract And Scroll Cases
+
+- At runtime candidate `6d8b4db7`, independently verify all 115 native artifact
+  hashes, 18 focused Rust tests, eight ordinary Linux/X11 input steps and all
+  three full oracle sequence records. Raw T-entry and reachable pair-button
+  captures stay honest; the synthetic 20-base guard is not human-locus proof.
+- Retain same-SHA native and scroll receipts without replacing older evidence.
+  Verify all 25 scroll hashes and 24 deterministic viewport/content cases;
+  add scoped LF/CRLF receipt tests. Full platform, public/live-agent and package
+  acceptance remain separate from these dev-profile, non-timed checks.
+
 ## 2026-10-08 - Independently Verify The Retained Original Audit
 
 - After approved access was restored, verify the unchanged `30f23aa4` archive's

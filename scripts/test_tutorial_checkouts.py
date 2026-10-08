@@ -227,6 +227,37 @@ class TutorialCheckoutTests(unittest.TestCase):
                 checker.prepare_checkout(self.root, target, mode)
                 self.assertEqual((target / relative).read_bytes(), payload)
 
+    def test_frozen_6d8b4db7_audit_receipts_survive_both_checkout_modes(self):
+        base = Path("docs/audits/glen_followups_20261008/candidate_6d8b4db7")
+        expected = {
+            base / "native_gui.json": "c0b0c89aaa8a2989e0c2d86de9f8327fe5e9190a4ce6634cb7866d91460efc2e",
+            base / "scroll_cpu_smoke.json": "420e2c280ccb8294ecab5046672c85ffe6461104275f050fc43fdf65acaf6bc6",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        for relative, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[relative])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "exact-candidate native and scroll receipts")
+        for relative in payloads:
+            unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                      if not line.startswith(str(relative).encode() + b" "))
+            broken = Path(self.tmp.name) / f"candidate-receipt-{relative.stem}-unprotected"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
+                                expected[relative])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"candidate-receipts-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
     def test_sequence_design_tutorial_semantics_survive_both_checkout_modes(self):
         from scripts.test_sequence_design_tutorial import fenced_request
 
