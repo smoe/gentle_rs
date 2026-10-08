@@ -114,6 +114,26 @@ pinned fixture-manifest hash rather than the generated project bytes, whose
 audit timestamp changes between equivalent preparations. Retain the exact
 project/report hashes beside Criterion's results.
 
+The two scroll groups, `dna_window_wheel_event_frame` and
+`dna_window_first_frame_after_wheel`, dispatch an actual egui horizontal wheel
+event over the painted DNA map, without modifiers. They use a 5-kbp viewport
+starting at base 1,000, a six-point delta and fixed 60-Hz input timestamps.
+Every iteration starts with a fresh warmed window outside the timed section,
+so clamping, accumulated scrolling and window destruction cannot masquerade as
+steady input performance. The second group excludes event dispatch and measures
+only the following frame. These are CPU-side frames, not native delivery or
+input-to-paint latency.
+
+Before timing, both scroll directions must change the actual viewport without
+changing its span or sequence length, emit paint shapes and leave sequence,
+annotation, enzyme and methylation inputs byte-identical. The following frame
+must retain the moved viewport. `GUI_SCROLL_OBSERVATION` JSON lines record these
+checks for every fixture and size, including the exact source revision and
+content digest. A failed assertion invalidates the run. An omitted PATZ1 input
+does not count as PATZ1 acceptance. Use `-- --test` instead of `-- --quick
+--noplot` for deterministic smoke verification; retain its log and build receipt
+separately from an auditor's timed run. No historical results are overwritten.
+
 ## DNA feature-density latency
 
 The `.12` measurement foundation adds `dna_feature_latency` over the real

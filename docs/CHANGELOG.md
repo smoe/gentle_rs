@@ -1,5 +1,37 @@
 # GENtle Changelog
 
+## 2026-10-08 - Add Real Wheel-Input CPU Benchmark Cases
+
+- Extend the maintained GUI operations benchmark with real horizontal egui
+  wheel input and a separately timed following frame at all four screen sizes.
+  Fresh warmed inputs and window destruction stay outside each timed loop.
+- Require untimed bidirectional viewport movement, unchanged sequence/annotation
+  content and nonempty paint output. Emit source/content-bound observations;
+  keep the authentic optional PATZ1 workload and older baselines unchanged.
+- Add an opt-in, non-publishing CI smoke that prepares PATZ1 offline and retains
+  all 24 observations, the executable, build logs, toolchain and lock/source
+  receipts. This is authored coverage, not an executed or native-latency pass.
+  Formatting and whitespace checks pass; no local Rust builds/tests were run.
+
+## 2026-10-08 - Preserve Glen's Exact-Candidate Tutorial And GUI Audit
+
+- Retain the owner-supplied [Linux/X11 audit](glen_tutorial_parity_gui_audit_20261008.md)
+  unchanged, bound to `30f23aa4cb084694870a139714d0f0fef1726378` and the original
+  report SHA-256. Record reported checkout/walkthrough passes (18/9), splicing
+  protocol/renderer/root passes (10/9/108) and VKORC1 explicit-T parity without
+  calling them new Codex runs or macOS/Windows acceptance.
+- Add the owner-authorized [six-item evidence checklist](glen_audit_followups_20261008.md).
+  Raw archive verification, typed 08.04 GUI/agent execution, live model planning,
+  base-level visual proof, scroll benchmarking and .12 package-opt1 acceptance
+  remain pending. Stripped development binaries and CPU proxy measurements do
+  not close package, native-latency or scientific gates.
+- No historical preview, fixture, dependency, release version or publication
+  changes. Unrelated `paper` and `output/` remain untouched; Rust validation
+  belongs to CI/external execution under the owner's no-local-build restriction.
+- Exact report bytes verified against the supplied original; LF/CRLF checkout
+  regressions, including the missing-attribute negative control, pass 21/21 on
+  macOS. `git diff --check` passes; the raw audit bundle remains unverified.
+
 ## 2026-10-08 - Reference-Bound Primer Specificity and Plan Reconciliation
 
 - Bind intended-target geometry to the original source reference, assembly and
@@ -72,25 +104,6 @@
   preflight regression. Do not claim they were run: Rust verification remains
   with Glen/CI. Changes are documentation only; no source, poster, tutorial,
   dependency or generated artifact is changed.
-
-## 2026-10-08 - Preserve Glen's Exact-Candidate Tutorial And GUI Audit
-
-- Retain the owner-supplied [Linux/X11 audit](glen_tutorial_parity_gui_audit_20261008.md)
-  unchanged, bound to `30f23aa4cb084694870a139714d0f0fef1726378` and the original
-  report SHA-256. Record reported checkout/walkthrough passes (18/9), splicing
-  protocol/renderer/root passes (10/9/108) and VKORC1 explicit-T parity without
-  calling them new Codex runs or macOS/Windows acceptance.
-- Add the owner-authorized [six-item evidence checklist](glen_audit_followups_20261008.md).
-  Raw archive verification, typed 08.04 GUI/agent execution, live model planning,
-  base-level visual proof, scroll benchmarking and .12 package-opt1 acceptance
-  remain pending. Stripped development binaries and CPU proxy measurements do
-  not close package, native-latency or scientific gates.
-- No historical preview, fixture, dependency, release version or publication
-  changes. Unrelated `paper` and `output/` remain untouched; Rust validation
-  belongs to CI/external execution under the owner's no-local-build restriction.
-- Exact report bytes verified against the supplied original; LF/CRLF checkout
-  regressions, including the missing-attribute negative control, pass 21/21 on
-  macOS. `git diff --check` passes; the raw audit bundle remains unverified.
 
 ## 2026-10-08 - Bind Legacy Splicing Cache To Boundary Content
 

@@ -93,6 +93,32 @@ impl WindowDna {
         self.main_area.load_splicing_locus_document(document)
     }
 
+    /// Observe the real map's wheel target and clamped viewport in CPU audits.
+    #[cfg(feature = "benchmark-support")]
+    pub fn scroll_target_for_benchmark(&self) -> (Option<egui::Pos2>, (usize, usize, usize)) {
+        (
+            self.main_area.latency_benchmark_hover_position(),
+            self.main_area.latency_benchmark_viewport(),
+        )
+    }
+
+    /// Snapshot sequence/annotation inputs outside timed loops to detect edits.
+    #[cfg(feature = "benchmark-support")]
+    pub fn sequence_content_for_benchmark(&self) -> Vec<u8> {
+        let dna = self
+            .main_area
+            .dna()
+            .read()
+            .expect("benchmark DNA lock poisoned");
+        serde_json::to_vec(&(
+            dna.forward_bytes(),
+            dna.features(),
+            dna.restriction_enzymes(),
+            dna.methylation_mode(),
+        ))
+        .expect("serialize benchmark sequence content")
+    }
+
     pub(crate) fn apply_splicing_expert_intent(
         &mut self,
         action: crate::engine_shell::UiIntentAction,
