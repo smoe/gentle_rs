@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-08 - Repair Rebased Primer Handoff Compilation
+
+- Address the exact `1e12fd0f` CI compiler failures carried in from local main:
+  explicitly import `std::fs` in the standalone multi-reference module and
+  initialize the optional handoff to `None` in all four production and six
+  test-only `OpResult` literals. Preserve engine/schema behavior and existing
+  specificity/path/rollback regressions; no result-constructor refactor.
+- The fix is eleven source lines. Scoped `rustfmt --check` and whitespace
+  checks pass; Rust check/tests remain remote-only and pending at the new SHA.
+  Missing public-audit binaries were build-failure cascades, not data refusals.
+  The main checkout, historical receipts, `paper` and `output/` stay unchanged.
+
 ## 2026-10-08 - Bind Container Binaries To The Candidate
 
 - Fix the `.git`-excluded Docker build's missing embedded source identity by

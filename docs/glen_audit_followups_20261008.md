@@ -58,6 +58,16 @@ offline policy/checkout/GUI-helper suites pass on macOS (23.661 s); log SHA-256
 This is not actual container or Rust acceptance. Fresh `1e12fd0f` CI failed
 compilation in the unchanged main primer handoff family (missing filesystem
 import and result-field initializers); address those separately before freeze.
+Both fresh CI runs
+([Linux 37846506619](https://github.com/smoe/gentle_rs/actions/runs/37846506619),
+[macOS 37846515094](https://github.com/smoe/gentle_rs/actions/runs/37846515094))
+failed at `1e12fd0f`; the retained Linux/Windows/headless failure log SHA-256 is
+`90d460742a7418ab0237febf7ded1f90afc6ab2e0fb704576ba3839e61ab166b`.
+The separate eleven-line repair adds the missing `std::fs` import and optional
+`None` field in all ten production/test literals. Scoped formatting and diff
+checks pass; existing deterministic regressions and remote Rust checks/tests
+still need execution. Public preparation's missing CLI is a build cascade,
+not an independent public-data or scientific failure.
 
 ### Historical `6d8b4db7` Snapshot
 

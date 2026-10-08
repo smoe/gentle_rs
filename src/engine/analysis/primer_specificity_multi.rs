@@ -4,6 +4,7 @@
 
 use super::operation_handlers::PrimerSpecificityResolvedInput;
 use super::*;
+use std::fs;
 use std::path::Component;
 
 const MULTI_NONCLAIMS: &[&str] = &[

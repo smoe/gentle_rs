@@ -40487,6 +40487,7 @@ impl GentleEngine {
             gene_transcript_assay_routine: None,
             experimental_assay_handoff: None,
             primer_specificity_handoff: None,
+            primer_specificity_multi_handoff: None,
             primer_specificity_report: None,
             construct_reasoning_graph: None,
             sequencing_confirmation_report: None,
