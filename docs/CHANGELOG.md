@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-08 - Verify The Public VKORC1 Agent And Base Projection
+
+- Independently verify all 44 public audit artifacts at `a1fb305a`, matching
+  direct/shared-shell reports and the 1,089-bp inserts' sole C/T difference at
+  position 588. The labelled base SVG is legible and is not a native screenshot.
+- The matching CI-built macOS CLI exercises real allele clarification, then
+  help-grounded `ask` suggestions. Reviewed execution preserves both source
+  records and matches the CI insert records. Final-candidate, native GUI,
+  package and human scientific acceptance remain separate and pending.
+
 ## 2026-10-08 - Preserve Unprivileged Native Replay Diagnostics
 
 - Drop namespace-creation privilege before the native tutorial runner so its
