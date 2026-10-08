@@ -141,6 +141,37 @@ class TutorialCheckoutTests(unittest.TestCase):
                     self.assertEqual((target / relative / name).read_bytes(),
                                      (checker.ROOT / relative / name).read_bytes())
 
+    def test_vkorc1_guard_and_generated_chapter_survive_both_checkout_modes(self):
+        fixture = Path("docs/examples/assets/allele_pair_guard/multiallelic.gb")
+        chapter = Path("docs/tutorial/generated/chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md")
+        payloads = {
+            fixture: (checker.ROOT / fixture).read_bytes(),
+            chapter: b"# Synthetic generated 08.04 chapter\n\nExplicit genomic-forward T.\n",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for relative, payload in payloads.items():
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "synthetic 08.04 acceptance byte boundaries")
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not any(line.startswith(str(path).encode() + b" ") for path in payloads)
+        )
+        broken = Path(self.tmp.name) / "vkorc1-guard-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, payload in payloads.items():
+            self.assertNotEqual((broken / relative).read_bytes(), payload)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"vkorc1-guard-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
     def test_glen_20261008_audit_report_bytes_survive_both_checkout_modes(self):
         relative = Path("docs/glen_tutorial_parity_gui_audit_20261008.md")
         expected = "186e75a987fb50cb50ed883fa2b6fa5434718fcb553ceec7aad90a8af7c1cfce"

@@ -112,6 +112,25 @@ Why retain `~200 bp` past the TSS:
 
 ## Prerequisites
 
+### Offline Allele-Choice Guard
+
+The generated 08.04 companion is a **synthetic 20-base GUI exercise**, not the
+human locus below. Its incomplete starter and independent C/T oracle test the
+explicit-allele part of step 4 without network access. Open the fragment,
+expand `variation`, select its exact feature, and use `Open Promoter Design`.
+Scroll to `Alternate base`, enter `T`, then scroll to
+`Make reference/alternate inserts`. Persisted source and output bases and
+annotations must match the separate oracle; the sole base difference is
+zero-based position 6. A bare alternate must be refused, with no partial pair.
+
+The [fixture provenance](../examples/assets/allele_pair_guard/README.md) states
+exactly how that non-biological input was constructed. This guard does not
+certify online genome retrieval, the full reporter handoff, a real model's
+planning, native package behavior, or human scientific approval. Authored
+contracts and parser checks are not an executed native pass.
+
+### Online Tutorial
+
 1. GENtle desktop application running.
 2. Genome catalog available at
    [`assets/genomes.json`](../../assets/genomes.json).
@@ -119,6 +138,21 @@ Why retain `~200 bp` past the TSS:
 4. dbSNP resolution is reachable for `FetchDbSnpRegion`.
 5. The local tutorial backbone file exists:
    [`data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb`](../../data/tutorial_inputs/gentle_mammalian_luciferase_backbone_v1.gb)
+
+### Review-First Shared-Shell Commands
+
+These are the exact parser-backed commands an Agent Assistant may propose for
+human review on the **online** project. They are not executed by tutorial
+validation. Never infer `T` from a bare `alternate`, and never recode the
+natural assay target as part of this workflow.
+
+```text
+variant annotate-promoters vkorc1_rs9923231_context --gene-label VKORC1 --upstream-bp 1000 --downstream-bp 200
+variant promoter-context vkorc1_rs9923231_context --variant rs9923231 --gene-label VKORC1
+variant reporter-fragments vkorc1_rs9923231_context --variant rs9923231 --gene-label VKORC1 --retain-downstream-from-tss-bp 200 --retain-upstream-beyond-variant-bp 500
+variant materialize-allele vkorc1_rs9923231_promoter_fragment --variant rs9923231 --allele reference --output-id vkorc1_rs9923231_promoter_reference
+variant materialize-allele vkorc1_rs9923231_promoter_fragment --variant rs9923231 --allele alternate --alternate-base T --output-id vkorc1_rs9923231_promoter_alternate
+```
 
 ## Step 1: Prepare the Reference and Fetch the SNP Locus
 

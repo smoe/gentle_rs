@@ -13,7 +13,7 @@
       "cloning_planning",
       "pharmacogenomics"
     ],
-    "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.",
+    "notes": "Hand-written GUI-first tutorial with shared-shell agent parity. A separate synthetic offline-core contract covers explicit C/T pair creation; it does not certify the online locus, live agent or full reporter handoff.",
     "estimated_minutes": 45,
     "difficulty": "advanced",
     "network": "online dbSNP lookup and first genome preparation; local construct build",
@@ -31,5 +31,113 @@
     ],
     "group": "08",
     "group_position": 4
+  },
+  "agent_parity": {
+    "schema": "gentle.tutorial_agent_parity.v1",
+    "cases": [
+      {"id": "annotate_promoters", "command": "variant annotate-promoters vkorc1_rs9923231_context --gene-label VKORC1 --upstream-bp 1000 --downstream-bp 200", "execution": "ask", "mutating": true},
+      {"id": "inspect_context", "command": "variant promoter-context vkorc1_rs9923231_context --variant rs9923231 --gene-label VKORC1", "execution": "ask", "mutating": false},
+      {"id": "inspect_fragments", "command": "variant reporter-fragments vkorc1_rs9923231_context --variant rs9923231 --gene-label VKORC1 --retain-downstream-from-tss-bp 200 --retain-upstream-beyond-variant-bp 500", "execution": "ask", "mutating": false},
+      {"id": "reference_insert", "command": "variant materialize-allele vkorc1_rs9923231_promoter_fragment --variant rs9923231 --allele reference --output-id vkorc1_rs9923231_promoter_reference", "execution": "ask", "mutating": true},
+      {"id": "reviewed_t_insert", "command": "variant materialize-allele vkorc1_rs9923231_promoter_fragment --variant rs9923231 --allele alternate --alternate-base T --output-id vkorc1_rs9923231_promoter_alternate", "execution": "ask", "mutating": true}
+    ]
+  },
+  "generated_chapter": {
+    "order": 33,
+    "example_id": "vkorc1_pair_gui_starter",
+    "tier": "core",
+    "guide_path": "docs/tutorial/08-04_vkorc1_warfarin_promoter_luciferase_gui.md",
+    "summary": "Offline synthetic guard for the online tutorial's explicit multiallelic insert-pair action. The 20-base input is not human VKORC1 DNA.",
+    "narrative": "This companion deliberately isolates step 4 from genome retrieval and assay interpretation. Its one variation is C at zero-based position 6 with alternate candidates A,G,T. Nothing selects T automatically. The GUI must start without outputs, take an explicitly reviewed T, and save both inserts with bases and annotations matching the separate engine oracle. Refusal atomicity is also covered by adapter regressions; a native positive pass is not live-agent, online-genome, reporter or scientific acceptance.",
+    "gui_steps": [
+      "Open the synthetic offline starter project, then open vkorc1_rs9923231_promoter_fragment (20 bp, not human DNA).",
+      "Expand the variation feature group and select its exact rs9923231 feature (index 0).",
+      "Use Open Promoter Design from the selected feature's description panel.",
+      "Scroll to Alternate base and explicitly enter genomic-forward T; never treat a bare multiallelic alternate as an approved choice.",
+      "Scroll to Make reference/alternate inserts, create the pair, save, and compare the source and both outputs with the independent oracle."
+    ],
+    "step_titles": ["Open the synthetic guard", "Bind the exact variant", "Open Promoter design", "Review the explicit alternate", "Materialize and verify the pair"],
+    "learning_objectives": ["Distinguish genomic-forward allele choice from transcript strand or clinical nomenclature.", "Verify one-base pair identity through persisted engine data instead of whole-map screenshot similarity."],
+    "concepts": ["shared_engine_contract", "deterministic_workflows"],
+    "outer_agent_replay": false,
+    "checkpoints": ["Starter has no pair outputs.", "Explicit T creates one C/T difference at position 6 without editing the source.", "Synthetic/native evidence does not close the online or human-scientific gates."],
+    "retain_outputs": [],
+    "gui_acceptance": {
+      "schema": "gentle.tutorial_gui_acceptance.v1",
+      "profile": "offline-core",
+      "network": "offline",
+      "starter": {"example_id": "vkorc1_pair_gui_starter"},
+      "oracle": {"example_id": "vkorc1_pair_gui_oracle"},
+      "completion_condition": {"all": [
+        {"fact": "sequence.exists", "subject": {"kind": "sequence", "id": "vkorc1_rs9923231_promoter_reference"}},
+        {"fact": "sequence.exists", "subject": {"kind": "sequence", "id": "vkorc1_rs9923231_promoter_alternate"}}
+      ]},
+      "steps": [
+        {
+          "id": "open_fragment", "prose_step": 1, "window": "window.main", "target": "main.project.sequence.open",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment"}, "interaction": {"kind": "double_click"},
+          "timeout_class": "io", "persists_project_state": false, "scientific_effect": false,
+          "verifiers": [{"kind": "visible_claim", "semantic_id": "window.dna_viewer", "visible": true, "enabled": true}],
+          "evidence": {"screenshot": "required", "snapshot": "required"}
+        },
+        {
+          "id": "expand_variation", "prose_step": 2, "window": "window.dna_viewer", "target": "dna.feature_tree.group",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment", "feature_index": "0"}, "interaction": {"kind": "click"},
+          "timeout_class": "interactive", "persists_project_state": false, "scientific_effect": false,
+          "verifiers": [{"kind": "visible_claim", "semantic_id": "dna.feature_tree.group", "visible": true, "selected": true}],
+          "evidence": {"screenshot": "optional", "snapshot": "required"}
+        },
+        {
+          "id": "select_variant", "prose_step": 2, "window": "window.dna_viewer", "target": "dna.feature_tree.row",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment", "feature_index": "0"}, "interaction": {"kind": "click"},
+          "timeout_class": "interactive", "persists_project_state": false, "scientific_effect": false,
+          "verifiers": [{"kind": "visible_claim", "semantic_id": "dna.feature_tree.row", "visible": true, "selected": true}],
+          "evidence": {"screenshot": "required", "snapshot": "required"}
+        },
+        {
+          "id": "open_promoter", "prose_step": 3, "window": "window.dna_viewer", "target": "dna.promoter.open",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment"}, "interaction": {"kind": "click"},
+          "timeout_class": "interactive", "persists_project_state": false, "scientific_effect": false,
+          "verifiers": [{"kind": "visible_claim", "semantic_id": "window.promoter_design", "visible": true, "enabled": true}],
+          "evidence": {"screenshot": "required", "snapshot": "required"}
+        },
+        {
+          "id": "scroll_to_allele", "prose_step": 4, "window": "window.promoter_design", "target": "promoter.panel",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment"}, "interaction": {"kind": "scroll", "direction": "down", "clicks": 20},
+          "timeout_class": "interactive", "persists_project_state": false, "scientific_effect": false,
+          "verifiers": [{"kind": "visible_claim", "semantic_id": "promoter.alternate_base", "visible": true, "enabled": true}],
+          "evidence": {"screenshot": "required", "snapshot": "required"}
+        },
+        {
+          "id": "review_t", "prose_step": 4, "window": "window.promoter_design", "target": "promoter.alternate_base",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment"}, "interaction": {"kind": "replace_text", "text": "T"},
+          "timeout_class": "interactive", "persists_project_state": false, "scientific_effect": false,
+          "verifiers": [{"kind": "visible_claim", "semantic_id": "promoter.alternate_base", "visible": true}],
+          "evidence": {"screenshot": "required", "snapshot": "required"}
+        },
+        {
+          "id": "scroll_to_pair", "prose_step": 5, "window": "window.promoter_design", "target": "promoter.panel",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment"}, "interaction": {"kind": "scroll", "direction": "down", "clicks": 8},
+          "timeout_class": "interactive", "persists_project_state": false, "scientific_effect": false,
+          "verifiers": [{"kind": "visible_claim", "semantic_id": "promoter.materialize_pair", "visible": true, "enabled": true}],
+          "evidence": {"screenshot": "required", "snapshot": "required"}
+        },
+        {
+          "id": "materialize_pair", "prose_step": 5, "window": "window.promoter_design", "target": "promoter.materialize_pair",
+          "subject": {"sequence": "vkorc1_rs9923231_promoter_fragment"}, "interaction": {"kind": "click"},
+          "timeout_class": "compute", "persists_project_state": true, "scientific_effect": true,
+          "before": {"all": [
+            {"fact": "sequence.exists", "subject": {"kind": "sequence", "id": "vkorc1_rs9923231_promoter_reference"}},
+            {"fact": "sequence.exists", "subject": {"kind": "sequence", "id": "vkorc1_rs9923231_promoter_alternate"}}
+          ]},
+          "after": {"all": [
+            {"fact": "sequence.exists", "subject": {"kind": "sequence", "id": "vkorc1_rs9923231_promoter_reference"}},
+            {"fact": "sequence.exists", "subject": {"kind": "sequence", "id": "vkorc1_rs9923231_promoter_alternate"}}
+          ]},
+          "verifiers": [{"kind": "state", "seq_ids": ["vkorc1_rs9923231_promoter_fragment", "vkorc1_rs9923231_promoter_reference", "vkorc1_rs9923231_promoter_alternate"], "compare_with_oracle": true}],
+          "evidence": {"screenshot": "required", "snapshot": "required"}
+        }
+      ]
+    }
   }
 }

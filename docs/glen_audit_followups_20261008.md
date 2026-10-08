@@ -82,3 +82,10 @@ follow-up merely to improve those observations.
   `3ed56a89a51f7998617ce51c23398221b14b9fddc95c4ae8accf67c97f84219c`.
   Investigate the visible wheel target and bind the observation's versioned
   source identity correctly before rerunning; do not weaken the movement check.
+- Rerun [37766941695](https://github.com/smoe/gentle_rs/actions/runs/37766941695)
+  is verified against `d1bf3fd321c651483125ee6f588f8129490e0cd5`. The headless
+  and release-policy jobs passed; the clipped-map wheel repair still awaits its
+  smoke result. The 08.04 guard is authored on this base with two independent
+  synthetic workflows and an exact one-base persistence test. Python runner
+  and focused LF/CRLF checks pass 26/26 on macOS; Rust/native/public-data and
+  generated-document acceptance remain pending.

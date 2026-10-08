@@ -1,0 +1,18 @@
+LOCUS       ALLELE_PAIR_GUARD         20 bp    DNA     linear SYN 08-OCT-2026
+DEFINITION  Hand-crafted multiallelic GUI guard; not human VKORC1 DNA.
+ACCESSION   GENTLE_SYNTHETIC_ALLELE_PAIR_GUARD
+VERSION     GENTLE_SYNTHETIC_ALLELE_PAIR_GUARD.1
+KEYWORDS    synthetic construct; adapter regression.
+SOURCE      synthetic DNA construct
+  ORGANISM  synthetic DNA construct
+            other sequences; artificial sequences.
+FEATURES             Location/Qualifiers
+     variation       7
+                     /label="rs9923231"
+                     /gene="VKORC1"
+                     /vcf_ref="C"
+                     /vcf_alt="A,G,T"
+                     /note="Synthetic allele-choice guard, not a dbSNP retrieval"
+ORIGIN
+        1 aaaaaacaaa aaaaaaaaaa
+//

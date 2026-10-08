@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-08 - Declare The Offline 08.04 Allele-Pair Guard
+
+- Add an incomplete load-only starter, independent engine oracle and typed
+  feature-bound GUI contract for explicit C/T pair materialization. The nearby
+  provenance identifies the 20-base input as synthetic, not human VKORC1 DNA.
+- Add five review-first shared-shell agent-parity cases to the online tutorial.
+  A persisted-base regression requires exactly one C/T difference and unchanged
+  source DNA. New input/chapter LF rules include fast LF/CRLF negative controls.
+- Python harness plus scoped checkout checks pass 26/26 on macOS. Rust execution,
+  generated projections and native replay remain CI-only and pending; no live
+  agent, full online workflow or scientific acceptance is claimed.
+
 ## 2026-10-08 - Bind Promoter Tutorial Controls To Exact Subjects
 
 - Add read-only GUI test rectangles for Promoter design, its explicit alternate
