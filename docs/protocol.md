@@ -8625,6 +8625,11 @@ Feature-distance geometry controls (candidate generation and distance scoring):
     splicing scope).
   - preserves transcript provenance on the derived sequence through synthetic
     local `mRNA` and `exon` features.
+  - derived bases are transcript-oriented. Synthetic local `mRNA`, `exon` and
+    `CDS` features use `strand=+`; `source_strand` retains the orientation
+    relative to their immediate `source_seq_id`, not an absolute genomic strand.
+    Re-deriving this cDNA must not reverse-complement it a second time. Source
+    genomic annotations and source-strand messages remain unchanged.
   - when coding context is available, also derives a synthetic local `CDS`
     feature and attached protein-translation qualifiers on the derived
     transcript sequence.

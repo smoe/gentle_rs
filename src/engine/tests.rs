@@ -29245,7 +29245,8 @@ fn test_derive_transcript_sequences_derives_all_mrna_features() {
 
 #[test]
 fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
-    let mut dna = DNAsequence::from_sequence("ACGTACGTACGTACGTACGT").expect("sequence");
+    // Synthetic, non-palindromic exon sequence exposes a second reverse complement.
+    let mut dna = DNAsequence::from_sequence("AAAACCGTGGGATTTTACGA").expect("sequence");
     dna.features_mut().push(gb_io::seq::Feature {
         kind: "mRNA".into(),
         location: gb_io::seq::Location::Complement(Box::new(gb_io::seq::Location::Join(vec![
@@ -29270,6 +29271,8 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
         .to_ascii_uppercase();
     let joined = format!("{}{}", &source[2..6], &source[10..14]);
     let expected = GentleEngine::reverse_complement(&joined);
+    assert_eq!(expected, "AATCGGTT");
+    assert_ne!(expected, joined);
     let result = engine
         .apply(Operation::DeriveTranscriptSequences {
             seq_id: "s".to_string(),
@@ -29285,6 +29288,95 @@ fn test_derive_transcript_sequences_reverse_strand_uses_reverse_complement() {
         .get(&result.created_seq_ids[0])
         .expect("derived");
     assert_eq!(derived.get_forward_string(), expected);
+    assert!(derived.features().iter().all(|feature| {
+        !feature_is_reverse(feature)
+            && feature.qualifier_values("strand").next() == Some("+")
+            && feature.qualifier_values("source_strand").next() == Some("-")
+    }));
+    let (rederived, _, _, reverse, _, _) = GentleEngine::derive_transcript_sequence_from_feature(
+        derived.get_forward_string().as_bytes(),
+        &derived.features()[0],
+        derived.features(),
+        0,
+        &result.created_seq_ids[0],
+    )
+    .expect("rederive an already oriented transcript without a CDS");
+    assert!(!reverse);
+    assert_eq!(rederived.get_forward_string(), expected);
+}
+
+#[test]
+fn test_derive_transcript_sequences_local_strand_survives_project_round_trip() {
+    // Existing hand-crafted two-exon fixtures both yield ATGAAACCCTAA (MKP).
+    for reverse in [false, true] {
+        let transcript_qualifiers = vec![
+            ("gene".into(), Some("TOY".to_string())),
+            ("transcript_id".into(), Some("TX_LOCAL".to_string())),
+        ];
+        let cds_qualifiers = vec![
+            ("transcript_id".into(), Some("TX_LOCAL".to_string())),
+            ("codon_start".into(), Some("1".to_string())),
+            ("transl_table".into(), Some("11".to_string())),
+        ];
+        let dna = if reverse {
+            reverse_transcript_translation_test_sequence(
+                vec![],
+                transcript_qualifiers,
+                cds_qualifiers,
+            )
+        } else {
+            transcript_translation_test_sequence(vec![], transcript_qualifiers, cds_qualifiers)
+        };
+        let original = dna.clone_seq_record();
+        let mut state = ProjectState::default();
+        state.sequences.insert("source".to_string(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let result = engine
+            .apply(Operation::DeriveTranscriptSequences {
+                seq_id: "source".to_string(),
+                feature_ids: vec![1],
+                scope: None,
+                output_prefix: Some("first".to_string()),
+            })
+            .expect("derive transcript on either source strand");
+        assert_eq!(
+            engine.state().sequences["source"].clone_seq_record(),
+            original
+        );
+        let cdna_id = &result.created_seq_ids[0];
+        let encoded = serde_json::to_string(engine.state()).expect("serialize derived cDNA");
+        let decoded: ProjectState = serde_json::from_str(&encoded).expect("restore derived cDNA");
+        let mut restored = GentleEngine::from_state(decoded);
+        let cdna = &restored.state().sequences[cdna_id];
+        assert_eq!(cdna.get_forward_string(), "ATGAAACCCTAA");
+        for feature in cdna.features() {
+            assert!(!feature_is_reverse(feature));
+            assert_eq!(feature.qualifier_values("strand").next(), Some("+"));
+            assert_eq!(
+                feature.qualifier_values("source_strand").next(),
+                Some(if reverse { "-" } else { "+" })
+            );
+        }
+        let result = restored
+            .apply(Operation::DeriveTranscriptSequences {
+                seq_id: cdna_id.clone(),
+                feature_ids: vec![0],
+                scope: None,
+                output_prefix: Some("second".to_string()),
+            })
+            .expect("rederive restored, transcript-oriented cDNA");
+        let rederived = &restored.state().sequences[&result.created_seq_ids[0]];
+        assert_eq!(rederived.get_forward_string(), "ATGAAACCCTAA");
+        let cds = rederived
+            .features()
+            .iter()
+            .find(|feature| feature.kind.to_string() == "CDS")
+            .expect("rederived coding annotation");
+        assert_eq!(cds.qualifier_values("translation").next(), Some("MKP"));
+        assert_eq!(cds.qualifier_values("codon_start").next(), Some("1"));
+        assert_eq!(cds.qualifier_values("transl_table").next(), Some("11"));
+        assert_eq!(cds.qualifier_values("source_strand").next(), Some("+"));
+    }
 }
 
 #[test]
@@ -29741,6 +29833,17 @@ fn test_exon_skip_five_prime_cds_projection_preserves_phase_on_both_strands() {
             let cdna_id = report.cdna_seq_id.unwrap();
             let cdna = &engine.state().sequences[&cdna_id];
             assert_eq!(cdna.get_forward_string(), "AATTTTAA");
+            for feature in cdna.features() {
+                assert!(
+                    !feature_is_reverse(feature),
+                    "cDNA is already transcript-oriented"
+                );
+                assert_eq!(feature.qualifier_values("strand").next(), Some("+"));
+                assert_eq!(
+                    feature.qualifier_values("source_strand").next(),
+                    Some(if reverse { "-" } else { "+" })
+                );
+            }
             let cds = cdna
                 .features()
                 .iter()
@@ -29756,14 +29859,20 @@ fn test_exon_skip_five_prime_cds_projection_preserves_phase_on_both_strands() {
                 cds.qualifier_values("translation_table_source").next(),
                 Some("explicit_cds_qualifier")
             );
-            let (_, _, _, _, _, rederived) = GentleEngine::derive_transcript_sequence_from_feature(
-                cdna.get_forward_string().as_bytes(),
-                &cdna.features()[0],
-                cdna.features(),
-                0,
-                &cdna_id,
-            )
-            .unwrap();
+            let (rederived_cdna, _, _, rederived_reverse, _, rederived) =
+                GentleEngine::derive_transcript_sequence_from_feature(
+                    cdna.get_forward_string().as_bytes(),
+                    &cdna.features()[0],
+                    cdna.features(),
+                    0,
+                    &cdna_id,
+                )
+                .unwrap();
+            assert!(
+                !rederived_reverse,
+                "source strand must not reverse an oriented cDNA again"
+            );
+            assert_eq!(rederived_cdna.get_forward_string(), "AATTTTAA");
             assert_eq!(
                 rederived.unwrap().protein_sequence,
                 protein,
@@ -29781,6 +29890,7 @@ fn test_exon_skip_five_prime_cds_projection_preserves_phase_on_both_strands() {
                             .any(|origin| origin == "exon_skip_isoform_genomic_annotation")
                 })
                 .unwrap();
+            assert_eq!(feature_is_reverse(&genomic.features()[feature_id]), reverse);
             let (_, _, _, _, _, rederived) = GentleEngine::derive_transcript_sequence_from_feature(
                 genomic.get_forward_string().as_bytes(),
                 &genomic.features()[feature_id],

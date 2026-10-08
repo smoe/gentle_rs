@@ -2616,6 +2616,13 @@ use `codon_start=1`, with the input offset recorded as `source_codon_start`, so
 re-derivation never trims the same phase twice. Synthetic partial translations
 must not inherit the source protein accession as their own identity.
 
+Derived cDNA bases and synthetic mRNA/exon/CDS locations are already in
+transcript orientation. Their active `strand` is therefore local `+`;
+`source_strand` records orientation relative to the immediate `source_seq_id`,
+not necessarily an absolute genomic strand. It is provenance only, never a
+request to reverse-complement the derived bases again. Genomic source features
+retain their original locations and strand.
+
 ### Source-coherent locus transcript presentation
 
 The optional `gentle.transcript_structure_presentation.v1` layer is separate

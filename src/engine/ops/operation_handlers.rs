@@ -7337,7 +7337,7 @@ impl GentleEngine {
             })?;
         derived.set_name(transcript_label.clone());
         let total_len = derived_sequence.len();
-        let strand_text = if is_reverse { "-" } else { "+" }.to_string();
+        let source_strand_text = if is_reverse { "-" } else { "+" }.to_string();
 
         let mut transcript_qualifiers = vec![
             ("transcript_id".into(), Some(transcript_id.clone())),
@@ -7351,7 +7351,9 @@ impl GentleEngine {
                 "synthetic_origin".into(),
                 Some("mrna_transcript_derived".to_string()),
             ),
-            ("strand".into(), Some(strand_text.clone())),
+            // The cDNA is already transcript-oriented; source orientation is provenance only.
+            ("strand".into(), Some("+".to_string())),
+            ("source_strand".into(), Some(source_strand_text.clone())),
         ];
         for key in [
             "gene",
@@ -7464,7 +7466,8 @@ impl GentleEngine {
                     "synthetic_origin".into(),
                     Some("mrna_transcript_derived".to_string()),
                 ),
-                ("strand".into(), Some(strand_text.clone())),
+                ("strand".into(), Some("+".to_string())),
+                ("source_strand".into(), Some(source_strand_text.clone())),
             ];
             for key in ["gene", "gene_id", "locus_tag"] {
                 if let Some(value) = Self::qualifier_text_for_derivation(source_feature, key) {
@@ -7500,6 +7503,8 @@ impl GentleEngine {
             let mut cds_qualifiers = vec![
                 ("transcript_id".into(), Some(transcript_id.clone())),
                 ("label".into(), Some(format!("{transcript_label} CDS"))),
+                ("strand".into(), Some("+".to_string())),
+                ("source_strand".into(), Some(source_strand_text.clone())),
                 ("source_seq_id".into(), Some(source_seq_id.to_string())),
                 (
                     "source_feature_id".into(),

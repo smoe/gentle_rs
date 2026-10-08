@@ -1,5 +1,32 @@
 # GENtle Changelog
 
+## 2026-10-08 - Prevent Reversing Transcript-Oriented cDNA Twice
+
+- Investigate the reported exon-skip phase regression against `30f23aa4`.
+  Generated cDNA mRNA/exon features retained the source's active minus-strand
+  qualifier despite forward local locations; re-derivation consequently
+  reverse-complemented the already-oriented cDNA. The observed `LK` matches
+  the reverse complement of the expected `TTTTAA` coding fragment (`F`).
+- Keep local mRNA/exon/CDS `strand=+` and preserve the immediate source
+  orientation as `source_strand` in the shared transcript producer. Do not
+  change CDS selection, phase projection, translation tables, genomic products
+  or the test's expected proteins.
+- Strengthen the existing six-case exon-skip regression (both strands, three
+  phases) with explicit local/source orientation and unchanged cDNA assertions.
+  Replace the palindromic ordinary-transcript fixture with a hand-crafted
+  asymmetric sequence, check no-CDS re-derivation, and add public-operation
+  re-derivation after a JSON project round-trip on both source strands.
+- Rust execution and Cargo check remain deferred to Glen/CI under the owner's
+  latest instruction. Run `cargo test --locked -p GENtle --lib test_exon_skip`,
+  `cargo test --locked -p GENtle --lib test_derive_transcript_sequences`, then
+  `cargo check -q --locked` and the complete failed library gate at one SHA.
+  Existing saved cDNAs with the old incorrect qualifiers are not migrated by
+  this producer fix; regenerate affected derived records from their sources.
+  No dependency, fixture file, schema, generated artifact or release change.
+- Formatting, whitespace and independent codon arithmetic checks pass (not
+  Rust execution). Session-close reports four OK, two routine warnings for the
+  six intentional uncommitted files and manual scope confirmation, no failures.
+
 ## 2026-10-08 - Address Splicing Presentation Review Follow-Ups
 
 - From `a02ef777`, cache boundary summary labels/hovers, per-transcript motif
