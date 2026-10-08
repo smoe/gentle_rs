@@ -6267,10 +6267,12 @@ Tutorial projects:
     `ExtractRegion`, `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and
     `Branch` operations without dropping into generic `Engine Ops`.
   - `Make reference/alternate inserts` validates both choices before creating
-    either sequence. An empty multiallelic choice or invalid alternate leaves
-    project sequences and output-name fields unchanged, allowing a corrected
-    retry without orphan reference copies. This is pair preflight, not a new
-    transactional operation or a wet-lab validation claim.
+    either sequence, then applies both shared operations inside the existing
+    engine rollback transaction. An empty multiallelic choice or invalid
+    alternate leaves project sequences, output names and operation history
+    unchanged, allowing a corrected retry without orphan reference copies.
+    Successful pairs still record both operations; this adds no new operation
+    or scientific or laboratory approval.
   - the same window now also exposes positive-only TF score tracks across the
     chosen promoter span, with TERT-friendly `SP1`, Yamanaka-plus-`NANOG`, and
     `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before
