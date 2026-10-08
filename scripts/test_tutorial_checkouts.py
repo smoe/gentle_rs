@@ -141,6 +141,31 @@ class TutorialCheckoutTests(unittest.TestCase):
                     self.assertEqual((target / relative / name).read_bytes(),
                                      (checker.ROOT / relative / name).read_bytes())
 
+    def test_glen_20261008_audit_report_bytes_survive_both_checkout_modes(self):
+        relative = Path("docs/glen_tutorial_parity_gui_audit_20261008.md")
+        expected = "186e75a987fb50cb50ed883fa2b6fa5434718fcb553ceec7aad90a8af7c1cfce"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "owner-supplied exact-candidate audit report")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "glen-audit-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"glen-audit-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+                self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), expected)
+
     def test_sequence_design_tutorial_semantics_survive_both_checkout_modes(self):
         from scripts.test_sequence_design_tutorial import fenced_request
 
