@@ -27,6 +27,45 @@
   Rust execution). Session-close reports four OK, two routine warnings for the
   six intentional uncommitted files and manual scope confirmation, no failures.
 
+## 2026-10-08 - Guard dbSNP Allele Follow-Up Evidence And Pair Preflight
+
+- Record separate extracted-reference and requested/selected assembly-family
+  checks on fetched dbSNP markers. Disclose fallback explicitly; missing,
+  ambiguous or incomplete reference evidence stays unavailable. A matching base
+  never upgrades an unverified assembly fallback into compatible coordinates;
+  unavailable/mismatching checks block allele materialization. Legacy markers
+  retain fresh reference validation without a retrospective assembly claim.
+- Emit VCF allele qualifiers only for clean SNVs. Keep selected-placement SPDI
+  JSON, including empty insertion/deletion strings and multi-base replacements,
+  under `dbsnp_spdi`; non-SNV focal markers are not full variant intervals.
+- Validate both GUI inserts through the existing pure engine helper before
+  applying either. Validation refusal leaves no reference orphan or changed
+  output names. Shared read-only handoffs use that validator to bind a unique
+  loaded alternate explicitly; missing/ambiguous/invalid evidence produces a
+  review-required command note. No new operation, schema or agent bypass.
+- Add inline synthetic engine/fetch, reference-span, GUI retry and shared-shell
+  handoff regressions. Update protocol, GUI and tutorials 08.04/08.05, preserving
+  historical WIP artifact bytes and scientific/native acceptance boundaries.
+  Rust tests/builds and Cargo check remain deferred to Glen/CI under the owner's
+  no-local-build rule. No private reports, catalogs or dependencies are changed.
+- Local macOS checks on `30f23aa4` plus this diff: formatting and whitespace
+  pass; Python tutorial checkout/walkthrough tests report 26 passed and three
+  expected external-replay skips. Session-close reports four OK, two warnings
+  (intentional edits/unrelated untouched `outputs/`, and manual scope review),
+  no failures; the roadmap stays at 400 lines.
+- Deferred focused commands: `cargo test --locked --lib dbsnp_ -- --test-threads=1`,
+  `cargo test --locked --lib materialize_variant_allele -- --test-threads=1`,
+  `cargo test --locked --lib reporter_construct_handoff_ -- --test-threads=1`,
+  `cargo test --locked --lib variant_followup_allele_pair_ -- --test-threads=1`,
+  then `cargo check -q --locked`. No current-revision Rust, native GUI or real
+  VKORC1 acceptance verdict is claimed.
+- Changed code: `src/engine/analysis/feature_expert_ops.rs`,
+  `src/engine/analysis/variant_promoter.rs`, `src/engine/ops/operation_handlers.rs`,
+  `src/engine/ops/reporter_ops.rs`, `src/engine/tests.rs`,
+  `src/main_area_dna/variant_followup.rs` and `src/main_area_dna/tests.rs`.
+  Documentation: this changelog, `docs/decisions.md`, `docs/protocol.md`,
+  `docs/gui.md`, `docs/roadmap.md`, and the two tutorial guides named above.
+
 ## 2026-10-08 - Address Splicing Presentation Review Follow-Ups
 
 - From `a02ef777`, cache boundary summary labels/hovers, per-transcript motif

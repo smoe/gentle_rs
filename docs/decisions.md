@@ -16,6 +16,19 @@ mismatch is a refusal, not permission to guess a complement. Reporter preview
 geometry, insert orientation and topology remain separate from SNP selection.
 Historical SVG presence and synthetic backbones never establish assay validity.
 
+New dbSNP markers retain separate reference and assembly-family checks. An
+assembly fallback or unspecified family remains unavailable even when the
+extracted base matches; this is inspection evidence, not a liftover or authority
+to materialize alleles. Unavailable/mismatching checks block materialization.
+Only unambiguous single-base placements receive `vcf_ref`/`vcf_alt`; non-SNV
+alleles stay raw SPDI with their original coordinates and empty strings, not
+invented VCF anchors. Legacy markers without these checks still require the
+existing fresh reference/base validation and establish no assembly-check claim.
+The GUI validates both inserts through the shared engine helper before applying
+either. Read-only handoffs emit an explicit alternate only when the loaded
+source passes that same validator with one alternate; otherwise the command
+requires review. No candidate report silently supplies an allele or assay proof.
+
 ## Splicing UniProt Presentation Order
 
 Status: active for the Splicing Expert canvas, transcript/exon matrix and SVG.

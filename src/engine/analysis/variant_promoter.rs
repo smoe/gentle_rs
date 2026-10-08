@@ -2227,7 +2227,7 @@ impl GentleEngine {
         })
     }
 
-    fn select_variant_feature<'a>(
+    pub(super) fn select_variant_feature<'a>(
         dna: &'a DNAsequence,
         variant_label_or_id: Option<&str>,
     ) -> Result<(usize, &'a gb_io::seq::Feature), EngineError> {
@@ -2682,7 +2682,10 @@ impl GentleEngine {
             variant_feature_id: Some(variant_feature_id),
             variant_start_0based,
             variant_end_0based_exclusive,
-            variant_class: Self::feature_qualifier_text(variant_feature, "vcf_variant_class"),
+            variant_class: Self::first_nonempty_feature_qualifier(
+                variant_feature,
+                &["vcf_variant_class", "dbsnp_variant_class"],
+            ),
             genomic_ref: Self::feature_qualifier_text(variant_feature, "vcf_ref"),
             genomic_alt: Self::feature_qualifier_text(variant_feature, "vcf_alt"),
             genome_anchor: self.sequence_genome_anchor_summary(input).ok(),
@@ -3514,6 +3517,19 @@ impl GentleEngine {
         })?;
         let (variant_feature_id, variant_feature) =
             Self::select_variant_feature(dna, variant_label_or_id)?;
+        for check in ["dbsnp_assembly_check", "dbsnp_reference_check"] {
+            if let Some(status) = Self::feature_qualifier_text(variant_feature, check)
+                && status != "match"
+            {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Selected dbSNP marker has {check}={status}; reviewed assembly-compatible placement and matching reference evidence are required before allele materialization"
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+        }
         let (variant_start_0based, variant_end_0based_exclusive) =
             Self::feature_span_bounds(variant_feature).ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,

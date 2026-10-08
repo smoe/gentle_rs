@@ -11420,6 +11420,79 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
 }
 
 #[test]
+fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans() {
+    // Hand-crafted multi-allelic SNV; not a real locus or biological assertion.
+    let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(2, 3),
+        qualifiers: vec![
+            ("label".into(), Some("rsSynthetic".to_string())),
+            ("vcf_ref".into(), Some("C".to_string())),
+            ("vcf_alt".into(), Some("A,G,T".to_string())),
+        ],
+    });
+    let mut state = ProjectState::default();
+    state.sequences.insert("fragment".to_string(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some("fragment".to_string()), Some(engine.clone()));
+    area.variant_followup_ui.fragment_output_id = "fragment".to_string();
+    area.variant_followup_ui.reference_output_id = "pair_reference".to_string();
+    area.variant_followup_ui.alternate_output_id = "pair_alternate".to_string();
+    area.variant_followup_ui.variant_label_or_id = "rsSynthetic".to_string();
+    let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+    let journal_before = engine.read().unwrap().journal_len();
+
+    for alternate in ["", "N", "C", "TT"] {
+        area.variant_followup_ui.alternate_allele = alternate.to_string();
+        area.materialize_variant_followup_alleles();
+        assert!(area.op_status.contains("preflight failed"), "{alternate}");
+        assert!(area.op_error_popup.is_some());
+        assert_eq!(
+            serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+            before
+        );
+        assert_eq!(engine.read().unwrap().journal_len(), journal_before);
+        assert_eq!(
+            area.variant_followup_ui.reference_output_id,
+            "pair_reference"
+        );
+        assert_eq!(
+            area.variant_followup_ui.alternate_output_id,
+            "pair_alternate"
+        );
+        assert!(area.last_created_seq_ids.is_empty());
+    }
+
+    area.variant_followup_ui.alternate_allele = "T".to_string();
+    area.materialize_variant_followup_alleles();
+    let guard = engine.read().unwrap();
+    assert_eq!(guard.state().sequences.len(), 3);
+    assert_eq!(guard.journal_len(), journal_before + 2);
+    assert_eq!(
+        guard.state().sequences["pair_reference"].get_forward_string(),
+        "ACCGT"
+    );
+    assert_eq!(
+        guard.state().sequences["pair_alternate"].get_forward_string(),
+        "ACTGT"
+    );
+    assert_eq!(
+        area.variant_followup_ui.reference_output_id,
+        "pair_reference"
+    );
+    assert_eq!(
+        area.variant_followup_ui.alternate_output_id,
+        "pair_alternate"
+    );
+    assert_eq!(
+        area.last_created_seq_ids,
+        ["pair_reference", "pair_alternate"]
+    );
+    assert!(area.op_error_popup.is_none());
+}
+
+#[test]
 fn feature_supports_variant_followup_accepts_gene_mrna_promoter_and_variation() {
     let mut dna =
         DNAsequence::from_sequence("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA").expect("sequence");

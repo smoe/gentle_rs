@@ -143,6 +143,12 @@ showing a stale warning:
 - resolving assembly-compatible chromosome
 - extracting annotated slice from the prepared genome
 
+Before proceeding, inspect the fetched marker's `dbsnp_reference_check` and
+`dbsnp_assembly_check`: both must be `match`. A fallback warning means the
+available placement was not bound to the selected assembly family. Matching a
+single base does not fix that coordinate mismatch; retain it for inspection,
+but fetch compatible placement evidence before making allele inserts.
+
 CLI parity:
 
 ```bash
@@ -274,6 +280,11 @@ the gene strand. GENtle therefore refuses an
 ambiguous bare `alternate` request and requires the explicit base when more
 than one candidate is present.
 
+The GUI checks both inserts before creating either. If `Alternate base` is
+empty or invalid, correct the choice and retry: the failed validation creates
+no reference copy and does not change the requested output names. The two
+CLI commands above are separate operations, so review both before running them.
+
 These are alleles on the ascending genomic-forward slice, not on the
 reverse-strand transcript. Recheck the fetched marker before proceeding;
 the tutorial is not permission to substitute `T` into a different assembly
@@ -354,6 +365,11 @@ recommendation offline, names the exact macro template, and reports which
 fragment/backbone inputs are ready, derivable, or still need to be loaded. If
 the source refSNP is multiallelic, review the generated materialization command
 and add the same explicit `alternate_allele` choice used above:
+
+For a single alternate, a handoff can include the exact base only when its
+source marker is loaded and passes the shared validator. A fresh stateless
+run or ambiguous/unverified source produces `Review required:` with no chosen
+alternate. Candidate geometry and ready macro ports do not choose an allele.
 
 ```bash
 cargo run --quiet --bin gentle_cli -- \

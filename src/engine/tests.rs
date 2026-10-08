@@ -23542,6 +23542,7 @@ fn test_fetch_ensembl_region_operation_loads_sequence_and_anchor() {
 
 #[test]
 fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
+    // Hand-crafted DNA/GTF and refSNP JSON; ToyGenome.1 is synthetic assembly identity.
     let _guard = crate::genomes::genbank_env_lock()
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -23566,7 +23567,7 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
         format!(
             r#"{{
   "ToyGenome": {{
-    "description": "toy dbsnp genome",
+    "description": "toy dbsnp genome ToyGenome.1 (synthetic assembly)",
     "sequence_local": {},
     "annotations_local": {},
     "cache_dir": {}
@@ -23742,6 +23743,18 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
     );
     assert_eq!(marker.qualifier_values("vcf_ref").next(), Some("C"));
     assert_eq!(marker.qualifier_values("vcf_alt").next(), Some("A,G,T"));
+    assert_eq!(
+        marker.qualifier_values("dbsnp_reference_check").next(),
+        Some("match")
+    );
+    assert_eq!(
+        marker.qualifier_values("dbsnp_assembly_check").next(),
+        Some("match")
+    );
+    assert_eq!(
+        marker.qualifier_values("dbsnp_assembly_fallback").next(),
+        Some("false")
+    );
     assert_eq!(marker.qualifier_values("gene").next(), Some("tagA"));
     assert_eq!(marker.qualifier_values("dbsnp_gene").next(), Some("tagA"));
 
@@ -23791,6 +23804,330 @@ fn test_fetch_dbsnp_region_operation_extracts_annotated_slice_and_provenance() {
             .unwrap_or_default(),
         "NC_000001.11"
     );
+}
+
+#[test]
+fn dbsnp_fetch_checks_reference_and_assembly_and_retains_non_snv_spdi() {
+    // All sequences, annotations and refSNP records are hand-crafted synthetic inputs.
+    // The NC_ identifier exercises existing contig alias resolution, not real variant biology.
+    let _guard = crate::genomes::genbank_env_lock()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let td = tempdir().expect("tempdir");
+    let fasta = td.path().join("synthetic.fa");
+    let annotation = td.path().join("synthetic.gtf");
+    let cache = td.path().join("cache");
+    let catalog_path = td.path().join("catalog.json");
+    fs::write(&fasta, format!(">chr1\n{}\n", "C".repeat(80))).expect("write DNA");
+    fs::write(
+        &annotation,
+        "chr1\tsynthetic\tgene\t1\t80\t.\t+\t.\tgene_id \"SYN_GENE\";\n",
+    )
+    .expect("write GTF");
+    fs::write(
+        &catalog_path,
+        serde_json::to_vec(&json!({
+            "BoundGenome": {
+                "description": "Hand-crafted SyntheticAsm1 assembly",
+                "sequence_local": fasta, "annotations_local": annotation, "cache_dir": cache,
+            },
+            "UnlabelledGenome": {
+                "description": "Hand-crafted assembly without a family token",
+                "sequence_local": fasta, "annotations_local": annotation, "cache_dir": cache,
+            }
+        }))
+        .expect("catalog JSON"),
+    )
+    .expect("write catalog");
+    let source_path = td.path().join("record.json");
+    let _dbsnp_env = EnvVarGuard::set(
+        "GENTLE_NCBI_DBSNP_REFSNP_URL",
+        &format!("file://{}", source_path.display()),
+    );
+    let catalog = catalog_path.to_string_lossy().to_string();
+    let cache = cache.to_string_lossy().to_string();
+    let mut engine = GentleEngine::new();
+    for genome in ["BoundGenome", "UnlabelledGenome"] {
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: genome.to_string(),
+                catalog_path: Some(catalog.clone()),
+                cache_dir: Some(cache.clone()),
+                timeout_seconds: None,
+            })
+            .expect("prepare synthetic genome");
+    }
+    for (
+        case,
+        genome,
+        assembly,
+        reference,
+        alternate,
+        reference_check,
+        assembly_check,
+        fallback,
+        snv,
+    ) in [
+        (
+            "match",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "match",
+            false,
+            true,
+        ),
+        (
+            "mismatch",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "A",
+            "T",
+            "mismatch",
+            "match",
+            false,
+            true,
+        ),
+        (
+            "fallback_mismatch",
+            "BoundGenome",
+            "SyntheticAsm2",
+            "A",
+            "T",
+            "mismatch",
+            "unavailable",
+            true,
+            true,
+        ),
+        (
+            "fallback_match",
+            "BoundGenome",
+            "SyntheticAsm2",
+            "C",
+            "T",
+            "match",
+            "unavailable",
+            true,
+            true,
+        ),
+        (
+            "unlabelled",
+            "UnlabelledGenome",
+            "SyntheticAsm1",
+            "C",
+            "T",
+            "match",
+            "unavailable",
+            false,
+            true,
+        ),
+        (
+            "deletion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "C",
+            "",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "insertion",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "",
+            "T",
+            "unavailable",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "replacement",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "CC",
+            "TT",
+            "match",
+            "match",
+            false,
+            false,
+        ),
+        (
+            "ambiguous",
+            "BoundGenome",
+            "SyntheticAsm1",
+            "N",
+            "T",
+            "unavailable",
+            "match",
+            false,
+            false,
+        ),
+    ] {
+        let spdi = |inserted: &str| {
+            json!({
+                "seq_id": "NC_000001.11", "position": 29,
+                "deleted_sequence": reference, "inserted_sequence": inserted,
+            })
+        };
+        let raw_alleles = [spdi(reference), spdi(alternate)];
+        let document = json!({"refsnp_id": "123", "primary_snapshot_data": {
+            "placements_with_allele": [{
+                "seq_id": "NC_000001.11", "is_ptlp": true,
+                "placement_annot": {"seq_id_traits_by_assembly": [{
+                    "assembly_name": assembly, "is_chromosome": true,
+                    "is_top_level": true, "is_alt": false, "is_patch": false,
+                }]},
+                "alleles": raw_alleles.iter().map(|raw| json!({"allele": {"spdi": raw}})).collect::<Vec<_>>(),
+            }]
+        }});
+        fs::write(
+            &source_path,
+            serde_json::to_vec(&document).expect("refSNP JSON"),
+        )
+        .expect("write refSNP");
+        let input = format!("slice_{case}");
+        let result = engine
+            .apply(Operation::FetchDbSnpRegion {
+                rs_id: "rs123".to_string(),
+                genome_id: genome.to_string(),
+                flank_bp: Some(4),
+                output_id: Some(input.clone()),
+                annotation_scope: Some(GenomeAnnotationScope::None),
+                max_annotation_features: None,
+                catalog_path: Some(catalog.clone()),
+                cache_dir: Some(cache.clone()),
+            })
+            .expect("fetch synthetic local record");
+        let marker = engine.state().sequences[&input]
+            .features()
+            .iter()
+            .find(|feature| {
+                feature
+                    .qualifier_values("label")
+                    .any(|value| value == "rs123")
+            })
+            .expect("variant marker");
+        assert_eq!(
+            marker.qualifier_values("dbsnp_reference_check").next(),
+            Some(reference_check),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("dbsnp_assembly_check").next(),
+            Some(assembly_check),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("dbsnp_assembly_fallback").next(),
+            Some(if fallback { "true" } else { "false" }),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("dbsnp_variant_class").next(),
+            Some(if snv { "snv" } else { "non_snv" }),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("vcf_ref").next(),
+            snv.then_some(reference),
+            "{case}"
+        );
+        assert_eq!(
+            marker.qualifier_values("vcf_alt").next(),
+            snv.then_some(alternate),
+            "{case}"
+        );
+        let retained = marker
+            .qualifier_values("dbsnp_spdi")
+            .map(|value| serde_json::from_str::<serde_json::Value>(value).expect("retained SPDI"))
+            .collect::<Vec<_>>();
+        assert_eq!(retained, raw_alleles, "{case}");
+        assert_eq!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("assembly fallback")),
+            fallback,
+            "{case}"
+        );
+        assert_eq!(
+            result
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("reference check")),
+            reference_check != "match",
+            "{case}"
+        );
+        if snv && reference_check == "match" && assembly_check == "match" {
+            let materialized = engine
+                .apply(Operation::MaterializeVariantAllele {
+                    input: input.clone(),
+                    variant_label_or_id: Some("rs123".to_string()),
+                    allele: VariantAlleleChoice::Alternate,
+                    alternate_allele: Some("T".to_string()),
+                    output_id: Some(format!("alternate_{case}")),
+                })
+                .expect("materialize bound matching SNV");
+            assert_eq!(
+                engine.state().sequences[&materialized.created_seq_ids[0]].forward_bytes()[4],
+                b'T'
+            );
+        } else {
+            let before = serde_json::to_value(engine.state()).expect("snapshot");
+            for allele in [
+                VariantAlleleChoice::Reference,
+                VariantAlleleChoice::Alternate,
+            ] {
+                let error = engine
+                    .apply(Operation::MaterializeVariantAllele {
+                        input: input.clone(),
+                        variant_label_or_id: Some("rs123".to_string()),
+                        alternate_allele: matches!(allele, VariantAlleleChoice::Alternate)
+                            .then(|| "T".to_string()),
+                        allele,
+                        output_id: Some(format!("rejected_{case}")),
+                    })
+                    .expect_err("unverified or non-SNV marker cannot authorize output");
+                assert_eq!(error.code, ErrorCode::InvalidInput, "{case}");
+                assert_eq!(
+                    serde_json::to_value(engine.state()).expect("unchanged state"),
+                    before,
+                    "{case}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn dbsnp_reference_check_validates_the_full_reference_and_keeps_unknown_explicit() {
+    // Hand-crafted two-base replacement; no real variant or source sequence.
+    let document = json!({"primary_snapshot_data": {"placements_with_allele": [{
+        "seq_id": "chr1", "alleles": [{"allele": {"spdi": {
+            "seq_id": "chr1", "position": 1,
+            "deleted_sequence": "CC", "inserted_sequence": "TT"
+        }}}]
+    }]}});
+    let placement = GentleEngine::resolve_dbsnp_primary_placement(&document, "rsSynthetic", None)
+        .expect("synthetic placement");
+    for (sequence, start, expected) in [
+        (b"ACCGT".as_slice(), 1, "match"),
+        (b"accgt".as_slice(), 1, "match"),
+        (b"ACTGT".as_slice(), 1, "mismatch"),
+        (b"ACNGT".as_slice(), 1, "unavailable"),
+        (b"AC".as_slice(), 1, "unavailable"),
+        (b"ACCGT".as_slice(), usize::MAX, "unavailable"),
+    ] {
+        assert_eq!(
+            placement.reference_check(sequence, start).as_str(),
+            expected
+        );
+    }
 }
 
 #[test]

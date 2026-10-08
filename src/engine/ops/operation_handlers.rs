@@ -17,6 +17,7 @@
 
 use std::{cmp::Ordering, fs};
 
+use super::feature_expert_ops::{DbsnpReferenceCheck, DbsnpResolvedPlacement};
 use super::*;
 #[path = "../analysis/transcript_capture.rs"]
 mod transcript_capture;
@@ -7875,21 +7876,27 @@ impl GentleEngine {
 
     fn build_dbsnp_variant_marker_feature(
         rs_id: &str,
-        chromosome: &str,
-        chromosome_display: &str,
-        position_1based: usize,
-        assembly_name: Option<&str>,
-        gene_symbols: &[String],
-        reference_allele: Option<&str>,
-        alternate_alleles: &[String],
+        placement: &DbsnpResolvedPlacement,
         local_start_0based: usize,
+        reference_check: DbsnpReferenceCheck,
     ) -> gb_io::seq::Feature {
+        let DbsnpResolvedPlacement {
+            chromosome,
+            chromosome_display,
+            position_1based,
+            assembly_name,
+            gene_symbols,
+            reference_allele,
+            alternate_alleles,
+            ..
+        } = placement;
         let chromosome_label = if chromosome_display.trim().is_empty() {
             chromosome.trim()
         } else {
             chromosome_display.trim()
         };
         let assembly_label = assembly_name
+            .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("unknown");
@@ -7920,7 +7927,32 @@ impl GentleEngine {
                 "gentle_generated".into(),
                 Some(DBSNP_VARIANT_MARKER_GENERATED_TAG.to_string()),
             ),
+            (
+                "dbsnp_reference_check".into(),
+                Some(reference_check.as_str().to_string()),
+            ),
+            (
+                "dbsnp_assembly_check".into(),
+                Some(placement.assembly_check().to_string()),
+            ),
+            (
+                "dbsnp_assembly_fallback".into(),
+                Some(placement.used_assembly_fallback.to_string()),
+            ),
+            (
+                "dbsnp_variant_class".into(),
+                Some(if placement.is_snv() { "snv" } else { "non_snv" }.to_string()),
+            ),
         ];
+        if let Some(family) = &placement.requested_assembly_family {
+            qualifiers.push((
+                "dbsnp_requested_assembly_family".into(),
+                Some(family.clone()),
+            ));
+        }
+        for spdi in &placement.spdi_alleles {
+            qualifiers.push(("dbsnp_spdi".into(), Some(spdi.to_string())));
+        }
         if !chromosome.trim().is_empty()
             && !chromosome.trim().eq_ignore_ascii_case(chromosome_label)
         {
@@ -7950,14 +7982,14 @@ impl GentleEngine {
         {
             qualifiers.push(("dbsnp_gene".into(), Some(gene_symbol.to_string())));
         }
-        if let Some(reference_allele) = reference_allele
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            qualifiers.push(("vcf_ref".into(), Some(reference_allele.to_string())));
-        }
-        if !alternate_alleles.is_empty() {
-            qualifiers.push(("vcf_alt".into(), Some(alternate_alleles.join(","))));
+        if placement.is_snv() {
+            if let Some(reference) = reference_allele {
+                qualifiers.push(("vcf_ref".into(), Some(reference.clone())));
+            }
+            if !alternate_alleles.is_empty() {
+                qualifiers.push(("vcf_alt".into(), Some(alternate_alleles.join(","))));
+            }
+            qualifiers.push(("vcf_variant_class".into(), Some("snv".to_string())));
         }
         gb_io::seq::Feature {
             kind: "variation".into(),
@@ -42376,6 +42408,20 @@ impl GentleEngine {
                         &display_rs_id,
                         compatibility.requested_family.as_deref(),
                     )?;
+                    if placement.used_assembly_fallback {
+                        result.warnings.push(format!(
+                            "dbSNP assembly fallback for '{}': requested family '{}' has no placement; '{}' coordinates are unverified for prepared genome '{}'. A matching reference base does not establish assembly compatibility; allele materialization is unavailable.",
+                            display_rs_id,
+                            placement.requested_assembly_family.as_deref().unwrap_or("unavailable"),
+                            placement.assembly_name.as_deref().unwrap_or("unavailable"),
+                            genome_id,
+                        ));
+                    } else if placement.assembly_check() != "match" {
+                        result.warnings.push(format!(
+                            "dbSNP assembly check unavailable for '{}' on '{}': no requested assembly family could be bound to the selected placement; allele materialization is unavailable.",
+                            display_rs_id, genome_id,
+                        ));
+                    }
                     let flank_bp = flank_bp.unwrap_or(3000);
                     let start_1based = placement.position_1based.saturating_sub(flank_bp).max(1);
                     let end_1based = placement.position_1based.saturating_add(flank_bp);
@@ -42457,6 +42503,15 @@ impl GentleEngine {
                     let local_start_0based = placement.position_1based.saturating_sub(start_1based);
                     if let Some(dna) = self.state.sequences.get_mut(&seq_id) {
                         if local_start_0based < dna.len() {
+                            let reference_check =
+                                placement.reference_check(dna.forward_bytes(), local_start_0based);
+                            if reference_check != DbsnpReferenceCheck::Match {
+                                result.warnings.push(format!(
+                                    "dbSNP reference check {} for '{}' in '{}' at local position {}; complete reference allele {:?}. The marker retains source evidence but does not authorize allele materialization.",
+                                    reference_check.as_str(), display_rs_id, seq_id,
+                                    local_start_0based.saturating_add(1), placement.reference_allele,
+                                ));
+                            }
                             emit_progress(
                                 DbSnpFetchStage::AttachVariantMarker,
                                 format!(
@@ -42468,14 +42523,9 @@ impl GentleEngine {
                             dna.features_mut()
                                 .push(Self::build_dbsnp_variant_marker_feature(
                                     &display_rs_id,
-                                    &placement.chromosome,
-                                    &placement.chromosome_display,
-                                    placement.position_1based,
-                                    placement.assembly_name.as_deref(),
-                                    &placement.gene_symbols,
-                                    placement.reference_allele.as_deref(),
-                                    &placement.alternate_alleles,
+                                    &placement,
                                     local_start_0based,
+                                    reference_check,
                                 ));
                             Self::prepare_sequence(dna);
                         } else {

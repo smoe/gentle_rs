@@ -6266,6 +6266,11 @@ Tutorial projects:
     `SuggestPromoterReporterFragments`, `SummarizeTfbsScoreTracks`,
     `ExtractRegion`, `MaterializeVariantAllele`, `LoadFile`, `Ligation`, and
     `Branch` operations without dropping into generic `Engine Ops`.
+  - `Make reference/alternate inserts` validates both choices before creating
+    either sequence. An empty multiallelic choice or invalid alternate leaves
+    project sequences and output-name fields unchanged, allowing a corrected
+    retry without orphan reference copies. This is pair preflight, not a new
+    transactional operation or a wet-lab validation claim.
   - the same window now also exposes positive-only TF score tracks across the
     chosen promoter span, with TERT-friendly `SP1`, Yamanaka-plus-`NANOG`, and
     `TP73/SP1/BACH2/PATZ1` presets meant for promoter interpretation before
@@ -6823,8 +6828,15 @@ NCBI retrieval behavior:
   waiting for the response, parsing the returned JSON, resolving the assembly
   placement, and extracting the annotated slice from the prepared genome.
 - Extracted dbSNP regions now also include a one-base `variation` feature
-  labeled with the rsID at the resolved SNP position so the focal variant stays
-  visible in the sequence view, including overview-scale linear maps.
+  labeled with the rsID at the resolved position so the focal variant stays
+  visible in the sequence view, including overview-scale linear maps. This
+  remains a focal anchor for non-SNVs, whose full alleles/coordinates are retained
+  in `dbsnp_spdi` rather than misleading single-base VCF qualifiers.
+- Marker details distinguish reference match/mismatch/unavailable from
+  assembly-family compatibility. Fallback or unbound assembly and missing or
+  mismatching reference evidence are warned and block allele materialization;
+  a matching base alone does not permit transferring coordinates between
+  assemblies. Only clean A/C/G/T SNVs receive `vcf_ref`/`vcf_alt`.
 - RefSeq-style dbSNP chromosome accessions such as `NC_000016.10` are matched
   against prepared contig aliases during extraction and annotation transfer, so
   human `chr16`/`16` installs still attach the expected local feature context.

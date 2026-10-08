@@ -2802,7 +2802,7 @@ impl MainAreaDna {
         }
     }
 
-    fn materialize_variant_followup_alleles(&mut self) {
+    pub(super) fn materialize_variant_followup_alleles(&mut self) {
         let input = self
             .variant_followup_ui
             .fragment_output_id
@@ -2827,6 +2827,41 @@ impl MainAreaDna {
             Self::variant_followup_optional_text(&self.variant_followup_ui.reference_output_id);
         let alternate_output_id =
             Self::variant_followup_optional_text(&self.variant_followup_ui.alternate_output_id);
+        let alternate_allele =
+            Self::variant_followup_optional_text(&self.variant_followup_ui.alternate_allele);
+        let preflight = self
+            .engine
+            .as_ref()
+            .ok_or_else(|| "Engine is not available".to_string())
+            .and_then(|engine| {
+                let guard = engine
+                    .read()
+                    .map_err(|_| "Engine lock is poisoned".to_string())?;
+                guard
+                    .materialize_variant_allele_sequence(
+                        &input,
+                        variant_label_or_id.as_deref(),
+                        VariantAlleleChoice::Reference,
+                        None,
+                        reference_output_id.as_deref(),
+                    )
+                    .map_err(|error| error.message)?;
+                guard
+                    .materialize_variant_allele_sequence(
+                        &input,
+                        variant_label_or_id.as_deref(),
+                        VariantAlleleChoice::Alternate,
+                        alternate_allele.as_deref(),
+                        alternate_output_id.as_deref(),
+                    )
+                    .map_err(|error| error.message)?;
+                Ok(())
+            });
+        if let Err(error) = preflight {
+            self.op_status = format!("Allele materialization preflight failed: {error}");
+            self.op_error_popup = Some(self.op_status.clone());
+            return;
+        }
         let reference_result =
             self.apply_operation_with_feedback_and_result(Operation::MaterializeVariantAllele {
                 input: input.clone(),
@@ -2848,9 +2883,7 @@ impl MainAreaDna {
                 input,
                 variant_label_or_id,
                 allele: VariantAlleleChoice::Alternate,
-                alternate_allele: Self::variant_followup_optional_text(
-                    &self.variant_followup_ui.alternate_allele,
-                ),
+                alternate_allele,
                 output_id: alternate_output_id,
             });
         let Some(alternate_seq_id) = alternate_result

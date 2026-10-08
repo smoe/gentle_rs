@@ -343,7 +343,7 @@ impl GentleEngine {
 
         let commands =
             if luciferase_route_requested && selected_reporter.is_some() && exact_vector_verified {
-                Self::reporter_construct_handoff_commands(
+                self.reporter_construct_handoff_commands(
                     &candidate_set,
                     &candidate,
                     &extract_fragment_seq_id,
@@ -1506,6 +1506,7 @@ impl GentleEngine {
     }
 
     fn reporter_construct_handoff_commands(
+        &self,
         candidate_set: &PromoterReporterCandidateSet,
         candidate: &PromoterReporterFragmentCandidate,
         extract_fragment_seq_id: &str,
@@ -1550,23 +1551,42 @@ impl GentleEngine {
             note: "Creates the reference-allele promoter insert for the macro template."
                 .to_string(),
         });
+        let alternate_allele = self
+            .materialize_variant_allele_sequence(
+                &candidate_set.seq_id,
+                Some(&candidate_set.variant_label),
+                VariantAlleleChoice::Alternate,
+                None,
+                None,
+            )
+            .ok()
+            .and_then(|(_, dna)| {
+                let (_, feature) =
+                    Self::select_variant_feature(&dna, Some(&candidate_set.variant_label)).ok()?;
+                Self::feature_qualifier_text(feature, "materialized_base")
+            });
+        let mut alternate_command = serde_json::json!({
+            "MaterializeVariantAllele": {
+                "input": extract_fragment_seq_id,
+                "variant_label_or_id": candidate_set.variant_label,
+                "allele": "alternate",
+                "output_id": alternate_seq_id,
+            }
+        });
+        if let Some(alternate) = &alternate_allele {
+            alternate_command["MaterializeVariantAllele"]["alternate_allele"] =
+                serde_json::json!(alternate);
+        }
         commands.push(ReporterConstructHandoffCommand {
             label: "Materialize alternate allele fragment".to_string(),
             command_kind: "op".to_string(),
-            command: format!(
-                "op {}",
-                serde_json::json!({
-                    "MaterializeVariantAllele": {
-                        "input": extract_fragment_seq_id,
-                        "variant_label_or_id": candidate_set.variant_label,
-                        "allele": "alternate",
-                        "output_id": alternate_seq_id,
-                    }
-                })
-            ),
+            command: format!("op {alternate_command}"),
             mutating: true,
-            note: "Creates the alternate-allele promoter insert for the macro template."
-                .to_string(),
+            note: if let Some(alternate) = alternate_allele {
+                format!("Creates the alternate-allele promoter insert with the single genomic-forward base '{alternate}' validated against the loaded source marker; the engine revalidates it at execution.")
+            } else {
+                "Review required: load and verify the source variant, choose one reported A/C/G/T alternate distinct from the reference, and add alternate_allele before execution. No alternate has been selected by this handoff.".to_string()
+            },
         });
         if backbone.status == ReporterBackboneResolutionStatus::RequiresManualLoad
             && let Some(load_path) = backbone.load_path.as_deref()
@@ -2058,6 +2078,98 @@ mod tests {
                 .command
                 .contains("allele_paired_promoter_luciferase_reporter")
         }));
+    }
+
+    #[test]
+    fn reporter_construct_handoff_binds_unique_loaded_alternates_or_requires_review() {
+        // Hand-crafted candidate/variant/backbone identities, not a real reporter study.
+        let candidate_set = PromoterReporterCandidateSet {
+            seq_id: "synthetic_source".to_string(),
+            variant_label: "rsSynthetic".to_string(),
+            ..PromoterReporterCandidateSet::default()
+        };
+        let candidate = PromoterReporterFragmentCandidate {
+            start_0based: 0,
+            end_0based_exclusive: 5,
+            length_bp: 5,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let backbone = ReporterBackboneResolution::default();
+        for (raw_alternate, reference_check, assembly_check, loaded, expected) in [
+            ("T", "match", "match", true, Some("T")),
+            ("t", "match", "match", true, Some("T")),
+            ("A,G,T", "match", "match", true, None),
+            ("", "match", "match", true, None),
+            ("N", "match", "match", true, None),
+            ("TT", "match", "match", true, None),
+            ("C", "match", "match", true, None),
+            ("T", "mismatch", "match", true, None),
+            ("T", "match", "unavailable", true, None),
+            ("T", "match", "match", false, None),
+        ] {
+            let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+            dna.features_mut().push(gb_io::seq::Feature {
+                kind: "variation".into(),
+                location: gb_io::seq::Location::simple_range(2, 3),
+                qualifiers: vec![
+                    ("label".into(), Some("rsSynthetic".to_string())),
+                    ("vcf_ref".into(), Some("C".to_string())),
+                    ("vcf_alt".into(), Some(raw_alternate.to_string())),
+                    (
+                        "dbsnp_reference_check".into(),
+                        Some(reference_check.to_string()),
+                    ),
+                    (
+                        "dbsnp_assembly_check".into(),
+                        Some(assembly_check.to_string()),
+                    ),
+                ],
+            });
+            let mut state = ProjectState::default();
+            if loaded {
+                state.sequences.insert(candidate_set.seq_id.clone(), dna);
+            }
+            let engine = GentleEngine::from_state(state);
+            let before = serde_json::to_value(engine.state()).unwrap();
+            let commands = engine.reporter_construct_handoff_commands(
+                &candidate_set,
+                &candidate,
+                "extracted",
+                "reference",
+                "alternate",
+                &backbone,
+                "synthetic_pair",
+            );
+            let command = commands
+                .iter()
+                .find(|command| command.label == "Materialize alternate allele fragment")
+                .expect("alternate handoff");
+            let crate::engine_shell::ShellCommand::Op { payload } =
+                crate::engine_shell::parse_shell_line(&command.command).expect("shared parser")
+            else {
+                panic!("handoff must use the shared operation route");
+            };
+            let Operation::MaterializeVariantAllele {
+                allele,
+                alternate_allele,
+                ..
+            } = serde_json::from_str::<Operation>(&payload).expect("typed operation")
+            else {
+                panic!("expected allele materialization");
+            };
+            assert!(matches!(allele, VariantAlleleChoice::Alternate));
+            assert_eq!(
+                alternate_allele.as_deref(),
+                expected,
+                "{raw_alternate}/{reference_check}/{loaded}"
+            );
+            assert_eq!(
+                command.note.starts_with("Review required:"),
+                expected.is_none()
+            );
+            assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+            assert_eq!(engine.journal_len(), 0);
+        }
     }
 
     #[test]

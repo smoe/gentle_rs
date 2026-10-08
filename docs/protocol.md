@@ -4063,6 +4063,20 @@ Sequencing-trace evidence notes:
   - `rs_id` is a dbSNP identifier such as `rs9923231`; `genome_id` is a
     prepared GENtle genome catalog id; `output_id` names the local sequence
     extracted around that variant.
+  - the focal marker records `dbsnp_reference_check=match|mismatch|unavailable`
+    against the full deleted reference span, and separately
+    `dbsnp_assembly_check=match|unavailable`. A family match is not exact-patch
+    or cross-assembly coordinate proof; fallback/unbound family stays
+    unavailable regardless of a matching reference. Unknown bases or an
+    incomplete reference span are unavailable, not mismatch or match.
+  - `dbsnp_assembly_fallback`, optional `dbsnp_requested_assembly_family`,
+    and warnings disclose inspection-only fallback. Such a marker cannot
+    authorize allele materialization without compatible placement evidence.
+  - `dbsnp_variant_class=snv|non_snv` distinguishes clean A/C/G/T SNVs, the
+    only records emitting `vcf_ref`/`vcf_alt`. Repeated `dbsnp_spdi` qualifiers
+    preserve selected-placement SPDI JSON, including insertion/deletion empty
+    strings and multi-base replacements. Non-SNV markers remain one-base focal
+    anchors, not complete variant intervals or VCF-normalized alleles.
 - `DeriveTranscriptSequences { seq_id, feature_ids[], scope?, output_prefix? }`
 - `PlanExonSkippedIsoform { seq_id, transcript_feature_id, criteria[], plan_id? }`
 - `MaterializeExonSkippedIsoform { plan_id, selected_candidate_ids[], output_prefix? }`
@@ -4473,6 +4487,13 @@ Sequencing-trace evidence notes:
   - reports typed macro-port readiness plus reporter-backbone resolution, and
     emits explicit follow-up commands for manual extraction, allele
     materialization, backbone loading, macro import, validation, and macro run
+  - the candidate report contains fragment geometry, not allele fields. If
+    the source variant is loaded and the shared materialization validator
+    accepts one alternate, its command carries that explicit genomic-forward
+    `alternate_allele`. Missing, ambiguous or invalid source evidence yields
+    a `Review required:` command note with no selected alternate. Commands
+    remain subject to fresh validation when executed; macro-port readiness
+    alone does not approve an unselected allele.
   - when `reporter_backbone_catalog_id` is supplied, `backbone.validation`
     carries `gentle.reporter_vector_validation.v1`: catalog-owned expected and
     observed accession/version, sequence length, topology, required feature
@@ -4495,6 +4516,10 @@ Sequencing-trace evidence notes:
     orientation. `FetchDbSnpRegion` retains genomic-forward placement alleles;
     a negative gene strand alone does not complement those bases. The sequence
     base must match `vcf_ref`; mismatched or stale qualifiers fail closed
+  - when present, `dbsnp_assembly_check` and `dbsnp_reference_check` must both
+    be `match`; unavailable or mismatching fetched markers fail before output
+    creation. Legacy markers lacking those qualifiers retain fresh base checks
+    but make no retrospective assembly-validation claim
   - preserves the variant feature on the derived output while marking the
     materialized allele and exact base; legacy operations omit the optional
     selection and retain single-alternate behavior

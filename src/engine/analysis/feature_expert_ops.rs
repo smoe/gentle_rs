@@ -54,6 +54,90 @@ pub(super) struct DbsnpResolvedPlacement {
     pub gene_symbols: Vec<String>,
     pub reference_allele: Option<String>,
     pub alternate_alleles: Vec<String>,
+    pub spdi_alleles: Vec<serde_json::Value>,
+    pub requested_assembly_family: Option<String>,
+    pub used_assembly_fallback: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Comparison of a selected SPDI reference span with the extracted DNA.
+/// Missing, ambiguous or cropped bases are unavailable, never a mismatch claim.
+pub(super) enum DbsnpReferenceCheck {
+    Match,
+    Mismatch,
+    Unavailable,
+}
+
+impl DbsnpReferenceCheck {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Match => "match",
+            Self::Mismatch => "mismatch",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+impl DbsnpResolvedPlacement {
+    pub(super) fn is_snv(&self) -> bool {
+        let single_base = |value: &str| matches!(value.as_bytes(), [b'A' | b'C' | b'G' | b'T']);
+        self.reference_allele.as_deref().is_some_and(single_base)
+            && self
+                .alternate_alleles
+                .iter()
+                .all(|value| single_base(value))
+    }
+
+    pub(super) fn assembly_check(&self) -> &'static str {
+        if !self.used_assembly_fallback
+            && self
+                .requested_assembly_family
+                .as_deref()
+                .is_some_and(|requested| {
+                    self.assembly_name
+                        .as_deref()
+                        .and_then(GentleEngine::dbsnp_assembly_family_token)
+                        .as_deref()
+                        == Some(requested)
+                })
+        {
+            "match"
+        } else {
+            "unavailable"
+        }
+    }
+
+    pub(super) fn reference_check(
+        &self,
+        sequence: &[u8],
+        local_start_0based: usize,
+    ) -> DbsnpReferenceCheck {
+        let Some(reference) = self.reference_allele.as_deref().filter(|value| {
+            !value.is_empty()
+                && value
+                    .bytes()
+                    .all(|base| matches!(base, b'A' | b'C' | b'G' | b'T'))
+        }) else {
+            return DbsnpReferenceCheck::Unavailable;
+        };
+        let Some(end) = local_start_0based.checked_add(reference.len()) else {
+            return DbsnpReferenceCheck::Unavailable;
+        };
+        let Some(observed) = sequence.get(local_start_0based..end) else {
+            return DbsnpReferenceCheck::Unavailable;
+        };
+        if !observed
+            .iter()
+            .all(|base| matches!(base.to_ascii_uppercase(), b'A' | b'C' | b'G' | b'T'))
+        {
+            return DbsnpReferenceCheck::Unavailable;
+        }
+        if observed.eq_ignore_ascii_case(reference.as_bytes()) {
+            DbsnpReferenceCheck::Match
+        } else {
+            DbsnpReferenceCheck::Mismatch
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -403,15 +487,7 @@ impl GentleEngine {
             })?;
         let mut available_assemblies = std::collections::BTreeSet::new();
         let mut available_families = std::collections::BTreeSet::new();
-        let mut best: Option<(
-            usize,
-            String,
-            String,
-            Option<String>,
-            usize,
-            Option<String>,
-            Vec<String>,
-        )> = None;
+        let mut best: Option<(usize, DbsnpResolvedPlacement)> = None;
         for placement in placements {
             let placement_seq_id = placement
                 .get("seq_id")
@@ -519,12 +595,13 @@ impl GentleEngine {
                                 seq_id.unwrap_or_default(),
                                 deleted_sequence,
                                 inserted_sequence,
+                                spdi.clone(),
                             ))
                         })
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            let (position_0based, spdi_seq_id, reference_allele, _) =
+            let (position_0based, spdi_seq_id, reference, _, _) =
                 allele_spdis.first().cloned().ok_or_else(|| EngineError {
                     code: ErrorCode::NotFound,
                     message: format!(
@@ -534,16 +611,14 @@ impl GentleEngine {
 
                     cause_chain: vec![],
                 })?;
-            let reference_allele = (!reference_allele.is_empty()).then_some(reference_allele);
+            let reference_allele = (!reference.is_empty()).then_some(reference.clone());
             let mut alternate_alleles = allele_spdis
                 .iter()
-                .filter(|(position, seq_id, deleted, _)| {
-                    *position == position_0based
-                        && *seq_id == spdi_seq_id
-                        && reference_allele.as_deref() == Some(deleted.as_str())
+                .filter(|(position, seq_id, deleted, _, _)| {
+                    *position == position_0based && *seq_id == spdi_seq_id && *deleted == reference
                 })
-                .filter_map(|(_, _, deleted, inserted)| {
-                    (!inserted.is_empty() && inserted != deleted).then_some(inserted.clone())
+                .filter_map(|(_, _, deleted, inserted, _)| {
+                    (inserted != deleted).then_some(inserted.clone())
                 })
                 .collect::<Vec<_>>();
             alternate_alleles.sort();
@@ -561,13 +636,25 @@ impl GentleEngine {
             if is_better {
                 best = Some((
                     overall_score,
-                    chromosome,
-                    Self::dbsnp_accession_chromosome_alias(&placement_seq_id)
+                    DbsnpResolvedPlacement {
+                        rs_id: resolved_rs_id.clone(),
+                        chromosome,
+                        chromosome_display: Self::dbsnp_accession_chromosome_alias(
+                            &placement_seq_id,
+                        )
                         .unwrap_or_else(|| placement_seq_id.clone()),
-                    matched_assembly_name,
-                    position_0based.saturating_add(1),
-                    reference_allele,
-                    alternate_alleles,
+                        assembly_name: matched_assembly_name,
+                        position_1based: position_0based.saturating_add(1),
+                        gene_symbols: vec![],
+                        reference_allele,
+                        alternate_alleles,
+                        spdi_alleles: allele_spdis
+                            .into_iter()
+                            .map(|(_, _, _, _, raw)| raw)
+                            .collect(),
+                        requested_assembly_family: requested_family.clone(),
+                        used_assembly_fallback: false,
+                    },
                 ));
             }
             if best_trait_score >= 15 {
@@ -575,20 +662,15 @@ impl GentleEngine {
                 break;
             }
         }
-        let Some((
-            _,
-            chromosome,
-            chromosome_display,
-            assembly_name,
-            position_1based,
-            reference_allele,
-            alternate_alleles,
-        )) = best
-        else {
+        let Some((_, mut resolved)) = best else {
             if let Some(requested_family) = requested_family.as_deref()
                 && !available_families.contains(requested_family)
             {
-                return Self::resolve_dbsnp_primary_placement(document, requested_rs_id, None);
+                let mut fallback =
+                    Self::resolve_dbsnp_primary_placement(document, requested_rs_id, None)?;
+                fallback.requested_assembly_family = Some(requested_family.to_string());
+                fallback.used_assembly_fallback = true;
+                return Ok(fallback);
             }
             let available = if available_assemblies.is_empty() {
                 "none reported".to_string()
@@ -616,17 +698,8 @@ impl GentleEngine {
                 cause_chain: vec![],
             });
         };
-        let gene_symbols = Self::dbsnp_collect_gene_symbols(document);
-        Ok(DbsnpResolvedPlacement {
-            rs_id: resolved_rs_id,
-            chromosome,
-            chromosome_display,
-            position_1based,
-            assembly_name,
-            gene_symbols,
-            reference_allele,
-            alternate_alleles,
-        })
+        resolved.gene_symbols = Self::dbsnp_collect_gene_symbols(document);
+        Ok(resolved)
     }
 
     pub(super) fn feature_qualifier_text(
