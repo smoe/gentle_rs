@@ -34,8 +34,10 @@ def pair_evidence(project: dict) -> dict:
     prefix = "vkorc1_rs9923231_promoter_"
     bases = {role: bytes(sequences[prefix + role]["seq"]["seq"])
              for role in ("fragment", "reference", "alternate")}
-    assert bases["fragment"] == b"AAAAAACAAAAAAAAAAAAA", "source changed"
-    assert bases["reference"] == bases["fragment"], "reference changed"
+    assert bases["fragment"] == b"aaaaaacaaaaaaaaaaaaa", "source changed"
+    reference = bytearray(bases["fragment"])
+    reference[6] = ord("C")
+    assert bases["reference"] == reference, "reference changed beyond materialized base case"
     assert len(bases["alternate"]) == len(bases["reference"]), "length changed"
     differences = [{"position_0based": index, "reference": chr(before), "alternate": chr(after)}
                    for index, (before, after) in enumerate(zip(bases["reference"], bases["alternate"]))
@@ -45,7 +47,9 @@ def pair_evidence(project: dict) -> dict:
             "synthetic": True, "human_scientific_approval": False,
             "online_vkorc1_accepted": False, "native_screenshot": False,
             "length_bp": 20, "differences": differences,
-            "sequences": {role: value.decode("ascii") for role, value in bases.items()},
+            "sequences": {role: value.decode("ascii").upper() for role, value in bases.items()},
+            "raw_sequences": {role: value.decode("ascii") for role, value in bases.items()},
+            "display_case": "uppercase; raw_sequences retains GenBank case",
             "nonclaim": "20-base allele-choice guard only, not human VKORC1 DNA or a reporter assay."}
 
 
