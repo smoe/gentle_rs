@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-08 - Keep Promoter Allele-Pair Refusal Atomic
+
+- The 08.04 GUI pair action previously created its reference insert before an
+  unspecified multiallelic alternate was refused. Run the same two shared
+  engine operations inside the existing rollback boundary and publish GUI
+  success only after both pass; no biological logic or single-allele CLI
+  semantics are duplicated or changed.
+- Add hand-crafted regressions for missing/invalid alternate refusal with
+  unchanged project/history, plus explicit-T parity with direct engine results
+  and exactly one C/T difference. These are synthetic adapter tests, not live
+  VKORC1 or laboratory acceptance. Rust execution remains CI/external-only.
+
 ## 2026-10-08 - Add Real Wheel-Input CPU Benchmark Cases
 
 - Extend the maintained GUI operations benchmark with real horizontal egui

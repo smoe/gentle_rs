@@ -11419,6 +11419,131 @@ fn open_variant_followup_for_feature_seeds_window_from_variation_feature() {
     );
 }
 
+fn synthetic_multiallelic_promoter_pair_area() -> (MainAreaDna, Arc<RwLock<GentleEngine>>) {
+    // Hand-crafted adapter regression, not a human VKORC1 sequence or assay claim.
+    let mut dna = DNAsequence::from_sequence("AAAAAACAAAAAAAAAAAAA").unwrap();
+    dna.features_mut().push(Feature {
+        kind: "variation".into(),
+        location: Location::simple_range(6, 7),
+        qualifiers: vec![
+            ("label".into(), Some("rs9923231".into())),
+            ("gene".into(), Some("VKORC1".into())),
+            ("vcf_ref".into(), Some("C".into())),
+            ("vcf_alt".into(), Some("A,G,T".into())),
+        ],
+    });
+    let input = "vkorc1_rs9923231_promoter_fragment";
+    let mut state = ProjectState::default();
+    state.sequences.insert(input.into(), dna.clone());
+    let engine = Arc::new(RwLock::new(GentleEngine::from_state(state)));
+    let mut area = MainAreaDna::new(dna, Some(input.into()), Some(engine.clone()));
+    assert!(area.open_variant_followup_for_feature(0, "synthetic pair regression"));
+    area.variant_followup_ui.reference_output_id = "reviewed_reference".into();
+    area.variant_followup_ui.alternate_output_id = "reviewed_alternate".into();
+    (area, engine)
+}
+
+#[test]
+fn promoter_pair_multiallelic_refusal_preserves_project_and_history() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+    let journal_before = engine.read().unwrap().journal_len();
+    let active_before = area.seq_id.clone();
+    area.materialize_variant_followup_alleles();
+    assert!(
+        area.op_status.contains("choose one explicitly"),
+        "{}",
+        area.op_status
+    );
+    assert_eq!(
+        serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+        before
+    );
+    assert_eq!(engine.read().unwrap().journal_len(), journal_before);
+    assert_eq!(area.seq_id, active_before);
+    assert!(area.last_created_seq_ids.is_empty());
+}
+
+#[test]
+fn promoter_pair_explicit_t_matches_shared_engine_and_differs_at_one_base() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    let before = engine.read().unwrap().state().clone();
+    let mut oracle = GentleEngine::from_state(before.clone());
+    for (allele, output_id, alternate_allele) in [
+        (
+            crate::engine::VariantAlleleChoice::Reference,
+            "reviewed_reference",
+            None,
+        ),
+        (
+            crate::engine::VariantAlleleChoice::Alternate,
+            "reviewed_alternate",
+            Some("T".into()),
+        ),
+    ] {
+        oracle
+            .apply(Operation::MaterializeVariantAllele {
+                input: "vkorc1_rs9923231_promoter_fragment".into(),
+                variant_label_or_id: Some("rs9923231".into()),
+                allele,
+                alternate_allele,
+                output_id: Some(output_id.into()),
+            })
+            .unwrap();
+    }
+    area.variant_followup_ui.alternate_allele = "T".into();
+    area.materialize_variant_followup_alleles();
+    let guard = engine.read().unwrap();
+    assert_eq!(guard.journal_len(), 2);
+    let reference = &guard.state().sequences["reviewed_reference"];
+    let alternate = &guard.state().sequences["reviewed_alternate"];
+    let differences: Vec<_> = reference
+        .forward_bytes()
+        .iter()
+        .zip(alternate.forward_bytes())
+        .enumerate()
+        .filter_map(|(index, (left, right))| (left != right).then_some((index, *left, *right)))
+        .collect();
+    assert_eq!(reference.len(), alternate.len());
+    assert_eq!(differences, vec![(6, b'C', b'T')]);
+    for id in ["reviewed_reference", "reviewed_alternate"] {
+        assert_eq!(
+            guard.state().sequences[id].forward_bytes(),
+            oracle.state().sequences[id].forward_bytes()
+        );
+        assert_eq!(
+            guard.state().sequences[id].features(),
+            oracle.state().sequences[id].features()
+        );
+    }
+    assert_eq!(
+        guard.state().sequences["vkorc1_rs9923231_promoter_fragment"].forward_bytes(),
+        before.sequences["vkorc1_rs9923231_promoter_fragment"].forward_bytes()
+    );
+    assert_eq!(
+        area.last_created_seq_ids,
+        vec!["reviewed_reference", "reviewed_alternate"]
+    );
+}
+
+#[test]
+fn promoter_pair_invalid_explicit_allele_rolls_back_reference() {
+    let (mut area, engine) = synthetic_multiallelic_promoter_pair_area();
+    let before = serde_json::to_value(engine.read().unwrap().state()).unwrap();
+    area.variant_followup_ui.alternate_allele = "C".into();
+    area.materialize_variant_followup_alleles();
+    assert!(
+        area.op_status.contains("not present in vcf_alt"),
+        "{}",
+        area.op_status
+    );
+    assert_eq!(
+        serde_json::to_value(engine.read().unwrap().state()).unwrap(),
+        before
+    );
+    assert_eq!(engine.read().unwrap().journal_len(), 0);
+}
+
 #[test]
 fn variant_followup_allele_pair_preflights_before_creation_and_retries_without_orphans() {
     // Hand-crafted multi-allelic SNV; not a real locus or biological assertion.

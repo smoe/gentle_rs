@@ -64,5 +64,11 @@ follow-up merely to improve those observations.
   rerun successfully on macOS. The scroll follow-up adds an opt-in Linux CI smoke
   with all three fixtures and 24 directional observations; Rust execution is
   still pending. Scoped `rustfmt`, YAML parsing and `git diff --check` pass.
+- Scroll commit `ac18df5e5c91c04931103bfcd9907b89a98c66c6` is pushed. Non-publishing
+  [CI run 37763578792](https://github.com/smoe/gentle_rs/actions/runs/37763578792)
+  targets that exact SHA; Linux/Windows and the scroll smoke are in progress.
+  The 08.04 GUI pair path exposed a reference-only partial mutation on alternate
+  refusal; a scoped rollback repair and three synthetic regressions are authored,
+  with execution still pending.
 - No new Rust, live-model, native GUI, benchmark or package execution is yet
   claimed. Do not mark the goal complete while an item remains unverified.
