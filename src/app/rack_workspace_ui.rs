@@ -1631,6 +1631,16 @@ impl GENtleApp {
         if pinned { "Unpin" } else { "Pin open" }
     }
 
+    pub(super) fn rack_grid_viewport_height(available_height: f32) -> f32 {
+        const MIN_GRID_HEIGHT: f32 = 48.0;
+        const FOOTER_AND_STATUS_RESERVE: f32 = 156.0;
+        (available_height - FOOTER_AND_STATUS_RESERVE).max(MIN_GRID_HEIGHT)
+    }
+
+    pub(super) fn rack_help_uses_compact_summary(available_height: f32) -> bool {
+        available_height < 480.0
+    }
+
     pub(super) fn record_successful_rack_move_and_maybe_autocollapse(&mut self) {
         if self.rack_help_strip_pinned_open || self.rack_help_strip_auto_minimized {
             return;
@@ -1650,7 +1660,12 @@ impl GENtleApp {
         }
     }
 
-    pub(super) fn render_rack_help_strip(&mut self, ui: &mut Ui, arrangement_ids: &[String]) {
+    pub(super) fn render_rack_help_strip(
+        &mut self,
+        ui: &mut Ui,
+        arrangement_ids: &[String],
+        compact_summary: bool,
+    ) {
         egui::Frame::group(ui.style())
             .inner_margin(egui::Margin::symmetric(8, 6))
             .show(ui, |ui| {
@@ -1689,6 +1704,13 @@ impl GENtleApp {
                     }
                 });
                 if self.rack_help_strip_collapsed {
+                    return;
+                }
+                if compact_summary {
+                    ui.add_space(4.0);
+                    ui.small(
+                        "Drag samples or arrangement blocks · Command/Ctrl multi-selects · Esc cancels · preview ghosts show drop order.",
+                    );
                     return;
                 }
                 ui.add_space(4.0);
@@ -2291,7 +2313,7 @@ impl GENtleApp {
             return close_requested;
         };
         ui.label("Physical rack/plate placement linked to one or more arrangements. Drag one occupied sample slot to another slot to shift neighbors within that arrangement block, or drag an arrangement chip to move the whole block. Command/Ctrl-click arrangement chips to select multiple blocks, then drag one selected chip or click a target slot. Click-select and click-target still works as a fallback.");
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Rack");
             ui.monospace(format!("{} ({})", rack.name, rack.rack_id));
             ui.label("Profile");
@@ -2415,7 +2437,7 @@ impl GENtleApp {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Template");
             egui::ComboBox::from_id_salt("rack_template_combo")
                 .selected_text(Self::rack_authoring_template_label(
@@ -2482,7 +2504,7 @@ impl GENtleApp {
             );
         });
         if self.rack_profile_editor_kind == RackProfileKind::Custom {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Custom rows");
                 ui.add(
                     egui::TextEdit::singleline(&mut self.rack_custom_profile_rows)
@@ -2578,7 +2600,7 @@ impl GENtleApp {
                 ui.small("Use A1-style coordinates; row labels continue beyond Z as AA, AB, ...");
             });
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label("Blocked");
             ui.add(
                 egui::TextEdit::singleline(&mut self.rack_blocked_coordinates_text)
@@ -2717,7 +2739,8 @@ impl GENtleApp {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect::<Vec<_>>();
-        self.render_rack_help_strip(ui, &arrangement_ids);
+        let compact_help = Self::rack_help_uses_compact_summary(ui.available_height());
+        self.render_rack_help_strip(ui, &arrangement_ids, compact_help);
         ui.horizontal_wrapped(|ui| {
             ui.label("Arrangement blocks");
             for arrangement_id in &arrangement_ids {
@@ -2792,6 +2815,7 @@ impl GENtleApp {
         let rack_scroll_output = egui::ScrollArea::both()
             .id_salt("rack_grid_scroll")
             .auto_shrink([false, false])
+            .max_height(Self::rack_grid_viewport_height(ui.available_height()))
             .scroll_offset(self.rack_view_scroll_offset)
             .show(ui, |ui| {
             egui::Grid::new("rack_grid")
@@ -3201,104 +3225,113 @@ impl GENtleApp {
             self.rack_view_recent_drop_ghost = None;
         }
         ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Label preset");
-            egui::ComboBox::from_id_salt("rack_label_sheet_preset_combo")
-                .selected_text(Self::rack_label_sheet_preset_label(
-                    self.rack_label_sheet_preset,
-                ))
-                .show_ui(ui, |ui| {
-                    for preset in [
-                        RackLabelSheetPreset::CompactCards,
-                        RackLabelSheetPreset::PrintA4,
-                        RackLabelSheetPreset::WideCards,
-                    ] {
-                        ui.selectable_value(
-                            &mut self.rack_label_sheet_preset,
-                            preset,
-                            Self::rack_label_sheet_preset_label(preset),
-                        );
-                    }
-                });
-            if ui
-                .button("Preview Labels...")
-                .on_hover_text("Open an in-app preview of the deterministic label sheet for the currently shown rack before exporting it")
-                .clicked()
-            {
-                self.open_rack_labels_preview_dialog(&rack.rack_id, None);
-            }
-            ui.separator();
-            ui.label("Physical template");
-            egui::ComboBox::from_id_salt("rack_physical_template_combo")
-                .selected_text(Self::rack_physical_template_label(
-                    self.rack_physical_template_kind,
-                ))
-                .show_ui(ui, |ui| {
-                    for template in [
-                        RackPhysicalTemplateKind::StoragePcrTubeRack,
-                        RackPhysicalTemplateKind::PipettingPcrTubeRack,
-                        RackPhysicalTemplateKind::CellCulturePlate,
-                    ] {
-                        ui.selectable_value(
-                            &mut self.rack_physical_template_kind,
-                            template,
-                            Self::rack_physical_template_label(template),
-                        );
-                    }
-                });
-            ui.label("Carrier preset");
-            egui::ComboBox::from_id_salt("rack_carrier_label_preset_combo")
-                .selected_text(Self::rack_carrier_label_preset_label(
-                    self.rack_carrier_label_preset,
-                ))
-                .show_ui(ui, |ui| {
-                    for preset in [
-                        RackCarrierLabelPreset::FrontStripAndCards,
-                        RackCarrierLabelPreset::FrontStripOnly,
-                        RackCarrierLabelPreset::ModuleCardsOnly,
-                    ] {
-                        ui.selectable_value(
-                            &mut self.rack_carrier_label_preset,
-                            preset,
-                            Self::rack_carrier_label_preset_label(preset),
-                        );
-                    }
-                });
-            if ui
-                .button("Fabrication SVG...")
-                .on_hover_text("Export a top-view fabrication/planning SVG for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_fabrication_svg(&rack.rack_id);
-            }
-            if ui
-                .button("Isometric SVG...")
-                .on_hover_text("Export a presentation-grade pseudo-3D rack SVG for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_isometric_svg(&rack.rack_id);
-            }
-            if ui
-                .button("OpenSCAD...")
-                .on_hover_text("Export one parameterized OpenSCAD file for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_openscad(&rack.rack_id);
-            }
-            if ui
-                .button("Carrier labels SVG...")
-                .on_hover_text("Export one carrier-matched front-strip plus module-label SVG sheet for the current rack using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_carrier_labels_svg(&rack.rack_id);
-            }
-            if ui
-                .button("Simulation JSON...")
-                .on_hover_text("Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters using the selected physical carrier template")
-                .clicked()
-            {
-                self.prompt_export_rack_simulation_json(&rack.rack_id);
-            }
+        ui.group(|ui| {
+            ui.set_width(ui.available_width());
+            ui.small(egui::RichText::new("Labels").strong());
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Label preset");
+                egui::ComboBox::from_id_salt("rack_label_sheet_preset_combo")
+                    .selected_text(Self::rack_label_sheet_preset_label(
+                        self.rack_label_sheet_preset,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for preset in [
+                            RackLabelSheetPreset::CompactCards,
+                            RackLabelSheetPreset::PrintA4,
+                            RackLabelSheetPreset::WideCards,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.rack_label_sheet_preset,
+                                preset,
+                                Self::rack_label_sheet_preset_label(preset),
+                            );
+                        }
+                    });
+                if ui
+                    .button("Preview Labels...")
+                    .on_hover_text("Open an in-app preview of the deterministic label sheet for the currently shown rack before exporting it")
+                    .clicked()
+                {
+                    self.open_rack_labels_preview_dialog(&rack.rack_id, None);
+                }
+            });
+            ui.add_space(4.0);
+            ui.small(egui::RichText::new("Physical carrier exports").strong());
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Physical template");
+                egui::ComboBox::from_id_salt("rack_physical_template_combo")
+                    .selected_text(Self::rack_physical_template_label(
+                        self.rack_physical_template_kind,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for template in [
+                            RackPhysicalTemplateKind::StoragePcrTubeRack,
+                            RackPhysicalTemplateKind::PipettingPcrTubeRack,
+                            RackPhysicalTemplateKind::CellCulturePlate,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.rack_physical_template_kind,
+                                template,
+                                Self::rack_physical_template_label(template),
+                            );
+                        }
+                    });
+                ui.label("Carrier preset");
+                egui::ComboBox::from_id_salt("rack_carrier_label_preset_combo")
+                    .selected_text(Self::rack_carrier_label_preset_label(
+                        self.rack_carrier_label_preset,
+                    ))
+                    .show_ui(ui, |ui| {
+                        for preset in [
+                            RackCarrierLabelPreset::FrontStripAndCards,
+                            RackCarrierLabelPreset::FrontStripOnly,
+                            RackCarrierLabelPreset::ModuleCardsOnly,
+                        ] {
+                            ui.selectable_value(
+                                &mut self.rack_carrier_label_preset,
+                                preset,
+                                Self::rack_carrier_label_preset_label(preset),
+                            );
+                        }
+                    });
+            });
+            ui.horizontal_wrapped(|ui| {
+                if ui
+                    .button("Fabrication SVG...")
+                    .on_hover_text("Export a top-view fabrication/planning SVG for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_fabrication_svg(&rack.rack_id);
+                }
+                if ui
+                    .button("Isometric SVG...")
+                    .on_hover_text("Export a presentation-grade pseudo-3D rack SVG for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_isometric_svg(&rack.rack_id);
+                }
+                if ui
+                    .button("OpenSCAD...")
+                    .on_hover_text("Export one parameterized OpenSCAD file for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_openscad(&rack.rack_id);
+                }
+                if ui
+                    .button("Carrier labels SVG...")
+                    .on_hover_text("Export one carrier-matched front-strip plus module-label SVG sheet for the current rack using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_carrier_labels_svg(&rack.rack_id);
+                }
+                if ui
+                    .button("Simulation JSON...")
+                    .on_hover_text("Export one machine-readable physical rack geometry/placement JSON for downstream simulation adapters using the selected physical carrier template")
+                    .clicked()
+                {
+                    self.prompt_export_rack_simulation_json(&rack.rack_id);
+                }
+            });
         });
         close_requested
     }
@@ -3484,6 +3517,15 @@ impl GENtleApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compact_rack_layout_reserves_export_controls_and_keeps_help_concise() {
+        assert_eq!(GENtleApp::rack_grid_viewport_height(400.0), 244.0);
+        assert_eq!(GENtleApp::rack_grid_viewport_height(220.0), 64.0);
+        assert_eq!(GENtleApp::rack_grid_viewport_height(100.0), 48.0);
+        assert!(GENtleApp::rack_help_uses_compact_summary(479.0));
+        assert!(!GENtleApp::rack_help_uses_compact_summary(480.0));
+    }
 
     #[test]
     fn container_pool_export_gui_command_matches_shared_shell_parser() {

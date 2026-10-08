@@ -155,6 +155,15 @@ What to verify in the exported SVG:
 - ladders are visually distinct from the sequence-backed sample positions
 - the export still carries the physical template identity
 
+Compact-window check:
+
+- resize the Rack window to roughly `820 x 520`
+- the four help cards should become one concise interaction summary
+- the rack grid should scroll inside its own viewport
+- the `Labels` and `Physical carrier exports` sections should remain visible
+  below the grid, with their controls wrapping onto readable rows
+- no horizontal window scroll should be needed to reach `Isometric SVG...`
+
 This is the result intended for README reuse.
 
 ## Step 6: Export the Other Physical Projections

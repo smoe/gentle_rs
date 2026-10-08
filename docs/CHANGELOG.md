@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-08 - Keep Physical-Rack Exports Reachable In Compact Windows
+
+- Bound the Rack grid to the space above its footer so a `820 x 520` native
+  Rack window keeps label preview and physical-carrier exports reachable.
+  Large racks continue scrolling inside the existing grid viewport; persisted
+  rack content, drag/drop semantics and engine-owned exports are unchanged.
+- Wrap rack/profile/template/blocked controls, condense the four-card help strip
+  to one interaction summary at compact height, and split the footer into clear
+  `Labels` and `Physical carrier exports` groups. This is presentation-only and
+  adds no engine lookup, biological decision or background work per frame.
+- Extend the Gibson Physical Rack tutorial and GUI reference with the compact-
+  window check. Retain native before/after captures and compare the unchanged
+  GUI Criterion profile before claiming no latency regression.
+
 ## 2026-09-19 - Final Windows TSS And Path Portability Follow-up
 
 - Reject parent traversal even when Rust exposes `..` as a normal component in
