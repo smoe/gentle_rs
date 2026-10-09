@@ -4,6 +4,7 @@
 
 use super::operation_handlers::PrimerSpecificityResolvedInput;
 use super::*;
+use serde_json::Value;
 use std::fs;
 use std::io::Read;
 use std::path::Component;
