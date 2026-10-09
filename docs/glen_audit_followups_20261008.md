@@ -32,7 +32,21 @@ main/audit test families; the mixed-SNV/indel guard is unchanged. Evidence at
 `6d8b4db7` stays accepted only for that
 historical source. The current candidate's checklist is:
 
-The new frozen runtime/workflow candidate is
+The current frozen runtime/workflow candidate is
+`e42daa0216a3bc78c2c84fb05d5b972781e9e459`, pushed only to the codex branch.
+It adds the separately committed test-only macOS fixture repair and early
+exact-test CI step; no production path validation or biological behavior changes.
+Both fresh run records report this exact SHA:
+[Linux/Windows with focused/native/public/scroll audits 37915942296](https://github.com/smoe/gentle_rs/actions/runs/37915942296)
+and [macOS/Windows 37915951526](https://github.com/smoe/gentle_rs/actions/runs/37915951526).
+They are running, not accepted. Keep the remote branch frozen through these
+gates and later explicit `publish=false` package builds. No local Rust build,
+main update, tag or publication occurred. Session-close after the repair commit
+reports five OK, one manual plan-fidelity reminder and zero failures.
+The lockfile remains byte-identical. Until fresh acceptance is retained, items
+2-5 below refer only to the historical `3ac4a02d` source, not this new candidate.
+
+The previous frozen runtime/workflow candidate is
 `3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da`, with the unchanged lockfile above.
 It includes separate container-identity (`57cc62bc`) and eleven-line primer
 initialization (`3ac4a02d`) repairs. The remote codex branch was deliberately
@@ -69,7 +83,7 @@ the necessary container/compile repairs are explicitly scoped above.
 | 3. Live-agent acceptance | Complete: genuine public-starter requests at `3ac4a02d` | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), verified macOS/arm64 dev CLI and existing authorized login. Clarification first, then two unexecuted `ask` suggestions; raw requests/refusal unchanged. Reviewed manual execution preserves both sources; all four full `Seq` records match both fresh CI routes, without array sorting. No credential or particular-model claim. |
 | 4. Honest visual evidence | Complete: bounded raw native/public projection at `3ac4a02d` | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): all 115 native and 44 public hashes verified, four unedited synthetic captures inspected, public SVG exactly reproduced and visually inspected. Sole 588 C/T in 1,089-bp exports; display-only uppercase and explicit projection/non-claims. No public-locus GUI or scientific claim. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases at `3ac4a02d` | [Fresh scroll verification](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 retained hashes including executable, all 24 bidirectional fixture/size cases, bounded viewport and unchanged content verified against the raw log. No timed regression or native-latency claim. |
-| 6. .12 package acceptance | Open: builds pass, macOS full CI fails at `3ac4a02d` | Native run `37850876088` and container run `37850885456` pass with publication skipped. Container receipt records actual three versions/hashes. Require independent verification of all extracted native packages plus successful full Linux/macOS/Windows gates at one final SHA/lockfile/`package-opt1` recipe; no publication or old verdict inheritance. |
+| 6. .12 package acceptance | Open: fresh `e42daa02` platform/audit gates running | The prior `3ac4a02d` native/container builds pass but its macOS full suite fails; they are historical only. Require fresh same-source full Linux/macOS/Windows success, non-publishing builds, independent verification of all extracted native packages and container identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
 
 On 2026-10-09, independent native/scroll checks pass without local Rust
 execution. Four unchanged synthetic PNGs are visually inspected: T and pair
