@@ -139,6 +139,32 @@ SHA-256 `d4588ed3331bf22c0849fe4b01582fe6aa196dbf18de2ace1690b2454e96bf7b`.
 Neither a green build nor these metadata receipts closes the failed full-platform
 gate or substitutes for independently checking the extracted native packages.
 
+### Package Byte-Verifier Preparation
+
+A task-local read-only verifier at `/private/tmp/verify_gentle_native_package.py`
+(SHA-256 `cd1746d5a2e6983efe7619b7207243be918649613157a84e1226c656d2926966`)
+is prepared for the new packages without changing their source or running Rust.
+It checks explicit source/workflow/lock/profile/recipe and `validate_only`, the
+outer archive digest, safe exact payload membership, every `SHA256SUMS` entry,
+five nonempty native binary formats/hashes, packaged resources and revision.
+Linux/Windows checks stream the extracted bytes; macOS uses a read-only mounted
+app root. This byte check does not execute entrypoints or supply native/full-suite,
+GUI, latency or scientific acceptance. Those require their separate exact-run
+evidence and, for local execution, a matching native platform.
+
+Seven synthetic test groups in `/private/tmp/test_verify_gentle_native_package.py`
+(SHA-256 `8db314cf1d061092fe0c4f9106985fb1cadaa14a40d3d12d713cc2aef803c003`)
+pass, including stale sources/recipes, membership/hash failures and traversal,
+symlink and special-member refusal. Test log SHA-256:
+`6027ca906dcab6eaf0e89e604173ee50f09abcb0325955d3c8b1ca7fa375e282`.
+A read-only verifier-development trial on the already retained historical
+`6d8b4db7` Linux archive verifies 1,099 payload files and five binary hashes;
+receipt `/private/tmp/gentle-package-bytes-6d8b4db7-historical.json` SHA-256
+`bed7e7d13966854d78d6373feb6bf991fdf327fd0459682d655ffd09c39f85ce`.
+An explicit `e42daa02` invocation refuses that historical receipt before reading
+the payload. No original/historical bytes were altered or new package downloaded;
+this preparation closes none of item 6's pending candidate gates.
+
 The post-rebase `1e12fd0ff70c57413dffe91d92a7a85d92a2f7b7` policy job
 ([37846506619](https://github.com/smoe/gentle_rs/actions/runs/37846506619))
 passed 172 Python tests. Its raw log SHA-256 is
