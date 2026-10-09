@@ -46,7 +46,7 @@
         "cloning_planning",
         "pharmacogenomics"
       ],
-      "notes": "Hand-written GUI-first tutorial for turning the VKORC1/rs9923231 pharmacogenomic alert into one mammalian promoter-reporter planning workflow with explicit engine and CLI mapping.",
+      "notes": "Hand-written GUI-first tutorial with shared-shell agent parity. A separate synthetic offline-core contract covers explicit C/T pair creation; it does not certify the online locus, live agent or full reporter handoff.",
       "estimated_minutes": 45,
       "difficulty": "advanced",
       "network": "online dbSNP lookup and first genome preparation; local construct build",

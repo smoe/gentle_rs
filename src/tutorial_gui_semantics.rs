@@ -25,6 +25,14 @@ pub const TSS_CANCEL_FORGET: &str = "tss.cancel_forget";
 pub const TSS_STATUS: &str = "tss.status";
 pub const TSS_VALIDATION_SUMMARY: &str = "tss.validation_summary";
 pub const WINDOW_DNA_VIEWER: &str = "window.dna_viewer";
+pub const WINDOW_PROMOTER_DESIGN: &str = "window.promoter_design";
+pub const DNA_FEATURE_TREE_ROW: &str = "dna.feature_tree.row";
+pub const DNA_FEATURE_TREE_GROUP: &str = "dna.feature_tree.group";
+pub const DNA_PROMOTER_OPEN: &str = "dna.promoter.open";
+pub const PROMOTER_ALTERNATE_BASE: &str = "promoter.alternate_base";
+pub const PROMOTER_MATERIALIZE_PAIR: &str = "promoter.materialize_pair";
+pub const PROMOTER_PANEL: &str = "promoter.panel";
+pub const PROMOTER_STATUS: &str = "promoter.status";
 pub const WINDOW_PCR_DESIGN: &str = "window.pcr_design";
 pub const WINDOW_SEQUENCE_TOOLS: &str = "window.sequence_tools";
 pub const DNA_BRANCH: &str = "dna.sequence.branch";
@@ -118,6 +126,8 @@ pub enum TutorialGuiTextPolicy {
     SelectionFormula,
     Identifier,
     PositiveInteger,
+    /// One explicit genomic-forward SNV allele, never a list or command.
+    DnaSingleBase,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -137,6 +147,62 @@ const REPLACE_TEXT: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind
 const SCROLL: &[TutorialGuiInteractionKind] = &[TutorialGuiInteractionKind::Scroll];
 
 pub const TUTORIAL_GUI_CONTROLS: &[TutorialGuiControlSpec] = &[
+    TutorialGuiControlSpec {
+        semantic_id: WINDOW_PROMOTER_DESIGN,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_FEATURE_TREE_GROUP,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_FEATURE_TREE_ROW,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: DNA_PROMOTER_OPEN,
+        window_id: WINDOW_DNA_VIEWER,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_ALTERNATE_BASE,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: REPLACE_TEXT,
+        text_policy: Some(TutorialGuiTextPolicy::DnaSingleBase),
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_MATERIALIZE_PAIR,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::ScientificState,
+        allowed_interactions: CLICK,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_PANEL,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::ViewState,
+        allowed_interactions: SCROLL,
+        text_policy: None,
+    },
+    TutorialGuiControlSpec {
+        semantic_id: PROMOTER_STATUS,
+        window_id: WINDOW_PROMOTER_DESIGN,
+        authority: TutorialGuiControlAuthority::Observe,
+        allowed_interactions: NO_INTERACTIONS,
+        text_policy: None,
+    },
     TutorialGuiControlSpec {
         semantic_id: TSS_COLLECTION_ROW,
         window_id: WINDOW_TSS_WORKSPACE,
@@ -701,6 +767,11 @@ pub fn validate_replacement_text(policy: TutorialGuiTextPolicy, text: &str) -> R
                 return Err("positive-integer replacement text must be an integer >= 1".to_string());
             }
         }
+        TutorialGuiTextPolicy::DnaSingleBase => {
+            if !matches!(text, "A" | "C" | "G" | "T") {
+                return Err("SNV alternate must be one explicit uppercase A, C, G or T".into());
+            }
+        }
     }
     Ok(())
 }
@@ -744,6 +815,14 @@ mod tests {
         assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "5").is_ok());
         assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "0").is_err());
         assert!(validate_replacement_text(TutorialGuiTextPolicy::PositiveInteger, "five").is_err());
+        for base in ["A", "C", "G", "T"] {
+            assert!(validate_replacement_text(TutorialGuiTextPolicy::DnaSingleBase, base).is_ok());
+        }
+        for rejected in ["", "A,G,T", "t", " T", "N", "T; echo unsafe"] {
+            assert!(
+                validate_replacement_text(TutorialGuiTextPolicy::DnaSingleBase, rejected).is_err()
+            );
+        }
     }
 
     #[test]

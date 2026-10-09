@@ -572,6 +572,35 @@ class WorkflowWiringTests(unittest.TestCase):
                               "Workflow example runtime tests", "Full test suite"):
                     self.assertLess(job.index(step), job.index(f"- name: {later}\n"))
 
+    def test_native_jobs_run_exact_primer_path_regression_before_full_suite(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        step = "      - name: Primer multi-reference path regression\n"
+        for platform in ("macos", "linux", "windows"):
+            with self.subTest(platform=platform):
+                following = text.split(f"\n  {platform}:\n", 1)[1]
+                job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+                body = job.split(step, 1)[1].split("\n      - name:", 1)[0]
+                self.assertIn(
+                    "run: cargo test -q --locked --lib -j1 "
+                    "engine::primer_specificity_multi::tests::"
+                    "specificity_multi_output_paths_refuse_traversal_and_existing_evidence "
+                    "-- --exact --test-threads=1", body)
+                self.assertNotIn("continue-on-error:", body)
+                self.assertNotIn("if:", body)
+                self.assertLess(job.index(step), job.index("- name: Full test suite\n"))
+
+    def test_native_gui_audit_keeps_preflight_and_rollback_regressions(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        following = text.split("\n  vkorc1-gui-audit:\n", 1)[1]
+        job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+        self.assertIn("for filter in promoter_pair_ variant_followup_allele_pair_", job)
+        self.assertIn("reporter_construct_handoff_", job)
+        self.assertIn(
+            "cargo test --locked --no-default-features --features desktop-gui,gui-test-support", job)
+        self.assertNotIn("continue-on-error:", job)
+
     def test_sampled_platform_is_unix_and_manual_selection_is_preserved(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
@@ -651,6 +680,20 @@ class WorkflowWiringTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
         self.assertIn("python3 -m unittest scripts.test_release_candidate -v", text)
+
+    def test_audit_agent_cli_is_opt_in_source_bound_and_never_receives_authentication(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        job = text.split("\n  audit-agent-cli:\n", 1)[1].split("\n  vkorc1-gui-audit:\n", 1)[0]
+        self.assertIn("if: github.event_name == 'workflow_dispatch' && inputs.audit_followups", job)
+        self.assertIn("contents: read", job)
+        self.assertIn("cargo build --locked --no-default-features --bin gentle_cli", job)
+        self.assertIn("assert revision == os.environ['GITHUB_SHA']", job)
+        self.assertIn("line.endswith('+git.' + revision)", job)
+        self.assertIn("'live_agent_accepted': False, 'package_accepted': False", job)
+        self.assertIn("agent-audit-cli-macos-${{ github.sha }}", job)
+        for forbidden in ("secrets.", "codex login", "agents ask", "OPENAI_API_KEY", "CODEX_HOME"):
+            self.assertNotIn(forbidden, job)
 
     def test_ci_summary_requires_release_policy_and_build_success(self) -> None:
         root = Path(__file__).resolve().parents[1]

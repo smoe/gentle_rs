@@ -1882,6 +1882,8 @@ pub struct MainAreaDna {
     linear_view_start_1based_input: String,
     linear_view_end_1based_input: String,
     last_linear_map_width_px: f32,
+    #[cfg(feature = "benchmark-support")]
+    benchmark_map_interact_rect: Option<egui::Rect>,
     dotplot_cached_view: Option<DotplotView>,
     dotplot_cached_flex_track: Option<FlexibilityTrack>,
     dotplot_cache_seq_id: String,
@@ -2781,6 +2783,8 @@ impl MainAreaDna {
             linear_view_start_1based_input: String::new(),
             linear_view_end_1based_input: String::new(),
             last_linear_map_width_px: 0.0,
+            #[cfg(feature = "benchmark-support")]
+            benchmark_map_interact_rect: None,
             dotplot_cached_view: None,
             dotplot_cached_flex_track: None,
             dotplot_cache_seq_id: String::new(),
@@ -26917,13 +26921,23 @@ impl MainAreaDna {
                 } else {
                     "Open Promoter Design"
                 };
-                if ui
+                let promoter_open = ui
                     .button(button_label)
                     .on_hover_text(
                         "Open or focus the dedicated Promoter design window for this promoter-relevant feature",
-                    )
-                    .clicked()
-                {
+                    );
+                #[cfg(feature = "gui-test-support")]
+                crate::gui_test_support::register_response(
+                    &promoter_open,
+                    crate::tutorial_gui_semantics::DNA_PROMOTER_OPEN,
+                    crate::tutorial_gui_semantics::WINDOW_DNA_VIEWER,
+                    Some(&crate::gui_test_support::pseudonymous_subject_scope(&[
+                        self.seq_id.as_deref().unwrap_or("unnamed"),
+                    ])),
+                    crate::gui_test_support::GuiTestWidgetKind::Button,
+                    false,
+                );
+                if promoter_open.clicked() {
                     self.open_variant_followup_for_feature(feature_id, "description panel");
                 }
             } else if let Some(reasoning_evidence_id) = self
@@ -27694,6 +27708,10 @@ impl MainAreaDna {
                     .inner;
                 if response.rect.width().is_finite() && response.rect.width() > 0.0 {
                     self.last_linear_map_width_px = response.rect.width();
+                }
+                #[cfg(feature = "benchmark-support")]
+                {
+                    self.benchmark_map_interact_rect = Some(response.interact_rect);
                 }
                 if let Some(feature_id) = self.pending_linear_vertical_fit_feature_id
                     && self.fit_feature_vertically_in_linear_view(feature_id)

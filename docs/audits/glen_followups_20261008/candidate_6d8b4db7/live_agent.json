@@ -1,0 +1,148 @@
+{
+  "schema": "gentle.live_agent_vkorc1_acceptance.v1",
+  "source_revision": "6d8b4db772a5ed08f5fd7926ec4f1635a14a236a",
+  "status": "pass",
+  "platform": "macOS/arm64",
+  "profile": "dev",
+  "binary_sha256": "e6129b249aa061837829df7b7f1f591f9a47e57b2fb91d5c2c18c314b736e120",
+  "cli_build_receipt_sha256": "ff026cb592f64f8a81a472e144ad5bdd539bc09b2c0f905058fe0489a661acd1",
+  "public_ci_receipt_sha256": "d65c02e64fb429ea41662a9d5dd5336a994304780a27a0390645ec2eecedb30d",
+  "public_ci_run_url": "https://github.com/smoe/gentle_rs/actions/runs/37830325283",
+  "cargo_lock_sha256": "3dfe44c7a08bf779e32289cf1312103ea1fb5883e44bba5f6e1912ce3ed77745",
+  "catalog_sha256": "d253f49027ddc518a9c0a85f438e827b50217cb177e4bee90fc71edb265d75f1",
+  "bridge_sha256": "5bf2f4ed01f9d474ce81251e90e5ece252b18d6f25e4ef3b5d99809224389c2e",
+  "transport": "external_json_stdio",
+  "system_id": "codex_local_stdio",
+  "authentication": "Existing authorized Codex CLI login; no credential contents read or copied.",
+  "model_id": null,
+  "model_id_limitation": "The response does not attest a model ID; no particular model version is claimed.",
+  "agent_exit_codes": [
+    0,
+    0
+  ],
+  "ambiguous_clarification_requested": true,
+  "ambiguous_suggestion_count": 0,
+  "explicit_t_suggestion_count": 2,
+  "automatic_executions": 0,
+  "suggestion_execution_intent": "ask",
+  "requests": [
+    {
+      "prompt": "Use only the current GENtle project. I want matching reference and alternate inserts from vkorc1_rs9923231_promoter_fragment for rs9923231, whose alternate candidates are A,G,T. I have not selected an alternate. What clarification is needed before materialization? Do not choose an allele, mutate anything, fetch data, run OS commands, or suggest nested agents. Treat this as review-first planning, not authorization to execute or scientific approval.",
+      "sent_at_unix_ms": 1791490401363,
+      "response_questions": [
+        "Which alternate allele\u2014A, G, or T\u2014do you want paired with the reference insert?"
+      ]
+    },
+    {
+      "prompt": "This acceptance scenario now explicitly selects genomic-forward T, not transcript-strand nomenclature. Use the entire existing 1089-bp vkorc1_rs9923231_promoter_fragment, unchanged boundaries and orientation, no added flanks. Its verified variation is rs9923231, C with A,G,T at zero-based position 588. Return exactly two review-first unexecuted GENtle shared-shell suggestions with execution=ask: reference output vkorc1_rs9923231_promoter_reference and T output vkorc1_rs9923231_promoter_alternate. Actual GENtle help from this binary: Path variant materialize-allele; Usage: variant materialize-allele SEQ_ID --allele reference|alternate [--alternate-base BASE] [--variant ID] [--output-id ID]; Engine operation MaterializeVariantAllele. Do not mutate, execute, fetch, run OS commands, suggest nested agents, infer clinical consequences, or claim scientific approval. Both inserts must differ only at the reviewed C/T position and preserve the source.",
+      "sent_at_unix_ms": 1791490690683,
+      "response_questions": []
+    }
+  ],
+  "project_after_each_request_sha256": "7eade3a615382b061496a5173ac00ea47d772e128715f9f7c4d1253e2f7b0936",
+  "project_unchanged_after_each_request": true,
+  "read_only_observation_method": "Each request and the negative-control refusal were followed by successful raw cmp against before-agent.gentle.json, before any reviewed manual execution.",
+  "negative_control": {
+    "command": "variant materialize-allele vkorc1_rs9923231_promoter_fragment --allele alternate --variant rs9923231 --output-id ambiguous_alternate",
+    "observed_exit_code": 1,
+    "error_code": "InvalidInput",
+    "cause_chain": [
+      "InvalidInput: MaterializeVariantAllele found multiple alternate alleles 'A,G,T'; choose one explicitly"
+    ],
+    "project_raw_bytes_unchanged": true
+  },
+  "reviewed_commands": [
+    {
+      "command": "variant materialize-allele vkorc1_rs9923231_promoter_fragment --allele reference --variant rs9923231 --output-id vkorc1_rs9923231_promoter_reference",
+      "observed_exit_code": 0,
+      "result": "reviewed-reference.json",
+      "manually_executed_after_review": true
+    },
+    {
+      "command": "variant materialize-allele vkorc1_rs9923231_promoter_fragment --allele alternate --alternate-base T --variant rs9923231 --output-id vkorc1_rs9923231_promoter_alternate",
+      "observed_exit_code": 0,
+      "result": "reviewed-alternate.json",
+      "manually_executed_after_review": true
+    }
+  ],
+  "full_seq_comparison": {
+    "method": "Exact parsed Seq value equality, including all ordered feature/qualifier arrays; no DNA-only comparison or list sorting.",
+    "canonical_digest_method": "SHA-256 of UTF-8 json.dumps(sort_keys=True, ensure_ascii=True, separators=(comma,colon)); equality is checked before hashing.",
+    "records": [
+      {
+        "seq_id": "vkorc1_rs9923231_context",
+        "length_bp": 6001,
+        "full_seq_canonical_sha256": "bd393921cc5751d11b660066d537a057c8a3df75e50a1c26c51d750188bc19d2",
+        "direct_ci_full_seq_equal": true,
+        "shared_ci_full_seq_equal": true,
+        "original_source_record_preserved": true
+      },
+      {
+        "seq_id": "vkorc1_rs9923231_promoter_alternate",
+        "length_bp": 1089,
+        "full_seq_canonical_sha256": "ba8d7ebfa703b5c52e81321f6617479941004c661684480a09db5e504bc7dff8",
+        "direct_ci_full_seq_equal": true,
+        "shared_ci_full_seq_equal": true,
+        "original_source_record_preserved": null
+      },
+      {
+        "seq_id": "vkorc1_rs9923231_promoter_fragment",
+        "length_bp": 1089,
+        "full_seq_canonical_sha256": "df2befe992a288a4f59a8baff69c162a57117d6927556bf6fa6cd556c76b1ada",
+        "direct_ci_full_seq_equal": true,
+        "shared_ci_full_seq_equal": true,
+        "original_source_record_preserved": true
+      },
+      {
+        "seq_id": "vkorc1_rs9923231_promoter_reference",
+        "length_bp": 1089,
+        "full_seq_canonical_sha256": "3c8f148bbf3148d2aab636efb035113fd177b671da2b6fd23a0f77948ca0ea64",
+        "direct_ci_full_seq_equal": true,
+        "shared_ci_full_seq_equal": true,
+        "original_source_record_preserved": null
+      }
+    ]
+  },
+  "pair": {
+    "length_bp": 1089,
+    "variant_id": "rs9923231",
+    "alternate_coordinate_convention": "genomic_forward",
+    "differences": [
+      {
+        "position_0based": 588,
+        "reference": "C",
+        "alternate": "T"
+      }
+    ],
+    "nonvariant_source_bytes_and_case_preserved": true
+  },
+  "public_artifact_hashes_verified": 44,
+  "live_agent_accepted": true,
+  "native_public_gui_accepted": false,
+  "package_accepted": false,
+  "human_scientific_approval": false,
+  "raw_evidence_directory": "/private/tmp/gentle-agent-public-fresh-6d8b4db7",
+  "artifacts": {
+    "ambiguous-agent.json": "b890be0a0fc71f147e79529b6381fe32bc2b546ada02ac7f84f34bad46e8ec89",
+    "ambiguous-agent.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "ambiguous-refusal.stderr.txt": "c750661f817ad89dab7498ae3181aa91904b04db019e2a2c98e917ec563f6bb3",
+    "ambiguous-refusal.stdout.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "before-agent.gentle.json": "7eade3a615382b061496a5173ac00ea47d772e128715f9f7c4d1253e2f7b0936",
+    "cli-version.txt": "580d69c04ec7ad8e61448629d548284f3e81bf9fa600f4eea298a48bb84972f1",
+    "explicit-t-agent.json": "1d6c9122dc08d3e09ec9dd8feef8fb8971d26b70f52f3d5a3ea44ca0b78c34fb",
+    "explicit-t-agent.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "materialize-help.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "materialize-help.txt": "a268fb49f1f375a5b93fa6d6a751713828d9924ba7b1644e2214e8599d018c6b",
+    "reviewed-alternate.json": "04b87a43fd65684422eee8595b12f0ff1998b3794346fb37aae9d25615a2ff83",
+    "reviewed-alternate.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "reviewed-reference.json": "cc690c9a05bdba6b79885c0b2c616bbcff6c09846c0f514fd84d4a4a88b4f88f",
+    "reviewed-reference.stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "starter.gentle.json": "75d9158a14ef10bf84d75e585a47b2eecb7ef8d5fb85d436bb6752125ed27534",
+    "verify_live_acceptance.py": "11d756a88ac21c3834ed4760975158f7657fe208ed7fb18b49fb315123772da0"
+  },
+  "nonclaims": [
+    "This is a real review-first model/CLI execution from the fresh public starter, not model mocks or autonomous mutation.",
+    "Older-starter full-record mismatch remains historical evidence; it is not hidden by comparing DNA alone.",
+    "No public-locus GUI, clinical effect, wet-lab suitability, timed performance, package profile or human scientific approval is established."
+  ]
+}

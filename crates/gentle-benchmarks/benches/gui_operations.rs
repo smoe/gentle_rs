@@ -7,7 +7,7 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use egui;
 use gentle::{
-    about::GENTLE_SOURCE_REVISION,
+    about::{GENTLE_GIT_COMMIT, GENTLE_SOURCE_REVISION},
     dna_sequence::{DNAsequence, load_from_file},
     engine::{GentleEngine, ProjectState},
     main_area_dna::MainAreaDna,
@@ -249,11 +249,118 @@ fn render_embedded_frame(
     window: &mut WindowDna,
     size: ScreenSize,
 ) -> usize {
-    let mut output = context.run_ui(raw_input(size), |ui| window.update_embedded(ui));
+    render_input_frame(context, window, raw_input(size))
+}
+
+fn render_input_frame(
+    context: &egui::Context,
+    window: &mut WindowDna,
+    input: egui::RawInput,
+) -> usize {
+    let mut output = context.run_ui(input, |ui| window.update_embedded(ui));
     let shape_count = output.shapes.len();
     // This headless benchmark has no renderer to apply texture uploads.
     output.textures_delta.clear();
     shape_count
+}
+
+fn warm_scroll_window(fixture: &GuiFixture, size: ScreenSize) -> (egui::Context, WindowDna) {
+    let mut state = fixture.state.clone();
+    state.display.linear_view_start_bp = 1_000;
+    state.display.linear_view_span_bp = 5_000;
+    let mut window = WindowDna::new(
+        fixture.dna.clone(),
+        fixture.seq_id.clone(),
+        Arc::new(RwLock::new(GentleEngine::from_state(state))),
+    );
+    if let Some(path) = &fixture.locus_report_path {
+        window
+            .load_locus_report_for_benchmark(path)
+            .expect("bind scroll locus report");
+    }
+    let context = egui::Context::default();
+    for frame in 0..2 {
+        let mut input = raw_input(size);
+        input.time = Some(frame as f64 / 60.0);
+        assert_nonempty_frame(fixture, render_input_frame(&context, &mut window, input));
+    }
+    assert_eq!(
+        window.scroll_target_for_benchmark().1,
+        (1_000, 5_000, fixture.dna.len())
+    );
+    (context, window)
+}
+
+fn wheel_input(window: &WindowDna, size: ScreenSize, delta_x: f32) -> egui::RawInput {
+    let mut input = raw_input(size);
+    input.time = Some(2.0 / 60.0);
+    input.events = vec![
+        egui::Event::PointerMoved(
+            window
+                .scroll_target_for_benchmark()
+                .0
+                .expect("painted map target"),
+        ),
+        egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(delta_x, 0.0),
+            phase: egui::TouchPhase::Move,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ];
+    input
+}
+
+fn next_scroll_frame(size: ScreenSize) -> egui::RawInput {
+    let mut input = raw_input(size);
+    input.time = Some(3.0 / 60.0);
+    input
+}
+
+fn verify_scroll(fixture: &GuiFixture, size: ScreenSize, delta_x: f32) {
+    let (context, mut window) = warm_scroll_window(fixture, size);
+    let before = window.scroll_target_for_benchmark().1;
+    let content = window.sequence_content_for_benchmark();
+    let input = wheel_input(&window, size, delta_x);
+    assert_nonempty_frame(fixture, render_input_frame(&context, &mut window, input));
+    let after = window.scroll_target_for_benchmark().1;
+    assert_eq!((after.1, after.2), (before.1, before.2));
+    assert!(
+        if delta_x < 0.0 {
+            after.0 > before.0
+        } else {
+            after.0 < before.0
+        },
+        "{} at {}: wheel {delta_x} at {:?} must move viewport {before:?} -> {after:?}",
+        fixture.id,
+        size.id,
+        window.scroll_target_for_benchmark().0,
+    );
+    assert_nonempty_frame(
+        fixture,
+        render_input_frame(&context, &mut window, next_scroll_frame(size)),
+    );
+    assert_eq!(
+        window.scroll_target_for_benchmark().1,
+        after,
+        "small point input must not drift into the next frame"
+    );
+    assert_eq!(
+        window.sequence_content_for_benchmark(),
+        content,
+        "scroll must not edit sequence or annotations"
+    );
+    eprintln!(
+        "GUI_SCROLL_OBSERVATION {}",
+        serde_json::json!({
+            "source_revision": GENTLE_GIT_COMMIT,
+            "source_version": GENTLE_SOURCE_REVISION,
+            "fixture": fixture.benchmark_id(), "screen": size.id,
+            "delta_x_points": delta_x, "before": before, "after": after,
+            "sequence_content_sha256": sha256_prefixed(&content),
+            "sequence_content_unchanged": true, "native_latency_measured": false,
+        })
+    );
 }
 
 fn assert_nonempty_frame(fixture: &GuiFixture, shape_count: usize) {
@@ -376,6 +483,56 @@ fn benchmark_gui_operations(c: &mut Criterion) {
         }
     }
     resize_group.finish();
+
+    for fixture in &fixtures {
+        for size in SCREEN_SIZES {
+            verify_scroll(fixture, size, -6.0);
+            verify_scroll(fixture, size, 6.0);
+        }
+    }
+    let mut scroll_group = c.benchmark_group("dna_window_wheel_event_frame");
+    for fixture in &fixtures {
+        for size in SCREEN_SIZES {
+            scroll_group.bench_function(BenchmarkId::new(fixture.benchmark_id(), size.id), |b| {
+                b.iter_batched_ref(
+                    || warm_scroll_window(fixture, size),
+                    |(context, window)| {
+                        let input = wheel_input(window, size, -6.0);
+                        black_box(render_input_frame(context, window, input))
+                    },
+                    BatchSize::PerIteration,
+                );
+            });
+        }
+    }
+    scroll_group.finish();
+
+    let mut next_frame_group = c.benchmark_group("dna_window_first_frame_after_wheel");
+    for fixture in &fixtures {
+        for size in SCREEN_SIZES {
+            next_frame_group.bench_function(
+                BenchmarkId::new(fixture.benchmark_id(), size.id),
+                |b| {
+                    b.iter_batched_ref(
+                        || {
+                            let (context, mut window) = warm_scroll_window(fixture, size);
+                            let input = wheel_input(&window, size, -6.0);
+                            assert_nonempty_frame(
+                                fixture,
+                                render_input_frame(&context, &mut window, input),
+                            );
+                            (context, window)
+                        },
+                        |(context, window)| {
+                            black_box(render_input_frame(context, window, next_scroll_frame(size)))
+                        },
+                        BatchSize::PerIteration,
+                    );
+                },
+            );
+        }
+    }
+    next_frame_group.finish();
 }
 
 criterion_group!(benches, benchmark_gui_operations);

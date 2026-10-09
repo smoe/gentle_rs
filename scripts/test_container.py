@@ -21,9 +21,102 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
+from scripts import release_candidate as policy
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BINARIES = ["gentle_cli", "gentle_mcp", "gentle_examples_docs"]
+
+
+def synthetic_container_outputs(image_id: str, revision: str, tag: str) -> tuple[dict, dict]:
+    records, outputs = {}, {}
+    for index, binary in enumerate(BINARIES, start=1):
+        path = f"/opt/gentle/bin/{binary}"
+        version = f"GENtle {tag[1:]}\nBuild synthetic\nSource revision {tag[1:]}+git.{revision}\n"
+        digest = f"{index:064x}"
+        records[binary] = {"version": version.strip(), "sha256": digest}
+        outputs[("docker", "run", "--rm", "--network", "none", "--entrypoint",
+                 path, image_id, "--version")] = version
+        outputs[("docker", "run", "--rm", "--network", "none", "--entrypoint",
+                 "/usr/bin/sha256sum", image_id, path)] = f"{digest}  {path}\n"
+    return records, outputs
+
+
+class ContainerBinaryIdentityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.image_id = "sha256:" + "a" * 64
+        self.revision = "c" * 40
+        self.tag = "v0.1.0-internal.12"
+        self.records, self.outputs = synthetic_container_outputs(
+            self.image_id, self.revision, self.tag,
+        )
+
+    def verify(self) -> dict:
+        return policy.container_binary_identities(self.image_id, self.revision, self.tag)
+
+    def test_all_three_actual_commands_use_the_loaded_image_without_network(self) -> None:
+        with patch("subprocess.check_output", side_effect=lambda command, **_: self.outputs[tuple(command)]) as run:
+            self.assertEqual(self.verify(), self.records)
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [list(command) for command in self.outputs])
+        for call in run.call_args_list:
+            self.assertEqual(call.kwargs, {"text": True, "timeout": 60})
+
+    def test_missing_stale_wrong_version_or_duplicate_source_revision_refuses(self) -> None:
+        expected = f"Source revision {self.tag[1:]}+git.{self.revision}"
+        for binary in BINARIES:
+            command = next(command for command in self.outputs
+                           if command[-1] == "--version" and command[-3].endswith(f"/{binary}"))
+            for source in ("", "Source revision unknown", f"Source revision {self.tag[1:]}",
+                           f"Source revision {self.tag[1:]}+git.{'d' * 40}",
+                           f"Source revision 0.1.0-internal.11+git.{self.revision}",
+                           f"{expected}\n{expected}"):
+                with self.subTest(binary=binary, source=source):
+                    outputs = {**self.outputs, command: f"GENtle synthetic\n{source}\n"}
+                    with patch("subprocess.check_output", side_effect=lambda args, **_: outputs[tuple(args)]):
+                        with self.assertRaisesRegex(ValueError, binary):
+                            self.verify()
+
+    def test_malformed_digest_or_wrong_binary_path_refuses(self) -> None:
+        command = list(self.outputs)[-1]
+        path = command[-1]
+        for digest in ("", f"{'a' * 63}  {path}", f"{'A' * 64}  {path}",
+                       f"{'a' * 64}  /opt/gentle/bin/gentle_cli",
+                       f"{'a' * 64}  {path}\n{'a' * 64}  {path}"):
+            with self.subTest(digest=digest):
+                outputs = {**self.outputs, command: digest}
+                with patch("subprocess.check_output", side_effect=lambda args, **_: outputs[tuple(args)]):
+                    with self.assertRaisesRegex(ValueError, "gentle_examples_docs"):
+                        self.verify()
+
+    def test_failed_binary_or_hash_command_does_not_return_partial_identity(self) -> None:
+        for failed in list(self.outputs)[-2:]:
+            def execute(command, **_):
+                if tuple(command) == failed:
+                    raise subprocess.CalledProcessError(1, command)
+                return self.outputs[tuple(command)]
+            with self.subTest(command=failed):
+                with patch("subprocess.check_output", side_effect=execute):
+                    with self.assertRaises(subprocess.CalledProcessError):
+                        self.verify()
+
+    def test_timeout_is_a_failure_not_an_identity(self) -> None:
+        with patch("subprocess.check_output", side_effect=subprocess.TimeoutExpired("docker", 60)):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                self.verify()
+
+    def test_invalid_image_revision_or_label_refuses_before_docker(self) -> None:
+        inputs = [(image, self.revision, self.tag) for image in (
+            "build-check-cli", "sha256:short", "sha256:" + "A" * 64,
+            "sha256:" + "a" * 64 + " --privileged",
+        )]
+        inputs += [(self.image_id, revision, self.tag) for revision in ("main", "c" * 7, "C" * 40)]
+        inputs += [(self.image_id, self.revision, tag) for tag in ("", "0.1.0-internal.12", "v1\n")]
+        for args in inputs:
+            with self.subTest(args=args), patch("subprocess.check_output") as run:
+                with self.assertRaises(ValueError):
+                    policy.container_binary_identities(*args)
+                run.assert_not_called()
 
 
 class HeadlessEntrypointTests(unittest.TestCase):
@@ -104,6 +197,19 @@ class HeadlessEntrypointTests(unittest.TestCase):
 
 
 class ContainerContractTests(unittest.TestCase):
+    def test_candidate_revision_is_passed_only_to_the_gentle_build(self) -> None:
+        docker = (ROOT / "Dockerfile").read_text()
+        binding = 'ARG GENTLE_GIT_COMMIT=""\nENV GENTLE_GIT_COMMIT=${GENTLE_GIT_COMMIT}\n'
+        self.assertEqual(docker.count(binding), 1)
+        self.assertLess(docker.index("cargo install --locked --debug"), docker.index(binding))
+        self.assertLess(docker.index("RUN cargo tree "), docker.index(binding))
+        self.assertLess(docker.index(binding), docker.index("RUN cargo build "))
+        workflow = (ROOT / ".github/workflows/container.yml").read_text()
+        build_args = re.findall(r"          build-args: \|\n((?:            .*\n)+)", workflow)
+        self.assertEqual(len(build_args), 2)
+        for args in build_args:
+            self.assertIn("GENTLE_GIT_COMMIT=${{ needs.candidate.outputs.revision }}\n", args)
+
     def test_builder_copies_embedded_resource_directories_before_compilation(self) -> None:
         build_script = (ROOT / "build.rs").read_text()
         required = re.search(r"let required_files = \[(.*?)\];", build_script, re.S)
@@ -274,8 +380,12 @@ class ContainerContractTests(unittest.TestCase):
         }
         records = []
         helper_lock = b"# Synthetic helper lockfile\nversion = 4\n"
+        identities, outputs = synthetic_container_outputs(
+            env["CLI_IMAGE"], env["EXPECTED_REVISION"], env["RELEASE_TAG"],
+        )
+        outputs[("docker", "buildx", "version")] = "synthetic-buildx\n"
         with patch.dict(os.environ, env, clear=True), \
-             patch("subprocess.check_output", return_value="synthetic-buildx\n"), \
+             patch("subprocess.check_output", side_effect=lambda args, **_: outputs[tuple(args)]) as run, \
              patch.object(Path, "read_bytes", return_value=helper_lock) as read_bytes, \
              patch.object(Path, "write_text", side_effect=lambda text: records.append(json.loads(text))):
             exec(compile(script, "container-receipt", "exec"), {})
@@ -294,6 +404,9 @@ class ContainerContractTests(unittest.TestCase):
         self.assertEqual(record["features"], [])
         self.assertEqual(record["binaries"], BINARIES)
         self.assertFalse(record["pushed"])
+        self.assertEqual(record["build_args"], {
+            "DEBIAN_SUITE": "forky", "GENTLE_GIT_COMMIT": env["EXPECTED_REVISION"],
+        })
         self.assertEqual(record["revision"], env["EXPECTED_REVISION"])
         self.assertEqual(record["cargo_lock_sha256"], env["EXPECTED_LOCK_SHA256"])
         self.assertEqual(record["helpers"], {
@@ -304,7 +417,24 @@ class ContainerContractTests(unittest.TestCase):
         self.assertEqual(record["images"], [{
             "target": "runtime-cli", "image_id": env["CLI_IMAGE"],
             "digest": env["CLI_DIGEST"], "entrypoint_smoke": "passed",
+            "binary_identities": identities,
         }])
+        self.assertEqual([call.args[0] for call in run.call_args_list],
+                         [list(command) for command in outputs])
+
+    def test_identity_refusal_prevents_writing_a_container_receipt(self) -> None:
+        workflow = (ROOT / ".github/workflows/container.yml").read_text()
+        script = textwrap.dedent(re.search(
+            r"          python3 - <<'PY'\n(.*?)          PY\n", workflow, re.S,
+        ).group(1))
+        with patch.dict(os.environ, {"CLI_IMAGE": "synthetic", "EXPECTED_REVISION": "c" * 40,
+                                     "RELEASE_TAG": "v0.1.0-internal.12"}, clear=True), \
+             patch.object(policy, "container_binary_identities", side_effect=ValueError("unbound binary")) as verify, \
+             patch.object(Path, "write_text") as write:
+            with self.assertRaisesRegex(ValueError, "unbound binary"):
+                exec(compile(script, "container-receipt", "exec"), {})
+            verify.assert_called_once_with("synthetic", "c" * 40, "v0.1.0-internal.12")
+            write.assert_not_called()
 
 
 if __name__ == "__main__":

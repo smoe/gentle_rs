@@ -1,5 +1,429 @@
 # GENtle Changelog
 
+## 2026-10-09 - Integrate Owner-Requested Audit Follow-Ups Into Main
+
+- Merge codex tip `4c394efe` (45 commits above `b1547544`) into local main
+  with both histories preserved and no merge conflicts. The owner explicitly
+  authorized this direction after the original isolated-branch restriction.
+- Record that changed authority and pending gates in the follow-up ledger and
+  roadmap. Keep `paper`, `output/` and historical evidence unchanged and unstaged;
+  no push of main, local Rust build, tag or release publication is authorized.
+- Preserve every prior acceptance's exact tested SHA. The existing codex CI
+  runs at `e42daa02` do not certify this new main merge; `.12` native/package
+  acceptance and the overall six-item goal remain open.
+- Verification: all 181 scoped offline Python tests pass on macOS (44.214 s),
+  log SHA-256 `0dc847be996a1301ddbb91e1bd1d18acf47a605cd324885582a5035cd1eb9168`.
+  The first sandboxed run fails four monitor assertions due to denied `ps`;
+  reproduction and full unsandboxed rerun identify permission, not code drift.
+  Scoped formatting, YAML parsing and whitespace pass; Rust execution remains
+  remote-only. No production changes beyond the codex merge.
+
+## 2026-10-09 - Keep Primer Path Fixtures Portable And Raw
+
+- Repair the exact macOS full-CI failure at `3ac4a02d`: its temporary directory
+  contains the system `/var` symlink, which the production export validator
+  correctly rejects. Canonicalize only the trusted test root before constructing
+  the valid new bundle and existing-evidence controls; production is unchanged.
+- Construct traversal as raw `OsString`, proving its parent component reaches
+  the validator even for canonical Windows verbatim roots. Require structured
+  `InvalidInput` for traversal, existing evidence and deliberate Unix symlinks;
+  retain native Windows verbatim rejection. No safety normalization shortcut.
+- Run the exact path regression early in all three native CI jobs, before
+  long suites, with an offline policy test guarding selection/order and refusal
+  to hide failure. This targeted workflow change is required to verify the fix.
+- Targeted Rust/full-platform acceptance remains remote-only at a new frozen
+  source. Successful `3ac4a02d` packages do not excuse that source's macOS failure
+  or imply acceptance of the repaired test. No local Rust build or main edit.
+- Verification: all 159 scoped offline Python tests pass on macOS (39.621 s),
+  log SHA-256 `281b05762db8e5703920bb922c73b407cb5e81e67339a828e1c736555b5f9ca6`;
+  scoped rustfmt, CI YAML parsing and `git diff --check` pass. Native Rust gates
+  remain pending at the next exact source, without inheriting prior passes.
+
+## 2026-10-09 - Accept Fresh Public And Live-Agent Evidence
+
+- Retain fresh `3ac4a02d` public receipt, exact source-bound base projection
+  and genuine review-first agent receipt. Verify all 44 public hashes,
+  byte-exact SVG recreation, unchanged requests/refusal, and full ordered
+  record parity after manually executing the two reviewed explicit commands.
+  Inspect the labelled public 588 C/T projection separately from native GUI.
+- Keep older evidence unchanged and preserve build receipts' original false
+  live-agent/package flags. Extend scoped LF/CRLF negative controls to all
+  nine current receipts. No automatic mutation, credentials or Claude use.
+- Record successful Linux/Windows CI and both non-publishing package builds,
+  but keep `.12` acceptance open: macOS full CI failed one temporary-path
+  regression, and extracted native packages still need independent checking.
+  The next fix is separately scoped to the fixture, not symlink policy.
+
+## 2026-10-09 - Verify Repaired Native And Scroll Evidence
+
+- Retain unchanged exact-source `3ac4a02d` native, scroll and macOS CLI build
+  receipts separately from all historical evidence. Independently verify 115
+  native hashes, 19 focused Rust passes, eight ordinary Linux/X11 steps and
+  all three full oracle records; inspect four unedited synthetic captures.
+- Verify all 25 scroll hashes and 24 bidirectional CPU cases, with unchanged
+  content and bounded viewports. Execute the downloaded macOS CLI's version
+  and verify its two build artifact hashes; no local Rust build or live-agent
+  acceptance is implied. Add scoped five-receipt LF/CRLF negative controls.
+- After focused success, dispatch both native and container package checks
+  at frozen source `3ac4a02d` with `publish=false`. Keep the remote source
+  fixed and this evidence commit local; extraction, actual container identity
+  and full-platform gates remain pending. Main, `paper`, `output/`, tags and
+  historical artifacts stay unchanged. No timing or scientific approval.
+
+## 2026-10-08 - Freeze The Repaired Audit Candidate
+
+- Freeze source/workflows at `3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da`
+  on the remote codex branch, still based on local main `b1547544`. Record
+  fresh Linux/Windows and macOS/Windows run links without inheriting older
+  GUI, live-agent, scroll, full-platform or package passes.
+- At that exact SHA, 157 local offline Python tests and all 180 remote policy
+  tests pass; Linux headless CLI/MCP Rust checks pass. Retain raw-log hashes
+  in the six-item checklist. No local Rust execution or actual-container pass.
+- This evidence/status-only commit stays local to preserve the remote freeze.
+  Primary main, `paper`, `output/` and historical evidence remain untouched.
+
+## 2026-10-08 - Repair Rebased Primer Handoff Compilation
+
+- Address the exact `1e12fd0f` CI compiler failures carried in from local main:
+  explicitly import `std::fs` in the standalone multi-reference module and
+  initialize the optional handoff to `None` in all four production and six
+  test-only `OpResult` literals. Preserve engine/schema behavior and existing
+  specificity/path/rollback regressions; no result-constructor refactor.
+- The fix is eleven source lines. Scoped `rustfmt --check` and whitespace
+  checks pass; Rust check/tests remain remote-only and pending at the new SHA.
+  Missing public-audit binaries were build-failure cascades, not data refusals.
+  The main checkout, historical receipts, `paper` and `output/` stay unchanged.
+
+## 2026-10-08 - Bind Container Binaries To The Candidate
+
+- Fix the `.git`-excluded Docker build's missing embedded source identity by
+  passing the frozen candidate SHA only to the GENtle build; RNAPKIN stays dev.
+  Retain the bounded `package-opt1` recipe and non-publishing workflow guards.
+- Before recording container acceptance, execute all three binaries' versions
+  and SHA-256 probes in the loaded image without networking. Reject unbound,
+  stale, duplicate or wrong-version identities, malformed hashes and failed
+  commands without emitting a partial receipt. Add eight offline regressions;
+  all 23 container-policy tests pass locally on macOS without Docker/Rust builds.
+  The broader seven-suite offline check also passes all 157 Python tests.
+- This repair requires a new frozen candidate and fresh acceptance. Existing
+  `6d8b4db7` receipts remain unchanged; their help-only smoke does not establish
+  embedded binary identity. No main, tag, release or GHCR publication.
+
+## 2026-10-08 - Reconcile Latest Main And Audit Pair Protections
+
+- Include main's newer `b1547544` merge in the isolated codex rebase before
+  fresh CI. Preserve all 34 audit commits and the prior status commit, both
+  changelog histories and pending acceptance scopes; do not alter main itself.
+- Resolve the overlapping pair boundary by retaining main's reusable guarded
+  rollback helper and GUI documentation unchanged. Both main preflight/late-
+  refusal tests and all four audit `promoter_pair_` tests remain selected by
+  native CI. Do not restore the older inline panic/indexing path or duplicate
+  the helper. Mixed-SNV/indel, primer and rack source changes are retained.
+- Existing `6d8b4db7` receipts remain immutable historical passes only.
+  Rebased `2783d80b` plus this status-only diff passes all 149 fast Python
+  tests, scoped formatting and whitespace checks on macOS. Fresh exact-SHA
+  Actions acceptance remains pending; no Rust execution locally, Claude,
+  tag, main merge, publication or scientific/performance claim.
+
+## 2026-10-08 - Rebase Audit Follow-Ups Onto Current Main
+
+- Rebase only `codex/glen-audit-followups-20261008` in its isolated managed
+  worktree onto `51f31afacef0fc942f523aea16d56f32790f3dee`. Retain all 34 audit
+  commits and both changelog histories; range-diff shows 32 unchanged patches
+  and two changelog-only placement/context resolutions. No runtime conflict
+  resolution or primary-main, `paper`, `output/` or historical-evidence edits.
+- Preserve the exact original-byte acceptance and all immutable `6d8b4db7`
+  receipts. Reset the current candidate's GUI, public/live-agent, visual, scroll
+  and package gates to pending; rewritten commits do not inherit old verdicts.
+  Fresh exact-SHA CI and non-publishing package checks remain required.
+- The committed pre-rebase evidence HEAD `24bf5f4f` passes all 149 focused
+  Python tests. Rebased `1d8774e4` plus this status-only diff also passes all 149,
+  scoped `rustfmt --check` and whitespace checks on macOS. Lockfile, original
+  report and historical receipts remain unchanged. Rust build/check/test stays
+  exclusively on CI under the owner's restriction. No Claude, main merge,
+  tag, release publication or scientific/performance acceptance.
+
+## 2026-10-08 - Accept Fresh Public And Live-Agent Evidence
+
+- Independently verify all 44 public artifacts at frozen runtime SHA `6d8b4db7`;
+  retain unchanged receipt and labelled base-window JSON/SVG. Inspect the honest
+  projection separately from unedited synthetic native captures and historical
+  whole-map previews; no public-locus GUI or scientific approval is implied.
+- Preserve the older-starter pilot's full-record mismatch. Repeat real-agent
+  clarification and explicit-T requests from the fresh public starter, without
+  automatic execution or credential inspection. Reviewed execution preserves
+  both sources, and all four full ordered `Seq` records match both CI routes.
+  Retain separate CLI-build and executed-live receipts with scoped LF/CRLF
+  guards; runtime/package acceptance stays bound to `6d8b4db7`, not this ledger.
+
+## 2026-10-08 - Accept The Frozen Native Contract And Scroll Cases
+
+- At runtime candidate `6d8b4db7`, independently verify all 115 native artifact
+  hashes, 18 focused Rust tests, eight ordinary Linux/X11 input steps and all
+  three full oracle sequence records. Raw T-entry and reachable pair-button
+  captures stay honest; the synthetic 20-base guard is not human-locus proof.
+- Retain same-SHA native and scroll receipts without replacing older evidence.
+  Verify all 25 scroll hashes and 24 deterministic viewport/content cases;
+  add scoped LF/CRLF receipt tests. Full platform, public/live-agent and package
+  acceptance remain separate from these dev-profile, non-timed checks.
+
+## 2026-10-08 - Independently Verify The Retained Original Audit
+
+- After approved access was restored, verify the unchanged `30f23aa4` archive's
+  319,263,072-byte length, pinned archive/manifest digests, `zstd -t` and all
+  721 safe regular-file members. Inspect bounded original project, raw image
+  and Criterion records without executing historical binaries or altering them.
+- Preserve a new integrity receipt and its scoped LF/CRLF checkout regression.
+  This closes archive preservation, not source/profile authenticity, historical
+  test re-execution, latency, package acceptance or human scientific approval.
+  Runtime/package candidate `6d8b4db7` stays frozen independently of this ledger.
+
+## 2026-10-08 - Preserve Reporter Handoff JSON In The Shared Shell
+
+- The rebased `b13f2b65` Linux and Windows full suites reject the reporter
+  handoff at JSON decoding (`key must be a string`). Quote all four generated
+  operation payloads with the existing shared shell helper; do not change
+  parsing grammar, allele validation or the review-first execution policy.
+- Add a synthetic parser/executor regression for extraction, reference,
+  alternate and temporary FASTA loading with spaces, apostrophes, quotes and
+  backslashes. Keep this family in focused native CI before package dispatch.
+  Local Rust execution remains prohibited; new-SHA remote acceptance is pending.
+
+## 2026-10-08 - Reconcile The Audit Branch With Main
+
+- Finish the owner's rebase onto `84cc8e16`, preserving all 29 audit commits,
+  main's dbSNP/assembly checks, cDNA orientation and boundary-cache regressions.
+  Resolve the GUI pair conflict with pure preflight followed by the existing
+  rollback transaction; keep both regression families in focused native CI.
+- Independently verify the approved 139,612-byte manifest, 721 safe unique
+  paths, 11 supplied inventory hashes and unchanged retained report. Fetch only
+  small metadata and stop the obsolete installer transfer on the train.
+- Preserve pre-rebase verdicts under their original SHAs; require fresh CI and
+  exact-candidate packages after the rebase. No local Rust build, large artifact
+  transfer, main merge, publication or scientific acceptance is performed.
+
+## 2026-10-08 - Supply The Visibility Regression's Wheel Phase
+
+- Match the maintained scroll benchmark and GUI tests by setting the synthetic
+  wheel event's required `TouchPhase::Move`. This repairs the focused test's
+  `E0063` compile failure at `1f5610fd`, not its unexecuted visibility verdict.
+- Keep the actual vertical-wheel, visible/enabled button and unchanged-state
+  assertions intact. Remote Rust and native replay must pass at a new SHA;
+  no local Rust build/check/test or product-input change is made.
+
+## 2026-10-08 - Count The New 08.04 Agent Contract In The Catalog Regression
+
+- Update the aggregate tutorial-agent regression for the five new 08.04 cases:
+  five tutorials, 27 cases, eight declared and 15 parser-classified mutations.
+  Keep all parser findings and review-first mutation checks unchanged.
+- Linux and macOS CI at `62f7180b` fail only the outdated four-tutorial
+  assertion in the 95-test workflow filter. The retained generator report
+  independently confirms the new totals; Rust execution of this repair remains
+  pending on CI, with no local Rust build/check/test.
+
+## 2026-10-08 - Keep The Promoter Pair Action Vertically Reachable
+
+- Put the existing reference/alternate pair button at the start of a dedicated
+  action row. The wide parameter grid must not push it beyond the default
+  promoter viewport's right edge; no engine or allele-choice behavior changes.
+- Add a deterministic scroll-only visibility regression, retaining the native
+  tutorial's enabled/visible and exact persisted-oracle requirements. Rust and
+  native acceptance must run on CI; the `62f7180b` failure remains historical.
+
+## 2026-10-08 - Retain The Native Audit's Hashed GUI Settings
+
+- The `62f7180b` upload omitted its isolated hidden GUI-settings file even
+  though the receipt hashed it. Retain hidden files only within the audit-owned
+  evidence directory, never the runner's real home, and guard that upload scope.
+- Verify the 91 available artifact hashes and retain the missing-file diagnosis.
+  Native replay reaches explicit T but fails at pair-button visibility; this
+  retention repair alone does not accept the GUI or the final candidate.
+
+## 2026-10-08 - Import The Required 08.04 Tutorial Projections
+
+- Import only the five companion projections checked by CI at `0cba2e9c`:
+  catalog, manifest, generated hub/chapter and ledger. Preserve the three
+  historical PATZ1 reports and their hashes without regeneration.
+- Keep restored ledger Unicode and its final LF unchanged, and test real
+  generated chapter/hub hashes in LF/CRLF checkouts with a negative control.
+  Generator workflow success is not native input or human scientific approval.
+
+## 2026-10-08 - Supply The Native Audit's X11 Keyboard Library
+
+- The retained `0cba2e9c` startup panic identifies the missing dynamically
+  loaded `libxkbcommon-x11` dependency. Install its development/runtime package
+  in the opt-in native audit job and guard that wiring with a fast regression.
+- All 50 retained artifact hashes, focused Rust filters and four generation
+  checks are verified at that SHA. Native input replay remains unaccepted;
+  no application workaround, local Rust build or historical evidence change.
+
+## 2026-10-08 - Verify The Public VKORC1 Agent And Base Projection
+
+- Independently verify all 44 public audit artifacts at `a1fb305a`, matching
+  direct/shared-shell reports and the 1,089-bp inserts' sole C/T difference at
+  position 588. The labelled base SVG is legible and is not a native screenshot.
+- The matching CI-built macOS CLI exercises real allele clarification, then
+  help-grounded `ask` suggestions. Reviewed execution preserves both source
+  records and matches the CI insert records. Final-candidate, native GUI,
+  package and human scientific acceptance remain separate and pending.
+
+## 2026-10-08 - Preserve Unprivileged Native Replay Diagnostics
+
+- Drop namespace-creation privilege before the native tutorial runner so its
+  private projects belong to the Actions user, not root. Upload diagnostics
+  before public reference preparation; do not mask the GUI's initial exit 101.
+- The public CLI/shared-shell audit at `a1fb305a` passed separately. Native
+  startup, screenshots and final-candidate acceptance remain pending.
+
+## 2026-10-08 - Verify A Help-Grounded Synthetic Live-Agent Pilot
+
+- The CI-built macOS dev CLI at `f99c44a1` ran three real Codex requests with
+  the host's authorized login. The model asks for A/G/T clarification, then
+  command syntax; after GENtle help, both proposed C/T commands parse and stay
+  unexecuted until review. Bare-alternate refusal leaves saved bytes unchanged;
+  reviewed commands preserve the source and create exactly one C/T difference.
+- Document the help/review boundary and retain exact response/project hashes
+  in the six-item checklist. This 20-base synthetic pilot does not close the
+  public-locus, final-candidate package or human scientific acceptance gates.
+
+## 2026-10-08 - Align The Public Audit With GENtle's RefSNP Endpoint
+
+- The complete reference prepared successfully at `8d81f417`; the audit
+  helper's obsolete `/beta/` endpoint then returned 404. Match the existing
+  engine endpoint, guard that agreement and retain the response before costly
+  preparation. No engine URL, biological operation or historical input changes.
+- The corrected public endpoint returns rs9923231 with GRCh38 C and A/G/T;
+  full candidate-bound workflow and live-agent acceptance still require CI.
+
+## 2026-10-08 - Supply The Required 08.04 Use-Case Context
+
+- The retained Linux diagnostic at `4de826d1` identifies a missing use-case
+  context in the synthetic companion, not a runtime allele failure. Add two
+  scoped teaching contexts and a fast metadata regression; keep manifest
+  validation intact and all native/public/scientific acceptance pending.
+
+## 2026-10-08 - Supply A Source-Bound Agent-Audit CLI From CI
+
+- Add an opt-in macOS headless CLI build with source/lock/binary/toolchain and
+  architecture receipts so final-candidate agent acceptance needs no local Rust
+  build. CI never invokes a model, receives credentials or publishes a release.
+- Keep real authentication and review-first execution on the authorized local
+  host; a retained dev binary does not certify agent quality or native packages.
+
+## 2026-10-08 - Keep Public C/T Visual Proof Separate From Native Captures
+
+- Export a source/binary-bound base window only after the public input/parity
+  audit passes. Highlight the sole C/T difference without modifying any native
+  canvas or historical image; full raw sequence case and hashes remain in JSON.
+- Seven public assertion/view and four synthetic/retention Python tests pass
+  on macOS. Authored SVG coverage is not an executed public, native GUI,
+  reporter-construct or human scientific acceptance verdict.
+
+## 2026-10-08 - Retain Portable Native Audit Failure Logs
+
+- Keep Rust test filters unchanged but replace colons in their CI log basenames
+  so diagnostic artifacts can be downloaded on Windows as well as Unix.
+- Expose bounded generation/replay failure excerpts and retain exit codes.
+  Four helper/retention and 37 release-policy Python regressions pass on macOS;
+  failed generation remains unaccepted and native replay still requires CI.
+
+## 2026-10-08 - Prepare Public 08.04 Follow-Up Inputs In CI
+
+- Add an explicitly opt-in, non-publishing public-data audit using GENtle's
+  complete catalogue-bound reference preparation and existing allele/report
+  operations. Preserve the exact public refSNP response, input manifests/hashes,
+  read-only report parity, ambiguous refusal and explicit C/T insert evidence.
+- Keep the raw reference cache off this local checkout and out of the uploaded
+  evidence. Retain a public starter for later authenticated final-candidate
+  agent acceptance; authored assertions do not establish a live pass, native
+  public-locus GUI acceptance or scientific approval.
+
+## 2026-10-08 - Verify Deterministic Scroll CPU Cases
+
+- The opt-in Linux smoke at `d1bf3fd3` passed all 24 fixture/size/direction
+  observations. Retain the exact dev-profile receipt and independently checked
+  binary/input/log hashes in [new follow-up evidence](audits/glen_followups_20261008/README.md).
+- This closes benchmark-case verification only. Native latency, performance
+  regression thresholds and package acceptance remain distinct; the older
+  audit is unchanged. Linux/Windows lib-test visibility errors are separately
+  repaired and require their own new CI execution.
+
+## 2026-10-08 - Add Non-Publishing Native 08.04 CI Replay
+
+- Compile focused promoter-pair, feature-binding and semantic-policy regressions
+  only in CI. Generate and check disposable projections without overwriting
+  historical evidence, and retain the required projection delta for review.
+- Replay ordinary native input under isolated X11, retaining raw screenshots,
+  exact binary/source/lock receipts and a distinctly labelled synthetic
+  base-level comparison. Two base-proof tests and all 37 release-policy tests
+  pass locally; native execution remains pending and is not online acceptance.
+
+## 2026-10-08 - Declare The Offline 08.04 Allele-Pair Guard
+
+- Add an incomplete load-only starter, independent engine oracle and typed
+  feature-bound GUI contract for explicit C/T pair materialization. The nearby
+  provenance identifies the 20-base input as synthetic, not human VKORC1 DNA.
+- Add five review-first shared-shell agent-parity cases to the online tutorial.
+  A persisted-base regression requires exactly one C/T difference and unchanged
+  source DNA. New input/chapter LF rules include fast LF/CRLF negative controls.
+- Python harness plus scoped checkout checks pass 26/26 on macOS. Rust execution,
+  generated projections and native replay remain CI-only and pending; no live
+  agent, full online workflow or scientific acceptance is claimed.
+
+## 2026-10-08 - Bind Promoter Tutorial Controls To Exact Subjects
+
+- Add read-only GUI test rectangles for Promoter design, its explicit alternate
+  base, paired materialization, scrolling and status. The closed tutorial
+  vocabulary rejects lists or executable text in the allele field.
+- Bind feature-tree navigation to the prepared feature's exact content and
+  kind-group identity, not just a sequence label or first matching row. Missing
+  and ambiguous bindings fail closed. Python harness regressions pass 25/25;
+  Rust compilation and native input acceptance remain CI/external-only.
+
+## 2026-10-08 - Keep Promoter Allele-Pair Refusal Atomic
+
+- The 08.04 GUI pair action previously created its reference insert before an
+  unspecified multiallelic alternate was refused. Run the same two shared
+  engine operations inside the existing rollback boundary and publish GUI
+  success only after both pass; no biological logic or single-allele CLI
+  semantics are duplicated or changed.
+- Add hand-crafted regressions for missing/invalid alternate refusal with
+  unchanged project/history, plus explicit-T parity with direct engine results
+  and exactly one C/T difference. These are synthetic adapter tests, not live
+  VKORC1 or laboratory acceptance. Rust execution remains CI/external-only.
+
+## 2026-10-08 - Add Real Wheel-Input CPU Benchmark Cases
+
+- Extend the maintained GUI operations benchmark with real horizontal egui
+  wheel input and a separately timed following frame at all four screen sizes.
+  Fresh warmed inputs and window destruction stay outside each timed loop.
+- Require untimed bidirectional viewport movement, unchanged sequence/annotation
+  content and nonempty paint output. Emit source/content-bound observations;
+  keep the authentic optional PATZ1 workload and older baselines unchanged.
+- Add an opt-in, non-publishing CI smoke that prepares PATZ1 offline and retains
+  all 24 observations, the executable, build logs, toolchain and lock/source
+  receipts. This is authored coverage, not an executed or native-latency pass.
+  Formatting and whitespace checks pass; no local Rust builds/tests were run.
+
+## 2026-10-08 - Preserve Glen's Exact-Candidate Tutorial And GUI Audit
+
+- Retain the owner-supplied [Linux/X11 audit](glen_tutorial_parity_gui_audit_20261008.md)
+  unchanged, bound to `30f23aa4cb084694870a139714d0f0fef1726378` and the original
+  report SHA-256. Record reported checkout/walkthrough passes (18/9), splicing
+  protocol/renderer/root passes (10/9/108) and VKORC1 explicit-T parity without
+  calling them new Codex runs or macOS/Windows acceptance.
+- Add the owner-authorized [six-item evidence checklist](glen_audit_followups_20261008.md).
+  Raw archive verification, typed 08.04 GUI/agent execution, live model planning,
+  base-level visual proof, scroll benchmarking and .12 package-opt1 acceptance
+  remain pending. Stripped development binaries and CPU proxy measurements do
+  not close package, native-latency or scientific gates.
+- No historical preview, fixture, dependency, release version or publication
+  changes. Unrelated `paper` and `output/` remain untouched; Rust validation
+  belongs to CI/external execution under the owner's no-local-build restriction.
+- Exact report bytes verified against the supplied original; LF/CRLF checkout
+  regressions, including the missing-attribute negative control, pass 21/21 on
+  macOS. `git diff --check` passes; the raw audit bundle remains unverified.
+
 ## 2026-10-08 - Reference-Bound Primer Specificity and Plan Reconciliation
 
 - Bind intended-target geometry to the original source reference, assembly and

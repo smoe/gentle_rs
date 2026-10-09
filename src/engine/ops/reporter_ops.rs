@@ -1520,14 +1520,17 @@ impl GentleEngine {
             command_kind: "op".to_string(),
             command: format!(
                 "op {}",
-                serde_json::json!({
-                    "ExtractRegion": {
-                        "input": candidate_set.seq_id,
-                        "from": candidate.start_0based,
-                        "to": candidate.end_0based_exclusive,
-                        "output_id": extract_fragment_seq_id,
-                    }
-                })
+                crate::engine_shell::quote_shell_arg(
+                    &serde_json::json!({
+                        "ExtractRegion": {
+                            "input": candidate_set.seq_id,
+                            "from": candidate.start_0based,
+                            "to": candidate.end_0based_exclusive,
+                            "output_id": extract_fragment_seq_id,
+                        }
+                    })
+                    .to_string()
+                )
             ),
             mutating: true,
             note: "Creates the selected promoter fragment sequence before allele materialization."
@@ -1538,14 +1541,17 @@ impl GentleEngine {
             command_kind: "op".to_string(),
             command: format!(
                 "op {}",
-                serde_json::json!({
-                    "MaterializeVariantAllele": {
-                        "input": extract_fragment_seq_id,
-                        "variant_label_or_id": candidate_set.variant_label,
-                        "allele": "reference",
-                        "output_id": reference_seq_id,
-                    }
-                })
+                crate::engine_shell::quote_shell_arg(
+                    &serde_json::json!({
+                        "MaterializeVariantAllele": {
+                            "input": extract_fragment_seq_id,
+                            "variant_label_or_id": candidate_set.variant_label,
+                            "allele": "reference",
+                            "output_id": reference_seq_id,
+                        }
+                    })
+                    .to_string()
+                )
             ),
             mutating: true,
             note: "Creates the reference-allele promoter insert for the macro template."
@@ -1580,7 +1586,10 @@ impl GentleEngine {
         commands.push(ReporterConstructHandoffCommand {
             label: "Materialize alternate allele fragment".to_string(),
             command_kind: "op".to_string(),
-            command: format!("op {alternate_command}"),
+            command: format!(
+                "op {}",
+                crate::engine_shell::quote_shell_arg(&alternate_command.to_string())
+            ),
             mutating: true,
             note: if let Some(alternate) = alternate_allele {
                 format!("Creates the alternate-allele promoter insert with the single genomic-forward base '{alternate}' validated against the loaded source marker; the engine revalidates it at execution.")
@@ -1596,12 +1605,15 @@ impl GentleEngine {
                 command_kind: "op".to_string(),
                 command: format!(
                     "op {}",
-                    serde_json::json!({
-                        "LoadFile": {
-                            "path": load_path,
-                            "as_id": backbone.seq_id,
-                        }
-                    })
+                    crate::engine_shell::quote_shell_arg(
+                        &serde_json::json!({
+                            "LoadFile": {
+                                "path": load_path,
+                                "as_id": backbone.seq_id,
+                            }
+                        })
+                        .to_string()
+                    )
                 ),
                 mutating: true,
                 note: "Loads the promoterless luciferase reporter backbone into project state."
@@ -2169,6 +2181,102 @@ mod tests {
             );
             assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
             assert_eq!(engine.journal_len(), 0);
+        }
+    }
+
+    #[test]
+    fn reporter_construct_handoff_operation_commands_round_trip_and_execute() {
+        // Hand-crafted DNA/variant and temporary FASTA; not a real reporter study.
+        let temp = tempdir().expect("temporary synthetic input directory");
+        let load_path = temp.path().join("backbone's insert.fa");
+        std::fs::write(&load_path, b">synthetic_backbone\nATGAAATAA\n")
+            .expect("write synthetic FASTA");
+        let load_path = load_path
+            .to_str()
+            .expect("UTF-8 temporary path")
+            .to_string();
+        let candidate_set = PromoterReporterCandidateSet {
+            seq_id: "synthetic source's DNA".to_string(),
+            variant_label: "rsSynthetic's".to_string(),
+            ..PromoterReporterCandidateSet::default()
+        };
+        let candidate = PromoterReporterFragmentCandidate {
+            start_0based: 0,
+            end_0based_exclusive: 5,
+            length_bp: 5,
+            ..PromoterReporterFragmentCandidate::default()
+        };
+        let backbone = ReporterBackboneResolution {
+            seq_id: "synthetic backbone's DNA".to_string(),
+            load_path: Some(load_path.clone()),
+            status: ReporterBackboneResolutionStatus::RequiresManualLoad,
+            ..ReporterBackboneResolution::default()
+        };
+        let mut dna = DNAsequence::from_sequence("ACCGT").expect("synthetic DNA");
+        dna.features_mut().push(gb_io::seq::Feature {
+            kind: "variation".into(),
+            location: gb_io::seq::Location::simple_range(2, 3),
+            qualifiers: vec![
+                ("label".into(), Some(candidate_set.variant_label.clone())),
+                ("vcf_ref".into(), Some("C".to_string())),
+                ("vcf_alt".into(), Some("T".to_string())),
+            ],
+        });
+        let mut state = ProjectState::default();
+        state.sequences.insert(candidate_set.seq_id.clone(), dna);
+        let mut engine = GentleEngine::from_state(state);
+        let before = serde_json::to_value(engine.state()).unwrap();
+        let extract_id = "fragment's insert";
+        let reference_id = "reference \"C\"";
+        let alternate_id = r"alternate \ T";
+        let commands = engine.reporter_construct_handoff_commands(
+            &candidate_set,
+            &candidate,
+            extract_id,
+            reference_id,
+            alternate_id,
+            &backbone,
+            "synthetic pair",
+        );
+        assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+        let operations: Vec<_> = commands
+            .iter()
+            .filter(|command| command.command_kind == "op")
+            .map(|command| {
+                let parsed = crate::engine_shell::parse_shell_line(&command.command)
+                    .expect("parse generated operation command");
+                let crate::engine_shell::ShellCommand::Op { payload } = &parsed else {
+                    panic!("expected shared operation route");
+                };
+                let typed = serde_json::from_str::<Operation>(payload)
+                    .expect("quoted JSON survives the shared tokenizer");
+                (parsed, typed)
+            })
+            .collect();
+        assert_eq!(operations.len(), 4);
+        let Operation::LoadFile { path, as_id } = &operations[3].1 else {
+            panic!("expected backbone load");
+        };
+        assert_eq!(path, &load_path);
+        assert_eq!(as_id.as_deref(), Some(backbone.seq_id.as_str()));
+        for (command, _) in operations {
+            let result = crate::engine_shell::execute_shell_command(&mut engine, &command)
+                .expect("execute generated handoff operation");
+            assert!(result.state_changed);
+        }
+        assert_eq!(engine.journal_len(), 4);
+        assert_eq!(engine.state().sequences.len(), 5);
+        assert_eq!(
+            serde_json::to_value(&engine.state().sequences[&candidate_set.seq_id]).unwrap(),
+            before["sequences"][&candidate_set.seq_id]
+        );
+        for (id, sequence) in [
+            (extract_id, "ACCGT"),
+            (reference_id, "ACCGT"),
+            (alternate_id, "ACTGT"),
+            (backbone.seq_id.as_str(), "ATGAAATAA"),
+        ] {
+            assert_eq!(engine.state().sequences[id].get_forward_string(), sequence);
         }
     }
 

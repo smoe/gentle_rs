@@ -1,0 +1,15 @@
+{
+  "schema": "gentle.workflow_example.v1",
+  "id": "vkorc1_pair_gui_starter",
+  "title": "08.04 synthetic multiallelic GUI starter (offline guard only)",
+  "summary": "Load one hand-crafted 20-base input and its explicit A/G/T variant. No reference/alternate pair is precomputed and no human promoter provenance is claimed.",
+  "test_mode": "always",
+  "required_files": ["docs/examples/assets/allele_pair_guard/multiallelic.gb"],
+  "tags": ["tutorial", "gui", "variant", "synthetic", "offline"],
+  "workflow": {
+    "run_id": "example_vkorc1_pair_gui_starter",
+    "ops": [
+      {"LoadFile": {"path": "docs/examples/assets/allele_pair_guard/multiallelic.gb", "as_id": "vkorc1_rs9923231_promoter_fragment"}}
+    ]
+  }
+}

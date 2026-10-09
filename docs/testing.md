@@ -881,6 +881,35 @@ Profiles select exactly their declared contracts, not a cumulative tier.
 chapter; inspecting its prepared result does not prove a new BLAST computation.
 `full` has no contracts yet. Online chapters remain explicit and authorized.
 
+The opt-in `audit_followups` CI input additionally runs the synthetic 08.04
+allele-choice companion by chapter ID. Its CI helper
+`scripts/ci_vkorc1_gui_audit.py` generates projections in a disposable exact-HEAD
+clone, restores the three historical PATZ1 baseline bytes/hashes, checks the
+projections and drives ordinary input under Openbox/Xvfb in a distinct network
+namespace. CI creates that namespace with privilege, then drops to the runner's
+UID/GID before running GENtle; private project files remain readable by the
+artifact uploader. Retain native diagnostics before costly public preparation.
+Retained receipts bind the dev binaries, source/lock, logs, raw
+screenshots and semantic geometry. A separate JSON/SVG view checks the saved
+20-base C/T pair and is explicitly synthetic, not a native screenshot. This
+does not accept the online VKORC1 workflow, real agent planning, package-opt1
+artifacts or laboratory suitability. Failed runs retain their diagnostic
+evidence and must not be relabelled as passes.
+
+The separate `audit_public_vkorc1` opt-in prepares the complete catalogue-bound
+reference on CI, retains one raw public NCBI refSNP response and replays that
+exact file through GENtle's existing override. Its direct/shared-shell parity,
+ambiguous refusal and explicit C/T checks retain project/input hashes and
+manifests, but never upload the whole reference cache. Only after those checks
+pass does it export a JSON/SVG base window with the one C/T difference. This is
+a labelled data projection, not a native screenshot, theme change, live-agent
+pass, reporter-construct acceptance or scientific approval.
+
+`audit_followups` also retains a headless macOS CLI and exact source/lock/binary
+receipt for a later locally authenticated agent run. The CI job never invokes
+an agent or receives model credentials. Verify the downloaded binary and host
+architecture before execution; a dev CLI receipt is not package acceptance.
+
 The two cloning contracts start from load-only workflows
 `branch_gui_starter` and `digest_gui_starter`, not completed results.
 `branch_gui_oracle` deliberately uses the GUI's default `_revcomp` ID;

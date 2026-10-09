@@ -2767,6 +2767,30 @@ fn validate_tutorial_gui_acceptance(
                 step.id, step.target, target_spec.window_id, step.window
             ));
         }
+        let feature_target = matches!(
+            step.target.as_str(),
+            "dna.feature_tree.row" | "dna.feature_tree.group"
+        );
+        if feature_target || step.subject.contains_key("feature_index") {
+            let index = step.subject.get("feature_index").and_then(|value| {
+                value
+                    .parse::<usize>()
+                    .ok()
+                    .filter(|index| index.to_string() == *value)
+            });
+            if !feature_target
+                || index.is_none()
+                || step
+                    .subject
+                    .get("sequence")
+                    .is_none_or(|value| value.trim().is_empty())
+            {
+                return Err(format!(
+                    "{context} step '{}' requires an exact sequence/feature_index binding for a feature-tree target",
+                    step.id
+                ));
+            }
+        }
         let interaction_kind = tutorial_gui_interaction_kind(&step.interaction);
         if !target_spec.allowed_interactions.contains(&interaction_kind) {
             return Err(format!(
@@ -8306,6 +8330,42 @@ mod tests {
     }
 
     #[test]
+    fn tutorial_gui_acceptance_feature_targets_require_exact_binding() {
+        for index in [None, Some("-1"), Some("00"), Some("0")] {
+            let mut manifest = load_tutorial_manifest(&tutorial_manifest_path()).unwrap();
+            let acceptance = manifest
+                .chapters
+                .iter_mut()
+                .find_map(|chapter| chapter.gui_acceptance.as_mut())
+                .unwrap();
+            let step = acceptance
+                .steps
+                .iter_mut()
+                .find(|step| !step.persists_project_state)
+                .unwrap();
+            step.window = "window.dna_viewer".into();
+            step.target = "dna.feature_tree.row".into();
+            step.interaction = TutorialGuiInteraction::Click;
+            step.subject
+                .insert("sequence".into(), "fixture_sequence".into());
+            if let Some(index) = index {
+                step.subject.insert("feature_index".into(), index.into());
+            }
+            let examples = load_workflow_examples(&example_dir()).unwrap();
+            let result = validate_tutorial_manifest_against_examples(&manifest, &examples);
+            if index == Some("0") {
+                result.unwrap();
+            } else {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .contains("exact sequence/feature_index binding")
+                );
+            }
+        }
+    }
+
+    #[test]
     fn tutorial_gui_acceptance_rejects_scientific_effect_without_before_and_after_facts() {
         let mut manifest =
             load_tutorial_manifest(&tutorial_manifest_path()).expect("load tutorial manifest");
@@ -8525,6 +8585,88 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    #[test]
+    fn vkorc1_pair_gui_starter_and_oracle_are_independent_and_base_bound() {
+        let source: TutorialSourceUnit = serde_json::from_str(include_str!(
+            "../docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json"
+        ))
+        .unwrap();
+        let contract = source.generated_chapter.unwrap().gui_acceptance.unwrap();
+        let examples = load_workflow_examples(&example_dir()).unwrap();
+        let by_id = example_lookup(&examples);
+        let starter_dir = TempDir::new().unwrap();
+        let oracle_dir = TempDir::new().unwrap();
+        let starter = run_example_workflow_for_project_state(
+            &by_id[&contract.starter.example_id].example,
+            Path::new("."),
+            starter_dir.path(),
+        )
+        .unwrap();
+        let oracle = run_example_workflow_for_project_state(
+            &by_id[&contract.oracle.example_id].example,
+            Path::new("."),
+            oracle_dir.path(),
+        )
+        .unwrap();
+        let starter = GentleEngine::from_state(starter);
+        let oracle = GentleEngine::from_state(oracle);
+        let input = "vkorc1_rs9923231_promoter_fragment";
+        let reference = "vkorc1_rs9923231_promoter_reference";
+        let alternate = "vkorc1_rs9923231_promoter_alternate";
+        assert_eq!(starter.state().sequences.len(), 1);
+        assert_eq!(oracle.state().sequences.len(), 3);
+        assert_eq!(
+            starter
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Unsatisfied
+        );
+        assert_eq!(
+            oracle
+                .evaluate_fact_expression(&contract.completion_condition, &[])
+                .truth,
+            crate::engine::protocol::FactTruth::Satisfied
+        );
+        let source_bases = starter.state().sequences[input].forward_bytes();
+        assert_eq!(source_bases, b"aaaaaacaaaaaaaaaaaaa");
+        assert_eq!(
+            source_bases,
+            oracle.state().sequences[input].forward_bytes()
+        );
+        // GenBank preserves input case; materialization writes the selected base uppercase.
+        let mut reference_bases = source_bases.to_vec();
+        reference_bases[6] = b'C';
+        assert_eq!(
+            reference_bases,
+            oracle.state().sequences[reference].forward_bytes()
+        );
+        let differences: Vec<_> = reference_bases
+            .iter()
+            .zip(oracle.state().sequences[alternate].forward_bytes())
+            .enumerate()
+            .filter(|(_, (before, after))| before != after)
+            .map(|(position, (before, after))| (position, *before, *after))
+            .collect();
+        assert_eq!(differences, vec![(6, b'C', b'T')]);
+        assert_eq!(oracle.state().sequences[alternate].len(), 20);
+        assert!(contract.steps.iter().any(|step| {
+            matches!(&step.interaction, TutorialGuiInteraction::ReplaceText { text } if text == "T")
+        }));
+        let path = oracle_dir.path().join("reopened.json");
+        oracle.state().save_to_path(path.to_str().unwrap()).unwrap();
+        let reopened = ProjectState::load_from_path(path.to_str().unwrap()).unwrap();
+        for seq_id in [input, reference, alternate] {
+            assert_eq!(
+                reopened.sequences[seq_id].forward_bytes(),
+                oracle.state().sequences[seq_id].forward_bytes()
+            );
+            assert_eq!(
+                serde_json::to_value(reopened.sequences[seq_id].features()).unwrap(),
+                serde_json::to_value(oracle.state().sequences[seq_id].features()).unwrap()
+            );
         }
     }
 
@@ -9033,10 +9175,10 @@ mod tests {
             .expect("load tutorial sources");
         let check = check_tutorial_agent_parity(&units, root);
         assert!(check.findings.is_empty(), "{:?}", check.findings);
-        assert_eq!(check.summary.tutorials, 4);
-        assert_eq!(check.summary.cases, 22);
-        assert_eq!(check.summary.declared_mutating, 5);
-        assert_eq!(check.summary.parser_state_mutating, 12);
+        assert_eq!(check.summary.tutorials, 5);
+        assert_eq!(check.summary.cases, 27);
+        assert_eq!(check.summary.declared_mutating, 8);
+        assert_eq!(check.summary.parser_state_mutating, 15);
     }
 
     #[test]

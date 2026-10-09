@@ -1164,10 +1164,29 @@ class TutorialAcceptanceRun:
             for row in preparation.get("sequence_bindings", [])
         }
 
+    @staticmethod
+    def feature_scope_map(preparation: dict[str, Any], *, group: bool = False) -> dict[tuple[str, str], str]:
+        scopes = {}
+        for row in preparation.get("feature_bindings", []):
+            sequence = row.get("source_sequence_id")
+            index = row.get("feature_index")
+            scope = row.get("group_subject_scope" if group else "subject_scope")
+            if not (isinstance(sequence, str) and sequence and
+                    isinstance(index, str) and index.isascii() and index.isdecimal() and
+                    str(int(index)) == index and isinstance(scope, str) and scope):
+                raise AcceptanceFailure("tutorial_ambiguity", "Invalid prepared feature binding")
+            key = (sequence, index)
+            if key in scopes:
+                raise AcceptanceFailure("tutorial_ambiguity", "Duplicate prepared feature binding")
+            scopes[key] = scope
+        return scopes
+
     def preflight_contract(self) -> None:
         self.starter_preparation = self.prepare_project("starter")
         self.oracle_preparation = self.prepare_project("oracle")
         self.sequence_scopes = self.scope_map(self.starter_preparation)
+        self.feature_scopes = self.feature_scope_map(self.starter_preparation)
+        self.feature_group_scopes = self.feature_scope_map(self.starter_preparation, group=True)
         starter_path = Path(self.starter_preparation["project_path"])
         oracle_path = Path(self.oracle_preparation["project_path"])
         starter_completion = self.fact_eval(
@@ -1421,7 +1440,17 @@ class TutorialAcceptanceRun:
         return candidates[0] if candidates else None
 
     def scope_for_step(self, step: dict[str, Any]) -> str | None:
-        sequence_id = step.get("subject", {}).get("sequence")
+        subject = step.get("subject", {})
+        sequence_id = subject.get("sequence")
+        if "feature_index" in subject:
+            key = (sequence_id, subject["feature_index"])
+            scopes = (self.feature_group_scopes if step.get("target") == "dna.feature_tree.group"
+                      else self.feature_scopes)
+            if key not in scopes:
+                raise AcceptanceFailure(
+                    "tutorial_ambiguity", f"Step '{step['id']}' has no exact prepared feature scope"
+                )
+            return scopes[key]
         if sequence_id is None:
             return None
         if sequence_id not in self.sequence_scopes:

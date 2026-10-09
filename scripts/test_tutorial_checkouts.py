@@ -141,6 +141,128 @@ class TutorialCheckoutTests(unittest.TestCase):
                     self.assertEqual((target / relative / name).read_bytes(),
                                      (checker.ROOT / relative / name).read_bytes())
 
+    def test_vkorc1_guard_and_generated_chapter_survive_both_checkout_modes(self):
+        fixture = Path("docs/examples/assets/allele_pair_guard/multiallelic.gb")
+        chapter = Path("docs/tutorial/generated/chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md")
+        hub = Path("docs/tutorial/generated/README.md")
+        payloads = {
+            fixture: (checker.ROOT / fixture).read_bytes(),
+            chapter: (checker.ROOT / chapter).read_bytes(),
+            hub: (checker.ROOT / hub).read_bytes(),
+        }
+        ledger = json.loads((checker.ROOT / "docs/tutorial/generated/report.json").read_bytes())
+        for path in (chapter, hub):
+            name = str(path.relative_to("docs/tutorial/generated"))
+            self.assertEqual(hashlib.sha256(payloads[path]).hexdigest(), ledger["file_checksums"][name])
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for relative, payload in payloads.items():
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "synthetic 08.04 acceptance byte boundaries")
+        unprotected = b"\n".join(
+            line for line in attributes.split(b"\n")
+            if not any(line.startswith(str(path).encode() + b" ") for path in payloads)
+        )
+        broken = Path(self.tmp.name) / "vkorc1-guard-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        for relative, payload in payloads.items():
+            self.assertNotEqual((broken / relative).read_bytes(), payload)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"vkorc1-guard-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_glen_20261008_audit_report_bytes_survive_both_checkout_modes(self):
+        relative = Path("docs/glen_tutorial_parity_gui_audit_20261008.md")
+        expected = "186e75a987fb50cb50ed883fa2b6fa5434718fcb553ceec7aad90a8af7c1cfce"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "owner-supplied exact-candidate audit report")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "glen-audit-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"glen-audit-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+                self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), expected)
+
+    def test_original_audit_verification_receipt_survives_both_checkout_modes(self):
+        relative = Path("docs/audits/glen_followups_20261008/original_archive_30f23aa4/verification.json")
+        expected = "1a41c227b6e91587e6d310114d6672d875008f51170bf75428da303b3b50dbb5"
+        payload = (checker.ROOT / relative).read_bytes()
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "original audit archive verification receipt")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "original-audit-receipt-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            with self.subTest(mode=mode[0]):
+                target = Path(self.tmp.name) / f"original-audit-receipt-{mode[0]}"
+                checker.prepare_checkout(self.root, target, mode)
+                self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_frozen_6d8b4db7_audit_receipts_survive_both_checkout_modes(self):
+        base = Path("docs/audits/glen_followups_20261008/candidate_6d8b4db7")
+        expected = {
+            base / "native_gui.json": "c0b0c89aaa8a2989e0c2d86de9f8327fe5e9190a4ce6634cb7866d91460efc2e",
+            base / "scroll_cpu_smoke.json": "420e2c280ccb8294ecab5046672c85ffe6461104275f050fc43fdf65acaf6bc6",
+            base / "agent_cli_build.json": "ff026cb592f64f8a81a472e144ad5bdd539bc09b2c0f905058fe0489a661acd1",
+            base / "public.json": "d65c02e64fb429ea41662a9d5dd5336a994304780a27a0390645ec2eecedb30d",
+            base / "base_comparison.json": "679e52fd00d98552c28d3dd3413c6b38e0f0fa0e93302d7fe1be754a425f434d",
+            base / "base_comparison.svg": "1eee85466468d971cf88d0aad2b29841819e613755f60a81509cde42455b7bc6",
+            base / "live_agent.json": "aa5a3d8e68a349c55f5764152d5e0613150c0f1a63d05ae11ca15d22d9a1ed25",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        for relative, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[relative])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "exact-candidate native, scroll, public and live evidence")
+        for relative in payloads:
+            unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                      if not line.startswith(str(relative).encode() + b" "))
+            broken = Path(self.tmp.name) / f"candidate-receipt-{relative.name}-unprotected"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
+                                expected[relative])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"candidate-receipts-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
     def test_sequence_design_tutorial_semantics_survive_both_checkout_modes(self):
         from scripts.test_sequence_design_tutorial import fenced_request
 
@@ -167,6 +289,66 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual(fenced_request(guide_bytes.decode("utf-8")), request)
                 self.assertEqual(json.loads((target / request_path).read_bytes()), request)
                 self.assertEqual(json.loads((target / source_path).read_bytes()), source)
+
+    def test_frozen_3ac4a02d_audit_receipts_survive_both_checkout_modes(self):
+        base = Path("docs/audits/glen_followups_20261008/candidate_3ac4a02d")
+        expected = {
+            base / "scroll_cpu_smoke.json": "87a274adaf3c8046f4458b8d0374757ea7db3cc63fab2a5eed7e9dbc5094c00d",
+            base / "scroll_verification.json": "58a16df1a020904e7b7e7ea4573e1eb314f9aec48c253094cd6bf70281fbb3ab",
+            base / "agent_cli_build.json": "8f28d2f10887acd283234d40a5440a27d55fb17e88d174bd57c3b3e39986c341",
+            base / "native_gui.json": "bef0707566d9f68f19f51d57cf760d47c8fbef30818b2f05dcc22bf4c75a121d",
+            base / "native_verification.json": "cf6b2500740d97071f7e010f53b3fdf97d6de68f1880d9dc3b1e0b4559c4e6f0",
+            base / "public.json": "4ae522db4eac214ba7877c775eb1698750424f6932c4710dbb351c5eaf9bb9b9",
+            base / "base_comparison.json": "5ced393927f191ccd78bb3f81a26597688a1286eaaefb2b5ee7ce30d92dc4313",
+            base / "base_comparison.svg": "9aee9045ce6e107fd43c0c3f68946907f4e8ac7aaed275367507ca2b528b2c9d",
+            base / "live_agent.json": "89f4fdba74d027d813fd5daecb9a15527cb6b9a9d3fb04b23110567c441c79d7",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        for relative, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[relative])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "repaired-candidate audit evidence")
+        for relative in payloads:
+            unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                      if not line.startswith(str(relative).encode() + b" "))
+            broken = Path(self.tmp.name) / f"repaired-receipt-{relative.name}-unprotected"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
+                                expected[relative])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"repaired-receipts-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
+    def test_scroll_followup_receipt_hash_survives_both_checkout_modes(self):
+        relative = Path("docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json")
+        payload = (checker.ROOT / relative).read_bytes()
+        expected = "60add8b059510d660c36a25c1b7115138b3fbc8693dcecf2b42fd2316ddceab5"
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), expected)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "scroll smoke receipt")
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                  if not line.startswith(str(relative).encode() + b" "))
+        broken = Path(self.tmp.name) / "scroll-receipt-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), expected)
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"scroll-receipt-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            self.assertEqual((target / relative).read_bytes(), payload)
 
     def test_review_dependencies_keep_commit_dates_despite_newer_graphic_mtime(self):
         source = Path("docs/tutorial/sources/synthetic.json")
