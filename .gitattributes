@@ -26,6 +26,10 @@ docs/audits/glen_followups_20261008/candidate_3ac4a02d/scroll_verification.json 
 docs/audits/glen_followups_20261008/candidate_3ac4a02d/agent_cli_build.json text eol=lf
 docs/audits/glen_followups_20261008/candidate_3ac4a02d/native_gui.json text eol=lf
 docs/audits/glen_followups_20261008/candidate_3ac4a02d/native_verification.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/public.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/base_comparison.json text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/base_comparison.svg text eol=lf
+docs/audits/glen_followups_20261008/candidate_3ac4a02d/live_agent.json text eol=lf
 
 # The generated capability matrix is compared byte-for-byte with LF output.
 docs/gui_cli_mcp_parity.md text eol=lf

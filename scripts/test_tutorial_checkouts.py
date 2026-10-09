@@ -298,6 +298,10 @@ class TutorialCheckoutTests(unittest.TestCase):
             base / "agent_cli_build.json": "8f28d2f10887acd283234d40a5440a27d55fb17e88d174bd57c3b3e39986c341",
             base / "native_gui.json": "bef0707566d9f68f19f51d57cf760d47c8fbef30818b2f05dcc22bf4c75a121d",
             base / "native_verification.json": "cf6b2500740d97071f7e010f53b3fdf97d6de68f1880d9dc3b1e0b4559c4e6f0",
+            base / "public.json": "4ae522db4eac214ba7877c775eb1698750424f6932c4710dbb351c5eaf9bb9b9",
+            base / "base_comparison.json": "5ced393927f191ccd78bb3f81a26597688a1286eaaefb2b5ee7ce30d92dc4313",
+            base / "base_comparison.svg": "9aee9045ce6e107fd43c0c3f68946907f4e8ac7aaed275367507ca2b528b2c9d",
+            base / "live_agent.json": "89f4fdba74d027d813fd5daecb9a15527cb6b9a9d3fb04b23110567c441c79d7",
         }
         attributes = (checker.ROOT / ".gitattributes").read_bytes()
         (self.root / ".gitattributes").write_bytes(attributes)

@@ -44,8 +44,10 @@ Both run metadata independently report the exact candidate SHA. After the
 fresh focused Rust and native replay steps passed, dispatch
 [native packages 37850876088](https://github.com/smoe/gentle_rs/actions/runs/37850876088)
 and [build/load-only container 37850885456](https://github.com/smoe/gentle_rs/actions/runs/37850885456)
-with the same explicit candidate and `publish=false`; all builds remain
-pending acceptance. Do not reuse the successful historical `6d8b4db7`
+with the same explicit candidate and `publish=false`; both builds succeed,
+with both publication jobs skipped. Package acceptance remains open because
+macOS full CI failed and independent extracted-bundle verification is pending.
+Do not reuse the successful historical `6d8b4db7`
 native-package run as current acceptance.
 
 At this frozen SHA, all 157 local offline Python tests pass on macOS (23.617 s),
@@ -63,16 +65,16 @@ the necessary container/compile repairs are explicitly scoped above.
 | --- | --- | --- |
 | 1. Audit preservation | Complete; rebase does not change original bytes | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes. |
 | 2. Tutorial 08.04 GUI/agent contracts | Complete: bounded native contract at `3ac4a02d` | [Fresh retained receipts](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#synthetic-native-contract): all 115 hashes and safe exact membership, 19 focused Rust tests and eight ordinary Linux/X11 dev input steps. Explicit T, completion transition and all three full oracle `Seq` records verified. Synthetic 20-bp guard, not public-locus GUI or scientific approval. |
-| 3. Live-agent acceptance | Fresh CLI verified; actual acceptance pending | [Unchanged macOS/arm64 dev build receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#cli-build-boundary), two artifact hashes and actual full version verified at `3ac4a02d`. Require fresh public starter, genuine clarification and unexecuted explicit-T suggestions, unchanged requests/refusal and full-record manual-execution parity. |
-| 4. Honest visual evidence | Post-rebase verification pending | New source-bound unedited synthetic native captures and labelled public base projection, independently hashed and visually inspected. No public-locus GUI or scientific claim. |
+| 3. Live-agent acceptance | Complete: genuine public-starter requests at `3ac4a02d` | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), verified macOS/arm64 dev CLI and existing authorized login. Clarification first, then two unexecuted `ask` suggestions; raw requests/refusal unchanged. Reviewed manual execution preserves both sources; all four full `Seq` records match both fresh CI routes, without array sorting. No credential or particular-model claim. |
+| 4. Honest visual evidence | Complete: bounded raw native/public projection at `3ac4a02d` | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): all 115 native and 44 public hashes verified, four unedited synthetic captures inspected, public SVG exactly reproduced and visually inspected. Sole 588 C/T in 1,089-bp exports; display-only uppercase and explicit projection/non-claims. No public-locus GUI or scientific claim. |
 | 5. Scroll benchmarks | Complete: deterministic CPU cases at `3ac4a02d` | [Fresh scroll verification](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 retained hashes including executable, all 24 bidirectional fixture/size cases, bounded viewport and unchanged content verified against the raw log. No timed regression or native-latency claim. |
-| 6. .12 package acceptance | Exact `3ac4a02d` build-only gates running | Native run `37850876088` and container run `37850885456`, both explicit `publish=false`. Require all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates at the frozen SHA/lockfile/`package-opt1` recipe. Actual embedded container revisions/hashes required; no publication or old verdict inheritance. |
+| 6. .12 package acceptance | Open: builds pass, macOS full CI fails at `3ac4a02d` | Native run `37850876088` and container run `37850885456` pass with publication skipped. Container receipt records actual three versions/hashes. Require independent verification of all extracted native packages plus successful full Linux/macOS/Windows gates at one final SHA/lockfile/`package-opt1` recipe; no publication or old verdict inheritance. |
 
 On 2026-10-09, independent native/scroll checks pass without local Rust
 execution. Four unchanged synthetic PNGs are visually inspected: T and pair
 action are visible; layered windows and light chrome/dark canvases are retained.
-The public projection and genuine agent request remain separate pending gates.
-The new five receipts have scoped LF attributes and individual unprotected-CRLF
+The public projection and genuine agent requests now pass their separate gates.
+All nine retained receipts have scoped LF attributes and individual unprotected-CRLF
 negative controls. The initial three-receipt seven-suite local check passes
 158 tests (24.539 s), log SHA-256
 `8a64b289c669388a5d510118e5ebcb1039583993876e90e9a1d0addd8ca1a33d`;
@@ -81,6 +83,31 @@ the expanded five-receipt checkout suite passes 26/26 (21.640 s), log SHA-256
 Session-close reports four OK, two warnings (this intentional pending commit
 and manual plan fidelity), zero failures; roadmap remains 400 lines.
 Local evidence commits stay unpushed while the package source is frozen.
+The expanded nine-receipt seven-suite check passes 158/158 on macOS (41.865 s),
+log SHA-256 `364e4b411bb3953c2354118babe531b9044357bf5af41c4da841ffbdaa660f7f`.
+
+Full Linux/Windows run `37848423833` succeeds: Linux lib 4,122 passed/13 ignored,
+Windows lib 4,062 passed/13 ignored. Retained complete run log SHA-256:
+`5ebdceba689533466582d6a7880e1540e85c4110f05c4341d5c69624983ad46f`.
+Run `37848434104` has successful Windows/headless/policy jobs but failed macOS:
+4,121 passed, one failed, 13 ignored. The primary panic is
+`specificity_multi_output_paths_refuse_traversal_and_existing_evidence` at
+`primer_specificity_multi.rs:525`, rejecting a supposedly valid new temporary
+bundle. Raw failing log SHA-256:
+`36d585d071df1aa47e5504a15df852d3a46fecc66b404bdf919405f389f2d6d2`.
+macOS `/var` is a symlink to `/private/var`; the production validator explicitly
+rejects symlink ancestors. Repair the fixture root, not that safety boundary,
+and retain raw traversal and deliberate alias rejection before rerunning.
+
+The successful build-only container receipt is retained locally at
+`/private/tmp/gentle-container-3ac4a02d/container-build.json`, SHA-256
+`3a4efcc3f0e3f2e8e763ded55db38c287f5426af96cff693a75b9f42456e9315`;
+all three observed versions embed `3ac4a02d` and each has a SHA-256. The native
+aggregate attributes receipt is retained at
+`/private/tmp/gentle-native-metadata-3ac4a02d/gentle-v0.1.0-internal.12-release-attributes.json`,
+SHA-256 `d4588ed3331bf22c0849fe4b01582fe6aa196dbf18de2ace1690b2454e96bf7b`.
+Neither a green build nor these metadata receipts closes the failed full-platform
+gate or substitutes for independently checking the extracted native packages.
 
 The post-rebase `1e12fd0ff70c57413dffe91d92a7a85d92a2f7b7` policy job
 ([37846506619](https://github.com/smoe/gentle_rs/actions/runs/37846506619))

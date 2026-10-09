@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-09 - Accept Fresh Public And Live-Agent Evidence
+
+- Retain fresh `3ac4a02d` public receipt, exact source-bound base projection
+  and genuine review-first agent receipt. Verify all 44 public hashes,
+  byte-exact SVG recreation, unchanged requests/refusal, and full ordered
+  record parity after manually executing the two reviewed explicit commands.
+  Inspect the labelled public 588 C/T projection separately from native GUI.
+- Keep older evidence unchanged and preserve build receipts' original false
+  live-agent/package flags. Extend scoped LF/CRLF negative controls to all
+  nine current receipts. No automatic mutation, credentials or Claude use.
+- Record successful Linux/Windows CI and both non-publishing package builds,
+  but keep `.12` acceptance open: macOS full CI failed one temporary-path
+  regression, and extracted native packages still need independent checking.
+  The next fix is separately scoped to the fixture, not symlink policy.
+
 ## 2026-10-09 - Verify Repaired Native And Scroll Evidence
 
 - Retain unchanged exact-source `3ac4a02d` native, scroll and macOS CLI build
