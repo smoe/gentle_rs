@@ -40,11 +40,13 @@ held at that SHA; subsequent local evidence/status commits are not new runtime
 acceptance. Fresh non-publishing runs are
 [Linux/Windows plus focused audits 37848423833](https://github.com/smoe/gentle_rs/actions/runs/37848423833)
 and [macOS/Windows 37848434104](https://github.com/smoe/gentle_rs/actions/runs/37848434104).
-Both run metadata independently report the exact candidate SHA. Native/public,
-live-agent, visual, scroll and full-platform gates remain pending; dispatch new
-native/container package checks only after fresh focused success, with the
-same candidate and `publish=false`. Do not reuse the now-successful historical
-`6d8b4db7` native-package run as current acceptance.
+Both run metadata independently report the exact candidate SHA. After the
+fresh focused Rust and native replay steps passed, dispatch
+[native packages 37850876088](https://github.com/smoe/gentle_rs/actions/runs/37850876088)
+and [build/load-only container 37850885456](https://github.com/smoe/gentle_rs/actions/runs/37850885456)
+with the same explicit candidate and `publish=false`; all builds remain
+pending acceptance. Do not reuse the successful historical `6d8b4db7`
+native-package run as current acceptance.
 
 At this frozen SHA, all 157 local offline Python tests pass on macOS (23.617 s),
 log SHA-256 `319f6f43384043334ae0383aea910176fdfa35e4bab3396487937c33fb47f3b1`.
@@ -60,11 +62,25 @@ the necessary container/compile repairs are explicitly scoped above.
 | Item | Current Status | Required Evidence |
 | --- | --- | --- |
 | 1. Audit preservation | Complete; rebase does not change original bytes | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes. |
-| 2. Tutorial 08.04 GUI/agent contracts | Post-rebase verification pending | New exact-SHA focused Rust tests, ordinary Linux/X11 input replay, completion transition and all three full oracle `Seq` records. |
-| 3. Live-agent acceptance | Post-rebase verification pending | New verified macOS CLI and fresh public starter, genuine clarification and unexecuted explicit-T suggestions, unchanged requests/refusal and full-record manual-execution parity. |
+| 2. Tutorial 08.04 GUI/agent contracts | Complete: bounded native contract at `3ac4a02d` | [Fresh retained receipts](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#synthetic-native-contract): all 115 hashes and safe exact membership, 19 focused Rust tests and eight ordinary Linux/X11 dev input steps. Explicit T, completion transition and all three full oracle `Seq` records verified. Synthetic 20-bp guard, not public-locus GUI or scientific approval. |
+| 3. Live-agent acceptance | Fresh CLI verified; actual acceptance pending | [Unchanged macOS/arm64 dev build receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#cli-build-boundary), two artifact hashes and actual full version verified at `3ac4a02d`. Require fresh public starter, genuine clarification and unexecuted explicit-T suggestions, unchanged requests/refusal and full-record manual-execution parity. |
 | 4. Honest visual evidence | Post-rebase verification pending | New source-bound unedited synthetic native captures and labelled public base projection, independently hashed and visually inspected. No public-locus GUI or scientific claim. |
-| 5. Scroll benchmarks | Post-rebase verification pending | New same-SHA executable/receipt and all 24 bidirectional fixture, viewport-bound and unchanged-content checks. No timing or native-latency claim. |
-| 6. .12 package acceptance | Post-rebase verification pending | After fresh focused success, non-publishing native/container builds, all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates at one frozen SHA/lockfile/`package-opt1` recipe. Require actual embedded source revisions and per-binary container hashes, not only image labels/help output. |
+| 5. Scroll benchmarks | Complete: deterministic CPU cases at `3ac4a02d` | [Fresh scroll verification](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 retained hashes including executable, all 24 bidirectional fixture/size cases, bounded viewport and unchanged content verified against the raw log. No timed regression or native-latency claim. |
+| 6. .12 package acceptance | Exact `3ac4a02d` build-only gates running | Native run `37850876088` and container run `37850885456`, both explicit `publish=false`. Require all three extracted native packages, five native/three container entrypoints and full Linux/macOS/Windows gates at the frozen SHA/lockfile/`package-opt1` recipe. Actual embedded container revisions/hashes required; no publication or old verdict inheritance. |
+
+On 2026-10-09, independent native/scroll checks pass without local Rust
+execution. Four unchanged synthetic PNGs are visually inspected: T and pair
+action are visible; layered windows and light chrome/dark canvases are retained.
+The public projection and genuine agent request remain separate pending gates.
+The new five receipts have scoped LF attributes and individual unprotected-CRLF
+negative controls. The initial three-receipt seven-suite local check passes
+158 tests (24.539 s), log SHA-256
+`8a64b289c669388a5d510118e5ebcb1039583993876e90e9a1d0addd8ca1a33d`;
+the expanded five-receipt checkout suite passes 26/26 (21.640 s), log SHA-256
+`fddda1416a55309164d5ad2e57370ff9ee798728a66273156e6edcbe79813b73`.
+Session-close reports four OK, two warnings (this intentional pending commit
+and manual plan fidelity), zero failures; roadmap remains 400 lines.
+Local evidence commits stay unpushed while the package source is frozen.
 
 The post-rebase `1e12fd0ff70c57413dffe91d92a7a85d92a2f7b7` policy job
 ([37846506619](https://github.com/smoe/gentle_rs/actions/runs/37846506619))

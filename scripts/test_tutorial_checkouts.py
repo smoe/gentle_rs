@@ -290,6 +290,40 @@ class TutorialCheckoutTests(unittest.TestCase):
                 self.assertEqual(json.loads((target / request_path).read_bytes()), request)
                 self.assertEqual(json.loads((target / source_path).read_bytes()), source)
 
+    def test_frozen_3ac4a02d_audit_receipts_survive_both_checkout_modes(self):
+        base = Path("docs/audits/glen_followups_20261008/candidate_3ac4a02d")
+        expected = {
+            base / "scroll_cpu_smoke.json": "87a274adaf3c8046f4458b8d0374757ea7db3cc63fab2a5eed7e9dbc5094c00d",
+            base / "scroll_verification.json": "58a16df1a020904e7b7e7ea4573e1eb314f9aec48c253094cd6bf70281fbb3ab",
+            base / "agent_cli_build.json": "8f28d2f10887acd283234d40a5440a27d55fb17e88d174bd57c3b3e39986c341",
+            base / "native_gui.json": "bef0707566d9f68f19f51d57cf760d47c8fbef30818b2f05dcc22bf4c75a121d",
+            base / "native_verification.json": "cf6b2500740d97071f7e010f53b3fdf97d6de68f1880d9dc3b1e0b4559c4e6f0",
+        }
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in expected}
+        for relative, payload in payloads.items():
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), expected[relative])
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "repaired-candidate audit evidence")
+        for relative in payloads:
+            unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                      if not line.startswith(str(relative).encode() + b" "))
+            broken = Path(self.tmp.name) / f"repaired-receipt-{relative.name}-unprotected"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(),
+                                expected[relative])
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"repaired-receipts-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+
     def test_scroll_followup_receipt_hash_survives_both_checkout_modes(self):
         relative = Path("docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json")
         payload = (checker.ROOT / relative).read_bytes()

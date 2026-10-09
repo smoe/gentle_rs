@@ -1,5 +1,21 @@
 # GENtle Changelog
 
+## 2026-10-09 - Verify Repaired Native And Scroll Evidence
+
+- Retain unchanged exact-source `3ac4a02d` native, scroll and macOS CLI build
+  receipts separately from all historical evidence. Independently verify 115
+  native hashes, 19 focused Rust passes, eight ordinary Linux/X11 steps and
+  all three full oracle records; inspect four unedited synthetic captures.
+- Verify all 25 scroll hashes and 24 bidirectional CPU cases, with unchanged
+  content and bounded viewports. Execute the downloaded macOS CLI's version
+  and verify its two build artifact hashes; no local Rust build or live-agent
+  acceptance is implied. Add scoped five-receipt LF/CRLF negative controls.
+- After focused success, dispatch both native and container package checks
+  at frozen source `3ac4a02d` with `publish=false`. Keep the remote source
+  fixed and this evidence commit local; extraction, actual container identity
+  and full-platform gates remain pending. Main, `paper`, `output/`, tags and
+  historical artifacts stay unchanged. No timing or scientific approval.
+
 ## 2026-10-08 - Freeze The Repaired Audit Candidate
 
 - Freeze source/workflows at `3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da`
