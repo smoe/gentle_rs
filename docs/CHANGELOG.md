@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-09 - Merge Remaining Development Branches For Main Push
+
+- At the owner's explicit request, integrate `gentle_rs_3` tip `4c24ce70`
+  into main after audit merge `1ff8aa0d`; `gentle_rs_2_main` tip `b1547544`
+  is already included. Preserve both changelog histories and the stronger
+  raw-traversal, symlink and structured-error path regression from `e42daa02`.
+- Repair the incoming commit's two missing result fields in all ten production
+  and test constructors, with empty defaults only. Add an offline source guard
+  and run the 04.09 module in the existing fast CI policy job;
+  this required integration repair does not alter primer or engine behavior.
+- The owner now authorizes a normal push of main to origin. Keep `paper`,
+  `output/` and historical evidence untouched and unstaged; no tag, release
+  publication, local Rust execution or scientific approval follows.
+- New multi-reference behavior and generated catalog/parity projections require
+  fresh Rust-backed CI at the merged SHA. Older candidate checks do not certify
+  this integration or close `.12` package acceptance.
+- Pre-commit verification on macOS: 184/185 offline Python tests pass. The
+  unchanged monitor SIGTERM test returns `-15` instead of `143`, also on isolated
+  rerun; retain this failure rather than weakening or changing its test here.
+  Scoped edition-2024 rustfmt, YAML and whitespace checks pass. A concurrent
+  uncommitted dependency-lock update is excluded from the merge and push.
+
 ## 2026-10-09 - Integrate Owner-Requested Audit Follow-Ups Into Main
 
 - Merge codex tip `4c394efe` (45 commits above `b1547544`) into local main
@@ -423,6 +445,30 @@
 - Exact report bytes verified against the supplied original; LF/CRLF checkout
   regressions, including the missing-attribute negative control, pass 21/21 on
   macOS. `git diff --check` passes; the raw audit bundle remains unverified.
+## 2026-10-09 - Standalone Multi-Reference Specificity And Tutorial 04.09
+
+- Add one-pair preparation/import/show/list with explicit 1-8 prepared references,
+  required/optional status, no fallback or implicit resource installation, and
+  caller-labelled intended mappings. Preparation writes a fresh non-executing
+  handoff and pending process-manifest template, not a specificity verdict.
+- Validate current pair/template, commands, policy, query files, retained output
+  sizes/hashes, completeness and reference/annotation identities before atomic
+  import. Keep genomic and transcriptome verdicts independent; missing, stale,
+  partial/cancelled and optional-only evidence never becomes a vacuous pass.
+- Retain immutable scientific-content summaries and child evidence; historical
+  display performs no database probes. No panel-readiness attachment or scheduler.
+  Expose shared shell/engine/MCP/scripting/workflow discovery and agent guidance;
+  adapter execution/parity verification remains pending with Glen/CI.
+- Add tutorial 04.09 explaining each feature and its biological motivation,
+  learning requests, external execution checklist, verdicts, exact panel-selection
+  history and non-claims. Register it in the grouped catalog with source/readability
+  review only; no native GUI, real-data or inner-agent acceptance claimed.
+- Author synthetic admission, manifest/hash/source/tail/policy, verdict matrix,
+  LF/CRLF, save/reload, stale-index/annotation, atomic persistence and adapter
+  regressions. Rust compilation/execution remains with Glen/CI, not locally run.
+- Offline tutorial source checks pass 3/3 and checkout-policy tests pass 20/20;
+  scoped Rust formatting and whitespace pass. The updated catalog/parity
+  projections still require Rust-backed freshness checks at the frozen SHA.
 
 ## 2026-10-08 - Reference-Bound Primer Specificity and Plan Reconciliation
 

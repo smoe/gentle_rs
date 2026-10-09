@@ -5785,6 +5785,10 @@ const PUBLIC_ENGINE_OPERATION_NAMES: &[&str] = &[
     "AssessPrimerPairSpecificityCollection",
     "PreparePrimerPairSpecificityHandoff",
     "ImportPrimerPairSpecificityHandoff",
+    "PreparePrimerPairMultiReferenceSpecificityHandoff",
+    "ImportPrimerPairMultiReferenceSpecificity",
+    "GetPrimerPairMultiReferenceSpecificitySummary",
+    "ListPrimerPairMultiReferenceSpecificitySummaries",
     "PrepareRestrictionCloningPcrHandoff",
     "PcrOverlapExtensionMutagenesis",
     "DesignQpcrAssays",
@@ -5977,6 +5981,30 @@ const MCP_TOOL_NAMES: &[(&str, &str, &str, CapabilityMutation)] = &[
         "Primer Reports",
         "List, inspect, or explicitly export stored primer, qPCR, transcript-assay panel, and fallback reports through shared shell routes.",
         CapabilityMutation::External,
+    ),
+    (
+        "primer_specificity_multi_handoff",
+        "Primer Specificity Multi Handoff",
+        "Prepare confirmed external searches for one pair against explicit prepared references; do not run BLAST or attach readiness evidence.",
+        CapabilityMutation::External,
+    ),
+    (
+        "primer_specificity_multi_import",
+        "Primer Specificity Multi Import",
+        "Validate reference-bound external execution and persist an immutable standalone specificity summary after confirmation.",
+        CapabilityMutation::Mutating,
+    ),
+    (
+        "primer_specificity_multi_show",
+        "Primer Specificity Multi Show",
+        "Inspect a historical multi-reference summary without probing databases or asserting current applicability.",
+        CapabilityMutation::ReadOnly,
+    ),
+    (
+        "primer_specificity_multi_list",
+        "Primer Specificity Multi List",
+        "List stored standalone multi-reference specificity summaries without resource probes.",
+        CapabilityMutation::ReadOnly,
     ),
     (
         "transcript_assay_specificity_plan",
@@ -7502,6 +7530,8 @@ fn infer_engine_operation_mutation(operation: &str) -> CapabilityMutation {
         || operation == "FindRestrictionSites"
         || operation == "AlignSequences"
         || operation == "PreparePrimerPairSpecificityHandoff"
+        || operation == "PreparePrimerPairMultiReferenceSpecificityHandoff"
+        || operation == "GetPrimerPairMultiReferenceSpecificitySummary"
         || operation == "SearchPrimerBank"
         || operation == "ScreenPrimerVariants"
         || operation == "TestCdnaPcr"

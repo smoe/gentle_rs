@@ -2152,6 +2152,46 @@
       "codex_reviewed_at": "2026-10-06"
     },
     {
+      "id": "reference_bound_primer_specificity",
+      "title": "Check One Primer Pair Against Explicit References",
+      "path": "docs/tutorial/04-09_reference_bound_primer_specificity.md",
+      "group": "04",
+      "group_label": "Primers, PCR & qPCR",
+      "group_order": 4,
+      "group_position": 9,
+      "decimal_id": "04.09",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "cli_first",
+        "agent_users",
+        "primer_design",
+        "transcript_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Explain the biological motivation for exact reference/assembly/release binding, caller mappings, annealing/tail boundaries, required/optional references, complete retained searches, independent genomic/transcriptome verdicts, immutable history and exact panel selection receipts. Prepare one pair's non-executing handoff, use a trusted external runner, approve import and inspect a standalone summary without automatic readiness attachment. Templates are not validated real biology. Codex source/readability review 2026-10-09; Rust execution, native GUI, real-reference specificity and human scientific approval remain pending.",
+      "estimated_minutes": 30,
+      "difficulty": "intermediate",
+      "network": "offline with already prepared local references",
+      "interfaces": [
+        "GUI Shell",
+        "CLI / shared shell",
+        "MCP / scripting",
+        "Agent Assistant (reviewed drafts)"
+      ],
+      "starting_state": "Saved primer pair, explicitly identified prepared genomic/cDNA references, trustworthy external BLAST runner and a disposable project copy",
+      "produces": [
+        "reference-bound external handoff",
+        "standalone immutable specificity summary"
+      ],
+      "prerequisites": [
+        "gene_assay_study_gui"
+      ],
+      "review_status": "codex_reviewed",
+      "codex_reviewed_at": "2026-10-09"
+    },
+    {
       "id": "tss_collection_gui",
       "title": "From annotated transcript starts to reusable TSS windows (offline)",
       "path": "docs/tutorial/generated/chapters/08-15_tss_collection_gui.md",

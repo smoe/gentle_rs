@@ -12,6 +12,9 @@ impl GentleEngine {
         if database.validation_status != "valid"
             || fingerprint.is_empty()
             || database.fingerprint_algorithm.trim().is_empty()
+            || database.subject_annotation_status == "stale"
+            || (database.subject_annotation_fingerprint.is_some()
+                && database.subject_annotation_status != "ready")
         {
             return None;
         }
@@ -493,6 +496,19 @@ mod tests {
                 ..Default::default()
             }],
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn specificity_reference_identity_rejects_stale_annotation_with_planned_hash() {
+        let mut database = database("reference_a", BlastDatabaseIndexKind::GenomicDna);
+        database.subject_annotation_fingerprint = Some("sha256:planned-annotation".into());
+        database.subject_annotation_fingerprint_algorithm = Some("sha256".into());
+        database.subject_annotation_status = "ready".into();
+        assert!(GentleEngine::primer_specificity_reference_identity(&database).is_some());
+        for status in ["stale", "unavailable", "invalid"] {
+            database.subject_annotation_status = status.into();
+            assert!(GentleEngine::primer_specificity_reference_identity(&database).is_none());
         }
     }
 

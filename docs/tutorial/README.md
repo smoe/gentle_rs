@@ -12,6 +12,10 @@ You do not need to understand the tutorial machinery before beginning.
   [Find Primer-Pair Markers for PATZ1 Isoforms](./04-08_gene_assay_study_gui.md)
   to compare Ensembl/RefSeq annotations and explain which transcript classes
   a panel covers but still cannot tell apart.
+- **Check a pair against genomic and transcriptome references:** use
+  [Reference-Bound Primer Specificity](./04-09_reference_bound_primer_specificity.md)
+  to understand exact mappings, required/optional evidence, external searches and
+  separate verdicts before making laboratory or order-readiness claims.
 - **Inspect or edit a sequence:** use
   [Stateless Sequence Inspection](./02-02_stateless_sequence_inspection_gui_cli.md)
   or [Annotation Curation](./02-05_feature_editor_gui_cli.md).

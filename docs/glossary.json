@@ -4602,12 +4602,45 @@
       },
       {
          "aliases": [],
-         "engine_operations": [],
+         "engine_operations": ["PreparePrimerPairMultiReferenceSpecificityHandoff"],
          "interfaces": [
             "cli-shell",
             "gui-shell",
-            "cli-direct"
+            "cli-direct",
+            "mcp"
          ],
+         "path": "primers specificity-multi-handoff",
+         "summary": "Prepare a standalone non-executing handoff for one pair against 1-8 explicitly selected references; required unavailable indexes stop before files are written.",
+         "usage": "primers specificity-multi-handoff REQUEST_JSON_OR_@FILE OUTPUT_DIR"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ImportPrimerPairMultiReferenceSpecificity"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers specificity-multi-import",
+         "summary": "Validate retained external outputs and persist a standalone content-derived summary with independent genomic and transcriptome verdicts; no readiness attachment.",
+         "usage": "primers specificity-multi-import HANDOFF_PATH MANIFEST_PATH"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["GetPrimerPairMultiReferenceSpecificitySummary"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers specificity-multi-show",
+         "summary": "Inspect immutable historical specificity evidence without expensive database probes; applicability was checked at import.",
+         "usage": "primers specificity-multi-show SUMMARY_ID"
+      },
+      {
+         "aliases": [],
+         "engine_operations": ["ListPrimerPairMultiReferenceSpecificitySummaries"],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct", "mcp"],
+         "path": "primers specificity-multi-list",
+         "summary": "List stored standalone multi-reference specificity summaries in stable content-ID order.",
+         "usage": "primers specificity-multi-list"
+      },
+      {
+         "aliases": [],
+         "engine_operations": [],
+         "interfaces": ["cli-shell", "gui-shell", "cli-direct"],
          "path": "primers transcript-assay-specificity-plan",
          "summary": "Prepare one atomic external BLAST handoff for every selected assay in a persisted transcript panel, inheriting its ordinary amplicon ceiling unless explicitly overridden.",
          "usage": "primers transcript-assay-specificity-plan PANEL_REPORT_ID --target-genome GENOME_ID --output-dir DIR [--readiness-max-amplicon-bp N] [--exploratory-max-amplicon-bp N] [--report-detail compact|full] [--full-alignment disabled|best-effort|required] [--reviewed-off-target-allowlist JSON_ARRAY_OR_@FILE] [--catalog PATH] [--cache-dir DIR]"

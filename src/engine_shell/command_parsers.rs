@@ -6362,6 +6362,17 @@ pub(super) fn parse_primers_command(tokens: &[String]) -> Result<ShellCommand, S
                 .map_err(|e| e.to_string())?,
             })
         }
+        "specificity-multi-import" | "specificity-multi-show" | "specificity-multi-list" => {
+            let operation = match tokens[1].as_str() {
+                "specificity-multi-import" if tokens.len() == 4 => Operation::ImportPrimerPairMultiReferenceSpecificity { handoff_path: tokens[2].clone(), manifest_path: tokens[3].clone() },
+                "specificity-multi-show" if tokens.len() == 3 => Operation::GetPrimerPairMultiReferenceSpecificitySummary { summary_id: tokens[2].clone() },
+                "specificity-multi-list" if tokens.len() == 2 => Operation::ListPrimerPairMultiReferenceSpecificitySummaries {},
+                _ => return Err("Use primers specificity-multi-import HANDOFF_PATH MANIFEST_PATH, specificity-multi-show SUMMARY_ID or specificity-multi-list".into()),
+            };
+            Ok(ShellCommand::Op {
+                payload: serde_json::to_string(&operation).map_err(|e| e.to_string())?,
+            })
+        }
         "design-transcript-capture-pool" => {
             if tokens.len() != 3 {
                 return Err(

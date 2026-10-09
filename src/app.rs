@@ -12469,6 +12469,8 @@ Error: `{err}`"
                 transcript_assay_specificity_redesign: None,
                 primer_specificity_handoff: None,
                 primer_specificity_multi_handoff: None,
+                primer_specificity_multi_summary: None,
+                primer_specificity_multi_summaries: vec![],
                 primer_specificity_report: None,
                 transcript_qpcr_panel: None,
                 transcript_assay_panel: None,

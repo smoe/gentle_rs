@@ -13,9 +13,11 @@ is `3dfe44c7a08bf779e32289cf1312103ea1fb5883e44bba5f6e1912ce3ed77745`.
 The original goal uses `codex/glen-audit-followups-20261008`, with separate
 narrowly scoped commits, branch pushes and non-publishing CI authorized. On
 2026-10-09 the owner explicitly requested checkout of `main` and integration of
-this work, superseding only the original prohibition on merging into main.
-No local Rust build, test or check, Claude consultation, push of main, tag
-change or release publication is authorized. Leave `paper`, `output/` and
+this work, then requested integration of `gentle_rs_2_main` and `gentle_rs_3`
+and a normal push of main to GitHub. These requests supersede the original
+prohibitions on merging and pushing main only.
+No local Rust build, test or check, Claude consultation, tag change or release
+publication is authorized. Leave `paper`, `output/` and
 historical evidence unchanged.
 Human scientific approval and an external auditor's performance verdict remain
 independent of code, replay, screenshot and packaging checks.
@@ -29,7 +31,9 @@ The codex branch already includes that main base; the merge has no conflicts
 and preserves both histories. The only integration-specific edits record the
 changed authority and pending acceptance in this ledger, roadmap and changelog.
 Existing `paper` and untracked `output/` changes are not staged or altered.
-Do not push main or interpret the merge as completion of the six-item goal.
+Main was not pushed during that integration; the owner subsequently authorized
+the development-branch merges and push described below. Neither integration
+completes the six-item goal.
 The codex remote remains frozen at `e42daa02` for its running verification;
 those and older source-bound results do not accept the new main merge SHA.
 Fresh exact-source native/full-platform and package gates remain required.
@@ -45,6 +49,30 @@ failing log SHA-256
 Scoped rustfmt, CI/container YAML parsing and both staged/unstaged whitespace
 checks pass. The merged code tree equals the codex tip; only the three
 integration-status documents differ. No local Rust build/check/test was run.
+
+The subsequent owner-requested integration starts from main `1ff8aa0d`.
+`gentle_rs_2_main` tip `b1547544` is already an ancestor; merge `gentle_rs_3`
+tip `4c24ce70` with both histories preserved. Resolve the changelog by retaining
+both histories and the primer module by retaining both required imports and
+main's stronger portable raw-path regression. A normal push of this combined
+main is authorized, not a force push, tag or release publication. New
+multi-reference behavior and generated catalog/parity projections need fresh
+Rust-backed checks at the exact merged SHA; the frozen codex runs do not certify
+this integration or close `.12` acceptance.
+The incoming commit adds two `OpResult` fields without initializing its ten
+existing production/test constructors. Complete only those empty defaults and
+add an offline source guard before pushing. Run the 04.09/source checks in the
+existing fast CI policy job; compiler verification remains CI-only.
+Pre-commit offline checks on macOS pass 184/185 in 107.902 s; raw log
+`/private/tmp/gentle-main-development-merge-python.log` has SHA-256
+`0f63be7f161eeb83088ebb6f8d85baf5ed01bb6397aeecb694703d836a723a0d`.
+The unchanged `test_runner_forwards_termination_and_fails` returns `-15`, not
+`143`, both in the full run and isolated rerun. Its fixed 0.1-s startup wait
+remains a separate follow-up, not a silently waived pass or a change to this
+merge. All changed Rust files pass scoped edition-2024 rustfmt; YAML parsing
+and whitespace pass. No Rust build/check/test runs locally. An unrelated
+`Cargo.lock` dependency update appeared during verification; leave it unstaged
+and out of the push. The committed lockfile and older evidence remain unchanged.
 
 ## Six-Item Checklist
 

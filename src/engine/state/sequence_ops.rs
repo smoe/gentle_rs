@@ -2582,6 +2582,13 @@ impl GentleEngine {
                     Self::push_unique_token(&mut summary.file_paths, path);
                 }
             }
+            Operation::ImportPrimerPairMultiReferenceSpecificity {
+                handoff_path,
+                manifest_path,
+            } => {
+                Self::push_unique_token(&mut summary.file_paths, handoff_path);
+                Self::push_unique_token(&mut summary.file_paths, manifest_path);
+            }
             Operation::ImportUniprotSwissProt { path, .. } => {
                 Self::push_unique_token(&mut summary.file_paths, path);
             }

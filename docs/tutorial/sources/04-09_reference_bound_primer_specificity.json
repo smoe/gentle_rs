@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "reference_bound_primer_specificity",
+  "title": "Check One Primer Pair Against Explicit References",
+  "catalog": {
+    "order": 65,
+    "path": "docs/tutorial/04-09_reference_bound_primer_specificity.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["cli_first", "agent_users", "primer_design", "transcript_analysis", "wet_lab_biologists"],
+    "notes": "Explain the biological motivation for exact reference/assembly/release binding, caller mappings, annealing/tail boundaries, required/optional references, complete retained searches, independent genomic/transcriptome verdicts, immutable history and exact panel selection receipts. Prepare one pair's non-executing handoff, use a trusted external runner, approve import and inspect a standalone summary without automatic readiness attachment. Templates are not validated real biology. Codex source/readability review 2026-10-09; Rust execution, native GUI, real-reference specificity and human scientific approval remain pending.",
+    "estimated_minutes": 30,
+    "difficulty": "intermediate",
+    "network": "offline with already prepared local references",
+    "interfaces": ["GUI Shell", "CLI / shared shell", "MCP / scripting", "Agent Assistant (reviewed drafts)"],
+    "starting_state": "Saved primer pair, explicitly identified prepared genomic/cDNA references, trustworthy external BLAST runner and a disposable project copy",
+    "produces": ["reference-bound external handoff", "standalone immutable specificity summary"],
+    "group": "04",
+    "group_position": 9,
+    "prerequisites": ["gene_assay_study_gui"]
+  }
+}
