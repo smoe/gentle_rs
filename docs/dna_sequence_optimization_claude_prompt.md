@@ -5,7 +5,18 @@ Prepared 2026-10-04 against GENtle `main` at
 Status: original Codex proposal, retained unchanged below for comparison.
 The owner supplied Claude's review on 2026-10-05; see the
 [revised proposal and review reconciliation](dna_sequence_optimization_plan.md).
-Neither document is approval for implementation or a release commitment.
+This archived consultation prompt is not implementation authorization or a
+release commitment; the active plan records the owner's separate approvals.
+
+Status cross-check (2026-10-09): implementation landed in `85d23ddb`
+(motif-removal preview), `dc8c5252` (bounded conflict search), `164b44ce`
+(CDS-wide GC) and `cee1aef4` (sliding-window GC). The proposal below is historical,
+not a pending implementation list. Follow the active plan's remaining stages:
+Glen's independent repair/new-slice acceptance remains pending, including the
+distinction between verified output constraints and unverified search claims.
+None of these implementation commits establishes `.12` release acceptance.
+The intentional reverse-translation/design distinction is documented in
+[Synthetic Sequence-Design Boundaries](decisions.md#synthetic-sequence-design-boundaries).
 
 ## Review request
 

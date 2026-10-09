@@ -8946,6 +8946,13 @@ Feature-distance geometry controls (candidate generation and distance scoring):
   - optional `target_anneal_tm_c` applies a lightweight local suffix Tm
     heuristic over `anneal_window_bp` windows to mildly steer codon choice; it
     is advisory rather than a full sequence optimizer
+  - this candidate-generation route does not check the synthetic sequence
+    designer's forbidden motifs or hard whole-CDS/sliding-window GC bounds;
+    codon-choice diagnostics must not be read as constrained-design approval
+  - when those constraints are required, submit the resulting DNA through a
+    separate explicit `PlanDnaSequenceDesign` request meeting its admission
+    rules, then review and approve that proposal independently; reverse
+    translation does not automatically invoke or authorize redesign
 - Output:
   - additive sequence creation through regular `OpResult.created_seq_ids`
   - persisted reverse-translation report metadata under

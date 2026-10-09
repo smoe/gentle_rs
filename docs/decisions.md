@@ -71,7 +71,7 @@ performs a UniProt fetch or claims transcript validity/global absence.
 
 ## Synthetic Sequence-Design Boundaries
 
-Status: active for the experimental synonymous motif-removal prototype.
+Status: active for experimental synonymous motif removal and explicit GC constraints.
 
 Only explicit synthetic coding-insert requests authorize preview, never labels
 or natural assay templates. The pure independently versioned core has no root,
@@ -83,6 +83,18 @@ Frozen bases, exact protein/start/stop and full-sequence motif evaluation are
 invariants. Bounded-search failure is unresolved, not infeasible; cancellation
 cannot publish an applicable proposal, including a valid intermediate result.
 Feasible incomplete optimization does not establish minimum nucleotide edits.
+Reverse translation and constrained redesign deliberately have different
+contracts. `ReverseTranslateProteinSequence` generates candidate DNA from a
+protein using sequential codon preferences and advisory local Tm/GC steering;
+its preferred/alternative-codon diagnostics establish neither motif avoidance
+nor whole-CDS/window-GC compliance. `PlanDnaSequenceDesign` takes an explicitly
+authorized synthetic DNA insert with declared protein/CDS/protected bases and
+jointly evaluates its requested constraints. Its shared output validator is the
+authority for those constrained-output claims, not for search provenance or
+expression suitability. A reverse-translated candidate may therefore need a
+separate admitted design request; no automatic redesign, approval transfer or
+replacement of the reverse-translation algorithm is implied. Keep both report
+families and their metrics distinct; preferred codons are not minimum edits.
 Solver selection is explicit and version-bound; default enumeration and its
 serialized approvals stay compatible. Conflict search branches over all legal
 nonoriginal assignments in a current violated window, fixes one codon per level,
