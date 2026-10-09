@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-09 - Clarify Reverse Translation Versus Constrained Design
+
+- Document the intentional separation of protein-to-DNA candidate generation
+  from explicit synthetic-DNA constraint checking. Local codon/Tm preferences
+  and preferred-codon diagnostics do not certify motif or hard GC compliance;
+  the designer's shared validator owns only its requested output constraints.
+- Mark the original Claude consultation prompt with the implemented slice
+  commits and point to the active plan instead of treating its historical
+  proposal as open work. Keep Glen's repair/new-slice acceptance pending and
+  output validation distinct from unverified search provenance.
+- Documentation only: no solver, adapter, metric, approval, tutorial fixture or
+  release-gate change. Complete search can prove infeasibility; budget-stopped
+  search without a feasible result remains unresolved. Rust execution remains
+  deferred under the owner's no-local-build instruction.
+
 ## 2026-10-09 - Standalone Multi-Reference Specificity And Tutorial 04.09
 
 - Add one-pair preparation/import/show/list with explicit 1-8 prepared references,
