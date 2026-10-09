@@ -1,5 +1,26 @@
 # GENtle Changelog
 
+## 2026-10-09 - Keep Primer Path Fixtures Portable And Raw
+
+- Repair the exact macOS full-CI failure at `3ac4a02d`: its temporary directory
+  contains the system `/var` symlink, which the production export validator
+  correctly rejects. Canonicalize only the trusted test root before constructing
+  the valid new bundle and existing-evidence controls; production is unchanged.
+- Construct traversal as raw `OsString`, proving its parent component reaches
+  the validator even for canonical Windows verbatim roots. Require structured
+  `InvalidInput` for traversal, existing evidence and deliberate Unix symlinks;
+  retain native Windows verbatim rejection. No safety normalization shortcut.
+- Run the exact path regression early in all three native CI jobs, before
+  long suites, with an offline policy test guarding selection/order and refusal
+  to hide failure. This targeted workflow change is required to verify the fix.
+- Targeted Rust/full-platform acceptance remains remote-only at a new frozen
+  source. Successful `3ac4a02d` packages do not excuse that source's macOS failure
+  or imply acceptance of the repaired test. No local Rust build or main edit.
+- Verification: all 159 scoped offline Python tests pass on macOS (39.621 s),
+  log SHA-256 `281b05762db8e5703920bb922c73b407cb5e81e67339a828e1c736555b5f9ca6`;
+  scoped rustfmt, CI YAML parsing and `git diff --check` pass. Native Rust gates
+  remain pending at the next exact source, without inheriting prior passes.
+
 ## 2026-10-09 - Accept Fresh Public And Live-Agent Evidence
 
 - Retain fresh `3ac4a02d` public receipt, exact source-bound base projection

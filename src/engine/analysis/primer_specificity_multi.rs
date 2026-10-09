@@ -517,22 +517,47 @@ mod tests {
     #[test]
     fn specificity_multi_output_paths_refuse_traversal_and_existing_evidence() {
         let temp = tempfile::tempdir().unwrap();
-        assert!(
-            specificity_multi_destination(&temp.path().join("../escaped").to_string_lossy())
-                .is_err()
+        // Resolve only the trusted fixture root; macOS /var is a system symlink.
+        let root = temp.path().canonicalize().unwrap();
+        let mut raw_traversal = root.as_os_str().to_os_string();
+        raw_traversal.push(format!(
+            "{}..{}escaped",
+            std::path::MAIN_SEPARATOR,
+            std::path::MAIN_SEPARATOR
+        ));
+        let traversal = Path::new(&raw_traversal);
+        assert!(traversal
+            .components()
+            .any(|c| c == Component::ParentDir || c.as_os_str() == ".."));
+        assert_eq!(
+            specificity_multi_destination(&traversal.to_string_lossy())
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidInput
         );
-        assert!(specificity_multi_destination(&temp.path().to_string_lossy()).is_err());
-        assert!(
-            specificity_multi_destination(&temp.path().join("new bundle").to_string_lossy())
-                .is_ok()
+        assert_eq!(
+            specificity_multi_destination(&root.to_string_lossy())
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidInput
+        );
+        let destination = root.join("new bundle");
+        assert_eq!(
+            specificity_multi_destination(&destination.to_string_lossy()).unwrap(),
+            destination
         );
         #[cfg(windows)]
         assert!(specificity_multi_destination(r"\\?\C:\existing\..\escaped").is_err());
         #[cfg(unix)]
         {
-            let alias = temp.path().join("alias");
-            std::os::unix::fs::symlink(temp.path(), &alias).unwrap();
-            assert!(specificity_multi_destination(&alias.join("new").to_string_lossy()).is_err());
+            let alias = root.join("alias");
+            std::os::unix::fs::symlink(&root, &alias).unwrap();
+            assert_eq!(
+                specificity_multi_destination(&alias.join("new").to_string_lossy())
+                    .unwrap_err()
+                    .code,
+                ErrorCode::InvalidInput
+            );
         }
     }
 }

@@ -572,6 +572,24 @@ class WorkflowWiringTests(unittest.TestCase):
                               "Workflow example runtime tests", "Full test suite"):
                     self.assertLess(job.index(step), job.index(f"- name: {later}\n"))
 
+    def test_native_jobs_run_exact_primer_path_regression_before_full_suite(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        text = (root / ".github/workflows/ci.yml").read_text()
+        step = "      - name: Primer multi-reference path regression\n"
+        for platform in ("macos", "linux", "windows"):
+            with self.subTest(platform=platform):
+                following = text.split(f"\n  {platform}:\n", 1)[1]
+                job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
+                body = job.split(step, 1)[1].split("\n      - name:", 1)[0]
+                self.assertIn(
+                    "run: cargo test -q --locked --lib -j1 "
+                    "engine::primer_specificity_multi::tests::"
+                    "specificity_multi_output_paths_refuse_traversal_and_existing_evidence "
+                    "-- --exact --test-threads=1", body)
+                self.assertNotIn("continue-on-error:", body)
+                self.assertNotIn("if:", body)
+                self.assertLess(job.index(step), job.index("- name: Full test suite\n"))
+
     def test_native_gui_audit_keeps_preflight_and_rollback_regressions(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()

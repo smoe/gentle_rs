@@ -35,9 +35,10 @@ historical source. The current candidate's checklist is:
 The new frozen runtime/workflow candidate is
 `3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da`, with the unchanged lockfile above.
 It includes separate container-identity (`57cc62bc`) and eleven-line primer
-initialization (`3ac4a02d`) repairs. The remote codex branch is deliberately
-held at that SHA; subsequent local evidence/status commits are not new runtime
-acceptance. Fresh non-publishing runs are
+initialization (`3ac4a02d`) repairs. The remote codex branch was deliberately
+held at that SHA until both package builds finished; subsequent evidence/status
+commits and the test-only macOS repair are not new runtime acceptance.
+Fresh non-publishing runs are
 [Linux/Windows plus focused audits 37848423833](https://github.com/smoe/gentle_rs/actions/runs/37848423833)
 and [macOS/Windows 37848434104](https://github.com/smoe/gentle_rs/actions/runs/37848434104).
 Both run metadata independently report the exact candidate SHA. After the
@@ -82,7 +83,7 @@ the expanded five-receipt checkout suite passes 26/26 (21.640 s), log SHA-256
 `fddda1416a55309164d5ad2e57370ff9ee798728a66273156e6edcbe79813b73`.
 Session-close reports four OK, two warnings (this intentional pending commit
 and manual plan fidelity), zero failures; roadmap remains 400 lines.
-Local evidence commits stay unpushed while the package source is frozen.
+Local evidence commits stayed unpushed while those package builds were running.
 The expanded nine-receipt seven-suite check passes 158/158 on macOS (41.865 s),
 log SHA-256 `364e4b411bb3953c2354118babe531b9044357bf5af41c4da841ffbdaa660f7f`.
 
@@ -98,6 +99,21 @@ bundle. Raw failing log SHA-256:
 macOS `/var` is a symlink to `/private/var`; the production validator explicitly
 rejects symlink ancestors. Repair the fixture root, not that safety boundary,
 and retain raw traversal and deliberate alias rejection before rerunning.
+The separate repair canonicalizes only the trusted temporary fixture root,
+constructs raw traversal as `OsString` and asserts that the parent component
+reaches the validator. Existing-evidence and deliberate Unix alias refusals
+now assert `InvalidInput`; production validation is unchanged. This authored
+test repair is not yet a Rust pass: scoped formatting/Python checks precede
+fresh remote targeted/full-platform verification at the next frozen source.
+All three native jobs now run this exact test before long suites; a focused
+offline policy test guards the command, order and absence of skip/failure hiding.
+The repair's seven-suite offline check passes 159/159 on macOS (39.621 s),
+log `/private/tmp/gentle-primer-path-repair-python.log`, SHA-256
+`281b05762db8e5703920bb922c73b407cb5e81e67339a828e1c736555b5f9ca6`.
+Scoped `rustfmt --check`, Ruby CI-YAML parsing and `git diff --check` pass;
+no local Rust build/check/test was run. Freeze the next exact source after
+this separate repair commit and rerun all three native gates before accepting
+new packages. The successful `3ac4a02d` runs retain their original limited scope.
 
 The successful build-only container receipt is retained locally at
 `/private/tmp/gentle-container-3ac4a02d/container-build.json`, SHA-256
