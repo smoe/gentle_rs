@@ -45,6 +45,15 @@ main update, tag or publication occurred. Session-close after the repair commit
 reports five OK, one manual plan-fidelity reminder and zero failures.
 The lockfile remains byte-identical. Until fresh acceptance is retained, items
 2-5 below refer only to the historical `3ac4a02d` source, not this new candidate.
+At `e42daa02`, the remote policy job `113772019301` passes all 181 Python tests;
+retained raw log `/private/tmp/gentle-e42daa02-policy.log` SHA-256
+`232a34e12fbfd811377ee8b1f8bebba3e6122afc09b89e556eb3767ca8ca625d`.
+Linux headless job `113772019137` passes
+`cargo check --locked --no-default-features --bin gentle_cli --bin gentle_mcp`;
+raw log `/private/tmp/gentle-e42daa02-headless-check.log` SHA-256
+`03493f7debd2c9b1b8d9d342c3fd3ee21009038c7cb5e8809948db579081fad2`.
+These are partial gates only: the repaired native test, full platform suites,
+fresh audit artifacts and non-publishing package acceptance remain pending.
 
 The previous frozen runtime/workflow candidate is
 `3ac4a02dd81a7b2dabe3c2bd82b28d76f6ce21da`, with the unchanged lockfile above.
