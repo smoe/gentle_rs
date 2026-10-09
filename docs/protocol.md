@@ -51,6 +51,47 @@ The corresponding execution-manifest and summary schemas are standalone and do
 not widen panel/readiness records. Imports and their reporting are described
 with their shared routes below; preparation alone produces no specificity pass.
 
+`ImportPrimerPairMultiReferenceSpecificity { handoff_path, manifest_path }`
+uses `gentle.primer_pair_multi_reference_execution_manifest.v1` and returns
+`gentle.primer_pair_multi_reference_summary.v1`. The template path is
+`execution_manifest.json`. Each command retains its parent/pair/command digest,
+output path, `pending|completed|failed|cancelled` state, actual exit, byte count
+and `sha256:` hash. Import validates the complete parent, freshly resolved saved
+pair/template snapshot, expected commands, full policy, query files and retained
+raw TSV bytes before one store write. Unsupported legacy child identities and
+tampering are refused. Resource replacement or missing/unfinished evidence
+remains incomplete, never a biological absence. Valid interpreted children are
+retained in the standalone summary and report store; no panel selection changes.
+
+Genomic and transcriptome dimensions independently yield `fail` for any validated
+required failure, `pass` only if every required reference passes and execution is
+complete, otherwise `incomplete`. A dimension without references is `not_requested`;
+optional-only is `not_required`, never vacuously passing. Optional biological
+failures remain visible. Partial/cancelled available searches prevent an aggregate
+pass; an optional index unavailable at preparation has no command to execute.
+
+Summaries are immutable, content-derived records in the primer store. Canonical
+scientific identity excludes operation/time identities and machine file/tool
+paths, not raw output hashes, reference identity, policy or interpretation.
+`GetPrimerPairMultiReferenceSpecificitySummary { summary_id }` and
+`ListPrimerPairMultiReferenceSpecificitySummaries {}` read history without probing
+databases; `current_at_import` is not a fresh currency claim. Imports revalidate
+database and subject-annotation content; hashes bind content, not authenticated
+execution. JSON input is bounded at 16 MiB and each TSV at 128 MiB; exceeding
+admission is an error, not an accepted truncated search.
+
+Shared routes are `primers specificity-multi-import HANDOFF_PATH MANIFEST_PATH`,
+`primers specificity-multi-show SUMMARY_ID` and `primers specificity-multi-list`.
+Dedicated MCP tools are `primer_specificity_multi_handoff`,
+`primer_specificity_multi_import`, `primer_specificity_multi_show` and
+`primer_specificity_multi_list`. Handoff/import require confirmation before
+file/state access. Raw operations, workflow execution and JS/Lua/Python reuse
+the engine contract; shared-shell imports retain mutation approval. This family
+adds neither a scheduler nor automatic readiness attachment, universal specificity,
+isoform discrimination, oligo QC or experimental/order approval. See
+[tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md) for the
+biological motivation and a manual execution checklist.
+
 ## Synthetic Sequence Design
 
 `PlanDnaSequenceDesign { request, path? }` is a read-only bounded synonymous

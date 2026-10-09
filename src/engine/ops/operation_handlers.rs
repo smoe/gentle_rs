@@ -122,7 +122,7 @@ struct CanonicalTranscriptWindow {
 
 const TRANSCRIPT_ASSAY_DEFAULT_MAX_ASSAYS_PER_CLASS: usize = 12;
 const TRANSCRIPT_ASSAY_DEFAULT_ENDPOINT_PAIRS_PER_REACTION: usize = 4;
-const PRIMER_SPECIFICITY_BLASTN_OUTFMT_FIELDS: &str = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs qlen qseq sseq";
+pub(super) const PRIMER_SPECIFICITY_BLASTN_OUTFMT_FIELDS: &str = "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qcovs qlen qseq sseq";
 
 #[derive(Debug, Clone)]
 struct NormalizedCdnaAssayTestRequest {
@@ -16565,7 +16565,7 @@ impl GentleEngine {
         self.primer_specificity_report_from_handoff_outputs(handoff, None)
     }
 
-    fn validate_primer_specificity_handoff_database(
+    pub(super) fn validate_primer_specificity_handoff_database(
         &self,
         handoff: &PrimerSpecificityHandoff,
     ) -> Result<Option<BlastDatabaseInspectionReport>, EngineError> {
@@ -16610,6 +16610,8 @@ impl GentleEngine {
             || current.source_assembly != planned.source_assembly
             || current.source_release != planned.source_release
             || current.subject_annotation_fingerprint != planned.subject_annotation_fingerprint
+            || current.subject_annotation_status != planned.subject_annotation_status
+            || current.subject_annotation_status == "stale"
             || current.subject_annotation_fingerprint_algorithm
                 != planned.subject_annotation_fingerprint_algorithm
         {
@@ -47271,6 +47273,26 @@ impl GentleEngine {
                     ));
                     result.messages.push(report.summary.summary.clone());
                     result.primer_specificity_report = Some(Box::new(report));
+                }
+                Operation::ImportPrimerPairMultiReferenceSpecificity {
+                    handoff_path,
+                    manifest_path,
+                } => {
+                    let summary = self.import_primer_pair_multi_reference_specificity(
+                        &handoff_path,
+                        &manifest_path,
+                    )?;
+                    result.messages.push(format!("Retained multi-reference summary '{}': genomic {:?}, transcriptome {:?}; no panel/readiness attachment", summary.summary_id, summary.genomic, summary.transcriptome));
+                    result.primer_specificity_multi_summary = Some(Box::new(summary));
+                }
+                Operation::GetPrimerPairMultiReferenceSpecificitySummary { summary_id } => {
+                    result.primer_specificity_multi_summary = Some(Box::new(
+                        self.get_primer_pair_multi_reference_specificity_summary(&summary_id)?,
+                    ));
+                }
+                Operation::ListPrimerPairMultiReferenceSpecificitySummaries {} => {
+                    result.primer_specificity_multi_summaries =
+                        self.list_primer_pair_multi_reference_specificity_summaries();
                 }
                 Operation::PrepareRestrictionCloningPcrHandoff {
                     template,

@@ -2878,6 +2878,7 @@ struct PrimerDesignStore {
     primer_specificity_reference_selections: BTreeMap<String, PrimerSpecificityReferenceSelection>,
     active_primer_specificity_reference_selections: BTreeMap<String, String>,
     primer_specificity_panel_sources: BTreeMap<String, PrimerSpecificityPanelSource>,
+    primer_specificity_multi_summaries: BTreeMap<String, PrimerSpecificityMultiSummary>,
     transcript_assay_panels: HashMap<String, TranscriptAssayPanelReport>,
     transcript_assay_fallback_executions: HashMap<String, TranscriptAssayFallbackExecutionReport>,
     external_primer_pair_imports: HashMap<String, ExternalPrimerPairImportReport>,
@@ -4714,6 +4715,14 @@ pub enum Operation {
         request: Box<PrimerSpecificityMultiRequest>,
         output_dir: String,
     },
+    ImportPrimerPairMultiReferenceSpecificity {
+        handoff_path: String,
+        manifest_path: String,
+    },
+    GetPrimerPairMultiReferenceSpecificitySummary {
+        summary_id: String,
+    },
+    ListPrimerPairMultiReferenceSpecificitySummaries {},
     PrepareRestrictionCloningPcrHandoff {
         template: SeqId,
         primer_report_id: String,
@@ -10148,6 +10157,8 @@ impl GentleEngine {
                 | Operation::ExportTerminalExonRtPrimerPoolReport { .. }
                 | Operation::PreparePrimerPairSpecificityHandoff { .. }
                 | Operation::PreparePrimerPairMultiReferenceSpecificityHandoff { .. }
+                | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
+                | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
                 | Operation::RenderProtocolCartoonSvg { .. }
                 | Operation::RenderProtocolCartoonTemplateSvg { .. }
                 | Operation::ValidateProtocolCartoonTemplate { .. }
@@ -12817,6 +12828,7 @@ impl GentleEngine {
             && store.transcript_capture_pools.is_empty()
             && store.primer_specificity_reports.is_empty()
             && store.primer_specificity_reference_selections.is_empty()
+            && store.primer_specificity_multi_summaries.is_empty()
             && store
                 .active_primer_specificity_reference_selections
                 .is_empty()

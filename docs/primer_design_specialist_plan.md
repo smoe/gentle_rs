@@ -1,6 +1,6 @@
 # Primer Design Specialist Window Plan
 
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 
 ## Verified Starting Point
 
@@ -25,7 +25,9 @@ Whole-reference specificity is a separate evidence workflow. Source-bound
 intended-target geometry and companion per-dimension reference-selection
 receipts now prevent a newer report on another database from silently replacing
 the active evidence. Legacy unbound evidence is inspectable, not passing.
-The approved standalone multi-reference handoff does not add panel fan-out or
+The standalone multi-reference handoff/import/show/list core and
+[tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md) are
+implemented pending Glen/CI Rust verification. This core does not add panel fan-out or
 automatically attach its aggregate to order readiness. Those integrations,
 automatic tail selection and engine-native single-primer design remain separate.
 

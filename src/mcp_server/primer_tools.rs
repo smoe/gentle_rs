@@ -80,6 +80,10 @@ pub(super) fn command_paths(name: &str) -> Option<&'static [&'static str]> {
         "transcript_assay_specificity_finalize" => {
             Some(&["primers transcript-assay-specificity-finalize"])
         }
+        "primer_specificity_multi_handoff" => Some(&["primers specificity-multi-handoff"]),
+        "primer_specificity_multi_import" => Some(&["primers specificity-multi-import"]),
+        "primer_specificity_multi_show" => Some(&["primers specificity-multi-show"]),
+        "primer_specificity_multi_list" => Some(&["primers specificity-multi-list"]),
         _ => None,
     }
 }
@@ -132,6 +136,16 @@ pub(super) fn descriptors() -> Vec<Value> {
                     "confirm":{"type":"boolean","const":true}
                 }}
         }),
+        json!({"name":"primer_specificity_multi_handoff", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":["request","output_dir","confirm"],"properties":{"request":{"type":"object","description":"gentle.primer_pair_multi_reference_request.v1"},
+                "output_dir":{"type":"string"},"state_path":{"type":"string"},"confirm":{"type":"boolean","const":true}}}}),
+        json!({"name":"primer_specificity_multi_import", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":["handoff_path","manifest_path","confirm"],"properties":{"handoff_path":{"type":"string"},"manifest_path":{"type":"string"},
+                "state_path":{"type":"string"},"confirm":{"type":"boolean","const":true}}}}),
+        json!({"name":"primer_specificity_multi_show", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":["summary_id"],"properties":{"summary_id":{"type":"string"},"state_path":{"type":"string"}}}}),
+        json!({"name":"primer_specificity_multi_list", "inputSchema":{"type":"object","additionalProperties":false,
+            "required":[],"properties":{"state_path":{"type":"string"}}}}),
     ]
 }
 
@@ -178,6 +192,26 @@ fn validate_args<'a>(name: &str, arguments: &'a Value) -> Result<&'a Map<String,
 
 fn tokens(name: &str, args: &Map<String, Value>) -> Result<Vec<String>, String> {
     let string = |field| required_string_arg(args, field);
+    if let Some(path) =
+        command_paths(name).filter(|_| name.starts_with("primer_specificity_multi_"))
+    {
+        let mut tokens = path[0]
+            .split_whitespace()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        match name {
+            "primer_specificity_multi_handoff" => {
+                tokens.extend([args["request"].to_string(), string("output_dir")?])
+            }
+            "primer_specificity_multi_import" => {
+                tokens.extend([string("handoff_path")?, string("manifest_path")?])
+            }
+            "primer_specificity_multi_show" => tokens.push(string("summary_id")?),
+            "primer_specificity_multi_list" => {}
+            _ => unreachable!(),
+        }
+        return Ok(tokens);
+    }
     if name == "primer_reports" {
         let family = match string("family")?.as_str() {
             "primer" => 0,
@@ -264,12 +298,19 @@ fn tokens(name: &str, args: &Map<String, Value>) -> Result<Vec<String>, String> 
 pub(super) fn call(default_state_path: &str, name: &str, arguments: &Value) -> Value {
     let run = || -> Result<Value, String> {
         let args = validate_args(name, arguments)?;
-        let writes = name != "primer_reports" || args["action"] == "export";
+        let writes = match name {
+            "primer_reports" => args["action"] == "export",
+            "primer_specificity_multi_list" | "primer_specificity_multi_show" => false,
+            _ => true,
+        };
         if writes {
             require_confirm_true(args, name)?;
         }
         let tokens = tokens(name, args)?;
-        if name == "transcript_assay_specificity_finalize" {
+        if matches!(
+            name,
+            "transcript_assay_specificity_finalize" | "primer_specificity_multi_import"
+        ) {
             run_shell_tool_with_optional_persist(default_state_path, args, tokens, name)
         } else {
             run_non_mutating_shell_tool(default_state_path, args, tokens, name)
@@ -284,6 +325,66 @@ pub(super) fn call(default_state_path: &str, name: &str, arguments: &Value) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn specificity_multi_routes_share_parser_and_require_mutation_approval() {
+        for (name, args, mutation) in [
+            (
+                "primer_specificity_multi_import",
+                json!({"handoff_path":"handoff with spaces.json","manifest_path":"manifest.json","confirm":true}),
+                true,
+            ),
+            (
+                "primer_specificity_multi_show",
+                json!({"summary_id":"synthetic-summary"}),
+                false,
+            ),
+            ("primer_specificity_multi_list", json!({}), false),
+        ] {
+            let args = validate_args(name, &args).unwrap();
+            let tokens = tokens(name, args).unwrap();
+            let parsed = crate::engine_shell::parse_shell_tokens(&tokens).unwrap();
+            assert_eq!(parsed.is_state_mutating(), mutation, "{name}");
+            assert_eq!(command_paths(name).unwrap()[0], tokens[..2].join(" "));
+        }
+        let temp = tempfile::tempdir().unwrap();
+        let state = temp.path().join("absent-state.json");
+        let result = call(
+            state.to_str().unwrap(),
+            "primer_specificity_multi_import",
+            &json!({"handoff_path":"absent.json","manifest_path":"absent.json","confirm":false}),
+        );
+        assert_eq!(result["isError"], true);
+        assert!(result.to_string().contains("confirm"));
+        assert!(!state.exists());
+        let result = call(
+            state.to_str().unwrap(),
+            "primer_specificity_multi_list",
+            &json!({}),
+        );
+        assert_eq!(result["isError"], false);
+        assert!(!state.exists());
+        for (name, args) in [
+            ("primer_specificity_multi_list", json!({})),
+            (
+                "primer_specificity_multi_show",
+                json!({"summary_id":"synthetic-summary"}),
+            ),
+        ] {
+            let shell = tokens(name, args.as_object().unwrap()).unwrap();
+            let expected = run_non_mutating_shell_tool(
+                state.to_str().unwrap(),
+                args.as_object().unwrap(),
+                shell,
+                name,
+            );
+            let result = call(state.to_str().unwrap(), name, &args);
+            match expected {
+                Ok(payload) => assert_eq!(result, tool_result_json(payload, false)),
+                Err(error) => assert_eq!(result, tool_result_text(error, "text", true)),
+            }
+        }
+    }
 
     #[test]
     fn report_routes_match_shared_shell_and_do_not_create_state() {
@@ -327,6 +428,14 @@ mod tests {
         let state = dir.path().join("invalid.json");
         std::fs::write(&state, "not a project").unwrap();
         let mut cases = vec![
+            (
+                "primer_specificity_multi_handoff",
+                json!({"request":{},"output_dir":dir.path().join("output"),"confirm":false}),
+            ),
+            (
+                "primer_specificity_multi_import",
+                json!({"handoff_path":"missing.json","manifest_path":"missing.json","confirm":false}),
+            ),
             (
                 "transcript_assay_specificity_plan",
                 json!({"panel_report_id":"panel","target_genome_id":"genome","output_dir":dir.path().join("output"),"confirm":false}),

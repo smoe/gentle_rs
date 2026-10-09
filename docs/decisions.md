@@ -705,7 +705,15 @@ approval/handoff digest rules are unchanged. Explicit complete finalization can
 replace a selection; superseded evidence is retained and incomplete finalization
 cannot activate it. Legacy evidence without a receipt is inspectable, not
 passing. Explicit new handoff construction revalidates current references;
-displaying historical reports never probes tools or databases.
+standalone multi-reference summaries do not attach to these panel selections.
+Their genomic/transcriptome verdicts remain independent: required failures persist,
+unavailable/incomplete evidence is never a zero/pass, optional-only dimensions are
+not required, and partial external execution cannot create an aggregate pass.
+The parent binds expected commands/paths and retained-byte output receipts;
+scientific summary identity excludes machine paths and execution timestamps.
+Historical display does not probe resources or assert present applicability.
+Import performs fresh source/reference checks, but a hash is not authentication
+of an external process or a claim of laboratory/isoform/order validity.
 
 Import parses and hashes the same retained output bytes. File hashes bind
 content, not the authenticity of an external runner's execution claim.

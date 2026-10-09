@@ -1,5 +1,31 @@
 # GENtle CLI Manual
 
+## Standalone Reference-Bound Primer Specificity
+
+[Tutorial 04.09](tutorial/04-09_reference_bound_primer_specificity.md) explains
+why genomic carryover, transcriptome cross-amplification and unavailable evidence
+must not be collapsed. Assess one saved pair or explicit full oligos with declared
+annealing/tail boundaries against 1-8 explicit already prepared references.
+
+```sh
+gentle_cli --state study.gentle.json primers specificity-multi-handoff @request.json NEW_BUNDLE_DIR
+# Inspect the handoff. A trusted external runner executes its structured commands
+# and fills execution_manifest.json with actual exits and retained-byte hashes.
+gentle_cli --state study.gentle.json primers specificity-multi-import NEW_BUNDLE_DIR/handoff.json NEW_BUNDLE_DIR/execution_manifest.json
+gentle_cli --state study.gentle.json primers specificity-multi-list
+gentle_cli --state study.gentle.json primers specificity-multi-show SUMMARY_ID
+```
+
+Required unavailable references fail before files; optional unavailable references
+are unassessed. Preparation runs no BLAST and never prepares/downloads resources.
+Import is an approved mutation; it validates commands, raw bytes, pair/policy,
+source snapshot, complete searches and current reference/annotation fingerprints.
+The two dimensions report `pass|fail|incomplete|not_requested|not_required` separately.
+An imported summary is not automatic panel-readiness evidence or order approval.
+Show/list inspect immutable history without database probes. Refer to the
+[protocol](protocol.md#standalone-multi-reference-primer-specificity) for schemas,
+MCP tools, applicability and non-claims; the same commands work in GUI Shell.
+
 ## Synthetic Sequence Design
 
 Start with [tutorial 06.07](tutorial/06-07_synthetic_sequence_design.md) for an

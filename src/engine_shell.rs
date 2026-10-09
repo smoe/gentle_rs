@@ -14087,11 +14087,16 @@ impl ShellCommand {
     }
 
     pub fn is_state_mutating(&self) -> bool {
-        // Only this narrowly read-only operation is exempted; all other generic
-        // op payloads keep their existing conservative confirmation behavior.
+        // Exempt only named read-only inspections; imports and file-writing
+        // handoffs keep the conservative generic-op confirmation behavior.
         if let Self::Op { payload } = self
-            && let Ok(Operation::PlanDnaSequenceDesign { .. }) =
-                serde_json::from_str::<Operation>(payload)
+            && let Ok(operation) = serde_json::from_str::<Operation>(payload)
+            && matches!(
+                operation,
+                Operation::PlanDnaSequenceDesign { .. }
+                    | Operation::GetPrimerPairMultiReferenceSpecificitySummary { .. }
+                    | Operation::ListPrimerPairMultiReferenceSpecificitySummaries { .. }
+            )
         {
             return false;
         }
@@ -17688,6 +17693,12 @@ fn push_introspection_report_facts(graph: &mut ProjectFactGraph, engine: &Gentle
     );
     graph.facts.extend(
         engine
+            .list_primer_pair_multi_reference_specificity_summaries()
+            .into_iter()
+            .map(|row| introspection_report_fact(row.summary_id, "primer_specificity_multi")),
+    );
+    graph.facts.extend(
+        engine
             .list_qpcr_design_reports()
             .into_iter()
             .map(|row| introspection_report_fact(row.report_id, "qpcr_design")),
@@ -20364,6 +20375,56 @@ fn primer_specificity_alignment_html_descriptor(id: &str, description: &str) -> 
     })
 }
 
+fn primer_specificity_multi_descriptor(id: &str, action: &str) -> Value {
+    if action == "handoff" {
+        let mut descriptor = pool_artifact_descriptor(
+            id,
+            "Prepare one non-executing handoff for 1..=8 exact references after file-write approval; preflight required indexes before writing, never attach readiness.",
+            vec![
+                json!({"name":"REQUEST","required":true,"subject_kind":"other","detail":"gentle.primer_pair_multi_reference_request.v1 JSON or @file; saved or explicit pair, common policy, explicit kinds/requirements and optional caller mappings"}),
+                json!({"name":"OUTPUT_PATH","required":true,"subject_kind":"other","detail":"fresh external bundle directory"}),
+            ],
+        );
+        descriptor["requires_confirmation"] = json!(true);
+        return descriptor;
+    }
+    let (args, reads, effects, mutating, description) = match action {
+        "import" => (
+            vec![
+                json!({"name":"HANDOFF_PATH","required":true,"subject_kind":"other","detail":"bound multi-reference handoff JSON"}),
+                json!({"name":"MANIFEST_PATH","required":true,"subject_kind":"other","detail":"versioned process/output receipt JSON"}),
+            ],
+            vec![],
+            vec![
+                json!({"fact":"report.exists","equals":"primer_specificity_multi","report_kind":"primer_specificity_multi","effect_kind":"may_on_success"}),
+            ],
+            true,
+            "Validate exact references, commands and retained output bytes; atomically persist an immutable standalone summary, never attach order readiness.",
+        ),
+        "show" => (
+            vec![
+                json!({"name":"SUMMARY_ID","required":true,"subject_kind":"report","detail":"historical content-derived multi-reference summary ID"}),
+            ],
+            vec![
+                json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":"primer_specificity_multi"}),
+            ],
+            vec![],
+            false,
+            "Inspect a historical multi-reference summary without probing databases; applicability is recorded at import.",
+        ),
+        _ => (
+            vec![],
+            vec![],
+            vec![],
+            false,
+            "List retained multi-reference summaries in stable content-ID order without probing databases.",
+        ),
+    };
+    json!({"id":id,"kind":"operation","mutating":if mutating {"true"} else {"false"},"requires_confirmation":mutating,
+        "args":args,"reads":reads,"effects":effects,"precondition_expr":{"all":reads},"description":description,
+        "annotation_status":"fact_annotated","registry":registry_metadata_for_introspection(id)})
+}
+
 fn transcript_assay_cdna_similarity_map_descriptor(id: &str, description: &str) -> Value {
     json!({
         "id": id,
@@ -21894,22 +21955,27 @@ fn annotated_introspection_capability_descriptors() -> Vec<Value> {
                 json!({"name": "OUTPUT_PATH", "required": true, "subject_kind": "other", "detail": "external handoff bundle directory carried by output_dir"}),
             ],
         ),
-        pool_artifact_descriptor(
+        primer_specificity_multi_descriptor(
             "PreparePrimerPairMultiReferenceSpecificityHandoff",
-            "Prepare one non-executing primer-pair handoff for 1..=8 explicit reference indexes; required resources are inspected before any files are written.",
-            vec![
-                json!({"name":"REQUEST", "required":true, "subject_kind":"other", "detail":"gentle.primer_pair_multi_reference_request.v1; one saved or explicit pair, common policy without target selector, explicit references/kinds/requirements and optional caller-provided mappings"}),
-                json!({"name":"OUTPUT_PATH", "required":true, "subject_kind":"other", "detail":"fresh external bundle directory"}),
-            ],
+            "handoff",
         ),
-        pool_artifact_descriptor(
-            "primers specificity-multi-handoff",
-            "Prepare explicit reference-bound BLAST commands without executing them or attaching readiness evidence.",
-            vec![
-                json!({"name":"REQUEST", "required":true, "subject_kind":"other", "detail":"versioned multi-reference request JSON or @file"}),
-                json!({"name":"OUTPUT_PATH", "required":true, "subject_kind":"other", "detail":"fresh bundle directory"}),
-            ],
+        primer_specificity_multi_descriptor("primers specificity-multi-handoff", "handoff"),
+        primer_specificity_multi_descriptor("ImportPrimerPairMultiReferenceSpecificity", "import"),
+        primer_specificity_multi_descriptor("primers specificity-multi-import", "import"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_import", "import"),
+        primer_specificity_multi_descriptor(
+            "GetPrimerPairMultiReferenceSpecificitySummary",
+            "show",
         ),
+        primer_specificity_multi_descriptor("primers specificity-multi-show", "show"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_show", "show"),
+        primer_specificity_multi_descriptor(
+            "ListPrimerPairMultiReferenceSpecificitySummaries",
+            "list",
+        ),
+        primer_specificity_multi_descriptor("primers specificity-multi-list", "list"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_list", "list"),
+        primer_specificity_multi_descriptor("primer_specificity_multi_handoff", "handoff"),
         pool_artifact_descriptor(
             "primers specificity-plan",
             "Prepare deterministic primer BLAST commands and query files without running the BLAST searches.",
@@ -31623,12 +31689,24 @@ fn capability_precondition_atoms(capability_id: &str) -> Option<Vec<Value>> {
         | "resources list-ensembl-regulation-sources"
         | "resources install-ensembl-regulatory-features"
         | "resources prepare-ensembl-regulation-index" => Some(vec![]),
+        "GetPrimerPairMultiReferenceSpecificitySummary"
+        | "primers specificity-multi-show"
+        | "primer_specificity_multi_show" => Some(vec![
+            json!({"fact":"report.exists","subject":{"arg":"SUMMARY_ID"},"equals":"primer_specificity_multi"}),
+        ]),
         "AssessPrimerPairSpecificity"
         | "AssessPrimerPairSpecificityCollection"
         | "collections run primer-specificity"
         | "PreparePrimerPairSpecificityHandoff"
         | "PreparePrimerPairMultiReferenceSpecificityHandoff"
         | "primers specificity-multi-handoff"
+        | "ImportPrimerPairMultiReferenceSpecificity"
+        | "ListPrimerPairMultiReferenceSpecificitySummaries"
+        | "primers specificity-multi-import"
+        | "primers specificity-multi-list"
+        | "primer_specificity_multi_handoff"
+        | "primer_specificity_multi_import"
+        | "primer_specificity_multi_list"
         | "ImportPrimerPairSpecificityHandoff"
         | "ExportPool"
         | "FilterByDesignConstraints"

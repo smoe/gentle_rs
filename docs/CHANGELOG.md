@@ -1,5 +1,30 @@
 # GENtle Changelog
 
+## 2026-10-09 - Standalone Multi-Reference Specificity And Tutorial 04.09
+
+- Add one-pair preparation/import/show/list with explicit 1-8 prepared references,
+  required/optional status, no fallback or implicit resource installation, and
+  caller-labelled intended mappings. Preparation writes a fresh non-executing
+  handoff and pending process-manifest template, not a specificity verdict.
+- Validate current pair/template, commands, policy, query files, retained output
+  sizes/hashes, completeness and reference/annotation identities before atomic
+  import. Keep genomic and transcriptome verdicts independent; missing, stale,
+  partial/cancelled and optional-only evidence never becomes a vacuous pass.
+- Retain immutable scientific-content summaries and child evidence; historical
+  display performs no database probes. No panel-readiness attachment or scheduler.
+  Expose shared shell/engine/MCP/scripting/workflow discovery and agent guidance;
+  adapter execution/parity verification remains pending with Glen/CI.
+- Add tutorial 04.09 explaining each feature and its biological motivation,
+  learning requests, external execution checklist, verdicts, exact panel-selection
+  history and non-claims. Register it in the grouped catalog with source/readability
+  review only; no native GUI, real-data or inner-agent acceptance claimed.
+- Author synthetic admission, manifest/hash/source/tail/policy, verdict matrix,
+  LF/CRLF, save/reload, stale-index/annotation, atomic persistence and adapter
+  regressions. Rust compilation/execution remains with Glen/CI, not locally run.
+- Offline tutorial source checks pass 3/3 and checkout-policy tests pass 20/20;
+  scoped Rust formatting and whitespace pass. The updated catalog/parity
+  projections still require Rust-backed freshness checks at the frozen SHA.
+
 ## 2026-10-08 - Reference-Bound Primer Specificity and Plan Reconciliation
 
 - Bind intended-target geometry to the original source reference, assembly and
