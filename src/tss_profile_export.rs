@@ -1451,19 +1451,21 @@ fn svg_dimensions(svg: &str) -> Result<(u32, u32), EngineError> {
             .map_err(|e| invalid(format!("invalid rendered SVG: {e}")))?
         {
             quick_xml::events::Event::Start(root) | quick_xml::events::Event::Empty(root) => {
-                if root.name().as_ref() != "svg" {
+                // quick-xml versions expose either byte- or string-backed events.
+                if AsRef::<[u8]>::as_ref(root.name().as_ref()) != b"svg" {
                     return Err(invalid("renderer did not return an SVG root"));
                 }
                 let mut width = None;
                 let mut height = None;
                 for attribute in root.attributes() {
                     let attribute = attribute.map_err(|e| invalid(e.to_string()))?;
-                    let target = match attribute.key.as_ref() {
-                        "width" => &mut width,
-                        "height" => &mut height,
+                    let target = match AsRef::<[u8]>::as_ref(attribute.key.as_ref()) {
+                        b"width" => &mut width,
+                        b"height" => &mut height,
                         _ => continue,
                     };
-                    let text = attribute.value.as_ref();
+                    let text = std::str::from_utf8(AsRef::<[u8]>::as_ref(attribute.value.as_ref()))
+                        .map_err(|_| invalid("SVG dimensions must be UTF-8 CSS pixels"))?;
                     let value: f64 = text
                         .trim()
                         .strip_suffix("px")
@@ -1481,7 +1483,9 @@ fn svg_dimensions(svg: &str) -> Result<(u32, u32), EngineError> {
             }
             quick_xml::events::Event::Decl(_) | quick_xml::events::Event::Comment(_) => {}
             quick_xml::events::Event::Text(text)
-                if text.as_ref().bytes().all(|b| b.is_ascii_whitespace()) => {}
+                if AsRef::<[u8]>::as_ref(text.as_ref())
+                    .iter()
+                    .all(u8::is_ascii_whitespace) => {}
             _ => return Err(invalid("unexpected content before SVG root")),
         }
     }
@@ -2781,6 +2785,49 @@ pub(crate) mod tests {
                     && row["local_motif_strand"] == strand
             })
             .unwrap()
+    }
+
+    #[test]
+    fn svg_dimensions_accepts_explicit_pixels_and_xml_prefix_whitespace() {
+        // Hand-crafted SVG parser inputs, not biological data or export evidence.
+        for (svg, expected) in [
+            (r#"<svg width="120" height="80"/>"#, (120, 80)),
+            (r#"<svg width=" 120.25px " height="0.5px"></svg>"#, (121, 1)),
+            (
+                "\r\n\t<?xml version=\"1.0\"?><!-- synthetic -->\n<svg width=\"65535\" height=\"1\"/>",
+                (65_535, 1),
+            ),
+        ] {
+            assert_eq!(svg_dimensions(svg).unwrap(), expected, "{svg}");
+        }
+    }
+
+    #[test]
+    fn svg_dimensions_rejects_invalid_roots_units_and_budget_values() {
+        // Preserve existing strict root, literal-pixel and bounded-size admission.
+        for svg in [
+            "",
+            r#"<html width="120" height="80"/>"#,
+            r#"<svg width="120"/>"#,
+            r#"<svg width="120%" height="80"/>"#,
+            r#"<svg width="12&#48;" height="80"/>"#,
+            r#"<svg width="invalid" height="80"/>"#,
+            r#"<svg width="NaN" height="80"/>"#,
+            r#"<svg width="inf" height="80"/>"#,
+            r#"<svg width="0" height="80"/>"#,
+            r#"<svg width="-1" height="80"/>"#,
+            r#"<svg width="65535.1" height="80"/>"#,
+            r#"<svg width="120" height="0"/>"#,
+            r#"<svg width="120" width="121" height="80"/>"#,
+            r#"prefix<svg width="120" height="80"/>"#,
+            r#"<!DOCTYPE svg><svg width="120" height="80"/>"#,
+        ] {
+            assert_eq!(
+                svg_dimensions(svg).unwrap_err().code,
+                ErrorCode::InvalidInput,
+                "{svg}"
+            );
+        }
     }
 
     #[test]
