@@ -73,11 +73,16 @@ checks passed, Windows's full suite was skipped and macOS was not selected.
 guard, checkout mock repair and twentieth TSS case counts are locally validated;
 they do not establish current native Actions or package acceptance. The later
 run `37292637621` at `462b5ffe` also exposes a Windows rooted-path admission
-failure in tutorial validation; its bounded repair still requires new native
-Windows CI, not a macOS-only verdict. The
-[candidate-preparation handoff](../internal_12_candidate_preparation.md)
-records exact historical evidence, permitted local checks, build-only commands
-and open compatibility/runner decisions. No workflow was dispatched.
+failure in tutorial validation; at that inspection, its bounded repair still
+required new native Windows CI, not a macOS-only verdict. The
+[archived candidate-preparation handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md)
+records that historical evidence and scope; its local checks are not current
+`.12` acceptance. No workflow was dispatched for that handoff.
+
+Current [build-only instructions](../release.md#build-only-candidate-verification),
+[runner inventory and pending decision](../release.md#ubuntu-runner-decision),
+and [compatibility review scope](../clawbio_gentle_integration_onepager.md#compatibility-review-inventory)
+live in their topic owners. These pointers grant no acceptance or dispatch authority.
 
 1. Build the `.12` generator and verify replay against the unchanged historical
    baselines. Regenerate only for a reviewed result change, never merely to

@@ -283,7 +283,32 @@ equivalent `mode: "shell"` form.
 All listed compatibility modes remain available in `v0.1.0-internal.12`.
 The published `.11` did not remove them. Retention or removal is an open owner
 decision for `.12`, not an automatic consequence of the earliest-removal marker;
-see the [mode/call-site inventory](internal_12_candidate_preparation.md#clawbio-compatibility-decision).
+see the [mode/call-site inventory](#compatibility-review-inventory).
+
+## Compatibility Review Inventory
+
+Reviewed on 2026-10-12: all 25 deprecated modes in the [Mode Audit](#mode-audit)
+match `DEPRECATED_REQUEST_MODE_EQUIVALENTS` and remain in `SUPPORTED_REQUEST_MODES`.
+Before any owner-approved removal, review these existing consumers together:
+
+- [gentle_cloning.py](../integrations/clawbio/skills/gentle-cloning/gentle_cloning.py):
+  the deprecation map, `_request_mode_warnings`, request validation and
+  `_build_cli_args`. Twenty-one modes use `PRIMER_SHELL_REQUEST_MODES`; the
+  transcript-panel, PCR-cartoon and two exon-skip modes have separate shared-shell
+  branches. Changing a warning alone does not remove a route.
+- [INTENTS.json](../integrations/clawbio/skills/gentle-cloning/INTENTS.json) and
+  [examples](../integrations/clawbio/skills/gentle-cloning/examples/): descriptor
+  routes/templates and standalone requests still use compatibility modes.
+- The skill [SKILL.md](../integrations/clawbio/skills/gentle-cloning/SKILL.md) and
+  [README.md](../integrations/clawbio/skills/gentle-cloning/README.md) document those
+  requests and their preferred shared-shell equivalents.
+- [test_gentle_cloning.py](../integrations/clawbio/skills/gentle-cloning/tests/test_gentle_cloning.py):
+  supported-mode inventory, descriptor/example parity, exon-skip confirmation,
+  qPCR seed, cDNA and PCR-cartoon command regressions.
+
+This is removal-review scope, not permission to remove modes or evidence of a
+new runtime acceptance run. The `.11` eligibility marker and open `.12` owner
+decision above remain unchanged.
 
 ## Drift Guards
 

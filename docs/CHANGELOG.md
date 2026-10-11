@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-12 - Repair Deleted Release-Handoff Links
+
+- Repair five active links to the intentionally deleted `.12` candidate handoff
+  without restoring its planning ledger. Pin historical CI/handoff evidence to
+  its retained source revision; keep the CLI/JASPAR-lock recheck distinct from
+  the open CertUtil sharing-violation note and current `.12` acceptance.
+- Keep the verified rolling/pinned Ubuntu inventory in the release guide and
+  the retained 25-mode ClawBio review scope in its onepager. Runner and removal
+  decisions remain owner-pending; workflows and compatibility are unchanged.
+- Preserve `.11` history, the `.12` development draft, historical mentions and
+  all scientific, GUI, performance and package acceptance limitations.
+
 ## 2026-10-12 - Prepare No-Push Merged-Source Glen Handoff
 
 - Freeze the remaining execution gates at merged `e981469e`, not the earlier

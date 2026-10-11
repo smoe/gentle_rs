@@ -58,14 +58,14 @@ Release acceptance:
   deterministic proof workflow pass the pre-tag validation recorded in the
   versioned release notes.
 - Require Windows CI on every push plus one selected Linux/macOS job; before tagging, retain both Unix verdicts at the same SHA. Confirm the `.11` retained tutorial-version replay on native Windows, not only locally.
-  Track job `107075366344` at `e4c94bf3`'s legacy SHA-1 CertUtil probe sharing violation separately; it was identical in both outputs, not the parity failure. The historical CLI-lock recheck is recorded in the [handoff](internal_12_candidate_preparation.md#corrected-ci-evidence), not a `.12` pass.
+  Track job `107075366344` at `e4c94bf3`'s legacy SHA-1 CertUtil probe sharing violation separately; it was identical in both outputs, not the parity failure. The historical CLI-lock recheck is recorded in the [archived handoff](https://github.com/smoe/gentle_rs/blob/7c52082c24fca85817d70956146623eef6f24607/docs/internal_12_candidate_preparation.md#corrected-ci-evidence), not a `.12` pass.
 - Full UCSC `rmsk`, raw CEL, full SRA, and genome downloads remain optional
   external resources; CI uses tiny local fixtures without restricting the
   engine or GUI contracts to those fixture sizes.
 - Bind all verdicts to one SHA, lockfile, toolchain/profile and input hashes; rerun gates on candidate changes, never combine nearby revisions' passes.
 - CI must prove the new [package-opt1 recipe](release.md) at one SHA: opt-level 1, all LTO off, 256 codegen units, assertions/overflow checks on, unwinding, no stripping, `incremental=false`, `debug=0`, one build job, five native/three container binaries (no JS/Lua). Keep Rust-built helpers unoptimized. Require fresh receipts and extracted-package smokes. Glen should compare same-SHA `dev`/`package-opt1` build resources and startup/PATZ1 latency before proposing opt-level 2 or thin LTO. Profile-independent UI/export content remains required; `.11` success does not certify `.12` or establish causes for historical compiler SIGKILL/runner shutdown.
 - Re-run headless `runtime-cli` validation with `package-opt1`, preserving RNAPKIN's separately pinned corrected helper lock, early SVG/PNG smoke and unprivileged no-network smoke. `.11`'s successful container publication `36714939309` at `a51bbc06` is the baseline, not acceptance of this changed GENtle recipe. Retain exact source/profile/lock receipts and compiler RSS, pressure/swap and live logs; native packages and GUI acceptance remain separate.
-- Owner decision: pin the [rolling Ubuntu hosts](internal_12_candidate_preparation.md#ubuntu-runner-decision) before the October 19 Ubuntu 26 migration; Linux installer builds already pin `ubuntu-24.04`. No workflow change or Ubuntu 26 qualification is implied.
+- Owner decision: pin the [rolling Ubuntu hosts](release.md#ubuntu-runner-decision) before the October 19 Ubuntu 26 migration; Linux installer builds already pin `ubuntu-24.04`. No workflow change or Ubuntu 26 qualification is implied.
 
 Release cut line:
 
@@ -80,7 +80,7 @@ Outstanding acceptance scope (including [native Windows repairs and the expanded
   to report one of three linked cDNAs and two of four linked records covered,
   with only the true patch record genomically unassessed.
 - Decide `.12` retention/removal of deprecated ClawBio shell-normalizer modes
-  using the [compatibility inventory](internal_12_candidate_preparation.md#clawbio-compatibility-decision); `.11` eligibility did not authorize removal.
+  using the [compatibility inventory](clawbio_gentle_integration_onepager.md#compatibility-review-inventory); `.11` eligibility did not authorize removal.
 
 ## Next Session Priorities
 
