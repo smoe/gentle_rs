@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-12 - Prepare No-Push Merged-Source Glen Handoff
+
+- Freeze the remaining execution gates at merged `e981469e`, not the earlier
+  `f56fdf84` CI source. All 263 scoped offline tests pass on macOS/arm64
+  (39.148 s), including two real DuckDB fixture checks; retain the command and
+  raw log hash in the [six-item ledger](glen_audit_followups_20261008.md).
+- Prepare a 46,038-byte Git bundle from the published prerequisite `f56fdf84`.
+  Independently reconstruct the exact merged HEAD/tree and unchanged lockfile
+  in a clean temporary checkout, then record its checksum and Glen's recovery
+  commands. The owner relays this locally prepared bundle through the chat;
+  delivery, external execution and native/package acceptance remain unclaimed.
+- No local Rust build/check/test, push, dispatch or historical-evidence change.
+
 ## 2026-10-12 - Merge Imported-TSS And Repeat Tutorial Preparation
 
 - At the owner's request, merge `gentle_rs_2_main` commit `ae491a0c` into

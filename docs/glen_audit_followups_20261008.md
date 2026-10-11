@@ -92,10 +92,47 @@ The subsequent owner-requested integration of `gentle_rs_2_main` commit
 It merges without conflicts and passes 93 scoped offline tests, including real
 DuckDB I/O; details and raw log hash are in the changelog. The `f56fdf84`
 checkpoint below remains source-bound historical evidence, not acceptance of
-this new merge. Re-pin and rerun the final-source gates after integration;
-no matching new binaries, full-platform or package verdict is inferred.
+this new merge. The frozen execution-handoff source is now
+`e981469e4beb637d2def12617ff974c76661ace5`, tree
+`05246928299ebe32a6008cf38e391c1817b4ee2a`, with unchanged `Cargo.lock`
+SHA-256 `ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`.
+No matching new binaries, full-platform or package verdict is inferred.
 
-The frozen execution-handoff source is
+All 263 scoped offline tests pass at this exact SHA on macOS/arm64, Python
+3.14.7 (39.148 s), including two real DuckDB 1.5.4 fixture I/O checks:
+
+```bash
+env -u GENTLE_TUTORIAL_BIN_DIR python3 -m unittest \
+  scripts.test_release_candidate scripts.test_package_desktop \
+  scripts.test_release_build_monitor scripts.test_gui_startup_summary \
+  scripts.test_container scripts.test_tutorial_checkouts \
+  scripts.test_primer_specificity_multi_tutorial scripts.test_ci_vkorc1_gui_audit \
+  scripts.test_tutorial_gui_acceptance scripts.test_prepare_public_vkorc1_audit \
+  scripts.test_tutorial_acceptance \
+  scripts.test_tutorial_walkthroughs.WalkthroughSourceTests \
+  scripts.test_tutorial_gap_lessons scripts.test_regulatory_motif_fixture -q
+```
+
+Retained raw log: `/private/tmp/gentle-glen-e981469e-offline.log`, SHA-256
+`d1357b08c27dba92e748b5450aa6bb19270155abb5f4069317eac3d1ef8b4738`.
+These helper/source/fixture checks execute no Rust build, native GENtle or live
+model, and supply no package or scientific acceptance.
+
+The no-push source bundle `/private/tmp/gentle-glen-e981469e.bundle` is 46,038
+bytes, SHA-256
+`8bd274c6ee4d811401100dcd584ec5bdafd5572e4e5e0e5875bbcea3771402bd`.
+It contains the committed delta from prerequisite
+`f56fdf849957d03d6f232c041cc74347d5ab471b` to the frozen merge, not untracked
+worktree data or an audit archive. `git bundle verify` passes. An independent
+temporary repository fetched only that prerequisite and bundle, then checked
+out the exact new HEAD/tree above with empty `git status --porcelain` and the
+same raw lockfile hash. The bundle is prepared locally, not uploaded or pushed;
+the owner relays it to Glen with the handoff below. Later status-only commits
+do not change the selected execution source or inherit acceptance.
+
+### Preceding Main Snapshot: f56fdf84
+
+The preceding execution-handoff source is
 `f56fdf849957d03d6f232c041cc74347d5ab471b`, the merge of `gentle_rs_2_main`
 after the `gentle_rs_3` integration. This exact source is already available on
 GitHub; Codex neither pushed it nor dispatched the observed run. Its unchanged
@@ -259,19 +296,34 @@ native/package verdict from these offline tests.
 | 1. Audit preservation | Complete; original bytes unchanged | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes at `30f23aa4`. |
 | 2. Tutorial 08.04 GUI/agent contracts | Historical bounded pass at `3ac4a02d`; current source pending | [Retained native receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#synthetic-native-contract): all 115 hashes, 19 focused Rust tests and eight Linux/X11 dev input steps. Explicit T, completion transition and three full oracle `Seq` records verified. Synthetic 20-bp guard, not public-locus GUI or scientific approval; retain fresh final-source evidence. |
 | 3. Live-agent acceptance | Historical genuine public-starter pass at `3ac4a02d`; current source pending | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), macOS/arm64 dev CLI and authorized login. Clarification then two unexecuted `ask` suggestions; reviewed manual execution preserves both sources and all four full `Seq` records match fresh CI. No credential/model/scientific claim; require final-source acceptance. |
-| 4. Honest visual evidence | Historical bounded pass at `3ac4a02d`; clean-source guard passes offline locally and in Linux CI at `f56fdf84`, fresh execution pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. New guards refuse dirty inputs and stale/changed binaries; they do not execute the public workflow or supply a public-locus GUI verdict. |
+| 4. Honest visual evidence | Historical bounded pass at `3ac4a02d`; clean-source guard passes offline at `e981469e` and in earlier Linux CI at `f56fdf84`, fresh execution pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. New guards refuse dirty inputs and stale/changed binaries; they do not execute the public workflow or supply a public-locus GUI verdict. |
 | 5. Scroll benchmarks | Historical deterministic CPU pass at `3ac4a02d`; current source pending | [Retained scroll receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 hashes and 24 bidirectional fixture/size cases, bounded viewport and unchanged content. No timed regression/native-latency claim; rerun the final-source cases without replacing historical evidence. |
-| 6. .12 package acceptance | Open; 258 local offline tests and Linux policy/headless checks pass at `f56fdf84`; full-platform/native/package gates pending | The five-binary source/hash gate and delayed-start monitor regression are implemented, not native-accepted. Require corrected primer import plus fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
+| 6. .12 package acceptance | Open; 263 local offline tests pass at `e981469e`; earlier Linux policy/headless checks at `f56fdf84` do not accept this source | The five-binary source/hash gate and delayed-start monitor regression are implemented, not native-accepted. Require corrected primer import plus fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
 
 ### Glen Execution Handoff: 2026-10-12
 
-The owner assigns Glen assistance with all remaining execution gates. Use the
-already-published [exact f56fdf84 source](https://github.com/smoe/gentle_rs/commit/f56fdf849957d03d6f232c041cc74347d5ab471b),
-not a generic latest main or the older offline-tested predecessor. No source
-bundle, credential transfer or new Codex push is needed. Make a clean isolated
-checkout on Glen's approved external runner, never reset his primary tree.
-Record `git rev-parse HEAD`, `git status --porcelain` and the raw lockfile hash
-before building; require the source and lockfile above, with no dirty inputs.
+The owner assigns Glen assistance with all remaining execution gates. This
+handoff supersedes the earlier `f56fdf84` target: use exact merged source
+`e981469e4beb637d2def12617ff974c76661ace5`, not moving main or an older binary.
+Relay the small checksum-bound bundle above; no new GitHub push or credential
+transfer is authorized. Make a new isolated checkout on Glen's approved
+external runner, never reset his primary tree. With `BUNDLE` pointing to the
+received file and `CHECKOUT` naming a new directory, reconstruct it as follows:
+
+```bash
+git init "$CHECKOUT"
+git -C "$CHECKOUT" fetch --depth=1 https://github.com/smoe/gentle_rs.git \
+  f56fdf849957d03d6f232c041cc74347d5ab471b
+git -C "$CHECKOUT" bundle verify "$BUNDLE"
+git -C "$CHECKOUT" fetch "$BUNDLE" HEAD:refs/heads/glen-audit-source
+git -C "$CHECKOUT" checkout --detach e981469e4beb637d2def12617ff974c76661ace5
+git -C "$CHECKOUT" rev-parse HEAD HEAD^{tree}
+git -C "$CHECKOUT" status --porcelain
+```
+
+Before fetching from the bundle, require its exact byte count and SHA-256 above.
+Before building, require the exact HEAD/tree, empty status and raw lockfile hash
+above. Use an absolute bundle path so Git resolves it outside the checkout.
 Keep caches, credentials and new evidence outside the source checkout. If any
 required platform/tool/authentication is unavailable, report that gate as unrun
 rather than substituting older binaries or a nearby SHA. This is a prepared
@@ -282,7 +334,7 @@ than inventing a direct transport or asking again for a delivery channel.
 Glen's requested work, all without publication:
 
 1. Confirm the exact checkout, lockfile, platform/toolchain and binary hashes.
-   Rerun the 258 offline gates above and the targeted multi-reference import/glossary
+   Rerun the 263 offline gates above and the targeted multi-reference import/glossary
    regressions before full Rust suites. Include default, headless CLI/MCP,
    JS/Lua/all-features and fresh Linux/macOS/Windows results; report primary
    failures separately from cascades and native-Windows omissions.
