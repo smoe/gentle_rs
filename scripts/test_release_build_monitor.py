@@ -1,10 +1,12 @@
 from pathlib import Path
+import os
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 from scripts import release_build_monitor as monitor
 
@@ -78,7 +80,22 @@ class ReleaseBuildMonitorTests(unittest.TestCase):
                     self.assertIn("release_resource_peak", completed.stdout)
                     self.assertEqual(completed.stdout, log.read_text())
 
-    @unittest.skipUnless(hasattr(signal, "SIGTERM"), "requires POSIX-style signals")
+    def wait_for_first_sample(self, process: subprocess.Popen, log: Path) -> None:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                output, _ = process.communicate(timeout=10)
+                self.fail(f"Monitor exited before its first sample: {output}")
+            if log.exists() and any(
+                line.startswith("release_resource_sample ")
+                for line in log.read_text().splitlines()
+            ):
+                # Samples are emitted only after signal handlers are installed.
+                return
+            time.sleep(0.01)
+        self.fail("Monitor did not emit its first sample within 10 seconds")
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX process groups")
     def test_runner_forwards_termination_and_fails(self) -> None:
         with tempfile.TemporaryDirectory(prefix="release monitor signal ") as directory:
             log = Path(directory) / "build.log"
@@ -99,12 +116,40 @@ class ReleaseBuildMonitorTests(unittest.TestCase):
                 stderr=subprocess.STDOUT,
                 text=True,
             )
-            time.sleep(0.1)
-            process.terminate()
-            output, _ = process.communicate(timeout=10)
+            try:
+                self.wait_for_first_sample(process, log)
+                process.terminate()
+                output, _ = process.communicate(timeout=10)
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.communicate(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.communicate(timeout=10)
         self.assertEqual(process.returncode, 128 + signal.SIGTERM)
         self.assertIn(f"signal={signal.SIGTERM}", output)
+        self.assertIn(f"command_returncode={-signal.SIGTERM}", output)
         self.assertIn("release_resource_peak", output)
+
+    @unittest.skipUnless(os.name == "posix", "requires POSIX process groups")
+    def test_runner_waits_for_delayed_start_before_termination(self) -> None:
+        original_popen = subprocess.Popen
+
+        def delayed_start(command, **kwargs):
+            # Hand-crafted Python startup delay reproduces the old 100-ms race.
+            command = [
+                sys.executable,
+                "-c",
+                "import runpy,sys,time; time.sleep(0.3); sys.argv=sys.argv[1:]; "
+                "runpy.run_path(sys.argv[0], run_name='__main__')",
+                *command[1:],
+            ]
+            return original_popen(command, **kwargs)
+
+        with patch.object(subprocess, "Popen", side_effect=delayed_start):
+            self.test_runner_forwards_termination_and_fails()
 
 
 if __name__ == "__main__":

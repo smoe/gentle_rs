@@ -1,5 +1,20 @@
 # GENtle Changelog
 
+## 2026-10-12 - Synchronize Package-Monitor Signal Regression
+
+- Reproduce the recorded monitor-test startup race with a hand-crafted 300-ms
+  Python delay: the old fixed 100-ms wait terminates the process before signal
+  handlers exist, returning `-15` instead of the required forwarded `143`.
+- Wait for the first flushed resource sample, retain a finite readiness bound
+  and subprocess cleanup, and add the delayed-start regression. Assert that
+  SIGTERM also reaches the child. Production monitoring is unchanged.
+- All five focused monitor tests and 235 scoped offline release, package,
+  container, checkout and tutorial-audit tests pass on macOS. Process sampling
+  requires execution outside the filesystem sandbox; its earlier `ps` permission
+  failures are environmental, separate from the reproduced startup race.
+- Continue the six audit follow-ups on local `main`; no Rust build/check/test,
+  push, workflow dispatch, historical-evidence change or package acceptance.
+
 ## 2026-10-12 - Align Synthetic Specificity Hits With Their Reference
 
 - Repair the multi-reference import fixture's contradictory perfect-hit data:
