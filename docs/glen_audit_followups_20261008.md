@@ -87,6 +87,14 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 ### Current Main Snapshot: 2026-10-12
 
+The subsequent owner-requested integration of `gentle_rs_2_main` commit
+`ae491a0c` adds imported-TSS/repeat tutorial fixtures and Rust regression source.
+It merges without conflicts and passes 93 scoped offline tests, including real
+DuckDB I/O; details and raw log hash are in the changelog. The `f56fdf84`
+checkpoint below remains source-bound historical evidence, not acceptance of
+this new merge. Re-pin and rerun the final-source gates after integration;
+no matching new binaries, full-platform or package verdict is inferred.
+
 The frozen execution-handoff source is
 `f56fdf849957d03d6f232c041cc74347d5ab471b`, the merge of `gentle_rs_2_main`
 after the `gentle_rs_3` integration. This exact source is already available on

@@ -7,7 +7,8 @@ This tutorial answers a narrower question than the integrated locus report:
 > and which evidence is still unavailable?
 
 It uses an entirely synthetic public minus-strand fixture. No network request,
-private sample, database query or new motif scoring occurs while you inspect it.
+private sample, database query or new motif scoring occurs in the core inspection
+steps. The optional companion below explicitly adds local DuckDB queries.
 
 ## What you will accomplish
 
@@ -136,7 +137,8 @@ Use the lane toggles to isolate one evidence class at a time:
   belongs to the exact score kind shown by the report.
 - **Imported motif evidence** — separately imported genomic hits, when a report
   contains them. Their triangles retain strand, span, raw score and coverage;
-  this fixture intentionally has none.
+  the original fixture intentionally has none. The optional companion below
+  supplies compatible, nonempty imported hits without replacing that fixture.
 - **Other** — source annotations that do not belong to the categories above.
 
 Hover or select a feature to inspect its exact interval and provenance. Keep
@@ -155,6 +157,74 @@ A defensible description of this screen is:
 
 Do not say that a high PSSM score is binding affinity, that missing control data
 is zero, or that a CUT&RUN-style interval proves the displayed motif is occupied.
+
+## Optional: Add Nonempty Imported DuckDB Hits
+
+Use this only after the core walkthrough. It needs Python 3, the local DuckDB
+CLI and GENtle's shared query/export commands; no genome download or new PFM
+scoring is involved. Create a fresh `/tmp/tss-import-lesson` parent directory;
+the `package` and `enriched` subdirectories must not already exist. Replace
+`duckdb` with your executable path if it is not on PATH. Run from the repository
+root:
+
+```sh
+python3 test_files/fixtures/regulatory_motif_subset/make_fixture.py /tmp/tss-import-lesson/package --example tss-view --duckdb duckdb
+gentle_cli features genomic-motif-evidence --package /tmp/tss-import-lesson/package --duckdb duckdb --genome-id synthetic-genome-v1 --motif MA0004.1 --gene SYNMINUS --path /tmp/tss-import-lesson/full.json
+gentle_cli features genomic-motif-evidence --package /tmp/tss-import-lesson/package --duckdb duckdb --genome-id synthetic-genome-v1 --motif MA0004.1 --region partial=synthetic_chr:294..301 --path /tmp/tss-import-lesson/partial.json
+gentle_cli features genomic-motif-evidence --package /tmp/tss-import-lesson/package --duckdb duckdb --genome-id synthetic-genome-v1 --motif MA0004.1 --gene SYNPLUS --path /tmp/tss-import-lesson/plus.json
+gentle_cli features tss-tfbs-profiles-export --report docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json --genomic-motif-evidence /tmp/tss-import-lesson/full.json --genomic-motif-evidence /tmp/tss-import-lesson/partial.json --output-dir /tmp/tss-import-lesson/enriched --formats svg,genbank,embl
+```
+
+The preset is deliberately different from the generator's default `regulatory`
+example. Only `tss-view` matches this lesson's exact reference, assembly, contig
+and six-base MA0004.1 footprint. Read the
+[generator provenance](../../test_files/fixtures/regulatory_motif_subset/README.md).
+All hit scores are hand-crafted `log2_relative_risk`, not actual Arnt PFM scores,
+binding probabilities or experimental occupancy. Synthetic audit placeholders
+do not attest a real Ensembl audit or atlas producer.
+
+Expect three hits in each minus-window query and two in the plus-window query.
+Full and partial queries can return the same three hits **without covering the
+same region**: `[294,301)` does not cover the full minus TSS window `[292,303)`.
+The partial source must remain labelled PARTIAL; missing hits are not evidence
+of absence. A footprint may overlap a query without fitting entirely inside it.
+
+The export hashes and embeds the actual query reports. It must leave the old
+report, curves and treatment/control context unchanged, without querying again
+or rescoring. Its new `report.json`, export receipt and imported-hit table are
+execution products, not hand-written fixtures. Check the binding result before
+loading the enriched report into the same active viewer:
+
+```text
+ui open tss-view --report /tmp/tss-import-lesson/enriched/report.json
+```
+
+Use that command through GUI-hosted Agent Assistant, or choose **Load TSS profile
+report…**. Headless execution still cannot adopt a native-window intent.
+
+On the minus-strand view, inspect these zero-based, half-open local footprints:
+
+| Genomic footprint | Genomic strand | Local footprint / strand | Raw score |
+| --- | --- | --- | --- |
+| `[294,300)` | `-` | `[3,9)` / `+` | 1.25 |
+| `[296,302)` | `+` | `[1,7)` / `-` | 0 |
+| `[290,296)` | `+` | clipped `[7,11)` / `-`; full `[7,13)` | -0.5 |
+
+Genuine zero and negative raw scores remain evidence values, not unavailable
+windows. Imported lanes retain their own score units and scales; never relabel
+them as the bound report's `llr_bits` curves. Hover and select
+a hit to verify strand, clipping and interval-only navigation, even when there
+is no corresponding annotation feature. The SYNPLUS query checks both genomic
+orientations; it is not an additional loaded minus-window source.
+
+The unavailable control remains unavailable. This 11-base exercise cannot teach
+treatment-versus-control biology or reporter suitability. Use 08.17 for local
+factor curves, and [08.05](08-05_reporter_construct_handoff_cli.md) and
+[08.09](generated/chapters/08-09_promoter_reporter_panel_planning_offline.md)
+for reporter reasoning.
+New shared-query/export Rust execution and native imported-hit screenshots are
+**pending Glen/CI**. The old screenshots above prove only the original no-hit
+walkthrough, not this companion.
 
 ## How this fits the neighbouring tutorials
 

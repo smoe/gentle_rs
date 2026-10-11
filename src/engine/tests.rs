@@ -64809,6 +64809,163 @@ fn query_repeat_annotations_parses_ucsc_rmsk_and_filters_line_aliases() {
     assert_eq!(report.rows[0].normalized_alias, "LINE/L1");
 }
 
+#[test]
+fn repeat_cohort_local_project_shell_pipeline_keeps_distinct_loci() {
+    let root = tempdir().expect("temporary isolated cache and reports");
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let catalog_path = repo.join("assets/genomes.json");
+    let rmsk_path = repo.join("test_files/fixtures/repeat_cohort/local_project.rmsk.txt");
+    let cache = root.path().join("repeat cache 'with quote'");
+    let quoted = |path: &Path| crate::engine_shell::quote_shell_arg(&path.to_string_lossy());
+    let catalog =
+        crate::genomes::GenomeCatalog::from_json_file(catalog_path.to_string_lossy().as_ref())
+            .expect("committed LocalProject catalog");
+    catalog
+        .prepare_genome_once_with_cache("LocalProject", Some(cache.to_string_lossy().as_ref()))
+        .expect("prepare only local reference inputs");
+    let first = catalog
+        .get_sequence_region_with_cache(
+            "LocalProject",
+            "AB011549.2",
+            1844,
+            1849,
+            Some(cache.to_string_lossy().as_ref()),
+        )
+        .expect("first repeat DNA");
+    let second = catalog
+        .get_sequence_region_with_cache(
+            "LocalProject",
+            "AB011549.2",
+            3878,
+            3883,
+            Some(cache.to_string_lossy().as_ref()),
+        )
+        .expect("second repeat DNA");
+    assert_eq!(first.to_ascii_uppercase(), "AGCCAG");
+    assert_eq!(first.to_ascii_uppercase(), second.to_ascii_uppercase());
+
+    let mut engine = GentleEngine::default();
+    let query_line = format!(
+        "features repeat-query LocalProject --rmsk {} --alias LINE/L1",
+        quoted(&rmsk_path),
+    );
+    let query = execute_shell_command(
+        &mut engine,
+        &crate::engine_shell::parse_shell_line(&query_line).expect("parse lesson repeat preview"),
+    )
+    .expect("execute repeat preview");
+    assert!(!query.state_changed);
+    assert_eq!(query.output["report"]["parsed_row_count"], 3);
+    assert_eq!(query.output["report"]["matched_row_count"], 2);
+    assert_eq!(query.output["report"]["rows"].as_array().unwrap().len(), 2);
+    for mode in [
+        "repeat_midpoint",
+        "transcript_5utr_start",
+        "pol2_promoter_upstream",
+        "cds_stop_context",
+    ] {
+        let cohort_path = root.path().join(format!("{mode}.json"));
+        let line = format!(
+            "features repeat-cohort LocalProject --rmsk {} --alias LINE/L1 --geometry {mode} --upstream-bp 10 --downstream-bp 10 --catalog {} --cache {} --path {}",
+            quoted(&rmsk_path),
+            quoted(&catalog_path),
+            quoted(&cache),
+            quoted(&cohort_path),
+        );
+        let command = crate::engine_shell::parse_shell_line(&line).expect("parse lesson cohort");
+        let built = execute_shell_command(&mut engine, &command).expect("execute cohort");
+        assert!(!built.state_changed);
+        let cohort: RepeatEnvironmentCohortReport =
+            serde_json::from_slice(&fs::read(&cohort_path).expect("saved cohort"))
+                .expect("portable cohort JSON");
+        assert_eq!(cohort.parsed_repeat_count, 3);
+        assert_eq!(cohort.matched_repeat_count, 2);
+        assert_eq!(
+            cohort.rows.len(),
+            2,
+            "identical repeat DNA is not a locus identity"
+        );
+        assert_ne!(cohort.rows[0].row_id, cohort.rows[1].row_id);
+        assert_ne!(
+            cohort.rows[0].repeat.start_0based,
+            cohort.rows[1].repeat.start_0based
+        );
+        assert_eq!(cohort.rows[0].repeat.strand, "+");
+        assert_eq!(cohort.rows[1].repeat.strand, "-");
+        for row in &cohort.rows {
+            assert!(row.transcript_contexts.is_empty());
+            assert!(row.rna_rank_score.is_none());
+            assert!(row.rna_support_labels.is_empty());
+            for window in &row.geometry_windows {
+                if window.mode != RepeatEnvironmentGeometryMode::RepeatMidpoint {
+                    assert!(!window.available);
+                    assert!(window.reason.contains("no transcript projection available"));
+                    assert!(window.anchor_1based.is_none());
+                }
+            }
+        }
+        let summary_path = root.path().join(format!("{mode}.tfbs.json"));
+        let line = format!(
+            "features window-cohort-tfbs {} --motif AAC --score-kind llr_bits --allow-negative --catalog {} --cache {} --path {}",
+            quoted(&cohort_path),
+            quoted(&catalog_path),
+            quoted(&cache),
+            quoted(&summary_path),
+        );
+        let command = crate::engine_shell::parse_shell_line(&line).expect("parse lesson TFBS");
+        let summarized =
+            execute_shell_command(&mut engine, &command).expect("execute saved-cohort TFBS");
+        assert!(!summarized.state_changed);
+        let summary: WindowCohortTfbsReport =
+            serde_json::from_slice(&fs::read(&summary_path).expect("saved summary"))
+                .expect("portable window summary JSON");
+        if mode == "repeat_midpoint" {
+            assert_eq!(summary.returned_window_count, 2, "no silent empty success");
+            assert_eq!(summary.summary_rows.len(), 2);
+            for window in &summary.windows {
+                assert_eq!(window.tfbs_score_tracks.tracks.len(), 1);
+                assert!(window.tfbs_score_tracks.tracks[0].scored_window_count > 0);
+                assert!(!window.tfbs_score_tracks.tracks[0].forward_scores.is_empty());
+                assert_eq!(window.tfbs_score_tracks.tss_markers.len(), 1);
+                assert_eq!(
+                    window.tfbs_score_tracks.tss_markers[0].feature_kind,
+                    "repeat_environment_anchor",
+                    "a repeat midpoint is not an annotated transcript start",
+                );
+            }
+            for summarized in &summary.summary_rows {
+                let row = cohort
+                    .rows
+                    .iter()
+                    .find(|row| row.row_id == summarized.row_id)
+                    .unwrap();
+                let peak = summarized
+                    .peak_position_0based
+                    .expect("scored peak position");
+                let selected = &row.selected_window;
+                let expected = if row.repeat.strand == "-" {
+                    selected.end_1based.unwrap() - peak
+                } else {
+                    selected.start_1based.unwrap() + peak
+                };
+                assert_eq!(summarized.peak_genomic_position_1based, Some(expected));
+            }
+        } else {
+            assert_eq!(summary.returned_window_count, 0);
+            assert!(
+                summary
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("geometry is unavailable"))
+            );
+        }
+    }
+    assert!(
+        engine.state().sequences.is_empty(),
+        "analysis does not import project sequences"
+    );
+}
+
 fn write_ucsc_rmsk_interval_index_fixture(root: &Path) -> PathBuf {
     let text = include_str!("../../test_files/fixtures/resources/ucsc.rmsk.hg38.edge.txt");
     let resource_path = root.join("ucsc.rmsk.hg38.json");

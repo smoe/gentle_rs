@@ -88,6 +88,9 @@ test_files/fixtures/genomic_regions/serpine1_offline/synthetic_serpine1_cutrun.b
 # TSS manifests and context receipts bind these exact fixture bytes.
 test_files/fixtures/tss_profiles/** text eol=lf
 
+# The repeat lesson's raw teaching rows are hash-checked in checkout tests.
+test_files/fixtures/repeat_cohort/*.txt text eol=lf
+
 # The native TSS-view tutorial retains hash-bound JSON and annotated GenBank inputs.
 docs/tutorial/reproducibility/tss_regulatory_view_gui/** text eol=lf
 # Keep the hash-bound export's padded GenBank ORIGIN line byte-identical.
