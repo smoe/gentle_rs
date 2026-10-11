@@ -360,6 +360,39 @@ window, and they do not predict reporter behaviour.
 
 ## 6. Export the view
 
+### Check target readiness before export
+
+The [agent guide's alternative-input exercise](01-01_agent_interfaces.md#readiness-with-alternative-inputs)
+explains `ready`, `blocked` and `unknown`. TSS export is more specific: choose
+**exactly one target**, either a window sequence or a saved collection. Replace
+`TP73_WINDOW` with Step 3's actual output ID, and check the selected target in
+GUI Shell or against the outer agent's explicit state:
+
+```text
+introspect readiness promoters tss-view-svg --arg SEQ_ID=TP73_WINDOW
+introspect readiness promoters tss-view-svg --arg COLLECTION_ID=tp73_tss
+introspect readiness promoters tss-view-svg
+```
+
+The first two checks should report `truth=satisfied`, `readiness=ready` after
+the approved materialization, with no unbound-target diagnostics. They are
+separate checks for the two export forms, not permission to combine them.
+With neither selector, the third check reports `truth=unknown`,
+`readiness=unknown`: GENtle has not been told which target to assess.
+
+If the explicitly selected sequence or collection is absent, its readiness is
+`blocked` (`truth=unsatisfied`). The unselected alternative cannot rescue it:
+GENtle will not silently switch to a different window or collection. Supplying
+both selectors is invalid at export time; do not use that as a readiness
+shortcut. A missing selected target is different from an unspecified target.
+
+These checks do not export or rescore anything. `ready` confirms only the
+declared target prerequisite, not valid TSS geometry, current collection-member
+bindings, scoring admission, a writable destination or artifact-write consent.
+The export still validates those requirements and returns its own receipt.
+
+### Write the SVG
+
 **GUI**
 
 **Export View SVG**. This exports the enabled and filter-matched lanes over the

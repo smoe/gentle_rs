@@ -1,4 +1,4 @@
-"""Offline regression companions for the hand-written MCP/Feature Editor guides.
+"""Offline source checks for readiness and the MCP/Feature Editor guides.
 
 All inputs are synthetic, documented in docs/tutorial/inputs/README.md. Tests
 write only temporary state/evidence and never claim GUI acceptance. Set
@@ -27,6 +27,58 @@ BIN_DIR = os.environ.get("GENTLE_TUTORIAL_BIN_DIR")
 
 
 class WalkthroughSourceTests(unittest.TestCase):
+    def test_agent_readiness_exercise_keeps_unknown_diagnostics_separate(self):
+        guide = ROOT / "docs/tutorial/01-01_agent_interfaces.md"
+        text = guide.read_text(encoding="utf-8")
+        section = text.split("### Readiness with alternative inputs\n", 1)[1].split(
+            "### Exercise B:", 1)[0]
+        expected = [
+            "introspect readiness render-pool-gel-svg --arg INPUTS=agent_toy",
+            "introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent",
+            "introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent "
+            "--arg CONTAINER_IDS=agent_demo_absent",
+            "introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent "
+            "--arg CONTAINER_IDS=agent_demo_absent --arg ARRANGEMENT_ID=agent_demo_absent",
+        ]
+        commands = re.findall(r"^introspect readiness .+$", section, re.M)
+        self.assertEqual(commands, expected)
+        rows = [line.split("|")[2:5] for line in section.splitlines()
+                if re.match(r"\| [1-4]:", line)]
+        self.assertEqual([[cell.strip() for cell in row] for row in rows], [
+            ["`satisfied`", "`ready`", "2"],
+            ["`unknown`", "`unknown`", "2"],
+            ["`unknown`", "`unknown`", "1"],
+            ["`unsatisfied`", "`blocked`", "0"],
+        ])
+        for term in ["does not execute", "None of these checks renders",
+                     "use `truth` and `readiness` as the verdict",
+                     "`evaluation_unknown_atoms`", "Negating unknown",
+                     "required approval", "does **not** prove biological absence"]:
+            with self.subTest(term=term):
+                self.assertIn(term, section)
+
+    def test_tss_export_readiness_teaches_exclusive_not_fallback_targets(self):
+        guide = ROOT / "docs/tutorial/08-17_tp73_dnp73_factor_curves.md"
+        text = guide.read_text(encoding="utf-8")
+        section = text.split("### Check target readiness before export\n", 1)[1].split(
+            "### Write the SVG", 1)[0]
+        self.assertEqual(re.findall(r"^introspect readiness .+$", section, re.M), [
+            "introspect readiness promoters tss-view-svg --arg SEQ_ID=TP73_WINDOW",
+            "introspect readiness promoters tss-view-svg --arg COLLECTION_ID=tp73_tss",
+            "introspect readiness promoters tss-view-svg",
+        ])
+        for term in ["**exactly one target**", "Step 3's actual output ID",
+                     "truth=satisfied", "readiness=ready", "truth=unknown",
+                     "readiness=unknown", "`blocked` (`truth=unsatisfied`)",
+                     "both selectors is invalid", "will not silently switch",
+                     "checks do not export or rescore", "artifact-write consent"]:
+            with self.subTest(term=term):
+                self.assertIn(term, section)
+        for guide in [guide, ROOT / "docs/tutorial/01-01_agent_interfaces.md"]:
+            for target in re.findall(r"\]\(([^)]+)\)", guide.read_text(encoding="utf-8")):
+                if "://" not in target:
+                    self.assertTrue((guide.parent / target.split("#")[0]).exists(), target)
+
     def test_feature_editor_manual_gui_evidence_is_hash_bound(self):
         evidence_path = ROOT / "docs/screenshots/feature_editor_gui_cli/evidence.json"
         evidence = json.loads(evidence_path.read_text())

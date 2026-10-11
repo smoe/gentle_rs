@@ -36,6 +36,13 @@
   verification and selected sequence/collection TSS routes. Update the older
   mixed-input gel assertion to distinguish unknown alternatives from a fully
   assessed blocked conjunction; keep the missing-input diagnostic.
+- Teach the corresponding readiness checks in tutorial 01.01 with four
+  read-only gel-input examples and an explicit diagnostic/verdict distinction.
+  In 08.17, show selected window/collection checks and explain why a missing
+  selected TSS target stays blocked. Neither prerequisite readiness nor this
+  source review grants approval, verifies an export or establishes biology.
+  Add offline tutorial-source guards without regenerating scientific artifacts
+  or changing historical review/screenshot evidence.
 - Verification: Rust build/check/tests are deliberately left to Glen/CI on
   the committed SHA. Scoped formatting, whitespace and session-close checks
   are recorded at handoff; no Rust, native GUI or biological acceptance is
