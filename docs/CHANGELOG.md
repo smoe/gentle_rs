@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-11 - Reconcile Audit Gates With Local Main Development
+
+- Update the six-item follow-up ledger with the owner's latest local-main and
+  explicit-request-only push authority. Separate current `b2307cf4` source and
+  lockfile from historical `30f23aa4` preservation and `3ac4a02d` bounded passes.
+- Record the preceding `f39bed3c` Windows success and Linux/macOS fixture-path
+  failures by exact job and SHA, without inheriting old runtime/package verdicts.
+  Corrected-source Rust, final-source audits and `.12` package acceptance remain
+  pending. No historical evidence, local Rust execution or GitHub push changes.
+
 ## 2026-10-11 - Correct The Prepared cDNA Manifest Test Path
 
 - CI at `f39bed3c` passes the complete Windows job in run `38159995322`,

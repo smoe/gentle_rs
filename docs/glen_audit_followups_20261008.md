@@ -10,12 +10,17 @@ The reported candidate is `30f23aa4cb084694870a139714d0f0fef1726378`;
 its committed `Cargo.lock` SHA-256, independently calculated in this checkout,
 is `3dfe44c7a08bf779e32289cf1312103ea1fb5883e44bba5f6e1912ce3ed77745`.
 
-The original goal uses `codex/glen-audit-followups-20261008`, with separate
+The original goal used `codex/glen-audit-followups-20261008`, with separate
 narrowly scoped commits, branch pushes and non-publishing CI authorized. On
 2026-10-09 the owner explicitly requested checkout of `main` and integration of
 this work, then requested integration of `gentle_rs_2_main` and `gentle_rs_3`
 and a normal push of main to GitHub. These requests supersede the original
-prohibitions on merging and pushing main only.
+prohibitions on merging and pushing main for those requested integrations.
+On 2026-10-11 the owner requires a new explicit request before any GitHub push
+and requests continued development on `main`. These latest instructions
+supersede the original branch and automatic-push authority: make narrowly
+scoped local commits on `main`, without pushing unpublished work or treating
+an earlier push request as continuing permission.
 No local Rust build, test or check, Claude consultation, tag change or release
 publication is authorized. Leave `paper`, `output/` and
 historical evidence unchanged.
@@ -80,6 +85,55 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
+### Current Main Snapshot: 2026-10-11
+
+Local repair source is `b2307cf4f9adf077cd936bad345da77d56b13cec`, following
+the owner's tutorial-visual-contract merge `7c952e98`. Its lockfile SHA-256 is
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`.
+This differs from the historical audit lockfile; older package receipts cannot
+accept this source/lock pair. No repaired-source binaries or packages exist
+as acceptance evidence yet. This snapshot and its commits remain local.
+
+The preceding CI source is `f39bed3ce79211cdc5cbde710137e581e2adf129`, with
+the same current lockfile. In
+[macOS/Windows run 38159995322](https://github.com/smoe/gentle_rs/actions/runs/38159995322),
+[Windows job 114530710419](https://github.com/smoe/gentle_rs/actions/runs/38159995322/job/114530710419)
+completes successfully, including default/JS/Lua/all-feature checks, binary and
+process smokes, full tests and catalog/parity checks. This is ordinary CI,
+not `package-opt1` acceptance. macOS job `114530736672` and
+[Linux job 114530773148](https://github.com/smoe/gentle_rs/actions/runs/38160010120/job/114530773148)
+both stop at the Unix-only multi-reference fixture's manifest read:
+`primer_specificity_multi.rs:1566:63`, `NotFound`, eight passes/one failure.
+Their later full suites do not run. Both runs' Linux headless and policy jobs
+pass; opt-in native/public/scroll audit jobs are skipped, not newly accepted.
+The second run's Windows job `114530754013` is still running at this inspection;
+the already completed Windows job above supplies the bounded Windows evidence.
+
+`b2307cf4` repairs only the fixture's cache-root/install-directory confusion:
+use the fresh cDNA preparation report's sequence parent for the manifest,
+retaining actual-kind mismatch, atomicity, import/replay and tamper assertions.
+On the macOS working tree committed as this SHA, scoped edition-2024 rustfmt,
+whitespace and `python3 -m unittest scripts.test_primer_specificity_multi_tutorial
+scripts.test_release_candidate scripts.test_tutorial_checkouts -q` pass
+(93 tests, 22.873 s). No local Rust build/check/test runs. Corrected-source
+Rust verification requires a newly authorized push before CI can see this
+commit; it is not waived or substituted with these source-only tests.
+
+| Item | Current Status | Required Evidence |
+| --- | --- | --- |
+| 1. Audit preservation | Complete; original bytes unchanged | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes at `30f23aa4`. |
+| 2. Tutorial 08.04 GUI/agent contracts | Historical bounded pass at `3ac4a02d`; current source pending | [Retained native receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#synthetic-native-contract): all 115 hashes, 19 focused Rust tests and eight Linux/X11 dev input steps. Explicit T, completion transition and three full oracle `Seq` records verified. Synthetic 20-bp guard, not public-locus GUI or scientific approval; retain fresh final-source evidence. |
+| 3. Live-agent acceptance | Historical genuine public-starter pass at `3ac4a02d`; current source pending | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), macOS/arm64 dev CLI and authorized login. Clarification then two unexecuted `ask` suggestions; reviewed manual execution preserves both sources and all four full `Seq` records match fresh CI. No credential/model/scientific claim; require final-source acceptance. |
+| 4. Honest visual evidence | Historical bounded native/public projection pass at `3ac4a02d`; current source pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. No public-locus GUI verdict; bind new final-source evidence separately. |
+| 5. Scroll benchmarks | Historical deterministic CPU pass at `3ac4a02d`; current source pending | [Retained scroll receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 hashes and 24 bidirectional fixture/size cases, bounded viewport and unchanged content. No timed regression/native-latency claim; rerun the final-source cases without replacing historical evidence. |
+| 6. .12 package acceptance | Open; local `b2307cf4` Rust gates unrun | `f39bed3c` passes one full Windows job but Linux/macOS stop before import/full suites; it has no new package acceptance. Require fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
+
+### Historical Candidate Gates
+
+The following records retain their original source and inspection-time scope;
+references to a then-current candidate or running job are historical, not the
+current main snapshot above.
+
 The owner-requested rebase is now on local main
 `b1547544980cb423dbda9ee57dfce81f8b193f5b`. The isolated codex worktree retained
 all 34 audit commits and the subsequent status commit. Changelog and roadmap
@@ -142,15 +196,6 @@ Neither result accepts native tests, binary execution, extracted packages,
 container identities or scientific behavior. Scoped formatting passes and
 session-close reports five OK, one plan-fidelity reminder and zero failures;
 the necessary container/compile repairs are explicitly scoped above.
-
-| Item | Current Status | Required Evidence |
-| --- | --- | --- |
-| 1. Audit preservation | Complete; rebase does not change original bytes | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes. |
-| 2. Tutorial 08.04 GUI/agent contracts | Complete: bounded native contract at `3ac4a02d` | [Fresh retained receipts](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#synthetic-native-contract): all 115 hashes and safe exact membership, 19 focused Rust tests and eight ordinary Linux/X11 dev input steps. Explicit T, completion transition and all three full oracle `Seq` records verified. Synthetic 20-bp guard, not public-locus GUI or scientific approval. |
-| 3. Live-agent acceptance | Complete: genuine public-starter requests at `3ac4a02d` | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), verified macOS/arm64 dev CLI and existing authorized login. Clarification first, then two unexecuted `ask` suggestions; raw requests/refusal unchanged. Reviewed manual execution preserves both sources; all four full `Seq` records match both fresh CI routes, without array sorting. No credential or particular-model claim. |
-| 4. Honest visual evidence | Complete: bounded raw native/public projection at `3ac4a02d` | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): all 115 native and 44 public hashes verified, four unedited synthetic captures inspected, public SVG exactly reproduced and visually inspected. Sole 588 C/T in 1,089-bp exports; display-only uppercase and explicit projection/non-claims. No public-locus GUI or scientific claim. |
-| 5. Scroll benchmarks | Complete: deterministic CPU cases at `3ac4a02d` | [Fresh scroll verification](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 retained hashes including executable, all 24 bidirectional fixture/size cases, bounded viewport and unchanged content verified against the raw log. No timed regression or native-latency claim. |
-| 6. .12 package acceptance | Open: fresh `e42daa02` platform/audit gates running | The prior `3ac4a02d` native/container builds pass but its macOS full suite fails; they are historical only. Require fresh same-source full Linux/macOS/Windows success, non-publishing builds, independent verification of all extracted native packages and container identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
 
 On 2026-10-09, independent native/scroll checks pass without local Rust
 execution. Four unchanged synthetic PNGs are visually inspected: T and pair
