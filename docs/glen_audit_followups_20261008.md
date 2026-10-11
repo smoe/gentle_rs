@@ -87,6 +87,63 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 ### Current Main Snapshot: 2026-10-12
 
+The frozen execution-handoff source is
+`f56fdf849957d03d6f232c041cc74347d5ab471b`, the merge of `gentle_rs_2_main`
+after the `gentle_rs_3` integration. This exact source is already available on
+GitHub; Codex neither pushed it nor dispatched the observed run. Its unchanged
+`Cargo.lock` SHA-256 is
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`.
+It includes the primer binding/manifest repairs, monitor readiness regression,
+public-audit identity guards and merged readiness/tutorial changes.
+
+All 258 scoped offline tests pass at this exact SHA on macOS/arm64, Python
+3.14.7 (36.605 s). The command deliberately excludes installed GENtle binaries:
+
+```bash
+env -u GENTLE_TUTORIAL_BIN_DIR python3 -m unittest \
+  scripts.test_release_candidate scripts.test_package_desktop \
+  scripts.test_release_build_monitor scripts.test_gui_startup_summary \
+  scripts.test_container scripts.test_tutorial_checkouts \
+  scripts.test_primer_specificity_multi_tutorial scripts.test_ci_vkorc1_gui_audit \
+  scripts.test_tutorial_gui_acceptance scripts.test_prepare_public_vkorc1_audit \
+  scripts.test_tutorial_acceptance \
+  scripts.test_tutorial_walkthroughs.WalkthroughSourceTests \
+  scripts.test_tutorial_gap_lessons -q
+```
+
+Retained raw log: `/private/tmp/gentle-glen-f56fdf84-offline.log`, SHA-256
+`ec429ce020d2bf27c4d8c7cf2371643416563f459e6abfd6484d9ef9baf651ba`.
+These are synthetic process/receipt, source, mocked-fetch and disposable
+LF/CRLF checkout checks, not real GENtle, native GUI or live-model acceptance.
+
+The already-running push-triggered
+[run 38181932226](https://github.com/smoe/gentle_rs/actions/runs/38181932226)
+checks out this same full SHA. Independently inspected completed job logs prove:
+
+- [Release-safety job 114596149687](https://github.com/smoe/gentle_rs/actions/runs/38181932226/job/114596149687)
+  passes nine offline suites (221 tests) and the separate one-test discovery
+  guard on Ubuntu 24.04/x86-64, Python 3.12.15. Raw log
+  `/private/tmp/gentle-glen-f56fdf84-policy-job.log`, SHA-256
+  `426cfc3d5cdd208e7c11d1afbd97ef6a113d27969dc4b252d2420d65fbf99ff8`.
+- [Linux headless job 114596149703](https://github.com/smoe/gentle_rs/actions/runs/38181932226/job/114596149703)
+  passes `cargo check --locked --no-default-features --bin gentle_cli --bin
+  gentle_mcp` and the normal-dependency desktop exclusion guard. Ubuntu
+  24.04/x86-64, Rust 1.99.0 (`b940084d7`), dev/check only; no runtime executable
+  or package acceptance. Raw log
+  `/private/tmp/gentle-glen-f56fdf84-headless-job.log`, SHA-256
+  `a062f59914023041f13078406b7b6271abe269f3c1d11a5b6df335c0778318c2`.
+
+At this inspection, Windows `114596149585` and macOS `114596168821` have passed
+their initial Cargo checks and are running agent tutorial discovery regressions;
+neither full-platform verdict is accepted yet. The full Linux job and opt-in
+native GUI, authenticated-audit CLI build and scroll jobs are skipped, not
+passed. No fresh native/public/scroll or package artifacts are accepted.
+Later local evidence-documentation commits do not change this frozen handoff
+source or inherit its CI results. Historical evidence and unrelated worktree
+files remain untouched; no local Rust execution or new push/dispatch occurs.
+
+### Preceding Offline Snapshot: 1737b01e
+
 The exact tested script/contract revision is
 `1737b01e7b3f7083ce8f225bea5eb3b54b4d41e4` on local `main`. It includes
 `dd9ba573`'s corrected synthetic primer bindings, the test-only monitor readiness
@@ -187,27 +244,29 @@ native/package verdict from these offline tests.
 | 1. Audit preservation | Complete; original bytes unchanged | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes at `30f23aa4`. |
 | 2. Tutorial 08.04 GUI/agent contracts | Historical bounded pass at `3ac4a02d`; current source pending | [Retained native receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#synthetic-native-contract): all 115 hashes, 19 focused Rust tests and eight Linux/X11 dev input steps. Explicit T, completion transition and three full oracle `Seq` records verified. Synthetic 20-bp guard, not public-locus GUI or scientific approval; retain fresh final-source evidence. |
 | 3. Live-agent acceptance | Historical genuine public-starter pass at `3ac4a02d`; current source pending | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), macOS/arm64 dev CLI and authorized login. Clarification then two unexecuted `ask` suggestions; reviewed manual execution preserves both sources and all four full `Seq` records match fresh CI. No credential/model/scientific claim; require final-source acceptance. |
-| 4. Honest visual evidence | Historical bounded pass at `3ac4a02d`; clean-source guard passes offline at `1737b01e`, fresh execution pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. New guards refuse dirty inputs and stale/changed binaries; they do not execute the public workflow or supply a public-locus GUI verdict. |
+| 4. Honest visual evidence | Historical bounded pass at `3ac4a02d`; clean-source guard passes offline locally and in Linux CI at `f56fdf84`, fresh execution pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. New guards refuse dirty inputs and stale/changed binaries; they do not execute the public workflow or supply a public-locus GUI verdict. |
 | 5. Scroll benchmarks | Historical deterministic CPU pass at `3ac4a02d`; current source pending | [Retained scroll receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 hashes and 24 bidirectional fixture/size cases, bounded viewport and unchanged content. No timed regression/native-latency claim; rerun the final-source cases without replacing historical evidence. |
-| 6. .12 package acceptance | Open; 241 offline gates pass at `1737b01e`, Rust/native/package gates unrun | The five-binary source/hash gate and delayed-start monitor regression are implemented, not native-accepted. Require corrected primer import plus fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
+| 6. .12 package acceptance | Open; 258 local offline tests and Linux policy/headless checks pass at `f56fdf84`; full-platform/native/package gates pending | The five-binary source/hash gate and delayed-start monitor regression are implemented, not native-accepted. Require corrected primer import plus fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
 
 ### Glen Execution Handoff: 2026-10-12
 
-The owner assigns Glen assistance with all remaining execution gates. The
-local-source transfer is a small Git bundle of unpublished main commits, not
-a push, release or upload. Its final source/base SHA, byte size and checksum
-are recorded beside the bundle after this status commit; use that exact
-selected source, not the offline-tested predecessor or a generic latest main.
-Import into an isolated checkout without changing Glen's dirty primary tree.
-Verify the bundle checksum and prerequisites before checkout. Keep reference
-caches, credentials, `paper`, `output/` and historical audit bundles out of the
-transfer. If any required platform/tool/authentication is unavailable, report
-that gate as unrun rather than substituting older binaries or a nearby SHA.
+The owner assigns Glen assistance with all remaining execution gates. Use the
+already-published [exact f56fdf84 source](https://github.com/smoe/gentle_rs/commit/f56fdf849957d03d6f232c041cc74347d5ab471b),
+not a generic latest main or the older offline-tested predecessor. No source
+bundle, credential transfer or new Codex push is needed. Make a clean isolated
+checkout on Glen's approved external runner, never reset his primary tree.
+Record `git rev-parse HEAD`, `git status --porcelain` and the raw lockfile hash
+before building; require the source and lockfile above, with no dirty inputs.
+Keep caches, credentials and new evidence outside the source checkout. If any
+required platform/tool/authentication is unavailable, report that gate as unrun
+rather than substituting older binaries or a nearby SHA. This is a prepared
+handoff, not a claim that Glen has received or executed it; a delivery channel
+has not yet been confirmed.
 
 Glen's requested work, all without publication:
 
 1. Confirm the exact checkout, lockfile, platform/toolchain and binary hashes.
-   Rerun the 241 offline gates and the targeted multi-reference import/glossary
+   Rerun the 258 offline gates above and the targeted multi-reference import/glossary
    regressions before full Rust suites. Include default, headless CLI/MCP,
    JS/Lua/all-features and fresh Linux/macOS/Windows results; report primary
    failures separately from cascades and native-Windows omissions.
@@ -239,6 +298,42 @@ Return commands and exit codes, exact SHAs/hashes, environment/profile, failures
 and a retained manifest/receipt for each gate. Only matching executed evidence
 can advance this checklist; pending platform, live-agent or package checks stay
 pending. No human scientific or release approval is requested by this handoff.
+
+Run the following only on Glen's approved external build host, with
+`EVIDENCE_DIR` set to a new directory outside the clean checkout. The existing
+workflow defines dependency installation and isolation; the local no-Rust
+restriction remains in force for Codex. Start with the failed boundaries:
+
+```bash
+cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1
+cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1
+cargo test -q --locked --lib -j1 execute_introspect -- --test-threads=1
+```
+
+For the native contract, reuse `.github/workflows/ci.yml`'s six focused filters
+and the `desktop-gui,gui-test-support` build, then execute:
+
+```bash
+python3 scripts/ci_vkorc1_gui_audit.py --repo-root . --binary-dir target/debug \
+  --evidence-dir "$EVIDENCE_DIR/native"
+python3 scripts/prepare_public_vkorc1_audit.py --repo-root . \
+  --gentle-cli target/debug/gentle_cli --evidence-dir "$EVIDENCE_DIR/public"
+```
+
+The public preparation command invokes no agent. Use the retained
+[genuine-agent procedure](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent)
+on the newly prepared starter with a matching binary and authorized login;
+repeat its two requests, raw-state checks, refusal and reviewed manual execution.
+Retain new responses and four full ordered `Seq` comparisons; old responses are
+not reusable acceptance. For scroll, reuse `gui_operations --test` and the
+workflow's fresh PATZ1 setup, executable discovery and 24-observation receipt,
+not a guessed executable path or a Criterion timing surrogate.
+
+For packages, follow [build-only verification](release.md#build-only-candidate-verification)
+with this exact candidate and `publish=false`. Do not dispatch release/container
+workflows without explicit owner approval, or select moving main after a later
+documentation commit. Require actual native archive and container validation
+receipts; the currently green policy/headless jobs provide neither.
 
 ### Historical Candidate Gates
 

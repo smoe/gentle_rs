@@ -1,5 +1,19 @@
 # GENtle Changelog
 
+## 2026-10-12 - Pin Merged Audit Handoff And Bounded CI Evidence
+
+- Pin Glen's six-gate execution handoff to already-published `f56fdf84`, with
+  the exact lockfile, 258 passing macOS/arm64 offline tests and retained log hash.
+  Replace the outdated unpublished-source bundle instruction with a clean
+  external checkout; no delivery or external execution is claimed.
+- Inspect and hash the same-source Linux CI logs: 221 release-safety tests plus
+  the discovery guard, and headless CLI/MCP compiler/dependency checks pass.
+  Windows/macOS full suites are pending; full Linux and opt-in audits are skipped.
+  Native, genuine-agent, scroll and package-opt1 acceptance remain open.
+- Keep the execution source frozen independently of this status-only commit.
+  No Codex push, dispatch, local Rust execution, historical-evidence change,
+  tag, publication or human scientific approval.
+
 ## 2026-10-12 - Merge Readiness And Tutorial Follow-Ups
 
 - At the owner's request, merge local `gentle_rs_3` commits `974064f5` and
