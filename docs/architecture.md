@@ -1087,6 +1087,13 @@ Practical rule:
   - tutorial generator/check commands:
     - `gentle_examples_docs tutorial-generate`
     - `gentle_examples_docs tutorial-check`
+  - tutorial visual integrity uses the same source/catalog/manifest and existing
+    `graphics.kind` contract, not a separate coverage registry. Offline checks
+    validate local asset roots, structure, step placement and retained archive
+    hashes. Historical captures, date-only legacy images and deterministic
+    figures remain distinct; none establishes current-candidate GUI acceptance.
+    Reference chapters need not contain decorative images. Capture policy is
+    unchanged.
   - test gating by example metadata:
     - `always`: execute in default test runs
     - `online`: execute only with `GENTLE_TEST_ONLINE=1`

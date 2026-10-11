@@ -619,6 +619,14 @@ Catalog/manifest split:
   declarations through the manifest/report, embed declared generated figures at
   the step they illustrate, and keep the trailing artifact list as an audit
   appendix. Declared graphics also participate in review-staleness checks.
+- The offline visual checker consumes that existing contract without adding a
+  schema or mandatory image quota. It checks the actual generated chapter by
+  its `chapter_id`, even when the discovery entry links a separate manual guide.
+  Captures with retained sidecars preserve their recorded revision, raw-image
+  and semantic-snapshot hashes. Historical manual archives retain their own
+  producer bindings; legacy date-only screenshots remain inspectable but are
+  explicitly non-authoritative. A figure is not a captured GUI state, and a
+  valid historical screenshot is not a current release-acceptance result.
 - `docs/tutorial/sources/` is the authoring layer for both the discovery
   catalog and the executable tutorial runtime manifest.
 - `docs/tutorial/manifest.json` is a generated runtime contract used for
