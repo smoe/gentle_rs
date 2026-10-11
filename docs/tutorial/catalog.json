@@ -2192,6 +2192,46 @@
       "codex_reviewed_at": "2026-10-09"
     },
     {
+      "id": "microarray_evidence_gui_cli",
+      "title": "Find Clariom D Evidence Along the TP73 Locus",
+      "path": "docs/tutorial/07-04_microarray_evidence_gui_cli.md",
+      "group": "07",
+      "group_label": "RNA Reads, Splicing & Expression",
+      "group_order": 7,
+      "group_position": 4,
+      "decimal_id": "07.04",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "expression_analysis",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline Clariom D input roles, dedicated Microarrays configuration, TP73 manifest inspection/projection and nearest-feature navigation. Real vendor IDs/coordinates with explicitly synthetic effect statistics; no CEL analysis, hidden download or biological expression claim. Native and real-data acceptance remain pending.",
+      "estimated_minutes": 20,
+      "difficulty": "intermediate",
+      "network": "offline core; optional explicitly retrieved public CEL/vendor inputs",
+      "interfaces": [
+        "GUI",
+        "CLI / shared shell",
+        "Agent Assistant (reviewed drafts)"
+      ],
+      "starting_state": "Disposable project and committed TP73/vendor-subset inputs",
+      "produces": [
+        "projected Array features",
+        "interpretable coordinate/contrast provenance"
+      ],
+      "next_steps": [
+        "gene_assay_study_gui"
+      ],
+      "review_status": "missing_review_manifest_entry",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md"
+    },
+    {
       "id": "tss_collection_gui",
       "title": "From annotated transcript starts to reusable TSS windows (offline)",
       "path": "docs/tutorial/generated/chapters/08-15_tss_collection_gui.md",
@@ -2352,6 +2392,50 @@
           "caption": "Locally computed TP73, E2F1 and PATZ1 motif-score lanes; each lane retains its own scale and score kind, so curve heights are not cross-factor rankings.",
           "illustrates_step": 5,
           "capture_date": "2026-09-28"
+        }
+      ]
+    },
+    {
+      "id": "measured_gel_sizing_gui_cli",
+      "title": "Estimate a PCR Band's Size from a Gel Image",
+      "path": "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md",
+      "group": "10",
+      "group_label": "Sequencing Confirmation & QC",
+      "group_order": 10,
+      "group_position": 3,
+      "decimal_id": "10.03",
+      "type": "gui_cli_walkthrough",
+      "status": "manual/hybrid",
+      "source": "hand_written_markdown",
+      "audiences": [
+        "gui_first",
+        "cli_first",
+        "agent_users",
+        "wet_lab_biologists"
+      ],
+      "notes": "Offline synthetic measured-image calibration, not virtual gel simulation. Confirm original pixel assignments, use log-size interpolation, retain out-of-range nulls and distinguish apparent kDa from identity or amount. Execution, native screenshots and real-image acceptance remain pending.",
+      "estimated_minutes": 15,
+      "difficulty": "beginner",
+      "network": "offline",
+      "interfaces": [
+        "GUI",
+        "CLI / shared shell",
+        "Agent Assistant (reviewed drafts)"
+      ],
+      "starting_state": "Empty disposable project and the committed drawn PNG/assignment requests",
+      "produces": [
+        "measured gel sizing report",
+        "SVG/TSV exports"
+      ],
+      "review_status": "missing_review_manifest_entry",
+      "review_issue_template": "Tutorial confusion",
+      "review_issue_template_path": ".github/ISSUE_TEMPLATE/tutorial-confusion.md",
+      "graphics": [
+        {
+          "kind": "generated",
+          "path": "docs/tutorial/inputs/gel_sizing/gel_sizing_synthetic.png",
+          "caption": "Deterministically drawn calibration exercise, not a GUI screenshot or experimental gel: four ladder bands and two sample marks.",
+          "illustrates_step": 1
         }
       ]
     }

@@ -116,6 +116,36 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), self.payload)
 
+    def test_measured_gel_image_requests_and_checksums_survive_lf_crlf_checkouts(self):
+        relative = Path("docs/tutorial/inputs/gel_sizing")
+        names = ["gel_sizing_synthetic.png", "dna-analysis.json", "protein-analysis.json", "SHA256SUMS"]
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        payloads = {}
+        for name in names:
+            path = relative / name
+            payloads[path] = (checker.ROOT / path).read_bytes()
+            destination = self.root / path
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payloads[path])
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "drawn gel fixture")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"gel-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for path, payload in payloads.items():
+                self.assertEqual((target / path).read_bytes(), payload)
+            for line in (target / relative / "SHA256SUMS").read_text().splitlines():
+                digest, name = line.split("  ", 1)
+                self.assertEqual(hashlib.sha256((target / relative / name).read_bytes()).hexdigest(), digest)
+            request = json.loads((target / relative / "dna-analysis.json").read_bytes())
+            self.assertEqual(request["image_sha256"], hashlib.sha256((target / relative / names[0]).read_bytes()).hexdigest())
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                 if not line.startswith(b"docs/tutorial/inputs/gel_sizing/*.json "))
+        broken = Path(self.tmp.name) / "gel-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual((broken / relative / "dna-analysis.json").read_bytes(), payloads[relative / "dna-analysis.json"])
+
     def test_retained_vkorc1_wip_bytes_and_hashes_survive_both_checkout_modes(self):
         relative = Path("docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter")
         files = ["variant_promoter_context.json", "promoter_reporter_candidates.json",
@@ -942,11 +972,14 @@ class TutorialVisualContractTests(unittest.TestCase):
         rows = {row["id"]: row for row in report["tutorials"]}
         self.assertTrue(rows["tp53_isoform_architecture_online"]["visuals"])
         self.assertTrue(rows["patz1_gene_locus_evidence_offline"]["visuals"])
+        self.assertEqual(rows["measured_gel_sizing_gui_cli"]["visuals"][0]["status"],
+                         "deterministic_figure_not_capture")
         self.assertIn("not current-candidate", report["non_claim"])
 
     def test_missing_asset_and_unsafe_paths_fail(self):
         for target in ("docs/figures/missing.svg", "../outside.svg", "/tmp/outside.svg",
-                       "C:\\outside.png", "docs/figures/../../outside.svg", "test_files/image.png"):
+                       "C:\\outside.png", "docs/figures/../../outside.svg", "test_files/image.png",
+                       "docs/tutorial/inputs/unapproved/image.png"):
             with self.subTest(target=target), self.assertRaisesRegex(RuntimeError, "tutorial visual"):
                 checker.visual_path(self.root, target)
 

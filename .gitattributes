@@ -108,3 +108,8 @@ test_files/fixtures/probe_region_outputs/clariom_e_mtab_14704_tp73_validation/* 
 
 # Its provenance binds the adapter input's exact bytes on every platform.
 test_files/fixtures/probe_region_adapter_inputs/clariom_e_mtab_14704_tp73_glen_style.csv text eol=lf
+
+# The measured-gel lesson binds original image and analysis-request bytes.
+docs/tutorial/inputs/gel_sizing/*.png binary
+docs/tutorial/inputs/gel_sizing/*.json text eol=lf
+docs/tutorial/inputs/gel_sizing/SHA256SUMS text eol=lf

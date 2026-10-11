@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "microarray_evidence_gui_cli",
+  "title": "Find Clariom D Evidence Along the TP73 Locus",
+  "catalog": {
+    "order": 84,
+    "path": "docs/tutorial/07-04_microarray_evidence_gui_cli.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["gui_first", "cli_first", "agent_users", "expression_analysis", "wet_lab_biologists"],
+    "notes": "Offline Clariom D input roles, dedicated Microarrays configuration, TP73 manifest inspection/projection and nearest-feature navigation. Real vendor IDs/coordinates with explicitly synthetic effect statistics; no CEL analysis, hidden download or biological expression claim. Native and real-data acceptance remain pending.",
+    "estimated_minutes": 20,
+    "difficulty": "intermediate",
+    "network": "offline core; optional explicitly retrieved public CEL/vendor inputs",
+    "interfaces": ["GUI", "CLI / shared shell", "Agent Assistant (reviewed drafts)"],
+    "starting_state": "Disposable project and committed TP73/vendor-subset inputs",
+    "produces": ["projected Array features", "interpretable coordinate/contrast provenance"],
+    "group": "07",
+    "group_position": 4,
+    "next_steps": ["gene_assay_study_gui"]
+  }
+}
