@@ -7016,6 +7016,16 @@ restriction-site scan evidence:
   operation rows such as `ExportPrimerDesignReport` to express that either a
   `primer_design` or a `qpcr_design` report can satisfy readiness for the same
   operation payload.
+  Partially unbound branches remain unknown at their original tree positions:
+  false OR unknown is unknown, true OR unknown is true, and negating unknown
+  stays unknown. Empty `any` is false; empty `all` is true. `unknown_atoms`
+  retains binding diagnostics even when a different alternative satisfies
+  readiness; use `truth`/`readiness`, not the length of that diagnostic list.
+  `ExportTssViewSvg` and `promoters tss-view-svg` explicitly select the supplied
+  exclusive `SEQ_ID` or `COLLECTION_ID` prerequisite: an absent selected target
+  remains blocked, not unknown because the other target was not selected.
+  With neither selector supplied, readiness remains unknown. Runtime target
+  admission, artifact-write consent, scoring and scientific output are unchanged.
 - Raw primer/qPCR design operation rows `DesignPrimerPairs`,
   `DesignInsertionPrimerPairs`, and `DesignQpcrAssays` are fact-annotated with
   the same engine-owned semantics as their shell routes: the template sequence

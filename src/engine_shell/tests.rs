@@ -30721,10 +30721,15 @@ fn execute_introspect_readiness_checks_render_svg_sequence_input() {
         .expect("parse missing container-list readiness");
         let out = execute_shell_command(&mut engine, &cmd)
             .expect("execute missing container-list readiness");
+        let expected = if capability_id == "MergeContainersById" {
+            "blocked"
+        } else {
+            "unknown"
+        };
         assert_eq!(
             out.output["readiness"][0]["readiness"].as_str(),
-            Some("blocked"),
-            "{capability_id} should be blocked when one container input is missing"
+            Some(expected),
+            "{capability_id}: unbound independent gel inputs remain unknown"
         );
         assert!(
             out.output["readiness"][0]["unmet_atoms"]
@@ -31137,6 +31142,7 @@ fn execute_introspect_tss_view_svg_declares_sequence_and_artifact_contract() {
 
 #[test]
 fn introspection_expression_keeps_unbound_disjunctions_distinct_from_empty_ones() {
+    let graph = introspection_project_graph(&GentleEngine::default(), &[], false);
     let disjunction = json!({"any": [
         {"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}},
         {"fact": "tss_collection.exists", "subject": {"arg": "COLLECTION_ID"}}
@@ -31147,9 +31153,11 @@ fn introspection_expression_keeps_unbound_disjunctions_distinct_from_empty_ones(
         json!({"all": [disjunction]}),
     ] {
         let mut unknown_atoms = vec![];
-        assert!(
+        assert_eq!(
             instantiate_introspection_expression(&expression, &BTreeMap::new(), &mut unknown_atoms)
-                .is_none()
+                .evaluate(&graph)
+                .truth,
+            FactTruth::Unknown
         );
         assert_eq!(unknown_atoms.len(), 2);
         assert!(
@@ -31158,21 +31166,236 @@ fn introspection_expression_keeps_unbound_disjunctions_distinct_from_empty_ones(
                 .all(|atom| atom["reason"] == "unbound argument")
         );
     }
-    let graph = introspection_project_graph(&GentleEngine::default(), &[], false);
     for (expression, truth) in [
         (json!({"any": []}), FactTruth::Unsatisfied),
         (json!({"all": []}), FactTruth::Satisfied),
     ] {
         let mut unknown_atoms = vec![];
         let instantiated =
-            instantiate_introspection_expression(&expression, &BTreeMap::new(), &mut unknown_atoms)
-                .unwrap();
+            instantiate_introspection_expression(&expression, &BTreeMap::new(), &mut unknown_atoms);
         assert!(unknown_atoms.is_empty());
+        assert_eq!(instantiated.evaluate(&graph).truth, truth);
+    }
+}
+
+#[test]
+fn introspection_partial_any_preserves_nested_unknowns_and_decisive_operands() {
+    // Hand-crafted synthetic project, not a biological locus or assay.
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("known".into(), DNAsequence::from_sequence("ACGT").unwrap());
+    let graph = introspection_project_graph(&GentleEngine::from_state(state), &[], false);
+    let args = BTreeMap::from([("SEQ_ID".into(), "absent".into())]);
+    let missing = json!({"fact": "sequence.exists", "subject": {"arg": "SEQ_ID"}});
+    let unknown = json!({"fact": "sequence.exists", "subject": {"arg": "TARGET_SEQ_ID"}});
+    let present =
+        json!({"fact": "sequence.exists", "subject": {"kind": "sequence", "id": "known"}});
+    for (expression, truth) in [
+        (json!({"any": [missing, unknown]}), FactTruth::Unknown),
+        (json!({"any": [unknown, missing]}), FactTruth::Unknown),
+        (json!({"any": [present, unknown]}), FactTruth::Satisfied),
+        (json!({"any": [unknown, present]}), FactTruth::Satisfied),
+        (
+            json!({"not": {"any": [missing, unknown]}}),
+            FactTruth::Unknown,
+        ),
+        (json!({"all": [present, unknown]}), FactTruth::Unknown),
+        (json!({"all": [missing, unknown]}), FactTruth::Unsatisfied),
+        (
+            json!({"any": [{"all": [present, unknown]}, missing]}),
+            FactTruth::Unknown,
+        ),
+        (
+            json!({"any": [{"all": [missing, unknown]}, missing]}),
+            FactTruth::Unsatisfied,
+        ),
+        (
+            json!({"any": [{"not": {"all": [present, unknown]}}, missing]}),
+            FactTruth::Unknown,
+        ),
+        (
+            json!({"all": [{"any": [present, unknown]}, present]}),
+            FactTruth::Satisfied,
+        ),
+        (
+            json!({"all": [{"any": [missing, unknown]}, missing]}),
+            FactTruth::Unsatisfied,
+        ),
+    ] {
+        let mut unknown_atoms = vec![];
+        let bound = instantiate_introspection_expression(&expression, &args, &mut unknown_atoms);
+        assert_eq!(bound.evaluate(&graph).truth, truth, "{expression}");
         assert_eq!(
-            GentleEngine::evaluate_fact_expression_against_graph(&instantiated, &graph).truth,
-            truth
+            unknown_atoms,
+            vec![fact_atom_label(&unknown)],
+            "{expression}"
         );
     }
+}
+
+#[test]
+fn introspection_truth_combinators_match_shared_fact_evaluation() {
+    use FactTruth::{Satisfied as T, Unknown as U, Unsatisfied as F};
+    let expression = |truth| match truth {
+        T => FactExpression::All { all: vec![] },
+        F => FactExpression::Any { any: vec![] },
+        U => FactExpression::Atom(FactAtom {
+            fact: "report.exists".into(),
+            ..FactAtom::default()
+        }),
+    };
+    let graph = ProjectFactGraph::default();
+    for (left, right, all, any) in [
+        (T, T, T, T),
+        (T, F, F, T),
+        (T, U, U, T),
+        (F, T, F, T),
+        (F, F, F, F),
+        (F, U, F, U),
+        (U, T, U, T),
+        (U, F, F, U),
+        (U, U, U, U),
+    ] {
+        assert_eq!(FactTruth::all([left, right]), all);
+        assert_eq!(FactTruth::any([left, right]), any);
+        for (tree, expected) in [
+            (
+                FactExpression::All {
+                    all: vec![expression(left), expression(right)],
+                },
+                all,
+            ),
+            (
+                FactExpression::Any {
+                    any: vec![expression(left), expression(right)],
+                },
+                any,
+            ),
+        ] {
+            assert_eq!(
+                GentleEngine::evaluate_fact_expression_against_graph(&tree, &graph).truth,
+                expected
+            );
+        }
+    }
+    for (truth, expected) in [(T, F), (F, T), (U, U)] {
+        assert_eq!(truth.negated(), expected);
+        let tree = FactExpression::Not {
+            not: Box::new(expression(truth)),
+        };
+        assert_eq!(
+            GentleEngine::evaluate_fact_expression_against_graph(&tree, &graph).truth,
+            expected
+        );
+    }
+    assert_eq!(FactTruth::all([]), T);
+    assert_eq!(FactTruth::any([]), F);
+}
+
+#[test]
+fn execute_introspect_partial_any_keeps_independent_missing_alternatives_unknown() {
+    // Synthetic pool inputs exercise the real shared-shell readiness route.
+    let mut state = ProjectState::default();
+    state
+        .sequences
+        .insert("known".into(), DNAsequence::from_sequence("ACGT").unwrap());
+    let mut engine = GentleEngine::from_state(state);
+    let before = serde_json::to_value(engine.state()).unwrap();
+    for id in ["RenderPoolGelSvg", "render-pool-gel-svg"] {
+        for (bindings, readiness, truth, unknown_count) in [
+            ("--arg INPUTS=absent", "unknown", "unknown", 2),
+            ("--arg INPUTS=known", "ready", "satisfied", 2),
+            (
+                "--arg INPUTS=absent --arg CONTAINER_IDS=absent",
+                "unknown",
+                "unknown",
+                1,
+            ),
+            (
+                "--arg INPUTS=absent --arg CONTAINER_IDS=absent --arg ARRANGEMENT_ID=absent",
+                "blocked",
+                "unsatisfied",
+                0,
+            ),
+        ] {
+            let line = format!("introspect readiness {id} {bindings}");
+            let output =
+                execute_shell_command(&mut engine, &parse_shell_line(&line).unwrap()).unwrap();
+            let row = &output.output["readiness"][0];
+            assert_eq!(row["readiness"], readiness, "{line}");
+            assert_eq!(row["truth"], truth, "{line}");
+            assert_eq!(
+                row["unknown_atoms"].as_array().unwrap().len(),
+                unknown_count,
+                "{line}"
+            );
+            assert!(
+                row["unknown_atoms"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|atom| atom["reason"] == "unbound argument")
+            );
+            assert!(!output.state_changed);
+        }
+    }
+    let output = execute_shell_command(
+        &mut engine,
+        &parse_shell_line("introspect verify-effects SetLinearViewport --arg START_BP=42").unwrap(),
+    )
+    .unwrap();
+    assert_eq!(output.output["verified"], false);
+    assert_eq!(output.output["status"], "unknown");
+    assert_eq!(output.output["truth"], "unknown");
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
+}
+
+#[test]
+fn execute_introspect_tss_exclusive_targets_keep_selected_binding_semantics() {
+    // Reuse the repository's hand-crafted synthetic TSS collection, not TP73.
+    let mut engine = crate::engine::synthetic_tss_engine(false);
+    let request = crate::engine::synthetic_tss_approval(&engine);
+    let collection = engine
+        .apply(Operation::MaterializeTssWindows { request })
+        .unwrap()
+        .tss_collection
+        .unwrap();
+    let before = serde_json::to_value(engine.state()).unwrap();
+    let member = &collection.members[0].tss.output_seq_id;
+    for id in ["promoters tss-view-svg", "ExportTssViewSvg"] {
+        for (bindings, readiness, truth, unknown_count) in [
+            (String::new(), "unknown", "unknown", 2),
+            (format!("--arg SEQ_ID={member}"), "ready", "satisfied", 0),
+            ("--arg SEQ_ID=absent".into(), "blocked", "unsatisfied", 0),
+            (
+                "--arg COLLECTION_ID=toy_tss".into(),
+                "ready",
+                "satisfied",
+                0,
+            ),
+            (
+                "--arg COLLECTION_ID=absent".into(),
+                "blocked",
+                "unsatisfied",
+                0,
+            ),
+        ] {
+            let line = format!("introspect readiness {id} {bindings}");
+            let output =
+                execute_shell_command(&mut engine, &parse_shell_line(&line).unwrap()).unwrap();
+            let row = &output.output["readiness"][0];
+            assert_eq!(row["readiness"], readiness, "{line}");
+            assert_eq!(row["truth"], truth, "{line}");
+            assert_eq!(
+                row["unknown_atoms"].as_array().unwrap().len(),
+                unknown_count,
+                "{line}"
+            );
+            assert!(!output.state_changed);
+        }
+    }
+    assert_eq!(serde_json::to_value(engine.state()).unwrap(), before);
 }
 
 #[test]

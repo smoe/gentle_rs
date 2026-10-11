@@ -2007,59 +2007,20 @@ impl GentleEngine {
                 }
                 truth
             }
-            FactExpression::All { all } => {
-                let mut saw_unknown = false;
-                for child in all {
-                    match Self::evaluate_fact_expression_inner(
-                        child,
-                        graph,
-                        unmet_atoms,
-                        unknown_atoms,
-                    ) {
-                        FactTruth::Unsatisfied => return FactTruth::Unsatisfied,
-                        FactTruth::Unknown => saw_unknown = true,
-                        FactTruth::Satisfied => {}
-                    }
-                }
-                if saw_unknown {
-                    FactTruth::Unknown
-                } else {
-                    FactTruth::Satisfied
-                }
-            }
-            FactExpression::Any { any } => {
-                let mut saw_unknown = false;
-                for child in any {
-                    match Self::evaluate_fact_expression_inner(
-                        child,
-                        graph,
-                        unmet_atoms,
-                        unknown_atoms,
-                    ) {
-                        FactTruth::Satisfied => return FactTruth::Satisfied,
-                        FactTruth::Unknown => saw_unknown = true,
-                        FactTruth::Unsatisfied => {}
-                    }
-                }
-                if saw_unknown {
-                    FactTruth::Unknown
-                } else {
-                    FactTruth::Unsatisfied
-                }
-            }
+            FactExpression::All { all } => FactTruth::all(all.iter().map(|child| {
+                Self::evaluate_fact_expression_inner(child, graph, unmet_atoms, unknown_atoms)
+            })),
+            FactExpression::Any { any } => FactTruth::any(any.iter().map(|child| {
+                Self::evaluate_fact_expression_inner(child, graph, unmet_atoms, unknown_atoms)
+            })),
             FactExpression::Not { not } => {
                 let before_unmet = unmet_atoms.len();
-                match Self::evaluate_fact_expression_inner(not, graph, unmet_atoms, unknown_atoms) {
-                    FactTruth::Satisfied => FactTruth::Unsatisfied,
-                    FactTruth::Unsatisfied => {
-                        unmet_atoms.truncate(before_unmet);
-                        FactTruth::Satisfied
-                    }
-                    FactTruth::Unknown => {
-                        unmet_atoms.truncate(before_unmet);
-                        FactTruth::Unknown
-                    }
+                let truth =
+                    Self::evaluate_fact_expression_inner(not, graph, unmet_atoms, unknown_atoms);
+                if truth != FactTruth::Satisfied {
+                    unmet_atoms.truncate(before_unmet);
                 }
+                truth.negated()
             }
         }
     }

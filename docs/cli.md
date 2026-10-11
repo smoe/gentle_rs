@@ -2738,6 +2738,12 @@ Shared shell command:
       - fact-annotated descriptors are evaluated through their full
         `precondition_expr`, including `any` branches, not only flat `all`
         atom lists
+      - partial alternatives retain three-valued truth: false OR an unbound
+        alternative is `unknown`; true OR an unbound alternative is `ready`.
+        Binding diagnostics remain visible but are not an independent veto
+      - TSS SVG export deliberately selects the supplied exclusive `SEQ_ID`
+        or `COLLECTION_ID`: a missing selected target stays `blocked`, while
+        no target selection stays `unknown`
       - `--seq-id` binds `SEQ_ID`, and `--readiness` filters evaluated rows
       - persisted-report inspection commands such as `primers show-report`,
         `primers show-qpcr-report`, and

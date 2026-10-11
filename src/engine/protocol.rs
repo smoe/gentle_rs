@@ -2748,6 +2748,50 @@ pub enum FactTruth {
     Unsatisfied,
 }
 
+impl FactTruth {
+    /// Shared Kleene conjunction, short-circuiting on a known false operand.
+    pub(crate) fn all(truths: impl IntoIterator<Item = Self>) -> Self {
+        let mut saw_unknown = false;
+        for truth in truths {
+            match truth {
+                Self::Unsatisfied => return Self::Unsatisfied,
+                Self::Unknown => saw_unknown = true,
+                Self::Satisfied => {}
+            }
+        }
+        if saw_unknown {
+            Self::Unknown
+        } else {
+            Self::Satisfied
+        }
+    }
+
+    /// Shared Kleene disjunction, short-circuiting on a known true operand.
+    pub(crate) fn any(truths: impl IntoIterator<Item = Self>) -> Self {
+        let mut saw_unknown = false;
+        for truth in truths {
+            match truth {
+                Self::Satisfied => return Self::Satisfied,
+                Self::Unknown => saw_unknown = true,
+                Self::Unsatisfied => {}
+            }
+        }
+        if saw_unknown {
+            Self::Unknown
+        } else {
+            Self::Unsatisfied
+        }
+    }
+
+    pub(crate) fn negated(self) -> Self {
+        match self {
+            Self::Satisfied => Self::Unsatisfied,
+            Self::Unsatisfied => Self::Satisfied,
+            Self::Unknown => Self::Unknown,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(default)]
 /// Deterministic result of evaluating one fact expression against a fact graph.

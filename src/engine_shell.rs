@@ -52,12 +52,12 @@ use crate::{
         DotplotMode, DotplotOverlayAnchorExonRef, DotplotOverlayQuerySpec, DotplotOverlayXAxisMode,
         EditableStatus, Engine, EvidenceClass, ExonSkipReturnKind, ExonSkipSelectionCriterion,
         ExperimentalAssayReadinessPolicy, ExternalPrimerPairImportRequest,
-        ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis, FactExpression, FactSubject,
-        FactSubjectKind, FactTruth, FeatureBedCoordinateMode, FeatureExpertTarget,
-        FeatureExpertView, FeatureLocationEditRequest, FeatureLocationEditStrand,
-        FeatureRecordCreateRequest, FeatureRecordCurationRequest, FeatureRecordDeleteRequest,
-        FeatureRecordMergeRequest, FeatureRecordQualifier, FeatureRecordSplitRequest,
-        FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA,
+        ExternalPrimerPairSpecificityRequest, FactAtom, FactBasis, FactEvaluationResult,
+        FactExpression, FactSubject, FactSubjectKind, FactTruth, FeatureBedCoordinateMode,
+        FeatureExpertTarget, FeatureExpertView, FeatureLocationEditRequest,
+        FeatureLocationEditStrand, FeatureRecordCreateRequest, FeatureRecordCurationRequest,
+        FeatureRecordDeleteRequest, FeatureRecordMergeRequest, FeatureRecordQualifier,
+        FeatureRecordSplitRequest, FlexibilityModel, GENE_ISOFORM_ASSAY_STUDY_CHECKPOINT_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_PLAN_SCHEMA, GENE_ISOFORM_ASSAY_STUDY_REUSE_PROPOSAL_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_EXECUTION_SCHEMA,
         GENE_ISOFORM_ASSAY_STUDY_WORKFLOW_BATCH_REQUEST_SCHEMA,
@@ -32305,9 +32305,37 @@ fn capability_descriptor(capability_id: &str) -> Option<&'static Value> {
         .get(canonical)
 }
 
-fn capability_precondition_expr_value(capability_id: &str) -> Option<Value> {
+fn capability_precondition_expr_value(
+    capability_id: &str,
+    args: &BTreeMap<String, String>,
+) -> Option<Value> {
     let descriptor = capability_descriptor(capability_id)?;
-    descriptor.get("precondition_expr").cloned()
+    let expression = descriptor.get("precondition_expr")?;
+    // TSS export selects one target, unlike independent readiness alternatives.
+    if matches!(capability_id, "promoters tss-view-svg" | "ExportTssViewSvg") {
+        let selected_arg = match (
+            args.contains_key("SEQ_ID"),
+            args.contains_key("COLLECTION_ID"),
+        ) {
+            (true, false) => Some("SEQ_ID"),
+            (false, true) => Some("COLLECTION_ID"),
+            _ => None,
+        };
+        if let Some(selected_arg) = selected_arg
+            && let Some(selected) =
+                expression
+                    .get("any")
+                    .and_then(Value::as_array)
+                    .and_then(|children| {
+                        children
+                            .iter()
+                            .find(|child| child["subject"]["arg"] == selected_arg)
+                    })
+        {
+            return Some(selected.clone());
+        }
+    }
+    Some(expression.clone())
 }
 
 fn capability_must_effect_atoms(capability_id: &str) -> Option<Vec<Value>> {
@@ -32507,57 +32535,98 @@ fn fact_atom_label(atom: &Value) -> Value {
     labeled
 }
 
+/// Preserve unresolved leaves at their exact position, not in a flat veto list.
+enum BoundIntrospectionExpression {
+    All(Vec<Self>),
+    Any(Vec<Self>),
+    Not(Box<Self>),
+    Bound(FactExpression),
+    Unbound,
+}
+
+impl BoundIntrospectionExpression {
+    fn evaluate(&self, graph: &ProjectFactGraph) -> FactEvaluationResult {
+        let mut unmet_atoms = vec![];
+        let mut unknown_atoms = vec![];
+        let truth = self.evaluate_truth(graph, &mut unmet_atoms, &mut unknown_atoms);
+        FactEvaluationResult {
+            schema: crate::engine::FACT_EVALUATION_SCHEMA.to_string(),
+            truth,
+            unmet_atoms,
+            unknown_atoms,
+        }
+    }
+
+    fn evaluate_truth(
+        &self,
+        graph: &ProjectFactGraph,
+        unmet_atoms: &mut Vec<FactAtom>,
+        unknown_atoms: &mut Vec<FactAtom>,
+    ) -> FactTruth {
+        match self {
+            Self::All(children) => FactTruth::all(
+                children
+                    .iter()
+                    .map(|child| child.evaluate_truth(graph, unmet_atoms, unknown_atoms)),
+            ),
+            Self::Any(children) => FactTruth::any(
+                children
+                    .iter()
+                    .map(|child| child.evaluate_truth(graph, unmet_atoms, unknown_atoms)),
+            ),
+            Self::Not(child) => {
+                let before_unmet = unmet_atoms.len();
+                let truth = child.evaluate_truth(graph, unmet_atoms, unknown_atoms);
+                if truth != FactTruth::Satisfied {
+                    unmet_atoms.truncate(before_unmet);
+                }
+                truth.negated()
+            }
+            Self::Bound(expression) => {
+                let evaluation =
+                    GentleEngine::evaluate_fact_expression_against_graph(expression, graph);
+                unmet_atoms.extend(evaluation.unmet_atoms);
+                unknown_atoms.extend(evaluation.unknown_atoms);
+                evaluation.truth
+            }
+            Self::Unbound => FactTruth::Unknown,
+        }
+    }
+}
+
 fn instantiate_introspection_expression(
     value: &Value,
     args: &BTreeMap<String, String>,
     unknown_atoms: &mut Vec<Value>,
-) -> Option<FactExpression> {
+) -> BoundIntrospectionExpression {
     if let Some(children) = value.get("all").and_then(Value::as_array) {
-        let mut local_unknown_atoms = vec![];
-        let all = children
-            .iter()
-            .filter_map(|child| {
-                instantiate_introspection_expression(child, args, &mut local_unknown_atoms)
-            })
-            .collect::<Vec<_>>();
-        if !children.is_empty() && all.is_empty() && !local_unknown_atoms.is_empty() {
-            unknown_atoms.extend(local_unknown_atoms);
-            return None;
-        }
-        unknown_atoms.extend(local_unknown_atoms);
-        return Some(FactExpression::All { all });
+        return BoundIntrospectionExpression::All(
+            children
+                .iter()
+                .map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
+                .collect(),
+        );
     }
     if let Some(children) = value.get("any").and_then(Value::as_array) {
-        let mut any = vec![];
-        let mut branch_unknown_atoms = vec![];
-        for child in children {
-            let mut local_unknown_atoms = vec![];
-            if let Some(expression) =
-                instantiate_introspection_expression(child, args, &mut local_unknown_atoms)
-            {
-                any.push(expression);
-            } else {
-                branch_unknown_atoms.extend(local_unknown_atoms);
-            }
-        }
-        if any.is_empty() {
-            let fully_unbound = !children.is_empty() && !branch_unknown_atoms.is_empty();
-            unknown_atoms.extend(branch_unknown_atoms);
-            if fully_unbound {
-                return None;
-            }
-        }
-        return Some(FactExpression::Any { any });
+        return BoundIntrospectionExpression::Any(
+            children
+                .iter()
+                .map(|child| instantiate_introspection_expression(child, args, unknown_atoms))
+                .collect(),
+        );
     }
     if let Some(child) = value.get("not") {
-        return instantiate_introspection_expression(child, args, unknown_atoms)
-            .map(|not| FactExpression::Not { not: Box::new(not) });
+        return BoundIntrospectionExpression::Not(Box::new(instantiate_introspection_expression(
+            child,
+            args,
+            unknown_atoms,
+        )));
     }
     match instantiate_introspection_atom_expression(value, args) {
-        Ok(expression) => Some(expression),
+        Ok(expression) => BoundIntrospectionExpression::Bound(expression),
         Err(_) => {
             unknown_atoms.push(fact_atom_label(value));
-            None
+            BoundIntrospectionExpression::Unbound
         }
     }
 }
@@ -32569,7 +32638,7 @@ fn introspection_readiness_for_capability(
     evidence: &[RestrictionSiteScanReport],
     ui_host_available: bool,
 ) -> Value {
-    let Some(precondition_expr) = capability_precondition_expr_value(capability_id) else {
+    let Some(precondition_expr) = capability_precondition_expr_value(capability_id, args) else {
         return json!({
             "capability_id": capability_id,
             "mode": if args.is_empty() { "unbound" } else { "bound" },
@@ -32590,42 +32659,25 @@ fn introspection_readiness_for_capability(
                 "unmet_atoms": [],
             });
         };
-        let mut expression_atoms = vec![];
-        for atom in &atoms {
-            match instantiate_introspection_atom(atom, args) {
-                Ok(instantiated) => expression_atoms.push(FactExpression::Atom(instantiated)),
-                Err(_) => unknown_atoms.push(fact_atom_label(atom)),
-            }
-        }
-        FactExpression::All {
-            all: expression_atoms,
-        }
+        instantiate_introspection_expression(&json!({"all": atoms}), args, &mut unknown_atoms)
     } else {
         instantiate_introspection_expression(&precondition_expr, args, &mut unknown_atoms)
-            .unwrap_or(FactExpression::All { all: vec![] })
     };
     let graph = introspection_project_graph(engine, evidence, ui_host_available);
-    let evaluation = Some(GentleEngine::evaluate_fact_expression_against_graph(
-        &expression,
-        &graph,
-    ));
-    let mut readiness = match evaluation.as_ref().map(|result| result.truth) {
-        Some(FactTruth::Satisfied) if unknown_atoms.is_empty() => "ready",
-        Some(FactTruth::Unsatisfied) => "blocked",
-        Some(FactTruth::Unknown) | None => "unknown",
-        Some(FactTruth::Satisfied) => "unknown",
+    let evaluation = expression.evaluate(&graph);
+    let readiness = match evaluation.truth {
+        FactTruth::Satisfied => "ready",
+        FactTruth::Unsatisfied => "blocked",
+        FactTruth::Unknown => "unknown",
     };
-    if !unknown_atoms.is_empty() && readiness == "ready" {
-        readiness = "unknown";
-    }
     json!({
         "capability_id": capability_id,
         "mode": mode,
         "readiness": readiness,
-        "truth": evaluation.as_ref().map(|result| result.truth),
-        "unmet_atoms": evaluation.as_ref().map(|result| result.unmet_atoms.clone()).unwrap_or_default(),
+        "truth": evaluation.truth,
+        "unmet_atoms": evaluation.unmet_atoms,
         "unknown_atoms": unknown_atoms,
-        "evaluation_unknown_atoms": evaluation.as_ref().map(|result| result.unknown_atoms.clone()).unwrap_or_default(),
+        "evaluation_unknown_atoms": evaluation.unknown_atoms,
     })
 }
 
@@ -32701,35 +32753,16 @@ fn introspection_verify_effects_payload(
             "evaluation_unknown_atoms": [],
         });
     }
-    let mut effect_expressions = vec![];
     let mut unknown_atoms = vec![];
-    for atom in &atoms {
-        if let Some(expression) =
-            instantiate_introspection_expression(atom, args, &mut unknown_atoms)
-        {
-            effect_expressions.push(expression);
-        }
-    }
+    let expression =
+        instantiate_introspection_expression(&json!({"all": atoms}), args, &mut unknown_atoms);
     let graph = introspection_project_graph(engine, evidence, ui_host_available);
-    let evaluation = if effect_expressions.is_empty() {
-        None
-    } else {
-        Some(GentleEngine::evaluate_fact_expression_against_graph(
-            &FactExpression::All {
-                all: effect_expressions,
-            },
-            &graph,
-        ))
-    };
-    let verified = matches!(
-        evaluation.as_ref().map(|result| result.truth),
-        Some(FactTruth::Satisfied)
-    ) && unknown_atoms.is_empty();
-    let status = match evaluation.as_ref().map(|result| result.truth) {
-        Some(FactTruth::Satisfied) if unknown_atoms.is_empty() => "verified",
-        Some(FactTruth::Unsatisfied) => "failed",
-        Some(FactTruth::Unknown) | None => "unknown",
-        Some(FactTruth::Satisfied) => "unknown",
+    let evaluation = expression.evaluate(&graph);
+    let verified = evaluation.truth == FactTruth::Satisfied;
+    let status = match evaluation.truth {
+        FactTruth::Satisfied => "verified",
+        FactTruth::Unsatisfied => "failed",
+        FactTruth::Unknown => "unknown",
     };
     json!({
         "schema": "gentle.introspection.v1",
@@ -32739,10 +32772,10 @@ fn introspection_verify_effects_payload(
         "verified": verified,
         "status": status,
         "must_on_success_effects": atoms,
-        "truth": evaluation.as_ref().map(|result| result.truth),
-        "unmet_atoms": evaluation.as_ref().map(|result| result.unmet_atoms.clone()).unwrap_or_default(),
+        "truth": evaluation.truth,
+        "unmet_atoms": evaluation.unmet_atoms,
         "unknown_atoms": unknown_atoms,
-        "evaluation_unknown_atoms": evaluation.as_ref().map(|result| result.unknown_atoms.clone()).unwrap_or_default(),
+        "evaluation_unknown_atoms": evaluation.unknown_atoms,
     })
 }
 
