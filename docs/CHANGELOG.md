@@ -1,5 +1,14 @@
 # GENtle Changelog
 
+## 2026-10-12 - Merge Readiness And Tutorial Follow-Ups
+
+- At the owner's request, merge local `gentle_rs_3` commits `974064f5` and
+  `6b434ced` into `main`, preserving the separately committed audit handoff.
+  The merge is conflict-free and all eight offline tutorial-source checks pass.
+- No push or local Rust execution. The merged readiness tests still require
+  Glen/CI execution; unrelated `paper`, `output/` and historical evidence remain
+  untouched.
+
 ## 2026-10-12 - Record Offline Follow-Up Evidence And Glen Execution Gates
 
 - On exact local `1737b01e`, retain the 241-test macOS/arm64 offline pass,
@@ -32,6 +41,34 @@
   never real GENtle, live agents, downloaded references or native GUI input.
 - Commit separately on local `main`, without pushing or local Rust execution.
   Fresh exact-source live/native/scroll and package-opt1 acceptance remain open.
+
+## 2026-10-12 - Preserve Partial Readiness Alternatives
+
+- Keep unbound `any` branches at their exact tree positions, including nested
+  `all` and `not`, rather than dropping them or treating binding diagnostics
+  as a flat veto. Reuse the engine's shared Kleene truth rules: false OR unknown
+  remains unknown; true OR unknown remains satisfied. Empty expressions retain
+  their existing meanings. No fabricated facts or new wire-schema variants.
+- Keep native TSS export's mutually exclusive target behavior: explicitly
+  supplying `SEQ_ID` or `COLLECTION_ID` selects that prerequisite. A missing
+  selected target stays blocked; no selector stays unknown. Export admission,
+  consent, scoring, curves, receipts and scientific results are unchanged.
+- Add deterministic synthetic tests for the shared truth table, partially
+  bound/nested expressions, real shared-shell gel alternatives, unbound effect
+  verification and selected sequence/collection TSS routes. Update the older
+  mixed-input gel assertion to distinguish unknown alternatives from a fully
+  assessed blocked conjunction; keep the missing-input diagnostic.
+- Teach the corresponding readiness checks in tutorial 01.01 with four
+  read-only gel-input examples and an explicit diagnostic/verdict distinction.
+  In 08.17, show selected window/collection checks and explain why a missing
+  selected TSS target stays blocked. Neither prerequisite readiness nor this
+  source review grants approval, verifies an export or establishes biology.
+  Add offline tutorial-source guards without regenerating scientific artifacts
+  or changing historical review/screenshot evidence.
+- Verification: Rust build/check/tests are deliberately left to Glen/CI on
+  the committed SHA. Scoped formatting, whitespace and session-close checks
+  are recorded at handoff; no Rust, native GUI or biological acceptance is
+  claimed. Unrelated `outputs/`, lockfile and generated projections stay untouched.
 
 ## 2026-10-12 - Synchronize Package-Monitor Signal Regression
 
@@ -161,7 +198,6 @@
   testing prefix whitespace. This preserves the strict SVG parser introduced at
   `70bdcf02` while avoiding an ambiguous nested `AsRef` inference that blocked
   compilation of the root test target.
-
 ## 2026-10-09 - Merge Remaining Development Branches For Main Push
 
 - At the owner's explicit request, integrate `gentle_rs_3` tip `4c24ce70`

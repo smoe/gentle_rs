@@ -563,6 +563,17 @@ argument bindings as `unknown`. Host-domain availability facts must project
 from existing deterministic preflight/probe logic rather than creating a
 parallel detector.
 
+Partial bindings preserve expression structure and the shared three-valued
+truth rules: false OR unknown is unknown, true OR unknown is true, and NOT
+unknown is unknown. Binding diagnostics remain inspectable even if another
+alternative decides the result; a flat list of missing arguments is not a
+readiness veto. Mutually exclusive TSS SVG targets are an explicit exception
+at binding selection, not Boolean evaluation: supplying exactly one `SEQ_ID`
+or `COLLECTION_ID` selects its prerequisite and omits the unselected target.
+Neither target supplied remains unknown; operation admission still rejects
+both targets supplied. No placeholder project fact may stand in for an
+unbound argument.
+
 Content-addressed approval workflows whose truth depends on external files,
 catalog bytes, or an exact proposal digest use an operation-specific,
 context-bound readiness report rather than a durable Boolean project fact. The

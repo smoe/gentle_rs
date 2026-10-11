@@ -543,6 +543,59 @@ The important test is not whether the assistant uses identical wording. It is
 whether the proposed command parses, is ready for the bound sequence, produces
 the expected deterministic site rows, and verifies against its declared effect.
 
+### Readiness with alternative inputs
+
+Readiness answers a practical question: **does the current project satisfy this
+command's declared prerequisites?** It does not execute the command, grant
+approval, validate every runtime option or establish a biological conclusion.
+
+Some commands can use alternative inputs. A pool-gel figure, for example, can
+take loaded sequences, saved containers or a saved arrangement. Its prerequisite
+uses `any`: at least one of those input branches must be satisfied.
+
+Continue with `agent_toy` from Exercise A. Reserve `agent_demo_absent` as an ID
+that does not exist as a sequence, container or arrangement in this project.
+Run these four **read-only checks**, in order, in GUI Shell:
+
+```text
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_toy
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent --arg CONTAINER_IDS=agent_demo_absent
+introspect readiness render-pool-gel-svg --arg INPUTS=agent_demo_absent --arg CONTAINER_IDS=agent_demo_absent --arg ARRANGEMENT_ID=agent_demo_absent
+```
+
+In each reply, read the row in the `readiness` array:
+
+| Check | `truth` | `readiness` | Unbound arguments in `unknown_atoms` |
+| --- | --- | --- | --- |
+| 1: loaded sequence; other alternatives unspecified | `satisfied` | `ready` | 2 |
+| 2: absent sequence; other alternatives unspecified | `unknown` | `unknown` | 2 |
+| 3: absent sequence and container; arrangement unspecified | `unknown` | `unknown` | 1 |
+| 4: all three alternatives explicitly absent | `unsatisfied` | `blocked` | 0 |
+
+Check 1 is ready even though `unknown_atoms` lists two unbound alternatives:
+the loaded sequence already satisfies `any`. Check 2 is not blocked yet because
+the container and arrangement branches were not assessed. Check 4 is blocked
+because every alternative was assessed and failed. None of these checks renders
+a gel or writes a file.
+
+This distinction matters for agents: use `truth` and `readiness` as the verdict,
+not the number of diagnostic entries. `unknown_atoms` explains arguments that
+were not bound; `evaluation_unknown_atoms` explains bound facts whose evidence
+is unavailable. An absent loaded sequence is known to be absent from this
+project, but missing biological evidence does **not** prove biological absence.
+
+The same rules hold inside nested expressions. For `all`, one failed required
+condition blocks the operation, and every condition must be satisfied for it
+to be ready. Otherwise the result stays unknown. Negating unknown with `not`
+also stays unknown: "not yet established" cannot become proof of the opposite.
+
+Do not fill omitted arguments with invented IDs just to clear diagnostics.
+Bind the actual proposed inputs, recheck before execution, then request any
+required approval. A ready prerequisite is not an execution receipt or a
+laboratory validation. The [TP73 export walkthrough](08-17_tp73_dnp73_factor_curves.md#check-target-readiness-before-export)
+shows a different case: a command with mutually exclusive target selectors.
+
 ### Exercise B: ask the agent to arrange the visible evidence
 
 This second exercise uses the same `agent_toy` record and stays inside the GUI.
