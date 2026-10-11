@@ -38,6 +38,9 @@ at least one must be required. Catalog/cache paths are optional.
 
 Exact catalog resolution, actual index kind, validation/content identity and
 positive sequence count are checked for every required reference before writes.
+Inspection accepts both genome-install and sequence-only BLAST-resource manifests;
+prepared transcriptome cDNA does not require a genomic annotation install. Child
+handoffs retain the same validated database identity and positive sequence count.
 No newest-prepared fallback, wildcard, duplicate alias, implicit installation or
 download is admitted. Optional unavailable indexes retain an explicit row.
 Explicit per-reference geometry is marked caller-provided, not a liftover claim.

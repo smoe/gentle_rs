@@ -1,5 +1,29 @@
 # GENtle Changelog
 
+## 2026-10-11 - Repair Multi-Reference And Glossary CI Regressions
+
+- Trace CI run `38146419434` at `d637f1d0`: macOS fails the mixed-reference
+  import and glossary smoke tests; Windows fails glossary smoke (the import
+  fixture is Unix-only). Both platforms pass Lua/all-features checks, and
+  Linux headless checks pass; the full Linux suite was not selected.
+- Prepare the synthetic cDNA fixture through the sequence-only resource route,
+  not `PrepareGenome`, which records a genomic index. Reuse BLAST-resource
+  inspection in multi-reference preflight and the shared child-handoff builder;
+  retain actual-kind, content identity, sequence-count and stale-evidence checks.
+  Regression coverage refuses a prepared-kind mismatch before files/state change
+  and retains mixed-reference import, replay, undo/redo and tamper checks.
+- Give glossary smoke a hand-crafted typed request with distinct genomic/cDNA
+  references and a quoted output path; explicitly retain rejection of `{}`.
+  Run both regression groups before long native CI suites on all three platforms,
+  including the existing path-safety regression, with an offline workflow guard.
+- Native Rust verification remains remote-only and pending at the corrected SHA.
+  These repairs do not certify `.12`, real-reference biology or package acceptance;
+  `paper`, `output/` and historical evidence remain untouched.
+- Pre-commit macOS verification: all 70 scoped offline tutorial, release-policy
+  and checkout tests pass; scoped rustfmt, synthetic JSON, CI YAML and whitespace
+  checks pass. Session-close reports no failures and two routine warnings for
+  intentional worktree dirt and manual scope confirmation.
+
 ## 2026-10-11 - Repair Current Build Boundaries
 
 - Gate the GUI-only region-homology validator re-export with `desktop-gui`.

@@ -16174,54 +16174,76 @@ impl GentleEngine {
         }
 
         let (catalog, resolved_catalog_path) = Self::open_reference_genome_catalog(catalog_path)?;
-        let resolution = catalog
-            .resolve_prepared_genome_id(
+        let prepared_resource = catalog
+            .inspect_blast_sequence_resource(
                 &target_genome_id,
-                cache_dir.map(str::trim).filter(|value| !value.is_empty()),
-            )
-            .map_err(|error| EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Could not resolve prepared genome '{}' for primer specificity handoff: {}",
-                    target_genome_id, error
-                ),
-                cause_chain: vec![],
-            })?;
-        let inspection = catalog
-            .inspect_prepared_genome(
-                &resolution.resolved_genome_id,
                 cache_dir.map(str::trim).filter(|value| !value.is_empty()),
             )
             .map_err(|error| EngineError {
                 code: ErrorCode::Io,
                 message: format!(
-                    "Could not inspect prepared genome '{}' for primer specificity handoff: {}",
-                    resolution.resolved_genome_id, error
-                ),
-                cause_chain: vec![],
-            })?
-            .ok_or_else(|| EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Prepared genome '{}' has no install manifest",
-                    resolution.resolved_genome_id
+                    "Could not inspect prepared BLAST resource '{}' for primer specificity handoff: {}",
+                    target_genome_id, error
                 ),
                 cause_chain: vec![],
             })?;
-        if !inspection.blast_index_ready {
-            return Err(EngineError {
-                code: ErrorCode::InvalidInput,
-                message: format!(
-                    "Prepared genome '{}' has no ready BLAST index; prepare or reindex it before creating the handoff",
-                    resolution.resolved_genome_id
-                ),
-                cause_chain: vec![],
-            });
-        }
-        let blast_database = inspection
-            .blast_database
-            .clone()
-            .ok_or_else(|| EngineError {
+        let resolution = if let Some(database) = &prepared_resource {
+            crate::genomes::PreparedGenomeResolution {
+                requested_genome_id: target_genome_id.clone(),
+                resolved_genome_id: database.source_genome_id.clone(),
+                fallback_warning: None,
+            }
+        } else {
+            catalog
+                .resolve_prepared_genome_id(
+                    &target_genome_id,
+                    cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+                )
+                .map_err(|error| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Could not resolve prepared genome '{}' for primer specificity handoff: {}",
+                        target_genome_id, error
+                    ),
+                    cause_chain: vec![],
+                })?
+        };
+        let (blast_database, blast_db_prefix) = if let Some(database) = prepared_resource {
+            let prefix = Some(database.prefix.clone());
+            (database, prefix)
+        } else {
+            let inspection = catalog
+                .inspect_prepared_genome(
+                    &resolution.resolved_genome_id,
+                    cache_dir.map(str::trim).filter(|value| !value.is_empty()),
+                )
+                .map_err(|error| EngineError {
+                    code: ErrorCode::Io,
+                    message: format!(
+                        "Could not inspect prepared genome '{}' for primer specificity handoff: {}",
+                        resolution.resolved_genome_id, error
+                    ),
+                    cause_chain: vec![],
+                })?
+                .ok_or_else(|| EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Prepared genome '{}' has no install manifest",
+                        resolution.resolved_genome_id
+                    ),
+                    cause_chain: vec![],
+                })?;
+            if !inspection.blast_index_ready {
+                return Err(EngineError {
+                    code: ErrorCode::InvalidInput,
+                    message: format!(
+                        "Prepared genome '{}' has no ready BLAST index; prepare or reindex it before creating the handoff",
+                        resolution.resolved_genome_id
+                    ),
+                    cause_chain: vec![],
+                });
+            }
+            let database = inspection.blast_database.ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,
                 message: format!(
                     "Prepared genome '{}' has no BLAST database inspection record",
@@ -16229,6 +16251,8 @@ impl GentleEngine {
                 ),
                 cause_chain: vec![],
             })?;
+            (database, inspection.blast_db_prefix)
+        };
         if blast_database.validation_status != "valid" {
             return Err(EngineError {
                 code: ErrorCode::InvalidInput,
@@ -16257,9 +16281,7 @@ impl GentleEngine {
             &resolved_input.intended_target,
             Some(&blast_database),
         );
-        let blast_db_prefix = inspection
-            .blast_db_prefix
-            .clone()
+        let blast_db_prefix = blast_db_prefix
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| EngineError {
                 code: ErrorCode::InvalidInput,

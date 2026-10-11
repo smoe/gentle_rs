@@ -215,34 +215,31 @@ impl GentleEngine {
                 ));
             }
             reference.target_genome_id = id.clone();
-            let inspection = catalog.inspect_prepared_genome(&id, cache);
+            let inspection = catalog.inspect_blast_database(&id, cache);
             let (identity, diagnostic) = match inspection {
-                Ok(Some(inspection)) if inspection.blast_index_ready => {
-                    match inspection.blast_database.as_ref() {
-                        Some(database) if database.index_kind != reference.expected_index_kind => {
-                            return Err(EngineError::invalid_input(format!(
-                                "specificity_multi_index_kind_mismatch: {id}"
-                            )));
-                        }
-                        Some(database)
-                            if database
-                                .sequence_count
-                                .is_some_and(|n| n > 0 && n.checked_add(1).is_some()) =>
-                        {
-                            (
-                                Self::primer_specificity_reference_identity(database),
-                                Some(
-                                    "BLAST reference validation or content fingerprint unavailable"
-                                        .to_string(),
-                                ),
-                            )
-                        }
-                        _ => (
-                            None,
-                            Some("Validated positive BLAST sequence count unavailable".to_string()),
-                        ),
-                    }
+                Ok(Some(database)) if database.index_kind != reference.expected_index_kind => {
+                    return Err(EngineError::invalid_input(format!(
+                        "specificity_multi_index_kind_mismatch: {id}"
+                    )));
                 }
+                Ok(Some(database))
+                    if database.index_files_present
+                        && database
+                            .sequence_count
+                            .is_some_and(|n| n > 0 && n.checked_add(1).is_some()) =>
+                {
+                    (
+                        Self::primer_specificity_reference_identity(&database),
+                        Some(
+                            "BLAST reference validation or content fingerprint unavailable"
+                                .to_string(),
+                        ),
+                    )
+                }
+                Ok(Some(database)) if database.index_files_present => (
+                    None,
+                    Some("Validated positive BLAST sequence count unavailable".to_string()),
+                ),
                 Ok(_) => (
                     None,
                     Some("Prepared BLAST index unavailable; no resource was prepared".to_string()),
@@ -1486,16 +1483,27 @@ mod tests {
             dbcmd.to_str().unwrap(),
         );
         let mut engine = GentleEngine::new();
-        for id in ["synthetic-a", "synthetic-b"] {
-            engine
-                .apply(Operation::PrepareGenome {
-                    genome_id: id.into(),
-                    catalog_path: Some(catalog.to_string_lossy().into()),
-                    cache_dir: None,
-                    timeout_seconds: None,
-                })
-                .unwrap();
-        }
+        engine
+            .apply(Operation::PrepareGenome {
+                genome_id: "synthetic-a".into(),
+                catalog_path: Some(catalog.to_string_lossy().into()),
+                cache_dir: None,
+                timeout_seconds: None,
+            })
+            .unwrap();
+        let reference_catalog =
+            crate::genomes::GenomeCatalog::from_json_file(catalog.to_str().unwrap()).unwrap();
+        let cdna = reference_catalog
+            .prepare_blast_sequence_resource("synthetic-b", None)
+            .unwrap();
+        assert_eq!(cdna.index_kind, BlastDatabaseIndexKind::TranscriptomeCdna);
+        assert!(cdna.blast_index_ready);
+        assert!(
+            reference_catalog
+                .inspect_prepared_genome("synthetic-b", None)
+                .unwrap()
+                .is_none()
+        );
         let mut req = request();
         req.catalog_path = Some(catalog.to_string_lossy().into());
         req.policy.full_alignment.mode = PrimerSpecificityFullAlignmentMode::Disabled;
@@ -1552,6 +1560,31 @@ mod tests {
         })
         .collect();
         let before = serde_json::to_value(engine.snapshot()).unwrap();
+        let mismatched_output = root.join("mismatched reference bundle");
+        // The catalog declaration cannot override a differently typed prepared index.
+        let cdna_manifest_path = root.join("synthetic-b/blast-resource-manifest.json");
+        let retained_manifest = fs::read(&cdna_manifest_path).unwrap();
+        let mut mismatched_manifest: Value = serde_json::from_slice(&retained_manifest).unwrap();
+        mismatched_manifest["index_kind"] = json!("genomic_dna");
+        fs::write(
+            &cdna_manifest_path,
+            serde_json::to_vec(&mismatched_manifest).unwrap(),
+        )
+        .unwrap();
+        let error = engine
+            .prepare_primer_pair_multi_reference_specificity_handoff(
+                req.clone(),
+                mismatched_output.to_str().unwrap(),
+            )
+            .unwrap_err();
+        fs::write(&cdna_manifest_path, retained_manifest).unwrap();
+        assert_eq!(error.code, ErrorCode::InvalidInput);
+        assert_eq!(
+            error.message,
+            "specificity_multi_index_kind_mismatch: synthetic-b"
+        );
+        assert!(!mismatched_output.exists());
+        assert_eq!(before, serde_json::to_value(engine.snapshot()).unwrap());
         let output = root.join("bundle with spaces");
         let handoff = engine
             .prepare_primer_pair_multi_reference_specificity_handoff(

@@ -381,8 +381,11 @@ jobs:
       - name: Agent tutorial discovery regressions
         run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
 
-      - name: Primer multi-reference path regression
-        run: cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests::specificity_multi_output_paths_refuse_traversal_and_existing_evidence -- --exact --test-threads=1
+      - name: Primer multi-reference regressions
+        run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
+
+      - name: Glossary command regressions
+        run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
@@ -560,8 +563,11 @@ jobs:
       - name: Agent tutorial discovery regressions
         run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
 
-      - name: Primer multi-reference path regression
-        run: cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests::specificity_multi_output_paths_refuse_traversal_and_existing_evidence -- --exact --test-threads=1
+      - name: Primer multi-reference regressions
+        run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
+
+      - name: Glossary command regressions
+        run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface
@@ -702,8 +708,11 @@ jobs:
       - name: Agent tutorial discovery regressions
         run: cargo test -q --locked --lib -j1 app::tests::agent_gui_context_ -- --test-threads=1
 
-      - name: Primer multi-reference path regression
-        run: cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests::specificity_multi_output_paths_refuse_traversal_and_existing_evidence -- --exact --test-threads=1
+      - name: Primer multi-reference regressions
+        run: 'cargo test -q --locked --lib -j1 engine::primer_specificity_multi::tests:: -- --test-threads=1'
+
+      - name: Glossary command regressions
+        run: 'cargo test -q --locked --lib -j1 engine_shell::tests::glossary_ -- --test-threads=1'
 
       - name: Cargo check (JavaScript adapter feature)
         run: cargo check -q --features js-interface

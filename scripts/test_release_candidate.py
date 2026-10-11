@@ -572,23 +572,29 @@ class WorkflowWiringTests(unittest.TestCase):
                               "Workflow example runtime tests", "Full test suite"):
                     self.assertLess(job.index(step), job.index(f"- name: {later}\n"))
 
-    def test_native_jobs_run_exact_primer_path_regression_before_full_suite(self) -> None:
+    def test_native_jobs_run_primer_and_glossary_regressions_before_full_suite(self) -> None:
         root = Path(__file__).resolve().parents[1]
         text = (root / ".github/workflows/ci.yml").read_text()
-        step = "      - name: Primer multi-reference path regression\n"
         for platform in ("macos", "linux", "windows"):
             with self.subTest(platform=platform):
                 following = text.split(f"\n  {platform}:\n", 1)[1]
                 job = re.split(r"\n  [a-z][a-z0-9-]*:\n", following, maxsplit=1)[0]
-                body = job.split(step, 1)[1].split("\n      - name:", 1)[0]
-                self.assertIn(
-                    "run: cargo test -q --locked --lib -j1 "
-                    "engine::primer_specificity_multi::tests::"
-                    "specificity_multi_output_paths_refuse_traversal_and_existing_evidence "
-                    "-- --exact --test-threads=1", body)
-                self.assertNotIn("continue-on-error:", body)
-                self.assertNotIn("if:", body)
-                self.assertLess(job.index(step), job.index("- name: Full test suite\n"))
+                # The module filter includes the original path test and the
+                # mixed genomic/cDNA import test; Windows skips only Unix fixtures.
+                for name, test_filter in (
+                    ("Primer multi-reference regressions", "engine::primer_specificity_multi::tests::"),
+                    ("Glossary command regressions", "engine_shell::tests::glossary_"),
+                ):
+                    step = f"      - name: {name}\n"
+                    body = job.split(step, 1)[1].split("\n      - name:", 1)[0]
+                    self.assertIn(
+                        f"run: 'cargo test -q --locked --lib -j1 {test_filter} -- --test-threads=1'", body)
+                    self.assertNotIn("--exact", body)
+                    self.assertNotIn("continue-on-error:", body)
+                    self.assertNotIn("if:", body)
+                    for later in ("Examples and tutorial schema/drift checks",
+                                  "Workflow example runtime tests", "Full test suite"):
+                        self.assertLess(job.index(step), job.index(f"- name: {later}\n"))
 
     def test_native_gui_audit_keeps_preflight_and_rollback_regressions(self) -> None:
         root = Path(__file__).resolve().parents[1]

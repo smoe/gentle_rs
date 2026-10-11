@@ -1209,6 +1209,15 @@ fn command_tokens_from_glossary_usage(path: &str, usage: &str) -> Vec<String> {
 
 fn smoke_command_override(path: &str) -> Option<&'static str> {
     match path {
+        // Hand-crafted parser-only request; execution still needs a saved pair and references.
+        "primers specificity-multi-handoff" => Some(concat!(
+            "primers specificity-multi-handoff '",
+            r#"{"schema":"gentle.primer_pair_multi_reference_request.v1","#,
+            r#""pair":{"kind":"saved_pair","primer_report_id":"synthetic_report","pair_rank":1},"#,
+            r#""policy":{},"references":[{"target_genome_id":"synthetic-a","expected_index_kind":"genomic_dna","required":true},"#,
+            r#"{"target_genome_id":"synthetic-b","expected_index_kind":"transcriptome_cdna","required":true}]}"#,
+            "' 'synthetic bundle'",
+        )),
         // Hand-crafted parser-only request; execution requires loaded annotations.
         "primers design-transcript-capture-pool" => Some(concat!(
             "primers design-transcript-capture-pool '",
@@ -1681,6 +1690,58 @@ fn glossary_region_feature_smoke_retains_bindings_and_explicit_approval() {
             .expect_err("an empty object is not a typed region feature request");
         assert!(error.contains("missing field `set_id`"), "{error}");
     }
+}
+
+#[test]
+fn glossary_specificity_multi_smoke_retains_typed_request_and_rejects_empty_json() {
+    let line = smoke_command_override("primers specificity-multi-handoff")
+        .expect("typed specificity parser fixture");
+    let ShellCommand::Op { payload } = parse_shell_line(line).expect("specificity parser fixture")
+    else {
+        panic!("expected the shared engine operation route");
+    };
+    let Operation::PreparePrimerPairMultiReferenceSpecificityHandoff {
+        request,
+        output_dir,
+    } = serde_json::from_str(&payload).unwrap()
+    else {
+        panic!("expected the multi-reference handoff operation");
+    };
+    assert_eq!(
+        request.schema,
+        crate::engine::PRIMER_SPECIFICITY_MULTI_REQUEST_SCHEMA
+    );
+    assert_eq!(output_dir, "synthetic bundle");
+    let crate::engine::PrimerSpecificityMultiPair::SavedPair {
+        primer_report_id,
+        pair_rank,
+        pair_index,
+    } = &request.pair
+    else {
+        panic!("expected the explicitly selected saved pair");
+    };
+    assert_eq!(primer_report_id, "synthetic_report");
+    assert_eq!(*pair_rank, Some(1));
+    assert!(pair_index.is_none());
+    assert!(request.policy.specificity_target_genome_id.is_none());
+    assert_eq!(request.references.len(), 2);
+    for (reference, (id, kind)) in request.references.iter().zip([
+        (
+            "synthetic-a",
+            crate::genomes::BlastDatabaseIndexKind::GenomicDna,
+        ),
+        (
+            "synthetic-b",
+            crate::genomes::BlastDatabaseIndexKind::TranscriptomeCdna,
+        ),
+    ]) {
+        assert_eq!(reference.target_genome_id, id);
+        assert_eq!(reference.expected_index_kind, kind);
+        assert!(reference.required);
+    }
+    let error = parse_shell_line("primers specificity-multi-handoff '{}' 'synthetic bundle'")
+        .expect_err("an empty object must not become a typed specificity request");
+    assert!(error.contains("missing field `schema`"), "{error}");
 }
 
 fn add_required_glossary_flag_companion(path: &str, flag: &str, line: &mut String) {
