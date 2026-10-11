@@ -1,5 +1,13 @@
 # GENtle Changelog
 
+## 2026-10-12 - Confirm Glen Relay And Refuse Older Local Binaries
+
+- The owner chooses to relay the frozen-source execution handoff from this chat;
+  record that channel without claiming delivery to Glen or external execution.
+- Existing CLI/MCP/docs binaries self-report `150a3390`, not `f56fdf84`, so they
+  cannot supply fresh acceptance. No local package-opt1 payload is present.
+  Preserve those binaries; no rebuild, push or historical-evidence change.
+
 ## 2026-10-12 - Pin Merged Audit Handoff And Bounded CI Evidence
 
 - Pin Glen's six-gate execution handoff to already-published `f56fdf84`, with

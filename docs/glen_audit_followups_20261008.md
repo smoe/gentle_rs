@@ -142,6 +142,13 @@ Later local evidence-documentation commits do not change this frozen handoff
 source or inherit its CI results. Historical evidence and unrelated worktree
 files remain untouched; no local Rust execution or new push/dispatch occurs.
 
+The existing local dev `gentle_cli`, `gentle_mcp` and `gentle_examples_docs`
+each exit zero for `--version` but self-report source
+`150a339074e7a2d282567d791a8f50834b70ff9c`, not the frozen handoff SHA.
+They are not used for fresh runtime or live-agent acceptance. No local
+`target/package-opt1` native payload is present. Checking existing binary
+identity executes no Cargo build, check or test.
+
 ### Preceding Offline Snapshot: 1737b01e
 
 The exact tested script/contract revision is
@@ -260,8 +267,9 @@ before building; require the source and lockfile above, with no dirty inputs.
 Keep caches, credentials and new evidence outside the source checkout. If any
 required platform/tool/authentication is unavailable, report that gate as unrun
 rather than substituting older binaries or a nearby SHA. This is a prepared
-handoff, not a claim that Glen has received or executed it; a delivery channel
-has not yet been confirmed.
+handoff, not a claim that Glen has received or executed it. The owner selects
+relay through this chat; leave the complete handoff here for the owner rather
+than inventing a direct transport or asking again for a delivery channel.
 
 Glen's requested work, all without publication:
 
