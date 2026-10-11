@@ -87,8 +87,10 @@ candidate results never overwrite or inherit the older candidate's verdict.
 
 ### Current Main Snapshot: 2026-10-11
 
-Local repair source is `b2307cf4f9adf077cd936bad345da77d56b13cec`, following
-the owner's tutorial-visual-contract merge `7c952e98`. Its lockfile SHA-256 is
+The latest locally tested runtime/workflow gate source is
+`6b39e5d80e880f738e4bc0aace1a7c19d56aee55`, including the earlier fixture
+repair `b2307cf4` after the owner's tutorial-visual-contract merge `7c952e98`.
+Its lockfile SHA-256 is
 `ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`.
 This differs from the historical audit lockfile; older package receipts cannot
 accept this source/lock pair. No repaired-source binaries or packages exist
@@ -119,6 +121,28 @@ scripts.test_release_candidate scripts.test_tutorial_checkouts -q` pass
 Rust verification requires a newly authorized push before CI can see this
 commit; it is not waived or substituted with these source-only tests.
 
+`6b39e5d8` closes an authored package-contract gap, not package acceptance:
+the old native smoke accepted 75 synthetic stale/unversioned/ambiguous cases
+across all three layouts. Require all five binaries' exact package/source
+observations and hashes, including the publication helper's new shared version
+probe, in extracted-package smoke, build receipts and aggregate collection.
+Retain receipts outside the payload without overwriting evidence. The new
+publication process regression is authored but unrun under the Rust restriction.
+Existing historical build receipts lack these observations and are not accepted
+by the new collector; their bytes and original verdicts remain untouched.
+
+On exact `6b39e5d8`, macOS offline package/policy/container/checkout/native-audit/
+public-audit checks pass all 162 tests (26.485 s), using synthetic stand-ins and
+no local Rust or real native GENtle execution. Retained log:
+`/private/tmp/gentle-native-identities-6b39e5d8-offline.log`, SHA-256
+`8041658649b0b2a6af05b6cebae6e803ed9e56c97eb999deee7e70da355b8508`.
+Scoped Rust formatting, release YAML/embedded Python parsing and whitespace pass.
+Session-close reports four OK, two warnings (intentional `paper`/`output/` dirt
+and manual scope confirmation), zero failures. Fresh final-SHA CI/native audits
+and package-opt1 builds/independent package checks remain pending; no new push
+or workflow dispatch occurs. Later documentation commits do not inherit a
+native/package verdict from these offline tests.
+
 | Item | Current Status | Required Evidence |
 | --- | --- | --- |
 | 1. Audit preservation | Complete; original bytes unchanged | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes at `30f23aa4`. |
@@ -126,7 +150,7 @@ commit; it is not waived or substituted with these source-only tests.
 | 3. Live-agent acceptance | Historical genuine public-starter pass at `3ac4a02d`; current source pending | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), macOS/arm64 dev CLI and authorized login. Clarification then two unexecuted `ask` suggestions; reviewed manual execution preserves both sources and all four full `Seq` records match fresh CI. No credential/model/scientific claim; require final-source acceptance. |
 | 4. Honest visual evidence | Historical bounded native/public projection pass at `3ac4a02d`; current source pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. No public-locus GUI verdict; bind new final-source evidence separately. |
 | 5. Scroll benchmarks | Historical deterministic CPU pass at `3ac4a02d`; current source pending | [Retained scroll receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 hashes and 24 bidirectional fixture/size cases, bounded viewport and unchanged content. No timed regression/native-latency claim; rerun the final-source cases without replacing historical evidence. |
-| 6. .12 package acceptance | Open; local `b2307cf4` Rust gates unrun | `f39bed3c` passes one full Windows job but Linux/macOS stop before import/full suites; it has no new package acceptance. Require fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
+| 6. .12 package acceptance | Open; local `6b39e5d8` identity gate passes 162 offline tests, Rust/native gates unrun | `f39bed3c` passes one full Windows job but Linux/macOS stop before import/full suites. The new five-binary source/hash gate is implemented, not native-accepted. Require fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
 
 ### Historical Candidate Gates
 

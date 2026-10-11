@@ -1,5 +1,15 @@
 # GENtle Changelog
 
+## 2026-10-11 - Retain Exact-Source Package Identity Gate Evidence
+
+- On local `main` at `6b39e5d8`, rerun all 162 scoped offline package, release,
+  container, checkout and audit tests successfully (26.485 s). Pin the log hash
+  and source/lockfile in the six-item ledger; record the new identity contract
+  without accepting real native binaries, Rust tests or `.12` packages.
+- Session-close reports zero failures; the two warnings are intentional
+  `paper`/`output/` dirt and manual scope confirmation. All changes remain local,
+  with historical evidence unchanged and no GitHub push or workflow dispatch.
+
 ## 2026-10-11 - Bind Native Package Smokes To All Five Binary Identities
 
 - Address follow-up 6's extracted-package identity gap: the existing smoke
