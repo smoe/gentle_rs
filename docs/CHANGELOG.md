@@ -1,5 +1,18 @@
 # GENtle Changelog
 
+## 2026-10-12 - Record Offline Follow-Up Evidence And Glen Execution Gates
+
+- On exact local `1737b01e`, retain the 241-test macOS/arm64 offline pass,
+  unchanged lockfile and log hashes in the six-item checklist. No new runtime,
+  live-agent, native, scroll-timing or package-opt1 acceptance is inferred.
+- At the owner's direction, prepare an exact-source, no-push handoff for Glen's
+  remaining execution gates. Transfer only unpublished source/status commits;
+  require fresh same-source evidence, separate platform failures and no tags,
+  publication, credential transfer or human scientific approval.
+- Historical evidence and unrelated worktree files remain untouched. Syntax,
+  whitespace and session-close checks pass, with the two intentional warnings
+  for worktree dirt and manual plan-scope confirmation.
+
 ## 2026-10-12 - Bind Public VKORC1 Audits To Clean Source Inputs
 
 - Follow-up 4's helper claimed a clean candidate without checking Git status;

@@ -85,9 +85,48 @@ An authored contract is not an executed pass. Every completion needs an exact
 source SHA, platform/profile, command or run URL and retained evidence. New
 candidate results never overwrite or inherit the older candidate's verdict.
 
-### Current Main Snapshot: 2026-10-11
+### Current Main Snapshot: 2026-10-12
 
-The latest locally tested runtime/workflow gate source is
+The exact tested script/contract revision is
+`1737b01e7b3f7083ce8f225bea5eb3b54b4d41e4` on local `main`. It includes
+`dd9ba573`'s corrected synthetic primer bindings, the test-only monitor readiness
+repair `4b6a2569`, and the clean-source public-audit repair `1737b01e`.
+Its unchanged lockfile SHA-256 is
+`ead4421545a125267e33af84aeeea39f0e7ea2f60717a59ef0271d0e71855f1b`.
+All 241 scoped offline tests pass on macOS/arm64, Python 3.14.7 (34.178 s).
+The tested scripts, documentation inputs and checkout policies match that
+commit; unrelated `paper`, `output/` and the untracked release-handoff draft
+are not used, staged or altered. Retained raw log:
+`/private/tmp/gentle-glen-followups-1737b01e-offline.log`, SHA-256
+`b952cb7913458851f2401031d33027fc1c231f13c6e82ed31b366feb1b4a5002`.
+
+```bash
+python3 -m unittest scripts.test_release_candidate scripts.test_package_desktop \
+  scripts.test_release_build_monitor scripts.test_gui_startup_summary \
+  scripts.test_container scripts.test_tutorial_checkouts \
+  scripts.test_primer_specificity_multi_tutorial scripts.test_ci_vkorc1_gui_audit \
+  scripts.test_tutorial_gui_acceptance scripts.test_prepare_public_vkorc1_audit \
+  scripts.test_tutorial_acceptance -q
+```
+
+These tests use synthetic executable/receipt data, disposable Git repositories
+and mocked public fetches. They are neither current Rust/native acceptance nor
+an execution of public biological data or a live model. The monitor's
+fixed-startup-wait failure is reproduced independently with a 300-ms Python
+startup delay; production monitoring is unchanged. The public audit now checks
+the shared clean-checkout and exact CLI-source identity before evidence creation
+or fetch, then rechecks inputs before a pass. Both newly byte-bound public
+source/workflow inputs have scoped LF policies and LF/CRLF negative controls.
+No historical receipt, image, project, Criterion tree or verdict is rewritten.
+Syntax, help and whitespace checks pass; session-close reports four OK, two
+warnings (unrelated worktree dirt and manual scope confirmation), zero failures.
+No push, workflow dispatch, Rust build/check/test, tag or publication occurs.
+Later documentation commits do not inherit runtime/package acceptance.
+
+The preceding 2026-10-11 checkpoint and CI observations retain their original
+scope below; none supplies a native/package pass for the new script revision.
+
+The preceding locally tested runtime/workflow gate source was
 `6b39e5d80e880f738e4bc0aace1a7c19d56aee55`, including the earlier fixture
 repair `b2307cf4` after the owner's tutorial-visual-contract merge `7c952e98`.
 Its lockfile SHA-256 is
@@ -148,9 +187,58 @@ native/package verdict from these offline tests.
 | 1. Audit preservation | Complete; original bytes unchanged | [Original archive receipt](audits/glen_followups_20261008/original_archive_30f23aa4/README.md), pinned report/archive/manifest and all 721 safe file hashes at `30f23aa4`. |
 | 2. Tutorial 08.04 GUI/agent contracts | Historical bounded pass at `3ac4a02d`; current source pending | [Retained native receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#synthetic-native-contract): all 115 hashes, 19 focused Rust tests and eight Linux/X11 dev input steps. Explicit T, completion transition and three full oracle `Seq` records verified. Synthetic 20-bp guard, not public-locus GUI or scientific approval; retain fresh final-source evidence. |
 | 3. Live-agent acceptance | Historical genuine public-starter pass at `3ac4a02d`; current source pending | [Executed receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#genuine-live-agent), macOS/arm64 dev CLI and authorized login. Clarification then two unexecuted `ask` suggestions; reviewed manual execution preserves both sources and all four full `Seq` records match fresh CI. No credential/model/scientific claim; require final-source acceptance. |
-| 4. Honest visual evidence | Historical bounded native/public projection pass at `3ac4a02d`; current source pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. No public-locus GUI verdict; bind new final-source evidence separately. |
+| 4. Honest visual evidence | Historical bounded pass at `3ac4a02d`; clean-source guard passes offline at `1737b01e`, fresh execution pending | [Retained evidence](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#public-reference-and-base-projection): 115 native/44 public hashes, four unchanged synthetic captures and exactly reproduced/inspected public SVG. Sole 588 C/T in 1,089-bp exports, display-only uppercase and explicit non-claims. New guards refuse dirty inputs and stale/changed binaries; they do not execute the public workflow or supply a public-locus GUI verdict. |
 | 5. Scroll benchmarks | Historical deterministic CPU pass at `3ac4a02d`; current source pending | [Retained scroll receipt](audits/glen_followups_20261008/candidate_3ac4a02d/README.md#scroll-cpu-cases), Ubuntu 24.04/x86-64 dev. All 25 hashes and 24 bidirectional fixture/size cases, bounded viewport and unchanged content. No timed regression/native-latency claim; rerun the final-source cases without replacing historical evidence. |
-| 6. .12 package acceptance | Open; local `6b39e5d8` identity gate passes 162 offline tests, Rust/native gates unrun | `f39bed3c` passes one full Windows job but Linux/macOS stop before import/full suites. The new five-binary source/hash gate is implemented, not native-accepted. Require fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
+| 6. .12 package acceptance | Open; 241 offline gates pass at `1737b01e`, Rust/native/package gates unrun | The five-binary source/hash gate and delayed-start monitor regression are implemented, not native-accepted. Require corrected primer import plus fresh same-source full Linux/macOS/Windows success, non-publishing native/container builds and independent extracted-package/entrypoint identities at one final SHA/lockfile/`package-opt1` recipe. No publication or inherited verdict. |
+
+### Glen Execution Handoff: 2026-10-12
+
+The owner assigns Glen assistance with all remaining execution gates. The
+local-source transfer is a small Git bundle of unpublished main commits, not
+a push, release or upload. Its final source/base SHA, byte size and checksum
+are recorded beside the bundle after this status commit; use that exact
+selected source, not the offline-tested predecessor or a generic latest main.
+Import into an isolated checkout without changing Glen's dirty primary tree.
+Verify the bundle checksum and prerequisites before checkout. Keep reference
+caches, credentials, `paper`, `output/` and historical audit bundles out of the
+transfer. If any required platform/tool/authentication is unavailable, report
+that gate as unrun rather than substituting older binaries or a nearby SHA.
+
+Glen's requested work, all without publication:
+
+1. Confirm the exact checkout, lockfile, platform/toolchain and binary hashes.
+   Rerun the 241 offline gates and the targeted multi-reference import/glossary
+   regressions before full Rust suites. Include default, headless CLI/MCP,
+   JS/Lua/all-features and fresh Linux/macOS/Windows results; report primary
+   failures separately from cascades and native-Windows omissions.
+2. Execute the authored 08.04 semantic GUI contract in an approved isolated
+   Linux/X11 runner, using the starter/oracle and shared audit helpers in
+   `.github/workflows/ci.yml` and `scripts/ci_vkorc1_gui_audit.py`. Retain ordinary
+   input, explicit T, completion transition and full-record oracle comparison.
+   Synthetic 20-bp evidence never establishes the public-locus GUI or an assay.
+3. Prepare fresh public inputs with `scripts/prepare_public_vkorc1_audit.py`
+   from a clean checkout and matching CLI, then conduct the genuine live-agent
+   acceptance with existing authorized login. Retain clarification, unexecuted
+   review-first suggestions, ambiguous-alternate refusal and full-record parity.
+   Never copy credentials, bypass recursion guards or silently execute commands.
+4. Retain raw native captures and source-bound public base projections, labelled
+   distinctly; verify the sole C/T difference from persisted sequence data.
+   Do not recolour screenshots, reinterpret identical whole-map images, or
+   publish captures. Keep scientific approval explicitly unclaimed.
+5. Run the maintained scroll-event/next-frame smoke with fresh PATZ1 input:
+   three fixtures, four sizes, both directions, all 24 observations, unchanged
+   sequence/annotations and stable next-frame viewport. Preserve dev/profile
+   metadata. A deterministic CPU pass is not native latency or a timed verdict.
+6. Build native and headless-container `package-opt1` artifacts at the same
+   frozen source/lock/recipe with publishing disabled. Verify actual extracted
+   archive membership/checksums, all five native and three container binary
+   identities/entrypoints, and independent package receipts per `docs/release.md`.
+   Do not tag, publish, push our local branch or accept a mixed-source package.
+
+Return commands and exit codes, exact SHAs/hashes, environment/profile, failures,
+and a retained manifest/receipt for each gate. Only matching executed evidence
+can advance this checklist; pending platform, live-agent or package checks stay
+pending. No human scientific or release approval is requested by this handoff.
 
 ### Historical Candidate Gates
 
