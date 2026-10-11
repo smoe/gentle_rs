@@ -31,11 +31,11 @@
       "regulatory_analysis",
       "wet_lab_biologists"
     ],
-    "notes": "Offline synthetic native TSS-view walkthrough. Opens an annotated minus-strand TSS, distinguishes structure, CUT&RUN-style signal and stored motif peaks, then attaches a hash-bound TFBS score report through the same GUI-hosted Agent Assistant/inner-agent route. Headless and sequence-local shells retain an unapplied typed UI intent. No rescoring, database query, binding claim or biological TSS preference.",
+    "notes": "Offline synthetic native TSS-view walkthrough. Core steps attach a hash-bound score report without rescoring or database queries. An optional compatible DuckDB companion queries hand-crafted nonempty hits and separately binds full/partial reports without changing original curves or context; new query/export and native-hit acceptance pending. Headless and sequence-local shells retain an unapplied typed UI intent. No binding or biological TSS preference claim.",
     "estimated_minutes": 10,
     "difficulty": "intermediate",
     "network": "offline",
-    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI intent receipt"],
+    "interfaces": ["GUI", "Agent Assistant / inner agent", "CLI / shared Shell (optional queries); CLI intent receipt"],
     "starting_state": "Empty project and the retained public synthetic-minus annotated TSS/report pair",
     "produces": ["interactive native TSS evidence view"],
     "group": "08",

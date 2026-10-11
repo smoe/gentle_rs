@@ -146,6 +146,29 @@ class TutorialCheckoutTests(unittest.TestCase):
         checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
         self.assertNotEqual((broken / relative / "dna-analysis.json").read_bytes(), payloads[relative / "dna-analysis.json"])
 
+    def test_repeat_lesson_raw_rmsk_hash_survives_both_checkout_modes(self):
+        relative = Path("test_files/fixtures/repeat_cohort/local_project.rmsk.txt")
+        payload = (checker.ROOT / relative).read_bytes()
+        digest = "2fe38f29ab6ebdfb20e1ef3a0f5c28f4e01fffed5dfba32d0503c40af4722063"
+        self.assertEqual(hashlib.sha256(payload).hexdigest(), digest)
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        destination = self.root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "synthetic repeat rows")
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"repeat-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            self.assertEqual((target / relative).read_bytes(), payload)
+            self.assertEqual(hashlib.sha256((target / relative).read_bytes()).hexdigest(), digest)
+        unprotected = b"\n".join(line for line in attributes.split(b"\n")
+                                 if not line.startswith(b"test_files/fixtures/repeat_cohort/*.txt "))
+        broken = Path(self.tmp.name) / "repeat-unprotected"
+        checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+        self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).hexdigest(), digest)
+
     def test_retained_vkorc1_wip_bytes_and_hashes_survive_both_checkout_modes(self):
         relative = Path("docs/tutorial/reproducibility/vkorc1_rs9923231_promoter_reporter")
         files = ["variant_promoter_context.json", "promoter_reporter_candidates.json",

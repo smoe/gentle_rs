@@ -5,6 +5,10 @@ use super::*;
 use crate::digest_utils::sha256_file_hex;
 
 fn fixture() -> (tempfile::TempDir, PathBuf, String) {
+    fixture_with_example("regulatory")
+}
+
+fn fixture_with_example(example: &str) -> (tempfile::TempDir, PathBuf, String) {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("delivered package with spaces and 'quote'");
     let duckdb = env::var(DUCKDB_BIN_ENV).unwrap_or_else(|_| "duckdb".into());
@@ -16,6 +20,8 @@ fn fixture() -> (tempfile::TempDir, PathBuf, String) {
         .arg(&root)
         .arg("--duckdb")
         .arg(&duckdb)
+        .arg("--example")
+        .arg(example)
         .current_dir(tmp.path())
         .output()
         .expect("Python and DuckDB required for this explicit integration test");
@@ -25,6 +31,131 @@ fn fixture() -> (tempfile::TempDir, PathBuf, String) {
         String::from_utf8_lossy(&output.stderr)
     );
     (tmp, root, duckdb)
+}
+
+#[test]
+#[ignore = "requires Python 3 and real DuckDB CLI; query, attach and export, no mocked Parquets"]
+fn regulatory_tss_view_companion_query_export_preserves_geometry() {
+    use crate::engine::GentleEngine;
+    use crate::engine_shell::{execute_shell_command, parse_shell_line, quote_shell_arg};
+    use gentle_protocol::tss_motif_evidence::{covers_window, project, validate};
+    use gentle_protocol::tss_profiles::{TssProfileReport, TssStrand};
+
+    let (tmp, root, duckdb) = fixture_with_example("tss-view");
+    let quote = |path: &Path| quote_shell_arg(&path.to_string_lossy());
+    let original = Path::new(env!("CARGO_MANIFEST_DIR")).join(
+        "docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json",
+    );
+    let original_bytes = fs::read(&original).unwrap();
+    let original_report: TssProfileReport = serde_json::from_slice(&original_bytes).unwrap();
+    let mut engine = GentleEngine::default();
+    let full = tmp.path().join("full.json");
+    let partial = tmp.path().join("partial.json");
+    let plus = tmp.path().join("plus.json");
+    for (target, path, expected_hits) in [
+        ("--gene SYNMINUS", &full, 3),
+        ("--region partial=synthetic_chr:294..301", &partial, 3),
+        ("--gene SYNPLUS", &plus, 2),
+    ] {
+        let line = format!(
+            "features genomic-motif-evidence --package {} --duckdb {} --genome-id synthetic-genome-v1 --motif MA0004.1 {target} --path {}",
+            quote(&root),
+            quote_shell_arg(&duckdb),
+            quote(path),
+        );
+        execute_shell_command(&mut engine, &parse_shell_line(&line).unwrap()).unwrap();
+        let query: GenomicMotifEvidenceReport = serde_json::from_value(read(path)).unwrap();
+        available(&query);
+        assert_eq!(query.hits.len(), expected_hits);
+        assert!(
+            query
+                .hits
+                .iter()
+                .all(|hit| hit.end_0based_exclusive - hit.start_0based == 6)
+        );
+        assert_eq!(
+            query.provider.as_ref().unwrap().score_mode,
+            "log2_relative_risk"
+        );
+    }
+    let out = tmp.path().join("enriched");
+    let line = format!(
+        "features tss-tfbs-profiles-export --report {} --genomic-motif-evidence {} --genomic-motif-evidence {} --output-dir {} --formats svg",
+        quote(&original),
+        quote(&full),
+        quote(&partial),
+        quote(&out),
+    );
+    execute_shell_command(&mut engine, &parse_shell_line(&line).unwrap()).unwrap();
+    let enriched: TssProfileReport =
+        serde_json::from_value(read(&out.join("report.json"))).unwrap();
+    validate(&enriched).unwrap();
+    assert_eq!(enriched.imported_motif_evidence.len(), 2);
+    assert_eq!(
+        serde_json::to_value(&enriched.windows).unwrap(),
+        serde_json::to_value(&original_report.windows).unwrap(),
+        "attachment must not rescore or alter stored context",
+    );
+    let geometry = &enriched.windows[0].record.geometry;
+    assert_eq!(geometry.strand, TssStrand::Minus);
+    let full_source = &enriched.imported_motif_evidence[0];
+    assert_eq!(full_source.source.sha256, sha256_file_hex(&full).unwrap());
+    assert!(covers_window(&full_source.report, geometry));
+    assert!(!covers_window(
+        &enriched.imported_motif_evidence[1].report,
+        geometry
+    ));
+    let projected = project(&full_source.report, geometry, "MA0004.1");
+    assert_eq!(projected.len(), 3);
+    let inward = projected
+        .iter()
+        .find(|hit| hit.hit.start_0based == 294)
+        .unwrap();
+    assert_eq!((inward.start, inward.end), (3, 9));
+    assert_eq!(inward.local_strand, TssStrand::Plus);
+    let opposite = projected
+        .iter()
+        .find(|hit| hit.hit.start_0based == 296)
+        .unwrap();
+    assert_eq!((opposite.start, opposite.end), (1, 7));
+    assert_eq!(opposite.local_strand, TssStrand::Minus);
+    let clipped = projected
+        .iter()
+        .find(|hit| hit.hit.start_0based == 290)
+        .unwrap();
+    assert_eq!((clipped.start, clipped.end), (7, 11));
+    assert_eq!((clipped.full_start, clipped.full_end), (7, 13));
+    assert!(clipped.clipped);
+    let scores = projected
+        .iter()
+        .map(|hit| hit.hit.score)
+        .collect::<Vec<_>>();
+    assert!(
+        scores.contains(&0.0),
+        "a genuine zero must survive attachment"
+    );
+    assert!(scores.contains(&-0.5), "signed raw scores are not clipped");
+    let plus_report: GenomicMotifEvidenceReport = serde_json::from_value(read(&plus)).unwrap();
+    let mut plus_geometry = geometry.clone();
+    plus_geometry.strand = TssStrand::Plus;
+    plus_geometry.start_1based = 97;
+    plus_geometry.end_1based = 107;
+    plus_geometry.tss_1based = 100;
+    let plus_hits = project(&plus_report, &plus_geometry, "MA0004.1");
+    assert_eq!(plus_hits.len(), 2);
+    assert!(plus_hits.iter().all(|hit| (hit.start, hit.end) == (1, 7)));
+    assert!(
+        plus_hits
+            .iter()
+            .any(|hit| hit.local_strand == TssStrand::Plus)
+    );
+    assert!(
+        plus_hits
+            .iter()
+            .any(|hit| hit.local_strand == TssStrand::Minus)
+    );
+    assert_eq!(fs::read(&original).unwrap(), original_bytes);
+    assert!(engine.state().sequences.is_empty());
 }
 
 fn request(root: &Path, duckdb: &str) -> GenomicMotifEvidenceRequest {

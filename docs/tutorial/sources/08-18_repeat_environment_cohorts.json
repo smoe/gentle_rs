@@ -1,0 +1,23 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "repeat_environment_cohorts",
+  "title": "Compare sequence environments of a repeat cohort",
+  "catalog": {
+    "order": 97,
+    "path": "docs/tutorial/08-18_repeat_environment_cohorts.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["wet_lab_biologists", "cli_first", "agent_users", "regulatory_analysis"],
+    "notes": "Offline shared-shell exercise on a bacterial reference with invented rmsk labels, plus optional prepared human resources. Distinct repeat loci, explicit missing transcript geometry and nonempty motif summaries; RNA ranking is unimplemented. Rust execution and native/resource acceptance pending.",
+    "estimated_minutes": 15,
+    "difficulty": "intermediate",
+    "network": "offline",
+    "interfaces": ["CLI / shared Shell", "Agent Assistant"],
+    "starting_state": "LocalProject FASTA/GenBank and hand-crafted rmsk in an isolated cache",
+    "produces": ["repeat-locus cohort JSON", "window motif summary JSON"],
+    "group": "08",
+    "group_position": 18,
+    "next_steps": ["tss_regulatory_view_gui"]
+  }
+}

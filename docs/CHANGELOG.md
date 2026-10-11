@@ -125,6 +125,32 @@
   fixture repair changes no production biology or acceptance policy; commit
   locally on `main` without pushing or altering historical evidence.
 
+## 2026-10-12 - Prepare Imported-TSS and Repeat-Cohort Tutorial Scrutiny
+
+- Follow the supplied read-only Claude review: extend 08.16 only with a compatible
+  nonempty imported-hit companion; add manual 08.18 for repeat-locus selection
+  and window summaries. Cross-link existing local-scoring/reporter lessons rather
+  than inventing control biology or duplicating engine logic. FLNA stays an
+  input-pending draft outside the catalog until Glen supplies genuine retained
+  public data and stable transcript/feature selectors.
+- Reuse the subset generator via a bounded `tss-view` preset with full/clipped
+  six-base footprints, opposite strands, genuine zero and signed raw scores.
+  Full/partial coverage comes from actual queries, not edited reports. Local
+  DuckDB 1.5.4 checks preserve the default's 15 Parquet tables/bytes and five
+  catalog-table contents against `150a3390`; no binary-catalog identity claim.
+- Add regression source for actual shared query/attach/export and saved repeat
+  cohort/window execution, plus fixture provenance, source/oracle checks and
+  raw-rmsk LF/CRLF hash coverage. Keep two identical sequences at distinct loci;
+  missing transcript geometry is explicit and RNA ranking remains unimplemented.
+  New Rust compilation/execution and native acceptance stay with Glen/CI.
+- On macOS, all 84 scoped Python tests pass, including two actual DuckDB/Parquet
+  fixture checks, with no mocked GENtle acceptance. Catalog/manifest freshness
+  checks use the unchanged `150a3390` docs helper: 65 entries, unchanged 30
+  executable chapters/six GUI contracts. Historical reports, screenshots and
+  human review dates are untouched. The reconciled Claude plan and second Glen
+  handoff retain exact scope, commands, required evidence and return instructions.
+  No local Rust build/check, network retrieval, push or release verdict.
+
 ## 2026-10-12 - Add Mergeable Microarray and Measured-Gel Lessons
 
 - Add manual/hybrid tutorials 07.04 and 10.03: existing vendor-coordinate TP73

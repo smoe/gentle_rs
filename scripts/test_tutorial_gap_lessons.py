@@ -1,4 +1,4 @@
-"""Source/fixture checks for manual microarray and measured-gel lessons.
+"""Source/fixture checks for bounded manual tutorial additions.
 
 These tests do not execute GENtle, DuckDB, a GUI or a biological analysis.
 The arithmetic oracle and drawn PNG are explicitly synthetic teaching inputs.
@@ -25,6 +25,12 @@ GENERATOR = ROOT / "docs/tutorial/inputs/make_gel_sizing_fixture.py"
 spec = importlib.util.spec_from_file_location("gel_teaching_generator", GENERATOR)
 generator = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(generator)
+motif_spec = importlib.util.spec_from_file_location(
+    "regulatory_teaching_generator",
+    ROOT / "test_files/fixtures/regulatory_motif_subset/make_fixture.py",
+)
+motif_generator = importlib.util.module_from_spec(motif_spec)
+motif_spec.loader.exec_module(motif_generator)
 
 
 class TutorialGapLessonTests(unittest.TestCase):
@@ -116,7 +122,8 @@ class TutorialGapLessonTests(unittest.TestCase):
 
     def test_new_manual_sources_do_not_invent_executable_gui_acceptance(self):
         manifest = json.loads((ROOT / "docs/tutorial/manifest.json").read_bytes())
-        for source_name in ("07-04_microarray_evidence_gui_cli.json", "10-03_measured_gel_sizing_gui_cli.json"):
+        for source_name in ("07-04_microarray_evidence_gui_cli.json", "10-03_measured_gel_sizing_gui_cli.json",
+                            "08-18_repeat_environment_cohorts.json"):
             source = json.loads((ROOT / "docs/tutorial/sources" / source_name).read_bytes())
             self.assertEqual(source["catalog"]["status"], "manual/hybrid")
             self.assertNotIn("generated", source)
@@ -124,7 +131,8 @@ class TutorialGapLessonTests(unittest.TestCase):
             self.assertNotIn(source["id"], [chapter["id"] for chapter in manifest["chapters"]])
 
     def test_lesson_local_links_and_visible_pending_limits(self):
-        for filename in ("07-04_microarray_evidence_gui_cli.md", "10-03_measured_gel_sizing_gui_cli.md"):
+        for filename in ("07-04_microarray_evidence_gui_cli.md", "10-03_measured_gel_sizing_gui_cli.md",
+                         "08-16_tss_regulatory_view_gui.md", "08-18_repeat_environment_cohorts.md"):
             path = ROOT / "docs/tutorial" / filename
             prose = path.read_text(encoding="utf-8")
             for link in re.findall(r"\]\(([^)]+)\)", prose):
@@ -132,6 +140,47 @@ class TutorialGapLessonTests(unittest.TestCase):
                     self.assertTrue((path.parent / link.split("#")[0]).exists(), link)
             self.assertIn("synthetic", prose)
             self.assertIn("pending", prose.lower())
+
+    def test_repeat_fixture_keeps_identical_dna_at_distinct_locations(self):
+        fixture = ROOT / "test_files/fixtures/repeat_cohort/local_project.rmsk.txt"
+        rows = [line.split() for line in fixture.read_text().splitlines()]
+        self.assertEqual(len(rows), 3)
+        selected = [row for row in rows if row[11:13] == ["LINE", "L1"]]
+        self.assertEqual(len(selected), 2)
+        sequence = "".join(line.strip() for line in
+                           (ROOT / "test_files/fixtures/genomes/AB011549.2.fa").read_text().splitlines()
+                           if not line.startswith(">"))
+        intervals = [(int(row[6]), int(row[7])) for row in selected]
+        self.assertEqual(intervals, [(1843, 1849), (3877, 3883)])
+        self.assertEqual([sequence[a:b].upper() for a, b in intervals], ["AGCCAG", "AGCCAG"])
+        self.assertEqual([row[9] for row in selected], ["+", "-"])
+        prose = (ROOT / "docs/tutorial/08-18_repeat_environment_cohorts.md").read_text()
+        self.assertIn("RNA-read ranking is not implemented", prose)
+        self.assertIn("not evidence of mammalian LINE biology", prose)
+
+    def test_tss_companion_footprints_match_original_geometry_without_faking_receipts(self):
+        original = json.loads((ROOT / "docs/tutorial/reproducibility/tss_regulatory_view_gui/synthetic-minus.profile-report.json").read_bytes())
+        geometry = original["windows"][0]["record"]["geometry"]
+        self.assertEqual(original["panel_resolution"]["panel"]["score_kind"], "llr_bits")
+        self.assertEqual((geometry["start_1based"], geometry["end_1based"], geometry["tss_1based"]),
+                         (293, 303, 300))
+        hits = motif_generator.tss_view_hits()
+        self.assertEqual(len(hits), 5)
+        low, high = geometry["start_1based"] - 1, geometry["end_1based"]
+        local = [(high - (start + 6), high - start, score) for start, _, score, _ in hits
+                 if start < high and start + 6 > low]
+        self.assertEqual(local, [(3, 9, 1.25), (1, 7, 0.0), (7, 13, -0.5)])
+        with tempfile.TemporaryDirectory() as tmp:
+            nonexistent = Path(tmp) / "must not exist"
+            with self.assertRaises(ValueError):
+                motif_generator.build(nonexistent, "not-invoked", "unknown")
+            self.assertFalse(nonexistent.exists())
+            with self.assertRaises(FileExistsError):
+                motif_generator.build(Path(tmp), "not-invoked", "tss-view")
+        draft = ROOT / "docs/tutorial/drafts/flna_splicing_interpretation.md"
+        self.assertIn("Inputs Pending", draft.read_text())
+        catalog = json.loads((ROOT / "docs/tutorial/catalog.json").read_bytes())
+        self.assertNotIn(str(draft.relative_to(ROOT)), json.dumps(catalog))
 
     def test_navigation_does_not_duplicate_review_badges_or_planned_existing_variant_guide(self):
         readme = (ROOT / "docs/tutorial/README.md").read_text(encoding="utf-8")
