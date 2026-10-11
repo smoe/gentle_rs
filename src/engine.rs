@@ -1324,6 +1324,7 @@ mod tss_profiles;
 mod tss_view_export;
 #[path = "engine/analysis/tss_workspace.rs"]
 mod tss_workspace;
+#[cfg(feature = "desktop-gui")]
 pub(crate) use region_homology::validate_genomic_region_homology_report;
 #[cfg(test)]
 pub(crate) use tss_workspace::tests::{

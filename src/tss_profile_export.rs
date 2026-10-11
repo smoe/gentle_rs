@@ -1483,9 +1483,10 @@ fn svg_dimensions(svg: &str) -> Result<(u32, u32), EngineError> {
             }
             quick_xml::events::Event::Decl(_) | quick_xml::events::Event::Comment(_) => {}
             quick_xml::events::Event::Text(text)
-                if AsRef::<[u8]>::as_ref(text.as_ref())
-                    .iter()
-                    .all(u8::is_ascii_whitespace) => {}
+                if {
+                    let bytes: &[u8] = text.as_ref();
+                    bytes.iter().all(u8::is_ascii_whitespace)
+                } => {}
             _ => return Err(invalid("unexpected content before SVG root")),
         }
     }

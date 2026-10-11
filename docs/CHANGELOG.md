@@ -1,5 +1,17 @@
 # GENtle Changelog
 
+## 2026-10-11 - Repair Current Build Boundaries
+
+- Gate the GUI-only region-homology validator re-export with `desktop-gui`.
+  Engine-internal validation continues to use the module directly, while
+  headless CLI/MCP builds no longer import a symbol whose only external caller
+  is the desktop genomic-regions view. No operation, protocol, report, cache or
+  biological behavior changes.
+- Give the byte-backed quick-xml text event an explicit `&[u8]` binding before
+  testing prefix whitespace. This preserves the strict SVG parser introduced at
+  `70bdcf02` while avoiding an ambiguous nested `AsRef` inference that blocked
+  compilation of the root test target.
+
 ## 2026-10-09 - Merge Remaining Development Branches For Main Push
 
 - At the owner's explicit request, integrate `gentle_rs_3` tip `4c24ce70`
