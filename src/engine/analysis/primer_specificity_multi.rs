@@ -1496,6 +1496,7 @@ mod tests {
         let cdna = reference_catalog
             .prepare_blast_sequence_resource("synthetic-b", None)
             .unwrap();
+        assert!(!cdna.reused_existing);
         assert_eq!(cdna.index_kind, BlastDatabaseIndexKind::TranscriptomeCdna);
         assert!(cdna.blast_index_ready);
         assert!(
@@ -1562,7 +1563,10 @@ mod tests {
         let before = serde_json::to_value(engine.snapshot()).unwrap();
         let mismatched_output = root.join("mismatched reference bundle");
         // The catalog declaration cannot override a differently typed prepared index.
-        let cdna_manifest_path = root.join("synthetic-b/blast-resource-manifest.json");
+        let cdna_manifest_path = Path::new(&cdna.sequence_path)
+            .parent()
+            .expect("fresh cDNA resource has an install directory")
+            .join("blast-resource-manifest.json");
         let retained_manifest = fs::read(&cdna_manifest_path).unwrap();
         let mut mismatched_manifest: Value = serde_json::from_slice(&retained_manifest).unwrap();
         mismatched_manifest["index_kind"] = json!("genomic_dna");

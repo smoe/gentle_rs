@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-11 - Correct The Prepared cDNA Manifest Test Path
+
+- CI at `f39bed3c` passes the complete Windows job in run `38159995322`,
+  including glossary and portable primer regressions. Linux/macOS stop at the
+  Unix-only import fixture's manifest read before exercising the actual import;
+  neither stopped suite is accepted.
+- The negative control incorrectly treats a catalog cache root as its install
+  directory. Derive the manifest location from the newly prepared resource's
+  returned sequence path and explicitly require a fresh resource. Keep the
+  prepared-kind mismatch, atomicity, replay and tamper assertions unchanged;
+  no production behavior or safety validation changes.
+- Continue development on local `main` at the owner's request. No push is
+  authorized without a new explicit owner request, and corrected-SHA Rust
+  verification remains pending under the no-local-build restriction.
+- Scoped edition-2024 rustfmt and whitespace checks pass. The offline
+  primer-tutorial, release-candidate and LF/CRLF tutorial-checkout suites pass
+  all 93 tests on macOS; these checks do not execute the repaired Rust fixture.
+
 ## 2026-10-11 - Repair Multi-Reference And Glossary CI Regressions
 
 - Trace CI run `38146419434` at `d637f1d0`: macOS fails the mixed-reference
