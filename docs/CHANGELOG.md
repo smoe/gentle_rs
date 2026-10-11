@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-11 - Bind Native Package Smokes To All Five Binary Identities
+
+- Address follow-up 6's extracted-package identity gap: the existing smoke
+  accepted stale/unversioned binaries when hashes and plaintext `REVISION`
+  matched, because version/help exit codes were not source checks. A fail-first
+  synthetic test reproduces all 75 stale/ambiguous cases across three layouts.
+- Require explicit tag/SHA and each of the five binaries' exact version/source
+  lines. Add the publication helper's missing `--version`/`-V` probe before
+  input loading, with a Rust process regression. Preserve other entrypoint,
+  capability, resource, manifest, checksum and relocation smokes.
+- Retain observed versions/final hashes in a new external smoke receipt, then
+  per-platform build receipts and aggregate metadata. Refuse altered binaries,
+  existing/in-payload receipt paths and incomplete/stale/malformed identities;
+  do not rewrite or accept historical receipts under the new gate.
+- On macOS, all 73 scoped package/release-policy tests and all 162 broader
+  offline package/policy/container/checkout/audit Python tests pass. Rust
+  formatting, release YAML/embedded Python parsing and whitespace pass.
+  Tests use synthetic stand-ins, not native GENtle.
+  Rust compilation/process tests and real package-opt1 acceptance remain pending
+  under the no-local-build rule. Work stays on local `main`; nothing is pushed,
+  dispatched, tagged or published, and no scientific/latency verdict changes.
+
 ## 2026-10-11 - Reconcile Audit Gates With Local Main Development
 
 - Update the six-item follow-up ledger with the owner's latest local-main and

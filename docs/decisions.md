@@ -1134,6 +1134,11 @@ latency. Historical "release-like" measurements still mean the release profile;
 do not relabel them or silently relax budgets for development-profile packages.
 Retain extracted-package identity separately from local counterpart builds and
 instrumented diagnostics. Keep `bench-audit` for historical ladder continuity.
+Native package acceptance requires all five extracted entrypoints to report the
+selected package version and full source SHA, with observed binary hashes bound
+in build receipts. Plaintext package revision files and successful help commands
+are insufficient; source identity observations do not authenticate build
+provenance or replace independent archive verification and full-platform gates.
 A controlled same-SHA, same-host native profile comparison may quantify the
 recipe difference with repeated, condition-matched samples; it is not a
 code-change baseline, cannot isolate LTO from other recipe differences, and

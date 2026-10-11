@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import subprocess
 import tomllib
@@ -157,12 +159,43 @@ def stage(repo: Path, binaries: Path, destination: Path, platform: str,
     ), encoding="utf-8")
 
 
-def smoke(root: Path, platform: str, revision: str, checkout: Path) -> None:
+def validate_binary_identities(identities: object, tag: str, revision: str) -> None:
+    """Require one exact version/source observation and digest per native binary."""
+    if not isinstance(identities, dict) or set(identities) != set(BINARIES):
+        raise ValueError("Expected source identities for exactly the five native binaries")
+    for name, record in identities.items():
+        if not isinstance(record, dict):
+            raise ValueError(f"Invalid source identity record: {name}")
+        validate_source_identity(record.get("version"), tag, revision, name)
+        checksum = record.get("sha256")
+        if not isinstance(checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", checksum):
+            raise ValueError(f"Invalid native binary digest: {name}")
+
+
+def validate_source_identity(version: object, tag: str, revision: str, name: str) -> None:
+    """Compare whole identity lines; prefixes, unknown sources and duplicates fail."""
+    if (not re.fullmatch(r"v[0-9][0-9A-Za-z.+-]*", tag)
+            or not re.fullmatch(r"[0-9a-f]{40}", revision)):
+        raise ValueError("Explicit version label and full source SHA required")
+    lines = version.splitlines() if isinstance(version, str) else []
+    versions = [line for line in lines if line.startswith("GENtle ")]
+    sources = [line for line in lines if line.startswith("Source revision ")]
+    if (versions != [f"GENtle {tag[1:]}"]
+            or sources != [f"Source revision {tag[1:]}+git.{revision}"]):
+        raise ValueError(f"Packaged binary source identity mismatch: {name}")
+
+
+def smoke(root: Path, platform: str, revision: str, checkout: Path, tag: str,
+          output: Path | None = None) -> dict:
     root, checkout = root.resolve(), checkout.resolve()
     if root.is_relative_to(checkout):
         raise ValueError("Smoke the extracted package outside the checkout")
+    if output is not None and (output.resolve().is_relative_to(root) or output.exists()):
+        raise ValueError("Smoke receipt must be new and outside the package")
     if (root / "REVISION").read_text().strip() != revision:
         raise ValueError("Package revision does not match selected candidate")
+    if (root / "VERSION").read_text().strip() != tag:
+        raise ValueError("Package version does not match selected candidate")
     entries = (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
     expected = {}
     for line in entries:
@@ -186,12 +219,13 @@ def smoke(root: Path, platform: str, revision: str, checkout: Path) -> None:
         resource = resource_root / relative
         if not resource.exists() or (resource.is_file() and resource.stat().st_size == 0):
             raise ValueError(f"Missing packaged resource: {relative}")
-    commands = (
-        ("gentle", "--version"), ("gentle_cli", "capabilities"),
+    commands = tuple((name, "--version") for name in BINARIES) + (
+        ("gentle_cli", "capabilities"),
         ("gentle_mcp", "--help"), ("gentle_examples_docs", "--help"),
         ("gentle_publication_report", "--help"),
         ("gentle_examples_docs", "tutorial-manifest-check"),
     )
+    identities = {}
     for name, argument in commands:
         executable = binary_root / (name + suffix)
         if not executable.is_file() or executable.stat().st_size == 0:
@@ -203,6 +237,24 @@ def smoke(root: Path, platform: str, revision: str, checkout: Path) -> None:
         if result.returncode:
             raise ValueError(f"{name} {argument} failed ({result.returncode}):\n"
                              f"{result.stdout[-4000:]}\n{result.stderr[-4000:]}")
+        if argument == "--version":
+            validate_source_identity(result.stdout, tag, revision, name)
+            identities[name] = {"version": result.stdout.strip()}
+    for name in BINARIES:
+        executable = binary_root / (name + suffix)
+        checksum = digest(executable)
+        if checksum != expected[executable.relative_to(root).as_posix()]:
+            raise ValueError(f"Packaged binary changed during smoke: {name}")
+        identities[name]["sha256"] = checksum
+    validate_binary_identities(identities, tag, revision)
+    record = {"schema": "gentle.native_package_smoke.v1", "tag": tag,
+              "revision": revision, "platform": platform,
+              "binary_identities": identities}
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("x", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, indent=2) + "\n")
+    return record
 
 
 def main() -> None:
@@ -218,6 +270,8 @@ def main() -> None:
     checking.add_argument("--root", type=Path, required=True)
     checking.add_argument("--revision", required=True)
     checking.add_argument("--checkout", type=Path, required=True)
+    checking.add_argument("--tag", required=True)
+    checking.add_argument("--output", type=Path)
     for command in (staging, checking):
         command.add_argument("--platform", choices=("macos", "windows", "linux"), required=True)
     bundle_check = commands.add_parser("verify-macos-bundle")

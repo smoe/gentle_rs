@@ -7,10 +7,14 @@ use gentle::gene_set_publication::{
 };
 use gentle_protocol::GENE_ISOFORM_ASSAY_PUBLICATION_REQUEST_SCHEMA;
 
-const USAGE: &str = "Usage: gentle_publication_report REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]";
+const USAGE: &str = "Usage: gentle_publication_report REQUEST.json OUTPUT_DIR [--profile ID] [--blocks ID,ID] [--pdf]\n       gentle_publication_report --version|-V";
 
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
+    if matches!(args.as_slice(), [flag] if flag == "--version" || flag == "-V") {
+        println!("{}", gentle::about::version_cli_text());
+        return;
+    }
     if matches!(args.as_slice(), [flag] if flag == "--help" || flag == "-h") {
         println!("{USAGE}");
         return;

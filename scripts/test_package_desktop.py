@@ -7,12 +7,14 @@ Run with: python3 -m unittest scripts.test_package_desktop -v
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import plistlib
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import tomllib
@@ -51,6 +53,11 @@ class DesktopPackageTests(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-qm", "synthetic distribution")
         self.revision = self.git("rev-parse", "HEAD").strip()
+        self.tag = "v0.1.0-test"
+        self.version_output = (
+            f"GENtle {self.tag[1:]}\nBuild synthetic\n"
+            f"Source revision {self.tag[1:]}+git.{self.revision}\n"
+        )
         (self.repo / "assets/private-cache.txt").write_text("must not be packaged")
         self.binaries = self.root / "release"
         self.binaries.mkdir()
@@ -80,11 +87,11 @@ class DesktopPackageTests(unittest.TestCase):
             return real_run(args, **kwargs)
 
         with patch.object(package.subprocess, "run", side_effect=run):
-            package.stage(self.repo, self.binaries, root, platform, "v0.1.0-test", self.app)
+            package.stage(self.repo, self.binaries, root, platform, self.tag, self.app)
         return root
 
-    def smoke(self, root: Path, platform: str) -> None:
-        package.smoke(root, platform, self.revision, self.repo)
+    def smoke(self, root: Path, platform: str) -> dict:
+        return package.smoke(root, platform, self.revision, self.repo, self.tag)
 
     def test_all_layouts_include_entrypoints_and_only_tracked_resources(self) -> None:
         for platform in ("macos", "windows", "linux"):
@@ -103,9 +110,14 @@ class DesktopPackageTests(unittest.TestCase):
                     self.assertEqual((resource_root / "GENtle.icns").read_bytes(),
                                      b"synthetic generated icon")
                 with patch.object(package.subprocess, "run", return_value=
-                                  subprocess.CompletedProcess([], 0, "ok", "")) as run:
-                    self.smoke(root, platform)
-                self.assertEqual(run.call_count, 6)
+                                  subprocess.CompletedProcess([], 0, self.version_output, "")) as run:
+                    observed = self.smoke(root, platform)
+                self.assertEqual(run.call_count, 10)
+                self.assertEqual(observed["revision"], self.revision)
+                self.assertEqual(set(observed["binary_identities"]), set(package.BINARIES))
+                for name, identity in observed["binary_identities"].items():
+                    self.assertEqual(identity["version"], self.version_output.strip())
+                    self.assertEqual(identity["sha256"], package.digest(binary_root / (name + suffix)))
                 calls = [call.args[0] for call in run.call_args_list]
                 self.assertIn([str(binary_root / ("gentle_cli" + suffix)), "capabilities"], calls)
                 self.assertIn([str(binary_root / ("gentle_examples_docs" + suffix)),
@@ -114,6 +126,8 @@ class DesktopPackageTests(unittest.TestCase):
                     self.assertEqual(call.kwargs["cwd"], resource_root)
                     self.assertFalse(resource_root.is_relative_to(self.repo))
                     self.assertEqual(call.kwargs["timeout"], 120)
+                for name in package.BINARIES:
+                    self.assertIn([str(binary_root / (name + suffix)), "--version"], calls)
 
     def test_staging_excludes_scripting_and_reproduction_binaries(self) -> None:
         extras = ("gentle_js", "gentle_lua", "gentle_dna_viewer_repro", "gentle_egui_window_repro")
@@ -134,6 +148,28 @@ class DesktopPackageTests(unittest.TestCase):
                 for name in package.BINARIES:
                     self.assertEqual((binary_root / (name + suffix)).read_bytes(),
                                      (self.binaries / (name + suffix)).read_bytes())
+
+    def test_smoke_rejects_stale_or_ambiguous_identity_in_each_binary(self) -> None:
+        bad_versions = (
+            "unversioned helper\n",
+            self.version_output.replace(self.revision, "0" * 40),
+            self.version_output.replace(self.revision, self.revision[:8]),
+            self.version_output.replace(self.tag[1:], "0.0.0"),
+            self.version_output + f"Source revision {self.tag[1:]}+git.{self.revision}\n",
+        )
+        for platform in ("macos", "windows", "linux"):
+            root = self.stage(platform)
+            for name in package.BINARIES:
+                for bad in bad_versions:
+                    def run(args, **kwargs):
+                        binary = Path(args[0]).name.removesuffix(".exe")
+                        text = bad if binary == name else self.version_output
+                        return subprocess.CompletedProcess(args, 0, text, "")
+
+                    with self.subTest(platform=platform, binary=name, version=bad):
+                        with patch.object(package.subprocess, "run", side_effect=run), patch("builtins.print"):
+                            with self.assertRaisesRegex(ValueError, "source identity"):
+                                self.smoke(root, platform)
 
     def test_smoke_rejects_scripting_even_when_recorded_in_checksums(self) -> None:
         for platform in ("macos", "windows", "linux"):
@@ -162,7 +198,7 @@ class DesktopPackageTests(unittest.TestCase):
             extracted = self.root / f"extracted-{platform}"
             shutil.unpack_archive(archive, extracted)
             with patch.object(package.subprocess, "run", return_value=
-                              subprocess.CompletedProcess([], 0, "ok", "")):
+                              subprocess.CompletedProcess([], 0, self.version_output, "")):
                 self.smoke(extracted / root.name, platform)
 
     @unittest.skipIf(os.name == "nt", "POSIX executable stand-ins; native Windows smoke runs in CI")
@@ -173,14 +209,22 @@ class DesktopPackageTests(unittest.TestCase):
                 "import json, sys\nfrom pathlib import Path\n"
                 "assert Path('assets/genomes.json').is_file()\n"
                 "assert json.loads(Path('docs/tutorial/manifest.json').read_text()) == {'chapters': []}\n"
-                "print(sys.argv)\n"
+                f"print({self.version_output!r} if sys.argv[1] == '--version' else str(sys.argv))\n"
             )
         root = self.stage("macos")
         relocated = self.root / "mounted/GENtle.app"
         shutil.copytree(root, relocated)
         shutil.rmtree(self.repo)
         shutil.rmtree(self.binaries)
-        self.smoke(relocated, "macos")
+        output = self.root / "relocated-smoke.json"
+        subprocess.run([
+            sys.executable, str(Path(package.__file__).resolve()), "smoke",
+            "--platform", "macos", "--root", str(relocated), "--revision", self.revision,
+            "--checkout", str(self.repo), "--tag", self.tag, "--output", str(output),
+        ], check=True, capture_output=True, text=True)
+        receipt = json.loads(output.read_text())
+        self.assertEqual(receipt["revision"], self.revision)
+        self.assertEqual(set(receipt["binary_identities"]), set(package.BINARIES))
 
     def test_staging_rejects_missing_binary_before_creating_package(self) -> None:
         (self.binaries / "gentle_mcp.exe").unlink()
@@ -222,7 +266,7 @@ class DesktopPackageTests(unittest.TestCase):
     def test_tampered_or_extra_files_and_wrong_revision_fail_closed(self) -> None:
         root = self.stage("windows")
         with self.assertRaisesRegex(ValueError, "revision does not match"):
-            package.smoke(root, "windows", "0" * 40, self.repo)
+            package.smoke(root, "windows", "0" * 40, self.repo, self.tag)
         extra = root / "unrecorded.txt"
         extra.write_text("unexpected")
         with self.assertRaisesRegex(ValueError, "file inventory differs"):
@@ -248,11 +292,45 @@ class DesktopPackageTests(unittest.TestCase):
 
         def run(args, **kwargs):
             code = 1 if args[1] == "tutorial-manifest-check" else 0
-            return subprocess.CompletedProcess(args, code, "", "stale manifest" if code else "")
+            return subprocess.CompletedProcess(args, code, self.version_output,
+                                               "stale manifest" if code else "")
 
         with patch.object(package.subprocess, "run", side_effect=run):
             with self.assertRaisesRegex(ValueError, "tutorial-manifest-check failed"):
                 self.smoke(root, "windows")
+
+    def test_smoke_binds_version_and_writes_new_external_receipt_only_on_success(self) -> None:
+        root = self.stage("windows")
+        output = self.root / "observations/smoke.json"
+        with patch.object(package.subprocess, "run", return_value=
+                          subprocess.CompletedProcess([], 0, self.version_output, "")) as run:
+            with self.assertRaisesRegex(ValueError, "version does not match"):
+                package.smoke(root, "windows", self.revision, self.repo, "v0.0.0", output)
+            run.assert_not_called()
+            self.assertFalse(output.exists())
+            with self.assertRaisesRegex(ValueError, "outside the package"):
+                package.smoke(root, "windows", self.revision, self.repo, self.tag,
+                              root / "new-receipt.json")
+            observed = package.smoke(root, "windows", self.revision, self.repo, self.tag, output)
+            self.assertEqual(json.loads(output.read_text()), observed)
+            retained = output.read_bytes()
+            with self.assertRaisesRegex(ValueError, "must be new"):
+                package.smoke(root, "windows", self.revision, self.repo, self.tag, output)
+            self.assertEqual(output.read_bytes(), retained)
+
+    def test_binary_changed_by_smoke_is_refused_without_receipt(self) -> None:
+        root = self.stage("windows")
+        output = self.root / "failed-smoke.json"
+
+        def run(args, **kwargs):
+            if args[1] == "tutorial-manifest-check":
+                (root / "bin/gentle_cli.exe").write_bytes(b"modified during smoke")
+            return subprocess.CompletedProcess(args, 0, self.version_output, "")
+
+        with patch.object(package.subprocess, "run", side_effect=run):
+            with self.assertRaisesRegex(ValueError, "changed during smoke"):
+                package.smoke(root, "windows", self.revision, self.repo, self.tag, output)
+        self.assertFalse(output.exists())
 
 
 class MacosBundleMetadataTests(unittest.TestCase):
@@ -558,6 +636,21 @@ class WorkflowWiringTests(unittest.TestCase):
         self.assertIn("trap 'hdiutil detach", workflow)
         self.assertIn('if ($LASTEXITCODE -ne 0)', workflow)
         self.assertIn("scripts.test_package_desktop", (repo / ".github/workflows/ci.yml").read_text())
+
+    def test_each_native_smoke_binds_tag_and_retains_identities_before_collection(self) -> None:
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/release.yml").read_text()
+        for platform in ("macos", "windows", "linux"):
+            step = workflow.split(f"scripts/package_desktop.py smoke --platform {platform}", 1)[1]
+            step = step.split("\n      - name:", 1)[0]
+            self.assertIn("--tag", step)
+            self.assertIn("--output", step)
+            self.assertIn("gentle-package-smoke.json", step)
+        normalize = workflow.split("      - name: Normalize installer filename", 1)[1]
+        normalize = normalize.split("      - name: Upload installer artifact", 1)[0]
+        self.assertIn('"schema": "gentle.native_package_smoke.v1"', normalize)
+        self.assertIn('"revision": os.environ["EXPECTED_REVISION"]', normalize)
+        self.assertIn('"binary_identities": smoke["binary_identities"]', normalize)
+        self.assertIn('validate_binary_identities(smoke.get("binary_identities")', normalize)
 
 
 if __name__ == "__main__":

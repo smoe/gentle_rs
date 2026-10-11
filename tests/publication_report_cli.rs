@@ -6,6 +6,26 @@
 use std::{fs, process::Command};
 
 #[test]
+fn publication_version_reports_shared_identity_without_inputs_or_outputs() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let binary = env!("CARGO_BIN_EXE_gentle_publication_report");
+    for flag in ["--version", "-V"] {
+        let output = Command::new(binary)
+            .arg(flag)
+            .current_dir(temp.path())
+            .output()
+            .expect("publication version");
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            String::from_utf8(output.stdout).expect("UTF-8 version"),
+            format!("{}\n", gentle::about::version_cli_text())
+        );
+        assert!(output.stderr.is_empty());
+    }
+    assert_eq!(fs::read_dir(temp.path()).expect("read tempdir").count(), 0);
+}
+
+#[test]
 fn publication_help_succeeds_without_inputs_or_outputs() {
     let temp = tempfile::tempdir().expect("tempdir");
     let binary = env!("CARGO_BIN_EXE_gentle_publication_report");

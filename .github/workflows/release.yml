@@ -356,7 +356,8 @@ jobs:
           fi
           test -f "$app_path/Contents/Info.plist"
           python3 scripts/package_desktop.py smoke --platform macos --root "$app_path" \
-            --revision "$EXPECTED_REVISION" --checkout "$GITHUB_WORKSPACE"
+            --revision "$EXPECTED_REVISION" --checkout "$GITHUB_WORKSPACE" \
+            --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/gentle-package-smoke.json"
 
       - name: Smoke test Windows package
         if: runner.os == 'Windows'
@@ -382,7 +383,8 @@ jobs:
 
           $package = Join-Path $extract ("gentle-" + $env:RELEASE_TAG.Replace("refs/tags/", ""))
           python scripts/package_desktop.py smoke --platform windows --root "$package" `
-            --revision "$env:EXPECTED_REVISION" --checkout "$env:GITHUB_WORKSPACE"
+            --revision "$env:EXPECTED_REVISION" --checkout "$env:GITHUB_WORKSPACE" `
+            --tag "$env:RELEASE_TAG" --output "$env:RUNNER_TEMP/gentle-package-smoke.json"
           if ($LASTEXITCODE -ne 0) { throw "Extracted Windows package smoke failed" }
 
       - name: Smoke test Linux package
@@ -394,7 +396,8 @@ jobs:
           tar -xzf "${{ steps.collect.outputs.installer_path }}" -C "$extract"
           package="$extract/gentle-${RELEASE_TAG#refs/tags/}-linux-x64"
           python3 scripts/package_desktop.py smoke --platform linux --root "$package" \
-            --revision "$EXPECTED_REVISION" --checkout "$GITHUB_WORKSPACE"
+            --revision "$EXPECTED_REVISION" --checkout "$GITHUB_WORKSPACE" \
+            --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/gentle-package-smoke.json"
 
       - name: Normalize installer filename
         id: normalize
@@ -416,16 +419,25 @@ jobs:
           python3 scripts/release_candidate.py verify
           python3 - <<'PY'
           import hashlib, json, os, pathlib, subprocess
-          from scripts.package_desktop import BINARIES
+          from scripts.package_desktop import BINARIES, validate_binary_identities
           from scripts.release_candidate import package_build_recipe
           tag = os.environ["RELEASE_TAG"].removeprefix("refs/tags/")
           platform = os.environ["PACKAGE_PLATFORM"]
           arch = os.environ["PACKAGE_ARCH"].lower()
+          smoke = json.loads((pathlib.Path(os.environ["RUNNER_TEMP"]) / "gentle-package-smoke.json").read_text(encoding="utf-8"))
+          for key, expected in {
+              "schema": "gentle.native_package_smoke.v1", "tag": tag,
+              "revision": os.environ["EXPECTED_REVISION"], "platform": platform,
+          }.items():
+              if smoke.get(key) != expected:
+                  raise ValueError(f"Extracted package smoke receipt mismatch: {key}")
+          validate_binary_identities(smoke.get("binary_identities"), tag, os.environ["EXPECTED_REVISION"])
           record = {
               "schema": "gentle.release_build.v1", "tag": tag,
               "revision": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
               "platform": platform, "arch": arch, "features": [],
               "default_features": True, "binaries": list(BINARIES),
+              "binary_identities": smoke["binary_identities"],
               "profile": os.environ["NATIVE_PROFILE"],
               **package_build_recipe(pathlib.Path(".")),
               "rustc": subprocess.check_output(["rustc", "--version"], text=True).strip(),

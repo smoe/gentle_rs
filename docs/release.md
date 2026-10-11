@@ -569,11 +569,25 @@ Linux still records `ldd` output and rejects unresolved runtime libraries.
 
 After mounting the DMG or extracting the ZIP/tarball under runner temporary
 storage, the workflow checks the full inventory and candidate revision. It
-runs every packaged entrypoint's version/help smoke, `gentle_cli capabilities`
+runs all five packaged entrypoints with `--version`, requiring one exact package
+version and one full selected source-SHA line from each. `VERSION`/`REVISION`
+files and successful help commands alone cannot certify an executable's source.
+It also runs the existing help smokes, `gentle_cli capabilities`
 and `gentle_examples_docs tutorial-manifest-check` with the packaged resource
 directory as cwd, outside the checkout. A missing binary/resource, changed
 checksum, failing command or stale tutorial manifest fails the job. macOS
 detaches the mounted image even on failure; Windows propagates Python failure.
+
+The smoke accepts explicit `--tag`/`--revision` inputs and can write a new
+`--output` receipt outside the extracted payload. The workflow uses
+`gentle.native_package_smoke.v1` to retain all five observed versions and final
+binary hashes, refusing binaries changed during smoke. Per-platform build
+receipts and aggregate release attributes carry these `binary_identities`;
+collection rejects missing, stale, short-SHA, duplicate or malformed identities.
+Older receipts without these observations remain historical, not accepted by
+the new collection gate. Identity strings and hashes are not authenticated
+build provenance and do not replace independent archive-byte verification,
+full-platform tests or native GUI/scientific acceptance.
 
 For command-line use, start from the extracted Windows/Linux directory (with
 its `assets/` and `docs/`) and invoke `bin/gentle_cli[.exe]`. In a copied macOS

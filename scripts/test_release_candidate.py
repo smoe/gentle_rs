@@ -339,6 +339,10 @@ class ReleaseCandidateTests(unittest.TestCase):
                 "panic": "unwind", "strip": "none",
                 "binaries": ["gentle", "gentle_cli", "gentle_mcp",
                              "gentle_examples_docs", "gentle_publication_report"],
+                "binary_identities": {name: {
+                    "version": f"GENtle {self.tag[1:]}\nSource revision {self.tag[1:]}+git.{self.sha}",
+                    "sha256": hashlib.sha256(f"synthetic {platform} {name}".encode()).hexdigest(),
+                } for name in policy.BINARIES},
                 "rustc": "synthetic rustc", "cargo": "synthetic cargo",
                 "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
             }
@@ -357,6 +361,35 @@ class ReleaseCandidateTests(unittest.TestCase):
         self.assertEqual(result["lto"], "off")
         self.assertEqual(len(result["artifacts"]), 3)
         self.assertTrue(all(row["bytes"] > 0 for row in result["artifacts"]))
+        self.assertEqual(set(result["binary_identities"]), {"macos", "windows", "linux"})
+        for platform, identities in result["binary_identities"].items():
+            policy.validate_binary_identities(identities, candidate["tag"], candidate["revision"])
+            self.assertEqual(identities["gentle_cli"]["sha256"],
+                             hashlib.sha256(f"synthetic {platform} gentle_cli".encode()).hexdigest())
+
+    def test_collection_rejects_missing_stale_or_malformed_native_identities(self) -> None:
+        folder, candidate, paths = self.installers()
+        original = json.loads(paths[0].read_text())
+        variants = [None, {}, [], {**original["binary_identities"], "gentle_js": {}}]
+        for name in policy.BINARIES:
+            missing = copy.deepcopy(original["binary_identities"])
+            del missing[name]
+            variants.append(missing)
+            for field, value in (("version", "unversioned"), ("version", None),
+                                 ("version", original["binary_identities"][name]["version"].replace(self.sha, "0" * 40)),
+                                 ("sha256", "bad"), ("sha256", True)):
+                changed = copy.deepcopy(original["binary_identities"])
+                changed[name][field] = value
+                variants.append(changed)
+        for identities in variants:
+            paths[0].write_text(json.dumps({**original, "binary_identities": identities}))
+            with self.subTest(identities=identities), self.assertRaises(ValueError):
+                policy.collect_installers(folder, candidate)
+        missing = copy.deepcopy(original)
+        del missing["binary_identities"]
+        paths[0].write_text(json.dumps(missing))
+        with self.assertRaises(ValueError):
+            policy.collect_installers(folder, candidate)
 
     def test_final_version_label_cannot_bypass_opt1_packaging_policy(self) -> None:
         self.write_manifest("0.1.0")

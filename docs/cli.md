@@ -353,7 +353,8 @@ GENtle currently provides seven binaries:
   includes standardized capability discovery via `tools/list`,
   `capabilities`, and `help`)
 - `gentle_publication_report`: manifest-driven responsive HTML and printable
-  gene-set report bundle generator
+  gene-set report bundle generator; `--version`/`-V` reports the shared
+  package/build/source identity without loading inputs or creating output
 
 In addition, the GUI includes an embedded `Shell` panel that uses the same
 shared shell parser/executor as `gentle_cli shell`.

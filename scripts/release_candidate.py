@@ -18,9 +18,9 @@ import subprocess
 import tomllib
 
 if __package__:
-    from .package_desktop import BINARIES
+    from .package_desktop import BINARIES, validate_binary_identities
 else:
-    from package_desktop import BINARIES
+    from package_desktop import BINARIES, validate_binary_identities
 
 
 PACKAGE_PROFILE = "package-opt1"
@@ -192,6 +192,8 @@ def collect_installers(root: Path, candidate: dict) -> dict:
             raise ValueError("Build receipt does not describe the five-binary desktop bundle")
         if not all(isinstance(receipt.get(key), str) and receipt[key] for key in ("rustc", "cargo")):
             raise ValueError("Build receipt is missing Rust/Cargo toolchain identity")
+        validate_binary_identities(receipt.get("binary_identities"),
+                                   candidate["tag"], candidate["revision"])
     artifacts = []
     for receipt in receipts:
         extension = platforms[receipt["platform"]]
@@ -214,6 +216,8 @@ def collect_installers(root: Path, candidate: dict) -> dict:
         **PACKAGE_BUILD_RECIPE,
         "generated_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "artifacts": sorted(artifacts, key=lambda item: item["name"]),
+        "binary_identities": {receipt["platform"]: receipt["binary_identities"]
+                              for receipt in sorted(receipts, key=lambda item: item["platform"])},
     }
 
 
