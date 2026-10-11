@@ -1445,7 +1445,9 @@ mod tests {
         // probes, invented HSPs. It checks contracts, never actual BLAST biology.
         let fasta = root.join("toy.fa");
         let annotation = root.join("toy.gtf");
-        fs::write(&fasta, format!(">chr1\n{}\n", "ACGT".repeat(250))).unwrap();
+        // Phase the reference to match the 1-based HSP coordinates below.
+        let reference_sequence = "CGTA".repeat(250);
+        fs::write(&fasta, format!(">chr1\n{reference_sequence}\n")).unwrap();
         fs::write(
             &annotation,
             "chr1\tsynthetic\tgene\t1\t1000\t.\t+\t.\tgene_id \"TOY\";\n",
@@ -1612,11 +1614,24 @@ mod tests {
         assert_eq!(pending.genomic, PrimerSpecificityMultiVerdict::Incomplete);
         for child in handoff.references.iter().filter_map(|r| r.child.as_ref()) {
             for command in &child.commands {
-                let (start, end) = if command.role == PrimerSpecificityPrimerRole::Forward {
-                    (100, 119)
+                let (start, end): (usize, usize) =
+                    if command.role == PrimerSpecificityPrimerRole::Forward {
+                        (100, 119)
+                    } else {
+                        (219, 200)
+                    };
+                let primer = child
+                    .primers
+                    .iter()
+                    .find(|primer| primer.role == command.role)
+                    .unwrap();
+                let binding = &reference_sequence[start.min(end) - 1..start.max(end)];
+                let binding = if start > end {
+                    GentleEngine::reverse_complement(binding)
                 } else {
-                    (219, 200)
+                    binding.to_string()
                 };
+                assert_eq!(binding, primer.annealing_sequence, "{:?}", command.role);
                 let bytes = format!(
                     "{}\tchr1\t100\t20\t0\t0\t1\t20\t{start}\t{end}\t1e-20\t80\t100\n",
                     command.query_label

@@ -1,5 +1,23 @@
 # GENtle Changelog
 
+## 2026-10-12 - Align Synthetic Specificity Hits With Their Reference
+
+- Repair the multi-reference import fixture's contradictory perfect-hit data:
+  repeated `ACGT` at forward `100..119` and reverse `219..200` yields five
+  terminal mismatches on each primer. The shared interpreter correctly rejects
+  those hits under the unchanged zero-mismatch policy.
+- Phase the hand-crafted FASTA as repeated `CGTA`, retaining the same subjects,
+  coordinates, hit receipts and genomic/cDNA mappings. Assert that each emitted
+  hit's strand-oriented reference window equals its command-role primer before
+  writing the TSV. Keep atomicity, replay, tamper and stale-reference checks.
+- On macOS, the source-data geometry check passes both binding orientations and
+  reproduces the old five-mismatch negative control. All 94 scoped offline
+  primer-tutorial, release-policy and LF/CRLF checkout tests pass, as do scoped
+  Rust formatting and whitespace checks; none execute the Rust interpreter.
+- Rust execution remains pending under the no-local-build restriction. This
+  fixture repair changes no production biology or acceptance policy; commit
+  locally on `main` without pushing or altering historical evidence.
+
 ## 2026-10-11 - Retain Exact-Source Package Identity Gate Evidence
 
 - On local `main` at `6b39e5d8`, rerun all 162 scoped offline package, release,
