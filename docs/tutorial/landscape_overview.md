@@ -69,7 +69,6 @@ flowchart LR
   end
 
   subgraph Planned["Roadmap-grounded proposed additions"]
-    P1["Planned: dbSNP rs9923231 fetch/extract tutorial"]
     P2["Planned: RNA batch sample-metadata tutorial"]
     P3["Planned: seed-capture workflow tutorial"]
     P4["Planned: warfarin / Factor X follow-up"]
@@ -100,7 +99,6 @@ flowchart LR
   SQC -. shared-engine parity .-> SQG
   AI -. points users back to executable routes .-> GH
 
-  P1 -. upstream entry for rs9923231 workflows .-> VK
   VK -. companion follow-up .-> P4
   RNA -. next cohort layer .-> P2
   RNA -. future abstraction track .-> P3
@@ -108,7 +106,7 @@ flowchart LR
   class GS,SQG,SQC,RNA high;
   class VK,GA,C15,C16 medium;
   class TH,GH,TP73,AI,C12,C13,C14 low;
-  class P1,P2,P3,P4 planned;
+  class P2,P3,P4 planned;
 ```
 
 ## Current Tutorial Bands
@@ -150,21 +148,13 @@ flowchart LR
 These are not committed pages yet. They are the most defensible next additions
 based on current roadmap signals.
 
-### 1. dbSNP rs9923231 fetch/extract tutorial
+The dbSNP rs9923231 entry is already covered by
+[08.02's Promoter design path](08-02_vkorc1_variant_followup_expert_gui.md) and
+[08.04's reporter walkthrough](08-04_vkorc1_warfarin_promoter_luciferase_gui.md).
+Their existence is not real-locus/scientific acceptance; inspect their current
+input and gate limitations before using them as evidence.
 
-Why it belongs next:
-
-- the roadmap now exposes `FetchDbSnpRegion` directly in the fetch specialist
-- the specialist already pre-populates the tutorial rsID `rs9923231`
-- this would give the VKORC1 / warfarin route a clearer “start from rsID”
-  upstream entry point
-
-Roadmap grounding:
-
-- [`docs/roadmap.md`](../roadmap.md) around the `FetchDbSnpRegion` specialist
-  and tutorial rsID notes
-
-### 2. RNA batch sample-metadata tutorial
+### 1. RNA batch sample-metadata tutorial
 
 Why it belongs next:
 
@@ -178,7 +168,7 @@ Roadmap grounding:
 
 - [`docs/roadmap.md`](../roadmap.md) sample-sheet cohort metadata follow-up
 
-### 3. Seed-capture workflow tutorial
+### 2. Seed-capture workflow tutorial
 
 Why it belongs next:
 

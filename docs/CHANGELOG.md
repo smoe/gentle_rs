@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-12 - Add Mergeable Microarray and Measured-Gel Lessons
+
+- Add manual/hybrid tutorials 07.04 and 10.03: existing vendor-coordinate TP73
+  projection with explicitly synthetic contrasts, and manual gel-image sizing
+  with a reproducibly drawn PNG, exact requests/checksums, 707-bp log-size
+  interpolation, out-of-range nulls and a separate apparent-kDa appendix.
+- Reuse shared operations without changing scientific or GUI behavior. Remove
+  copied README review badges in favor of generated review metadata; replace
+  the stale planned rs9923231 entry with existing 08.02/08.04 links. Historical
+  human reviews, executable contracts and retained outputs are unchanged.
+- Add independent PNG/arithmetic/source checks and hash-bound LF/CRLF checkout
+  coverage. Catalog projection is regenerated with an existing baseline-source
+  generator; Rust execution, native screenshots and scientific acceptance remain
+  pending. Glen's exact-candidate scrutiny is requested in
+  `glen_microarray_gel_tutorial_review_20261012.md`; this is not release approval.
+- On macOS, 79 scoped Python tests pass, as do catalog/manifest freshness and
+  whitespace checks: 64 catalog entries, unchanged 30 executable chapters and
+  six GUI contracts. The visual gate admits only the new gel input directory
+  as an additional asset root and labels its PNG a generated figure, not a
+  screenshot. Session-close has zero failures; warnings cover remaining
+  in-flight slices and manual scope confirmation. No local Rust build/check.
+
 ## 2026-10-11 - Retain Exact-Source Package Identity Gate Evidence
 
 - On local `main` at `6b39e5d8`, rerun all 162 scoped offline package, release,

@@ -26,7 +26,8 @@ import zlib
 ROOT = Path(__file__).resolve().parents[1]
 MODES = (("lf", "false", "lf"), ("crlf", "true", "crlf"))
 VISUAL_ROOTS = ("docs/screenshots/", "docs/figures/",
-                "docs/tutorial/generated/artifacts/", "docs/tutorial/reproducibility/")
+                "docs/tutorial/generated/artifacts/", "docs/tutorial/reproducibility/",
+                "docs/tutorial/inputs/gel_sizing/")
 MAX_SVG_BYTES = 16 * 1024 * 1024
 
 

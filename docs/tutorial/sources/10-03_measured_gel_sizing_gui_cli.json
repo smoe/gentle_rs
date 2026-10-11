@@ -1,0 +1,30 @@
+{
+  "schema": "gentle.tutorial_source.v4",
+  "id": "measured_gel_sizing_gui_cli",
+  "title": "Estimate a PCR Band's Size from a Gel Image",
+  "graphics": [
+    {
+      "kind": "generated",
+      "path": "docs/tutorial/inputs/gel_sizing/gel_sizing_synthetic.png",
+      "caption": "Deterministically drawn calibration exercise, not a GUI screenshot or experimental gel: four ladder bands and two sample marks.",
+      "illustrates_step": 1
+    }
+  ],
+  "catalog": {
+    "order": 123,
+    "path": "docs/tutorial/10-03_measured_gel_sizing_gui_cli.md",
+    "type": "gui_cli_walkthrough",
+    "status": "manual/hybrid",
+    "source": "hand_written_markdown",
+    "audiences": ["gui_first", "cli_first", "agent_users", "wet_lab_biologists"],
+    "notes": "Offline synthetic measured-image calibration, not virtual gel simulation. Confirm original pixel assignments, use log-size interpolation, retain out-of-range nulls and distinguish apparent kDa from identity or amount. Execution, native screenshots and real-image acceptance remain pending.",
+    "estimated_minutes": 15,
+    "difficulty": "beginner",
+    "network": "offline",
+    "interfaces": ["GUI", "CLI / shared shell", "Agent Assistant (reviewed drafts)"],
+    "starting_state": "Empty disposable project and the committed drawn PNG/assignment requests",
+    "produces": ["measured gel sizing report", "SVG/TSV exports"],
+    "group": "10",
+    "group_position": 3
+  }
+}
