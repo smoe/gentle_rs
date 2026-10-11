@@ -1,5 +1,25 @@
 # GENtle Changelog
 
+## 2026-10-12 - Bind Public VKORC1 Audits To Clean Source Inputs
+
+- Follow-up 4's helper claimed a clean candidate without checking Git status;
+  fail-first boundary tests admit both modified tracked tutorial inputs and
+  untracked inputs before the repair. Reuse the shared clean-checkout and CLI
+  identity validators before evidence creation, network access or operations.
+- Refuse missing, stale or duplicate source observations and binaries changed
+  during their version probe. Recheck the checkout and CLI hash before a pass,
+  and bind the tutorial command source's raw hash in new receipts. Preserve
+  failed-run diagnostics and all historical receipts without rewriting them.
+- Pin only the two public-audit source/workflow inputs to LF and exercise both
+  checkout policies plus independent missing-rule negative controls. Existing
+  tutorial prose, generated output and biological behavior remain unchanged.
+- All 14 focused public-audit/checkout tests and 241 broader offline tests pass
+  on macOS; Python syntax, script help and whitespace checks pass. Fixtures
+  use a disposable Git repository, mock version output and a refused fetch,
+  never real GENtle, live agents, downloaded references or native GUI input.
+- Commit separately on local `main`, without pushing or local Rust execution.
+  Fresh exact-source live/native/scroll and package-opt1 acceptance remain open.
+
 ## 2026-10-12 - Synchronize Package-Monitor Signal Regression
 
 - Reproduce the recorded monitor-test startup race with a hand-crafted 300-ms

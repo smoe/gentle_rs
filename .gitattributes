@@ -41,6 +41,9 @@ docs/tutorial/manifest.json text eol=lf
 # The offline 08.04 guard and its generated chapter are byte-bound acceptance inputs.
 docs/examples/assets/allele_pair_guard/multiallelic.gb text eol=lf
 docs/tutorial/generated/chapters/08-04_vkorc1_warfarin_promoter_luciferase_gui.md text eol=lf
+# Current public-audit inputs are hashed as raw bytes, not normalized JSON.
+docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json text eol=lf
+docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json text eol=lf
 docs/tutorial/generated/README.md text eol=lf
 
 # Historical panel baselines keep their original generator identity and raw hashes.

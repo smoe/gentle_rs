@@ -329,6 +329,40 @@ class TutorialCheckoutTests(unittest.TestCase):
                 with self.subTest(mode=mode[0], path=relative):
                     self.assertEqual((target / relative).read_bytes(), payload)
 
+    def test_public_vkorc1_audit_input_hashes_survive_both_checkout_modes(self):
+        paths = (
+            Path("docs/tutorial/sources/08-04_vkorc1_warfarin_promoter_luciferase_gui.json"),
+            Path("docs/examples/workflows/vkorc1_rs9923231_promoter_luciferase_assay_planning.json"),
+        )
+        payloads = {path: (checker.ROOT / path).read_bytes() for path in paths}
+        attributes = (checker.ROOT / ".gitattributes").read_bytes()
+        (self.root / ".gitattributes").write_bytes(attributes)
+        for relative, payload in payloads.items():
+            destination = self.root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(payload)
+        checker.git(self.root, "add", "--all")
+        checker.git(self.root, "-c", "commit.gpgsign=false", "commit", "--quiet",
+                    "-m", "public audit input byte contracts")
+        for index, relative in enumerate(paths):
+            unprotected = b"\n".join(
+                line for line in attributes.split(b"\n")
+                if not line.startswith(relative.as_posix().encode() + b" ")
+            )
+            broken = Path(self.tmp.name) / f"public-audit-unprotected-{index}"
+            checker.prepare_checkout(self.root, broken, checker.MODES[1], unprotected)
+            self.assertEqual((broken / relative).read_bytes(), payloads[relative].replace(b"\n", b"\r\n"))
+            self.assertNotEqual(hashlib.sha256((broken / relative).read_bytes()).digest(),
+                                hashlib.sha256(payloads[relative]).digest())
+        for mode in checker.MODES:
+            target = Path(self.tmp.name) / f"public-audit-{mode[0]}"
+            checker.prepare_checkout(self.root, target, mode)
+            for relative, payload in payloads.items():
+                with self.subTest(mode=mode[0], path=relative):
+                    self.assertEqual((target / relative).read_bytes(), payload)
+                    self.assertEqual(hashlib.sha256((target / relative).read_bytes()).digest(),
+                                     hashlib.sha256(payload).digest())
+
     def test_scroll_followup_receipt_hash_survives_both_checkout_modes(self):
         relative = Path("docs/audits/glen_followups_20261008/scroll_cpu_smoke_d1bf3fd3.json")
         payload = (checker.ROOT / relative).read_bytes()

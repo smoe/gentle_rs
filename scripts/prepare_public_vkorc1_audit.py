@@ -21,8 +21,10 @@ import urllib.request
 
 try:
     from tutorial_gui_acceptance import fixed_shell_command
+    from tutorial_acceptance_evidence import binary_identity, checkout_identity
 except ModuleNotFoundError:
     from scripts.tutorial_gui_acceptance import fixed_shell_command
+    from scripts.tutorial_acceptance_evidence import binary_identity, checkout_identity
 
 
 CONTEXT = "vkorc1_rs9923231_context"
@@ -115,18 +117,26 @@ def public_pair_svg(proof: dict, revision: str, binary_sha256: str) -> str:
     )
 
 
+def assert_audit_inputs_unchanged(repo: Path, binary: Path, checkout: dict,
+                                 binary_sha256: str) -> None:
+    if checkout_identity(repo, checkout["source_revision"]) != checkout:
+        raise ValueError("Source inputs changed during audit")
+    if sha(binary) != binary_sha256:
+        raise ValueError("CLI binary changed during audit")
+
+
 def audit(repo: Path, binary: Path, root: Path) -> int:
     repo = repo.resolve(strict=True)
     binary = binary.resolve(strict=True)
     root = root.resolve()
+    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True, timeout=15).strip()
+    checkout = checkout_identity(repo, revision)
+    identity = binary_identity(binary, revision)
     root.mkdir()  # Never overwrite a previous run or historical evidence.
-    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
-    version = subprocess.check_output([str(binary), "--version"], text=True)
-    assert any(line.startswith("Source revision ") and line.endswith("+git." + revision)
-               for line in version.splitlines()), "binary source does not match clean checkout"
     receipt = {"schema": "gentle.public_vkorc1_audit.v1", "source_revision": revision,
-               "profile": "dev", "binary_sha256": sha(binary), "binary_version": version,
-               "cargo_lock_sha256": sha(repo / "Cargo.lock"), "workflow_sha256": sha(repo / WORKFLOW),
+               "profile": "dev", "binary_sha256": identity["sha256"], "binary_version": identity["version_output"],
+               "cargo_lock_sha256": checkout["cargo_lock_sha256"], "workflow_sha256": sha(repo / WORKFLOW),
+               "tutorial_source_sha256": sha(repo / SOURCE),
                "catalog_sha256": sha(repo / "assets/genomes.json"), "commands": [], "status": "running",
                "live_agent_accepted": False, "native_gui_accepted": False, "package_accepted": False,
                "human_scientific_approval": False}
@@ -256,6 +266,7 @@ def audit(repo: Path, binary: Path, root: Path) -> int:
         receipt["reference_inputs"] = manifests
         (root / "base-comparison.json").write_text(json.dumps(proof, indent=2) + "\n")
         (root / "base-comparison.svg").write_text(public_pair_svg(proof, revision, receipt["binary_sha256"]))
+        assert_audit_inputs_unchanged(repo, binary, checkout, receipt["binary_sha256"])
         receipt["status"] = "pass"
         receipt["claim"] = "public source-bound CLI/shared-shell promoter and explicit C/T insert parity only"
     except Exception as error:
