@@ -2,6 +2,15 @@
   "schema": "gentle.tutorial_source.v4",
   "id": "gibson_specialist_testing_baseline",
   "title": "Gibson Specialist Starter Project (offline)",
+  "graphics": [
+    {
+      "kind": "screenshot",
+      "path": "docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png",
+      "caption": "Historical Help-window orientation, captured 2026-03-22, for continuing into the Gibson specialist guide. It does not prove that the current starter loaded or that current GUI controls passed acceptance.",
+      "illustrates_step": 3,
+      "capture_date": "2026-03-22"
+    }
+  ],
   "catalog": {
     "order": 38,
     "path": "docs/tutorial/generated/chapters/03-04_gibson_specialist_testing_baseline.md",

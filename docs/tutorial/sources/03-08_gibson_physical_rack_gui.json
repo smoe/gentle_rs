@@ -9,6 +9,13 @@
       "caption": "Deterministic isometric export of rack-1 with the pipetting PCR tube rack template: five occupied positions preserve the linked Gibson arrangement and flanking ladder references.",
       "illustrates_step": 5,
       "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run racks isometric-svg for rack-1 with --template pipetting_pcr_tube_rack as shown in this tutorial."
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/gibson_single_insert_rack_topdown.svg",
+      "caption": "Deterministic top-down hero projection of the linked Gibson rack: A1-A5 hold the two ladders, vector, insert and product. This occupancy view is not the fabrication SVG or a validated printable design.",
+      "illustrates_step": 6,
+      "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run racks hero-svg rack-1 OUTPUT.svg --template pipetting_pcr_tube_rack."
     }
   ],
   "catalog": {

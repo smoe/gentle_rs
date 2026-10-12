@@ -4,7 +4,7 @@
 > Status: `manual/reference`
 > Audience: users operating GENtle through the in-app Agent Assistant, CLI/shared shell, MCP, or external coding agents.
 
-Last updated: 2026-10-01
+Last updated: 2026-10-13
 
 This tutorial explains how to let an AI assistant help with GENtle without
 giving up reproducibility. The most important idea is simple:
@@ -117,6 +117,16 @@ So yes: inside a running GENtle instance, the Agent Assistant can be used
 interchangeably with GUI operations and GUI Shell commands. The audit trail is
 the concrete reviewed GENtle command, not the natural-language prompt that led
 to it.
+
+The retained export below illustrates a reproducible outer-agent deliverable:
+local coordinates `1..1200` of the bundled TP73 evidence project. The workflow
+mixes reference annotations with example evidence, including synthetic proof
+tracks; it is not experimental validation or an agent's independent verdict.
+An outer agent needs the explicit saved state to reproduce this view and cannot
+infer it from an unsaved GUI selection. The newer Agent Assistant capture in
+section 4 illustrates the separate consent and attachment boundary.
+
+![Retained deterministic TP73 evidence viewport from an explicit saved project](../figures/tp73_outer_agent_evidence_viewer.svg)
 
 ## 3) Bringing sequences into that shared state
 

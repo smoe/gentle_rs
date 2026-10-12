@@ -1,5 +1,27 @@
 # GENtle Changelog
 
+## 2026-10-13 - Semantically Forward-Port Glen's Tutorial Visuals
+
+- Review all 19 proposed placements from `d70bf25d` against main `5e6201a6`
+  in a clean `codex/tutorial-visual-forward-port` worktree, without cherry-picking.
+  [Individual decisions](tutorial/visual_forward_port_review.md) retain twelve
+  placements, including three existing ones; five dotplot images already live
+  in 02.03, and the old agent-viewer crop and degenerate-PCR/Sanger hero do not
+  fit the newer consent and known-construct lessons.
+- Preserve current hand texts, all asset bytes and historical artifact hashes.
+  Correct captions that implied an arrangement node, fabrication geometry or
+  current assay outputs. Distinguish TP73-AS3 tester examples from newly designed
+  TP73 assays, cartoon overlap lengths from the plan, and Ensembl 113 in the
+  legacy menu capture from this chapter's required Ensembl 116.
+- Extend canonical graphics metadata, regenerate catalog/manifest and only the
+  two affected generated chapters/report records. The existing `150a3390` helper
+  has byte-identical docs-generator sources; this does not certify current-SHA
+  runtime. Unrelated temporary replay differences are not imported or waived.
+- Scoped Python verification: 85 tests, 82 pass and three expected binary-gated
+  skips, including the visual contracts and LF/CRLF checkout cases. Catalog and
+  manifest freshness pass; all 31 retained scientific artifact hashes remain
+  unchanged. No Rust build/check/test, fresh GUI acceptance, push or publication.
+
 ## 2026-10-12 - Close The Source-Bound Tutorial CI Repair
 
 - Independently verify [run 38223352242](https://github.com/smoe/gentle_rs/actions/runs/38223352242)

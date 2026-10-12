@@ -221,6 +221,16 @@ Interpretation:
 - keeping them separate is useful because the same output sequences could later
   participate in more than one arrangement
 
+The retained cloning-lineage export below shows the two inputs, Gibson hub and
+three products independently of GUI window size. It does **not** include the
+downstream arrangement node. Verify that additional node in your current Graph
+view rather than treating this example as proof of the complete arrangement.
+
+![Retained Gibson cloning lineage with vector, insert, two primers and assembled product](../figures/gibson_single_insert_lineage.svg)
+
+If Help obscures the SVG text, open the linked export on a light background.
+Read its nodes as vector, insert, Gibson hub, left/right primers and product.
+
 ## Inner and Outer Agents
 
 The **inner agent** can inspect the open project's arrangement and linked

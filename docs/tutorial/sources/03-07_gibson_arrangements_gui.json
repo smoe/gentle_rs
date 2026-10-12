@@ -9,6 +9,13 @@
       "caption": "Deterministic arrangement-level gel export with flanking DNA ladders and the vector, insert and assembled-product sample lanes in stored serial order.",
       "illustrates_step": 5,
       "regen_command": "Replay docs/examples/workflows/gibson_arrangements_baseline.json into a fresh state, then run render-pool-gel-svg with --arrangement arrangement-1 as shown in this tutorial."
+    },
+    {
+      "kind": "generated",
+      "path": "docs/figures/gibson_single_insert_lineage.svg",
+      "caption": "Retained single-insert cloning lineage export: two inputs, one Gibson operation and three products. This example does not show the downstream arrangement node; inspect that separately in the current project's Graph view.",
+      "illustrates_step": 6,
+      "regen_command": "Replay gibson_specialist_testing_baseline.json, apply docs/figures/gibson_single_insert_readme.plan.json and run render-lineage-svg in a fresh state, as documented in docs/figures/README.md."
     }
   ],
   "catalog": {

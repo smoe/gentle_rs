@@ -242,6 +242,13 @@ Expected interpretation:
 - the insert does not need to already contain those overlaps because the primer
   suggestions add them at the `5'` end
 
+This retained mechanism template shows both junctions through chew-back,
+annealing, extension and sealing. It is a deterministic cartoon, not a capture
+of your preview. Its illustrated overhang lengths are template parameters;
+use the resolved report above for this tutorial's `30 bp` overlaps and oligos.
+
+![Gibson mechanism template showing two junctions through chew-back, annealing, extension and sealing](../figures/gibson_single_insert_protocol_cartoon.svg)
+
 ## Inner and Outer Agents
 
 The **inner agent** can inspect the open project's destination, insert and

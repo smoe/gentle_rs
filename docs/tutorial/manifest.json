@@ -1169,6 +1169,15 @@
         "Preflight status resolves the requested Ensembl-116 sources and effective cache path without network mutation.",
         "Genome preparation runs only when `GENTLE_TEST_ONLINE` is enabled.",
         "Offline generation still emits the chapter as `skipped_online`; a later online run must prove `prepared=true` and component metadata separately."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/screenshot_GUI_prepare_reference_genome.png",
+          "caption": "Historical preparation-menu orientation, captured 2026-03-08. Ensembl 113 is selected in this image; choose exactly Human GRCh38 Ensembl 116 for this chapter. The pictured already-prepared entries describe the capture host, not your cache or current acceptance.",
+          "illustrates_step": 1,
+          "capture_date": "2026-03-08"
+        }
       ]
     },
     {
@@ -1768,6 +1777,15 @@
         "The tutorial project opens with exactly the expected destination and insert IDs already loaded.",
         "The destination remains circular and the insert remains linear before entering `Patterns -> Gibson...`.",
         "The hand-written Gibson testing guide can start from this baseline without any additional sequence imports."
+      ],
+      "graphics": [
+        {
+          "kind": "screenshot",
+          "path": "docs/screenshots/screenshot_GUI_help_tutorial_testing_gibson.png",
+          "caption": "Historical Help-window orientation, captured 2026-03-22, for continuing into the Gibson specialist guide. It does not prove that the current starter loaded or that current GUI controls passed acceptance.",
+          "illustrates_step": 3,
+          "capture_date": "2026-03-22"
+        }
       ]
     },
     {
